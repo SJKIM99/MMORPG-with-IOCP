@@ -1,44 +1,64 @@
 #include "pch.h"
 #include "Sector.h"
 
-//Sector* GSector = nullptr;
-
-short Sector::GetMySector_X(short x)
+bool Sector::IsValidSector(short sectorX, short sectorY) const noexcept
 {
-    short sector_x = x / SECTOR_RANGE;
-    return sector_x;
+	return sectorX >= 0 && sectorX < kSectorWidth
+		&& sectorY >= 0 && sectorY < kSectorHeight;
 }
 
-short Sector::GetMySector_Y(short y)
+bool Sector::IsValidSector(const SectorCoord& sector) const noexcept
 {
-    short sector_y = y / SECTOR_RANGE;
-    return sector_y;
+	return IsValidSector(sector.x, sector.y);
 }
 
-void Sector::AddPlayerInSector(uint32 player_id, short sector_x, short sector_y)
+SectorCoord Sector::GetSectorCoord(short worldX, short worldY) const noexcept
 {
-    lock_guard<mutex> ll(sectorLocks[sector_y][sector_x]);
-	sectors[sector_y][sector_x].insert(player_id);
+	if (worldX < 0 || worldX >= W_WIDTH || worldY < 0 || worldY >= W_HEIGHT)
+		return {};
+
+	return SectorCoord{
+		static_cast<short>(worldX / SECTOR_RANGE),
+		static_cast<short>(worldY / SECTOR_RANGE)
+	};
 }
 
-bool Sector::UpdatePlayerInSector(uint32 player_id, short new_sector_x, short new_sector_y, short old_sector_x, short old_sector_y)
+const Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorY) const
 {
-	if (new_sector_x != old_sector_x || new_sector_y != old_sector_y) {
-		{
-			lock_guard<mutex> ll(sectorLocks[old_sector_y][old_sector_x]);
-			sectors[old_sector_y][old_sector_x].erase(player_id);
-		}
-		{
-			lock_guard<mutex> ll(sectorLocks[new_sector_y][new_sector_x]);
-			sectors[new_sector_y][new_sector_x].insert(player_id);
-		}
-		return true;
-	}
-    return false;
+	ASSERT_CRASH(IsValidSector(sectorX, sectorY));
+	return _sectors[sectorY][sectorX];
 }
 
-void Sector::RemovePlayerInSector(uint32 player_id, short sector_x, short sector_y)
+Sector::SectorObjects& Sector::GetObjectsMutable(short sectorX, short sectorY)
 {
-	lock_guard<mutex> ll(sectorLocks[sector_y][sector_x]);
-    sectors[sector_y][sector_x].erase(player_id);
+	ASSERT_CRASH(IsValidSector(sectorX, sectorY));
+	return _sectors[sectorY][sectorX];
+}
+
+bool Sector::UpdateObjectSector(uint32 objectId, short worldX, short worldY, short& inOutSectorX, short& inOutSectorY)
+{
+	const SectorCoord nextSector = GetSectorCoord(worldX, worldY);
+	if (IsValidSector(nextSector) == false)
+		return false;
+
+	if (inOutSectorX == nextSector.x && inOutSectorY == nextSector.y)
+		return false;
+
+	if (IsValidSector(inOutSectorX, inOutSectorY))
+		GetObjectsMutable(inOutSectorX, inOutSectorY).erase(objectId);
+
+	GetObjectsMutable(nextSector.x, nextSector.y).insert(objectId);
+	inOutSectorX = nextSector.x;
+	inOutSectorY = nextSector.y;
+	return true;
+}
+
+void Sector::RemoveObject(uint32 objectId, short& inOutSectorX, short& inOutSectorY)
+{
+	if (IsValidSector(inOutSectorX, inOutSectorY) == false)
+		return;
+
+	GetObjectsMutable(inOutSectorX, inOutSectorY).erase(objectId);
+	inOutSectorX = -1;
+	inOutSectorY = -1;
 }

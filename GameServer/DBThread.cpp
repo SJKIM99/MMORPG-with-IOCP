@@ -1,58 +1,161 @@
 #include "pch.h"
 #include "DBThread.h"
 #include "DBConnectionPool.h"
-#include "GameSession.h"
-#include "SocketManager.h"
+#include "GameLogicThread.h"
+#include "WorkerThread.h"
 
-concurrency::concurrent_priority_queue<DB_EVENT> GDataBaseJobQueue;
+namespace
+{
+	class ScopedDBConnection
+	{
+	public:
+		explicit ScopedDBConnection(DBConnectionPool& pool) : _pool(pool), _connection(pool.Pop())
+		{
+		}
+
+		~ScopedDBConnection()
+		{
+			if (_connection != nullptr)
+				_pool.Push(_connection);
+		}
+
+		[[nodiscard]] DBConnection* Get() const noexcept
+		{
+			return _connection;
+		}
+
+		DBConnection* operator->() const noexcept
+		{
+			return _connection;
+		}
+
+	private:
+		DBConnectionPool& _pool;
+		DBConnection* _connection = nullptr;
+	};
+}
+
+bool DBThread::DBEventCompare::operator()(const DB_EVENT& lhs, const DB_EVENT& rhs) const noexcept
+{
+	if (lhs.wakeup_time != rhs.wakeup_time)
+		return lhs.wakeup_time > rhs.wakeup_time;
+
+	return lhs.sequence > rhs.sequence;
+}
+
+void DBThread::RequestLogin(uint32 playerId, uint64 sessionToken, const std::string& playerName)
+{
+	DB_PLAYER_INFO playerInfo{};
+	playerInfo._name = playerName;
+	ScheduleNow(playerId, DB_EVENT_TYPE::EV_LOGIN_PLAYER, std::move(playerInfo), sessionToken);
+}
+
+void DBThread::RequestAddPlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo)
+{
+	ScheduleNow(playerId, DB_EVENT_TYPE::EV_ADD_PLAYER_INFO, playerInfo);
+}
+
+void DBThread::RequestSavePlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo)
+{
+	ScheduleNow(playerId, DB_EVENT_TYPE::EV_SAVE_PLAYER_INFO, playerInfo);
+}
+
+void DBThread::Schedule(DB_EVENT event)
+{
+	{
+		std::scoped_lock lock(_lock);
+		event.sequence = _nextSequence++;
+		_events.push(std::move(event));
+	}
+
+	_cv.notify_one();
+}
+
+void DBThread::ScheduleNow(uint32 playerId, DB_EVENT_TYPE eventType, DB_PLAYER_INFO playerInfo, uint64 sessionToken)
+{
+	ScheduleAfter(playerId, Duration::zero(), eventType, std::move(playerInfo), sessionToken);
+}
+
+void DBThread::ScheduleAfter(uint32 playerId, Duration delay, DB_EVENT_TYPE eventType, DB_PLAYER_INFO playerInfo, uint64 sessionToken)
+{
+	DB_EVENT event{};
+	event.player_id = playerId;
+	event.wakeup_time = Now() + delay;
+	event.event = eventType;
+	event.player_info = std::move(playerInfo);
+	event.session_token = sessionToken;
+
+	Schedule(std::move(event));
+}
+
+void DBThread::ProcessEvent(const DB_EVENT& event)
+{
+	ScopedDBConnection connection(*GDBConnectionPool);
+
+	switch (event.event) {
+	case DB_EVENT_TYPE::EV_LOGIN_PLAYER: {
+		const bool isRegistered = connection->IsPlayerRegistered(event.player_info._name);
+		DB_PLAYER_INFO playerInfo = isRegistered
+			? connection->ExtractPlayerInfo(event.player_info._name)
+			: event.player_info;
+
+		if (isRegistered) {
+			GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo]()
+			{
+				GWorkerThread->HandleGetPlayerInfo(playerId, sessionToken, playerInfo);
+			});
+		}
+		else {
+			GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo]()
+			{
+				GWorkerThread->HandleAddPlayerInfo(playerId, sessionToken, playerInfo);
+			});
+		}
+		break;
+	}
+	case DB_EVENT_TYPE::EV_SAVE_PLAYER_INFO: {
+		connection->SavePlayerInfo(event.player_info._name, event.player_info._x, event.player_info._y);
+		break;
+	}
+	case DB_EVENT_TYPE::EV_ADD_PLAYER_INFO: {
+		connection->AddPlayerInfoInDataBase(event.player_info._name, event.player_info._x, event.player_info._y);
+		break;
+	}
+	}
+}
 
 void DBThread::DoDataBase()
 {
+	std::unique_lock lock(_lock);
+
 	while (true) {
-		DB_EVENT ev{};
-		auto current_time = std::chrono::system_clock::now();
-		if (true == GDataBaseJobQueue.try_pop(ev)) {
-			if (ev.wakeup_time > current_time) {
-				GDataBaseJobQueue.push(ev);
-				this_thread::sleep_for(1ms);
+		_cv.wait(lock, [this]()
+		{
+			return _events.empty() == false;
+		});
+
+		while (_events.empty() == false) {
+			const auto nextWakeup = _events.top().wakeup_time;
+			const bool rescheduledEarlierEvent = _cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
+			{
+				return _events.empty() || _events.top().wakeup_time < nextWakeup;
+			});
+
+			if (_events.empty())
+				break;
+
+			if (rescheduledEarlierEvent)
 				continue;
-			}
 
-			DBConnection* connetedDB = GDBConnectionPool->Pop();
+			if (_events.top().wakeup_time > Now())
+				continue;
 
-			switch (ev.event) {
-			case DB_EVENT_TYPE::EV_LOGIN_PLAYER: {
-				if (connetedDB->IsPlayerRegistered(ev.player_info._name)) {
+			DB_EVENT event = _events.top();
+			_events.pop();
 
-					OVER_EXP* ov = xnew<OVER_EXP>();
-					ov->_type = IO_TYPE::IO_GET_PLAYER_INFO;
-					ov->_playerInfo = connetedDB->ExtractPlayerInfo(ev.player_info._name);
-					::PostQueuedCompletionStatus(gHandle, 1, ev.player_id, &ov->_over);
-				}
-				else {
-					OVER_EXP* ov = xnew<OVER_EXP>();
-					ov->_type = IO_TYPE::IO_ADD_PLAYER_INFO;
-					ov->_playerInfo = ev.player_info;
-					::PostQueuedCompletionStatus(gHandle, 1, ev.player_id, &ov->_over);
-				}
-				GDBConnectionPool->Push(connetedDB);
-				break;
-			}
-			case DB_EVENT_TYPE::EV_SAVE_PLAYER_INFO: {
-
-				connetedDB->SavePlayerInfo(ev.player_info._name, ev.player_info._x, ev.player_info._y);
-				GDBConnectionPool->Push(connetedDB);
-				break;
-			}
-			case DB_EVENT_TYPE::EV_ADD_PLAYER_INFO: {
-
-				connetedDB->AddPlayerInfoInDataBase(ev.player_info._name, ev.player_info._x, ev.player_info._y);
-				GDBConnectionPool->Push(connetedDB);
-				break;
-			}
-			}
-			continue;
+			lock.unlock();
+			ProcessEvent(event);
+			lock.lock();
 		}
-		this_thread::sleep_for(1ms);
 	}
 }

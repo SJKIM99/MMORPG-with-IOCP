@@ -37,6 +37,9 @@
     <Filter Include="AStar">
       <UniqueIdentifier>{08e13234-4fa5-406e-bda8-4b8613ea99d9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core">
+      <UniqueIdentifier>{d9d5f933-6ca0-4c19-b73c-e4015050f4a0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GameServer.cpp">
@@ -54,8 +57,17 @@
     <ClCompile Include="GameSession.cpp">
       <Filter>GameSession</Filter>
     </ClCompile>
+    <ClCompile Include="GameSessionManager.cpp">
+      <Filter>GameSession</Filter>
+    </ClCompile>
     <ClCompile Include="DBThread.cpp">
       <Filter>DBThread</Filter>
+    </ClCompile>
+    <ClCompile Include="GameLogicThread.cpp">
+      <Filter>Global</Filter>
+    </ClCompile>
+    <ClCompile Include="GameObject.cpp">
+      <Filter>GameSession</Filter>
     </ClCompile>
     <ClCompile Include="Sector.cpp">
       <Filter>Sector</Filter>
@@ -75,6 +87,39 @@
     <ClCompile Include="AStar.cpp">
       <Filter>AStar</Filter>
     </ClCompile>
+    <ClCompile Include="User.cpp">
+      <Filter>GameSession</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Allocator.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\CoreGlobal.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\CoreTLS.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\DBConnection.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\DBConnectionPool.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\DeadLockProfiler.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Lock.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Memory.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\MemoryPool.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\ThreadManager.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -89,8 +134,17 @@
     <ClInclude Include="GameSession.h">
       <Filter>GameSession</Filter>
     </ClInclude>
+    <ClInclude Include="GameSessionManager.h">
+      <Filter>GameSession</Filter>
+    </ClInclude>
     <ClInclude Include="DBThread.h">
       <Filter>DBThread</Filter>
+    </ClInclude>
+    <ClInclude Include="GameLogicThread.h">
+      <Filter>Global</Filter>
+    </ClInclude>
+    <ClInclude Include="GameObject.h">
+      <Filter>GameSession</Filter>
     </ClInclude>
     <ClInclude Include="Sector.h">
       <Filter>Sector</Filter>
@@ -112,6 +166,48 @@
     </ClInclude>
     <ClInclude Include="AStar.h">
       <Filter>AStar</Filter>
+    </ClInclude>
+    <ClInclude Include="User.h">
+      <Filter>GameSession</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Allocator.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\CoreGlobal.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\CoreMacro.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\CoreTLS.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\DBConnection.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\DBConnectionPool.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\DeadLockProfiler.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\GameServerCore.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Lock.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Memory.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\MemoryPool.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\ThreadManager.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Types.h">
+      <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

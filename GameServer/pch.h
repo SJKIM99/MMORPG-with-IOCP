@@ -1,31 +1,16 @@
-#pragma once
+ï»¿#pragma once
 
-#define WIN32_LEAN_AND_MEAN // °ÅÀÇ »ç¿ëµÇÁö ¾Ê´Â ³»¿ëÀ» Windows Çì´õ¿¡¼­ Á¦¿ÜÇÕ´Ï´Ù.
+#define WIN32_LEAN_AND_MEAN // ê±°ì˜ ì‚¬ìš©ë˜ì§€ ì•ŠëŠ” ë‚´ìš©ì„ Windows í—¤ë”ì—ì„œ ì œì™¸í•©ë‹ˆë‹¤.
 
-#ifdef _DEBUG
-#pragma comment(lib, "Debug\\ServerCore.lib")
-#else
-#pragma comment(lib, "Release\\ServerCore.lib")
-#endif
-
-#include "CorePch.h"
+#include "Core\\GameServerCore.h"
 #include "Protocol.h"
 #include "ServerGlobal.h"
-#include <concurrent_priority_queue.h>
 
 enum IO_TYPE
 {
 	IO_ACCEPT,
 	IO_RECV,
 	IO_SEND,
-	IO_GET_PLAYER_INFO,
-	IO_ADD_PLAYER_INFO,
-	IO_SAVE_PLAYER_INFO,
-	IO_NPC_RANDOM_MOVE,
-	IO_NPC_RESPAWN,
-	IO_PLAYER_RESPAWN,
-	IO_NPC_AGGRO_MOVE,
-	IO_HEAL,
 };
 
 enum SOCKET_STATE

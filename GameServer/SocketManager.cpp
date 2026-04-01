@@ -56,9 +56,9 @@ bool SocketManager::CreateIocpHandle()
 	gHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 0);
 	CreateIoCompletionPort(reinterpret_cast<HANDLE>(gListenSocket), gHandle, 9999, 0);
 	GClientSocket = CreateSocket();
-	GOverExp._type = IO_TYPE::IO_ACCEPT;
+	GAcceptContext.ResetOverlapped();
 	DWORD bytesReceived = 0;
-	SocketManager::AcceptEx(gListenSocket, GClientSocket, GOverExp._sendBuf, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, &bytesReceived, static_cast<LPOVERLAPPED>(&GOverExp._over));
+	SocketManager::AcceptEx(gListenSocket, GClientSocket, GAcceptContext._buffer, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, &bytesReceived, static_cast<LPOVERLAPPED>(&GAcceptContext._over));
 
 	return true;
 }

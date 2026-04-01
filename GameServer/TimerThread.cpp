@@ -1,128 +1,138 @@
 #include "pch.h"
 #include "TimerThread.h"
-#include "GameSession.h"
-#include "SocketManager.h"
-#include "Sector.h"
+#include "GameLogicThread.h"
+#include "User.h"
 #include "WorkerThread.h"
 
-concurrency::concurrent_priority_queue<TIMER_EVENT> GTimerJobQueue;
+bool TimerThread::TimerEventCompare::operator()(const TIMER_EVENT& lhs, const TIMER_EVENT& rhs) const noexcept
+{
+	if (lhs.wakeup_time != rhs.wakeup_time)
+		return lhs.wakeup_time > rhs.wakeup_time;
+
+	return lhs.sequence > rhs.sequence;
+}
+
+void TimerThread::Schedule(TIMER_EVENT timerEvent)
+{
+	{
+		std::scoped_lock lock(_lock);
+		timerEvent.sequence = _nextSequence++;
+		_events.push(std::move(timerEvent));
+	}
+
+	_cv.notify_one();
+}
+
+void TimerThread::ScheduleNow(uint32 playerId, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
+{
+	ScheduleAfter(playerId, 0, Duration::zero(), eventType, aiTargetId);
+}
+
+void TimerThread::ScheduleNow(uint32 playerId, uint64 sourceEpoch, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
+{
+	ScheduleAfter(playerId, sourceEpoch, Duration::zero(), eventType, aiTargetId);
+}
+
+void TimerThread::ScheduleAfter(uint32 playerId, Duration delay, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
+{
+	ScheduleAfter(playerId, 0, delay, eventType, aiTargetId);
+}
+
+void TimerThread::ScheduleAfter(uint32 playerId, uint64 sourceEpoch, Duration delay, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
+{
+	TIMER_EVENT timerEvent{};
+	timerEvent.player_id = playerId;
+	timerEvent.wakeup_time = Now() + delay;
+	timerEvent.event = eventType;
+	timerEvent.aiTargetId = aiTargetId;
+	timerEvent.sourceEpoch = sourceEpoch;
+
+	Schedule(std::move(timerEvent));
+}
+
+void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
+{
+	if (timerEvent.sourceEpoch != 0 && GClients[timerEvent.player_id]->GetTimerEpoch() != timerEvent.sourceEpoch)
+		return;
+
+	switch (timerEvent.event) {
+	case TIMER_EVENT_TYPE::EV_RANOM_MOVE: {
+		GGameLogicThread->Enqueue([npcId = timerEvent.player_id]()
+		{
+			GWorkerThread->HandleNpcRandomMove(npcId);
+		});
+		break;
+	}
+	case TIMER_EVENT_TYPE::EV_NPC_RESPAWN: {
+		GGameLogicThread->Enqueue([npcId = timerEvent.player_id]()
+		{
+			GWorkerThread->HandleNpcRespawn(npcId);
+		});
+		break;
+	}
+	case TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER: {
+		GGameLogicThread->Enqueue([npcId = timerEvent.player_id, playerId = timerEvent.aiTargetId]()
+		{
+			GWorkerThread->HandleNpcAttackToPlayer(npcId, playerId);
+		});
+		break;
+	}
+	case TIMER_EVENT_TYPE::EV_HEAL: {
+		GGameLogicThread->Enqueue([playerId = timerEvent.player_id]()
+		{
+			GWorkerThread->HandleHeal(playerId);
+		});
+		break;
+	}
+	case TIMER_EVENT_TYPE::EV_PLAYER_RESPAWN: {
+		GGameLogicThread->Enqueue([playerId = timerEvent.player_id]()
+		{
+			GWorkerThread->HandlePlayerRespawn(playerId);
+		});
+		break;
+	}
+	case TIMER_EVENT_TYPE::EV_AGGRO_MOVE: {
+		GGameLogicThread->Enqueue([npcId = timerEvent.player_id, playerId = timerEvent.aiTargetId]()
+		{
+			GWorkerThread->HandleNpcAggroMove(npcId, playerId);
+		});
+		break;
+	}
+	}
+}
 
 void TimerThread::DoTimer()
 {
+	std::unique_lock lock(_lock);
+
 	while (true) {
-		TIMER_EVENT ev{};
-		auto current_time = std::chrono::system_clock::now();
-		if (true == GTimerJobQueue.try_pop(ev)) {
-			if (ev.wakeup_time > current_time) {
-				GTimerJobQueue.push(ev);
-				this_thread::sleep_for(1ms);
+		_cv.wait(lock, [this]()
+		{
+			return _events.empty() == false;
+		});
+
+		while (_events.empty() == false) {
+			const auto nextWakeup = _events.top().wakeup_time;
+			const bool rescheduledEarlierEvent = _cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
+			{
+				return _events.empty() || _events.top().wakeup_time < nextWakeup;
+			});
+
+			if (_events.empty())
+				break;
+
+			if (rescheduledEarlierEvent)
 				continue;
-			}
 
-			switch (ev.event) {
-			case TIMER_EVENT_TYPE::EV_RANOM_MOVE: {
+			if (_events.top().wakeup_time > Now())
+				continue;
 
-				OVER_EXP* ov = xnew<OVER_EXP>();
-				ov->_type = IO_TYPE::IO_NPC_RANDOM_MOVE;
-				::PostQueuedCompletionStatus(gHandle, 1, ev.player_id, &ov->_over);
-				break;
-			}
-			case TIMER_EVENT_TYPE::EV_NPC_RESPAWN: {
+			TIMER_EVENT timerEvent = _events.top();
+			_events.pop();
 
-				OVER_EXP* ov = xnew<OVER_EXP>();
-				ov->_type = IO_TYPE::IO_NPC_RESPAWN;
-				::PostQueuedCompletionStatus(gHandle, 1, ev.player_id, &ov->_over);
-				break;
-			}
-			case TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER: {
-				auto heatedPlayer = dynamic_pointer_cast<Player>(GClients[ev.aiTargetId]);
-				auto heatPlayer = dynamic_pointer_cast<Monster>(GClients[ev.player_id]);
-
-				heatPlayer->_attack.store(true);
-
-				if (heatedPlayer->_die.load() || !CanAttack(heatedPlayer->_id, heatPlayer->_id) || heatPlayer->_die.load()) {
-					heatPlayer->_attack.store(false);
-					break;
-				}
-
-
-				uint16 currentHp;
-				uint16 desiredHp;
-
-				do {
-					currentHp = heatedPlayer->_hp.load();
-					desiredHp = currentHp - NPC_OFFENSIVE;
-
-					if (desiredHp <= 0) {
-						heatedPlayer->_die.store(true);
-					}
-				} while (!heatedPlayer->_hp.compare_exchange_strong(currentHp, desiredHp));
-
-				if (!heatedPlayer->_die.load()) {
-
-					unordered_set<uint32> viewList;
-					{
-						lock_guard<mutex> ll(heatedPlayer->_viewListLock);
-						viewList = heatedPlayer->_viewList;
-
-					}
-					for (auto& id : viewList) {
-						if (SOCKET_STATE::ST_INGAME != GClients[id]->_state) continue;
-						if (!CanSee(ev.aiTargetId, id)) continue;
-						if (IsPc(GClients[id]->_id))  GClients[id]->SendNPCAttackToPlayerPacket(heatedPlayer->_id);
-					}
-
-					if (CanAttack(ev.player_id, ev.aiTargetId)) {
-
-						TIMER_EVENT attackEvent{ ev.player_id,chrono::system_clock::now() + 1s ,TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER,ev.aiTargetId };
-						GTimerJobQueue.push(attackEvent);
-					}
-					else {
-						heatPlayer->_attack.store(false);
-					}
-				}
-				else {
-					unordered_set<uint32> viewList;
-					{
-						lock_guard<mutex> ll(heatedPlayer->_viewListLock);
-						viewList = heatedPlayer->_viewList;
-
-					}
-					for (auto& id : viewList) {
-						if (SOCKET_STATE::ST_INGAME != GClients[id]->_state) continue;
-						if (!CanSee(ev.aiTargetId, id)) continue;
-						if (IsPc(GClients[id]->_id)) GClients[id]->SendPlayerDiePacket(ev.aiTargetId);
-					}
-
-					GSector->RemovePlayerInSector(ev.aiTargetId, GSector->GetMySector_X(heatedPlayer->_sectorX), GSector->GetMySector_Y(heatedPlayer->_sectorY));
-					heatedPlayer->InitSession();
-					TIMER_EVENT respawnEvent{ heatedPlayer->_id, chrono::system_clock::now() + 30s,TIMER_EVENT_TYPE::EV_PLAYER_RESPAWN, 0 };
-					GTimerJobQueue.push(respawnEvent);
-				}
-				break;
-			}
-			case TIMER_EVENT_TYPE::EV_HEAL: {
-				OVER_EXP* ov = xnew<OVER_EXP>();
-				ov->_type = IO_TYPE::IO_HEAL;
-				::PostQueuedCompletionStatus(gHandle, 1, ev.player_id, &ov->_over);
-				break;
-			}
-			case TIMER_EVENT_TYPE::EV_PLAYER_RESPAWN: {
-				OVER_EXP* ov = xnew<OVER_EXP>();
-				ov->_type = IO_TYPE::IO_PLAYER_RESPAWN;
-				::PostQueuedCompletionStatus(gHandle, 1, ev.player_id, &ov->_over);
-				break;
-			}
-			case TIMER_EVENT_TYPE::EV_AGGRO_MOVE: {
-				OVER_EXP* ov = xnew<OVER_EXP>();
-				ov->_type = IO_TYPE::IO_NPC_AGGRO_MOVE;
-				ov->_aiTargetId = ev.aiTargetId;
-				::PostQueuedCompletionStatus(gHandle, 1, ev.player_id, &ov->_over);
-				break;
-			}
-			}
-			continue;
+			lock.unlock();
+			Dispatch(timerEvent);
+			lock.lock();
 		}
-		this_thread::sleep_for(1ms);
 	}
 }

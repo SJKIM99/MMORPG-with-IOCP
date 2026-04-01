@@ -1,6 +1,22 @@
 #include "pch.h"
 #include "DBConnection.h"
 
+namespace
+{
+	struct StatementCleanup
+	{
+		explicit StatementCleanup(DBConnection& connection) : _connection(connection) { }
+		~StatementCleanup() { _connection.Unbind(); }
+
+		DBConnection& _connection;
+	};
+}
+
+DBConnection::~DBConnection()
+{
+	Clear();
+}
+
 bool DBConnection::Connect()
 {
 	// Allocate environment handle
@@ -44,16 +60,23 @@ bool DBConnection::Connect()
 
 void DBConnection::Clear()
 {
-	if (_connection != SQL_NULL_HANDLE)
-	{
-		::SQLFreeHandle(SQL_HANDLE_DBC, _connection);
-		_connection = SQL_NULL_HANDLE;
-	}
-
 	if (_statement != SQL_NULL_HANDLE)
 	{
 		::SQLFreeHandle(SQL_HANDLE_STMT, _statement);
 		_statement = SQL_NULL_HANDLE;
+	}
+
+	if (_connection != SQL_NULL_HANDLE)
+	{
+		::SQLDisconnect(_connection);
+		::SQLFreeHandle(SQL_HANDLE_DBC, _connection);
+		_connection = SQL_NULL_HANDLE;
+	}
+
+	if (_enviroment != SQL_NULL_HANDLE)
+	{
+		::SQLFreeHandle(SQL_HANDLE_ENV, _enviroment);
+		_enviroment = SQL_NULL_HANDLE;
 	}
 }
 
@@ -133,6 +156,24 @@ void DBConnection::HandleError(SQLRETURN ret)
 	if (ret == SQL_SUCCESS)
 		return;
 
+	SQLSMALLINT handleType = SQL_HANDLE_STMT;
+	SQLHANDLE handle = _statement;
+
+	if (handle == SQL_NULL_HANDLE)
+	{
+		handleType = SQL_HANDLE_DBC;
+		handle = _connection;
+	}
+
+	if (handle == SQL_NULL_HANDLE)
+	{
+		handleType = SQL_HANDLE_ENV;
+		handle = _enviroment;
+	}
+
+	if (handle == SQL_NULL_HANDLE)
+		return;
+
 	SQLSMALLINT index = 1;
 	SQLWCHAR sqlState[MAX_PATH] = { 0 };
 	SQLINTEGER nativeErr = 0;
@@ -143,8 +184,8 @@ void DBConnection::HandleError(SQLRETURN ret)
 	while (true)
 	{
 		errorRet = ::SQLGetDiagRecW(
-			SQL_HANDLE_STMT,
-			_statement,
+			handleType,
+			handle,
 			index,
 			sqlState,
 			OUT & nativeErr,
@@ -167,84 +208,66 @@ void DBConnection::HandleError(SQLRETURN ret)
 	}
 }
 
-bool DBConnection::IsPlayerRegistered(string name)
+bool DBConnection::IsPlayerRegistered(const string& name)
 {
-	WRITE_LOCK;
+	StatementCleanup cleanup(*this);
 	wstring query = L"EXEC isPlayerRegistered ?";
 
-	BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr);
-
-	Execute(query.c_str());
+	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
 
 	SQLCHAR isRegistered{};
 	SQLLEN cb_isRegistered{};
 
-	BindCol(1, SQL_BIT, sizeof(isRegistered), &isRegistered, &cb_isRegistered);
+	if (!BindCol(1, SQL_BIT, sizeof(isRegistered), &isRegistered, &cb_isRegistered)) return false;
+	if (!Fetch()) return false;
 
-	Fetch();
-
-	Unbind();
 	return (isRegistered == 1);
 }
 
-bool DBConnection::AddPlayerInfoInDataBase(string name, short x, short y)
+bool DBConnection::AddPlayerInfoInDataBase(const string& name, short x, short y)
 {
-	WRITE_LOCK;
+	StatementCleanup cleanup(*this);
 
 	wstring query = L"EXEC AddNewPlayer ?, ?, ?";
 
 	if (!BindParam(1, SQL_C_CHAR, SQL_VARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return false;
 	if (!BindParam(2, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&x, nullptr)) return false;
 	if (!BindParam(3, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&y, nullptr)) return false;
-
-	Execute(query.c_str());
-
-	Unbind();
-
-	return true;
+	return Execute(query.c_str());
 }
 
-DB_PLAYER_INFO DBConnection::ExtractPlayerInfo(string name)
+DB_PLAYER_INFO DBConnection::ExtractPlayerInfo(const string& name)
 {
-	WRITE_LOCK;
 	DB_PLAYER_INFO playerInfo{};
+	StatementCleanup cleanup(*this);
 
 	wstring query = L"EXEC ExtractPlayerInfo ?";
 
 	SQLINTEGER player_x{}, player_y{};
 	SQLLEN cb_x{}, cb_y{};
 
-	BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr);
-
-	Execute(query.c_str());
-
-	BindCol(1, SQL_INTEGER, sizeof(player_x), &player_x, &cb_x);
-	BindCol(2, SQL_INTEGER, sizeof(player_y), &player_y, &cb_y);
-
-	Fetch();
+	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return playerInfo;
+	if (!Execute(query.c_str())) return playerInfo;
+	if (!BindCol(1, SQL_INTEGER, sizeof(player_x), &player_x, &cb_x)) return playerInfo;
+	if (!BindCol(2, SQL_INTEGER, sizeof(player_y), &player_y, &cb_y)) return playerInfo;
+	if (!Fetch()) return playerInfo;
 
 	playerInfo._name = name;
 	playerInfo._x = player_x;
 	playerInfo._y = player_y;
 
-	Unbind();
-
 	return playerInfo;
 }
 
-bool DBConnection::SavePlayerInfo(string name, short x, short y)
+bool DBConnection::SavePlayerInfo(const string& name, short x, short y)
 {
-	WRITE_LOCK;
+	StatementCleanup cleanup(*this);
 
 	wstring query = L"EXEC SavePlayerInfo ?, ?, ?";
 
-	BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr);
-	BindParam(2, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&x, nullptr);
-	BindParam(3, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&y, nullptr);
-
-	Execute(query.c_str());
-
-	Unbind();
-
-	return true;
+	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return false;
+	if (!BindParam(2, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&x, nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&y, nullptr)) return false;
+	return Execute(query.c_str());
 }

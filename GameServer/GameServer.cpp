@@ -1,12 +1,12 @@
 ﻿#include "pch.h"
 #include <iostream>
-#include "CorePch.h"
 #include <atomic>
 #include <mutex>
 #include <windows.h>
 #include <future>
 #include "ThreadManager.h"
-#include "GameSession.h"
+#include "User.h"
+#include "GameLogicThread.h"
 #include "WorkerThread.h"
 #include "DBConnectionPool.h"
 #include "SocketManager.h"
@@ -25,7 +25,7 @@ int main()
 	SocketManager::CreateIocpHandle();
 
 	NPC::InitNPC();
-	GameSession::MakeSessions();
+	User::InitializePlayers();
 
 	//DB풀 초기화
 	GDBConnectionPool->Connect(8);
@@ -33,7 +33,8 @@ int main()
 	//Sector 생성
 	
 	//작업자 스레드 생성
-	for (int i = 0; i < thread::hardware_concurrency(); ++i)
+	const uint32 workerCount = thread::hardware_concurrency();
+	for (uint32 i = 0; i < workerCount; ++i)
 	{
 		GThreadManager->Launch([]()
 		{
@@ -46,6 +47,13 @@ int main()
 
 		});
 	}
+
+	GThreadManager->Launch([]()
+	{
+		GThreadManager->InitTLS();
+		GGameLogicThread->Run();
+		GThreadManager->DestroyTLS();
+	});
 
 	//DB스레드 생성
 	for (int i = 0; i < 2; ++i)
@@ -60,16 +68,12 @@ int main()
 
 
 	//TImer스레드 생성
-
-	for (int i = 0; i < 2; ++i)
+	GThreadManager->Launch([]()
 	{
-		GThreadManager->Launch([]()
-		{
-			GThreadManager->InitTLS();
-			GTimerThread->DoTimer();
-			GThreadManager->DestroyTLS();
-		});
-	}
+		GThreadManager->InitTLS();
+		GTimerThread->DoTimer();
+		GThreadManager->DestroyTLS();
+	});
 
 	GThreadManager->Join();
 }

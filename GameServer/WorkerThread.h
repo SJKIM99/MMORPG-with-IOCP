@@ -16,11 +16,21 @@ public:
 	WorkerThread() {};
 	~WorkerThread() {};
 
-	void			Disconnect(uint32 clientId);
+	void			InitializeConnectedClient(uint32 clientId, uint64 sessionToken);
+	void			Disconnect(uint32 clientId, uint64 sessionToken);
 
 	void			DoWork();
 	uint32			GetNewClientId();
 	void			HandlePacket(uint32 clientId, char* packet);
+	void			HandleGetPlayerInfo(uint32 clientId, uint64 sessionToken, const DB_PLAYER_INFO& playerInfo);
+	void			HandleAddPlayerInfo(uint32 clientId, uint64 sessionToken, const DB_PLAYER_INFO& playerInfo);
+	void			HandleNpcRandomMove(uint32 npcId);
+	void			HandleNpcRespawn(uint32 npcId);
+	void			HandlePlayerRespawn(uint32 playerId);
+	void			HandleNpcAggroMove(uint32 npcId, uint32 aiTargetId);
+	void			HandleHeal(uint32 playerId);
+	void			HandleNpcAttackToPlayer(uint32 npcId, uint32 playerId);
+	bool			FlushPlayerSave(uint32 clientId);
 
 public:
 	uint32			GetNowTime();
@@ -28,8 +38,6 @@ public:
 	void			UpdateViewList(uint32 clientId);
 	void			WakeUpNpc(uint32 npcId, uint32 wakerId);
 	void			AttackToNPC(uint32 npcId, uint32 playerId);
-private:
-	USE_LOCK;
 };
 
 bool				CanSee(uint32 from, uint32 to);

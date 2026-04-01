@@ -14,7 +14,9 @@ public:
 	void					Push(DBConnection* connection);
 
 private:
-	USE_LOCK;
-	vector<DBConnection*>	_connections;
+	std::mutex							_lock;
+	std::condition_variable				_cv;
+	std::vector<std::unique_ptr<DBConnection>> _ownedConnections;
+	std::deque<DBConnection*>			_idleConnections;
 };
 

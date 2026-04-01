@@ -1,47 +1,131 @@
 #include "pch.h"
 #include "WorkerThread.h"
 #include "SocketManager.h"
-#include "GameSession.h"
+#include "User.h"
 #include "DBThread.h"
+#include "GameLogicThread.h"
+#include "GameSessionManager.h"
 #include "Sector.h"
 #include "TimerThread.h"
 #include "NPC.h"
 #include "AStar.h"
 
-void WorkerThread::Disconnect(uint32 clientId)
+namespace
 {
-	auto& disconnectPlayer = GClients[clientId];
+	constexpr uint32 INVALID_CLIENT_ID = static_cast<uint32>(-1);
 
+	void ReleaseIoContext(IoContext* context)
+	{
+		if (context == nullptr)
+			return;
 
-	for (int16 dy = -1; dy <= 1; ++dy) {
-		for (int16 dx = -1; dx <= 1; ++dx) {
-			int16 sectorY = disconnectPlayer->_sectorY + dy;
-			int16 sectorX = disconnectPlayer->_sectorX + dx;
-			if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-				sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-				continue;
-			}
-
-			unordered_set<uint32> currentSector;
-			{
-				lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-				currentSector = GSector->sectors[sectorY][sectorX];
-			}
-
-			for (const auto& id : currentSector) {
-
-				const auto& object = GClients[id];
-				if (IsNPC(id)) continue;
-				if (object->_state != SOCKET_STATE::ST_INGAME) continue;
-				if (!CanSee(object->_id, clientId)) continue;
-				object->SendRemovePlayerPacket(clientId);
-			}
-		}
+		if (context->_type == IO_TYPE::IO_SEND)
+			xdelete(reinterpret_cast<SendContext*>(context));
 	}
 
+	void PostAcceptRequest()
+	{
+		GAcceptContext.ResetOverlapped();
 
-	GSector->RemovePlayerInSector(clientId, GSector->GetMySector_X(disconnectPlayer->_sectorX), GSector->GetMySector_Y(disconnectPlayer->_sectorY));
-	disconnectPlayer->DisconnectSession();
+		DWORD bytesReceived = 0;
+		SocketManager::AcceptEx(
+			gListenSocket,
+			GClientSocket,
+			GAcceptContext._buffer,
+			0,
+			sizeof(SOCKADDR_IN) + 16,
+			sizeof(SOCKADDR_IN) + 16,
+			&bytesReceived,
+			static_cast<LPOVERLAPPED>(&GAcceptContext._over));
+	}
+
+	vector<char> CopyPacketBuffer(const char* packet, uint32 packetSize)
+	{
+		vector<char> buffer(packetSize);
+		::memcpy(buffer.data(), packet, packetSize);
+		return buffer;
+	}
+
+	bool IsActiveSession(uint32 clientId, uint64 sessionToken)
+	{
+		return clientId < MAX_USER
+			&& GClients[clientId] != nullptr
+			&& GClients[clientId]->GetSessionToken() == sessionToken;
+	}
+
+	bool IsCompletionForActiveSession(uint32 clientId, const IoContext* context)
+	{
+		if (context == nullptr)
+			return false;
+
+		return IsActiveSession(clientId, context->_sessionToken);
+	}
+
+	void ResetAcceptSocket()
+	{
+		SocketManager::Close(GClientSocket);
+		GClientSocket = SocketManager::CreateSocket();
+	}
+
+	void NotifyPlayerEnteredWorld(WorkerThread& worker, uint32 playerId, bool isRespawn)
+	{
+		const auto& player = *GClients[playerId];
+		GSector->ForEachNeighborObject(player._sectorX, player._sectorY, [&](uint32 id)
+		{
+			auto& object = GClients[id];
+			if (id == playerId)
+				return;
+			if (object->_state != SOCKET_STATE::ST_INGAME)
+				return;
+			if (CanSee(playerId, id) == false)
+				return;
+
+			if (IsPc(id))
+			{
+				if (isRespawn)
+					object->SendRespawnPlayerPacket(playerId);
+				else
+					object->SendAddPlayerPacket(playerId);
+			}
+			else
+			{
+				worker.WakeUpNpc(id, playerId);
+			}
+
+			GClients[playerId]->SendAddPlayerPacket(id);
+		});
+	}
+}
+
+void WorkerThread::Disconnect(uint32 clientId, uint64 sessionToken)
+{
+	if (IsActiveSession(clientId, sessionToken) == false)
+		return;
+
+	auto& disconnectPlayer = GClients[clientId];
+
+	GSector->ForEachNeighborObject(disconnectPlayer->_sectorX, disconnectPlayer->_sectorY, [&](uint32 id)
+	{
+		const auto& object = GClients[id];
+		if (id == clientId)
+			return;
+		if (IsNPC(id))
+			return;
+		if (object->_state != SOCKET_STATE::ST_INGAME)
+			return;
+		if (CanSee(object->_id, clientId) == false)
+			return;
+
+		object->SendRemovePlayerPacket(clientId);
+	});
+
+	GSector->RemoveObject(clientId, disconnectPlayer->_sectorX, disconnectPlayer->_sectorY);
+	FlushPlayerSave(clientId);
+
+	disconnectPlayer->ResetGameplayState();
+	disconnectPlayer->CloseSession();
+	if (IsPc(clientId))
+		GSessionManager->ReleasePlayerSessionId(clientId);
 }
 
 void WorkerThread::DoWork()
@@ -52,395 +136,401 @@ void WorkerThread::DoWork()
 		WSAOVERLAPPED* over = nullptr;
 
 		BOOL ret = ::GetQueuedCompletionStatus(gHandle, &numOfBytes, &key, &over, INFINITE);
-		OVER_EXP* exOver = reinterpret_cast<OVER_EXP*>(over);
+		IoContext* ioContext = reinterpret_cast<IoContext*>(over);
+
+		if (ioContext == nullptr)
+			continue;
 
 		if (FALSE == ret) {
-			if (exOver->_type == IO_TYPE::IO_ACCEPT) std::cout << "Accept Error" << endl;
+			if (ioContext->_type == IO_TYPE::IO_ACCEPT) std::cout << "Accept Error" << endl;
 			else {
 				std::cout << "GQCS Error on CLient[" << key << "]\n";
-				Disconnect(static_cast<int>(key));
-				if (exOver->_type == IO_TYPE::IO_SEND) xdelete(exOver);
+				const uint32 clientId = static_cast<uint32>(key);
+				if (IsCompletionForActiveSession(clientId, ioContext) == false)
+				{
+					ReleaseIoContext(ioContext);
+					continue;
+				}
+				const uint64 sessionToken = ioContext->_sessionToken;
+				GClients[clientId]->CloseSocket();
+				GGameLogicThread->Enqueue([this, clientId, sessionToken]()
+				{
+					Disconnect(clientId, sessionToken);
+				});
+				ReleaseIoContext(ioContext);
 				continue;
 			}
 		}
 
-		if ((0 == numOfBytes) && ((exOver->_type == IO_TYPE::IO_RECV) || (exOver->_type == IO_TYPE::IO_SEND))) {
-			Disconnect(static_cast<int>(key));
-			if (exOver->_type == IO_TYPE::IO_SEND) xdelete(exOver);
+		if ((0 == numOfBytes) && ((ioContext->_type == IO_TYPE::IO_RECV) || (ioContext->_type == IO_TYPE::IO_SEND))) {
+			const uint32 clientId = static_cast<uint32>(key);
+			if (IsCompletionForActiveSession(clientId, ioContext) == false)
+			{
+				ReleaseIoContext(ioContext);
+				continue;
+			}
+			const uint64 sessionToken = ioContext->_sessionToken;
+			GClients[clientId]->CloseSocket();
+			GGameLogicThread->Enqueue([this, clientId, sessionToken]()
+			{
+				Disconnect(clientId, sessionToken);
+			});
+			ReleaseIoContext(ioContext);
 			continue;
 		}
 
-		switch (exOver->_type) {
+		switch (ioContext->_type) {
 		case IO_TYPE::IO_ACCEPT: {
 			uint32 clientId = GetNewClientId();
-			if (clientId != -1) {
+			if (clientId != INVALID_CLIENT_ID) {
+				User* client = GClients[clientId].get();
 
-				GClients[clientId]->_state = SOCKET_STATE::ST_ALLOC;
-				GClients[clientId]->_id = clientId;
-				GClients[clientId]->_socket = GClientSocket;
-				GClients[clientId]->_maxHp = PLAYER_MAX_HP;
-				GClients[clientId]->_hp = PLAYER_MAX_HP;
-				GClients[clientId]->_offensive = PLAYER_OFFENSIVE;
-				GClients[clientId]->_die.store(false);
+				if (client->AttachSocket(GClientSocket, clientId) == false)
+				{
+					GSessionManager->ReleasePlayerSessionId(clientId);
+					ResetAcceptSocket();
+					PostAcceptRequest();
+					break;
+				}
+				const uint64 sessionToken = client->GetSessionToken();
+
+				::setsockopt(
+					GClientSocket,
+					SOL_SOCKET,
+					SO_UPDATE_ACCEPT_CONTEXT,
+					reinterpret_cast<const char*>(&gListenSocket),
+					sizeof(gListenSocket));
 
 				::CreateIoCompletionPort(reinterpret_cast<HANDLE>(GClientSocket), gHandle, clientId, 0);
 
-				GClients[clientId]->RegisteredRecv();
+				if (client->PostRecv() == false)
+				{
+					client->CloseSocket();
+					GGameLogicThread->Enqueue([this, clientId, sessionToken]()
+					{
+						Disconnect(clientId, sessionToken);
+					});
+				}
+				else
+				{
+					GGameLogicThread->Enqueue([this, clientId, sessionToken]()
+					{
+						InitializeConnectedClient(clientId, sessionToken);
+					});
+				}
 				GClientSocket = SocketManager::CreateSocket();
 			}
 			else {
 				std::cout << "MAX user exceeded\n";
+				ResetAcceptSocket();
 			}
-			ZeroMemory(&GOverExp._over, sizeof(GOverExp._over));
-			DWORD bytesReceived = 0;
-			SocketManager::AcceptEx(gListenSocket, GClientSocket, GOverExp._sendBuf, 0, sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, &bytesReceived, static_cast<LPOVERLAPPED>(&GOverExp._over));
+			PostAcceptRequest();
 			break;
 		}
 		case IO_TYPE::IO_RECV: {
-			uint32 remainData = numOfBytes + GClients[key]->_prevRemainData;
-			char* p = exOver->_sendBuf;
+			const uint32 clientId = static_cast<uint32>(key);
+			if (IsCompletionForActiveSession(clientId, ioContext) == false)
+				break;
+
+			RecvContext* recvContext = static_cast<RecvContext*>(ioContext);
+			uint32 remainData = numOfBytes + GClients[clientId]->_pendingRecvBytes;
+			char* p = recvContext->_buffer;
 			while (remainData > 0) {
 
 				uint32 packetSize = p[0];
 				if (packetSize <= remainData) {
-
-					HandlePacket(static_cast<uint32>(key), p);
+					const uint64 sessionToken = ioContext->_sessionToken;
+					vector<char> packetCopy = CopyPacketBuffer(p, packetSize);
+					GGameLogicThread->Enqueue([this, clientId, sessionToken, packet = move(packetCopy)]() mutable
+					{
+						if (IsActiveSession(clientId, sessionToken) == false)
+							return;
+						HandlePacket(clientId, packet.data());
+					});
 					p = p + packetSize;
 					remainData = remainData - packetSize;
 				}
 				else break;
 			}
-			GClients[key]->_prevRemainData = remainData;
+			GClients[clientId]->_pendingRecvBytes = remainData;
 			if (remainData > 0) {
-				::memcpy(exOver->_sendBuf, p, remainData);
+				::memcpy(recvContext->_buffer, p, remainData);
 			}
-			GClients[key]->RegisteredRecv();
+			if (GClients[clientId]->PostRecv() == false)
+			{
+				const uint64 sessionToken = ioContext->_sessionToken;
+				GClients[clientId]->CloseSocket();
+				GGameLogicThread->Enqueue([this, clientId, sessionToken]()
+				{
+					Disconnect(clientId, sessionToken);
+				});
+			}
 			break;
 		}
 		case IO_TYPE::IO_SEND: {
-			xdelete(exOver);
-			break;
-		}
-		case IO_TYPE::IO_GET_PLAYER_INFO: {
-			{
-				lock_guard<mutex> ll(GClients[key]->_socketStateLock);
-				strcpy_s(GClients[key]->_name, exOver->_playerInfo._name.c_str());
-				GClients[key]->_x = exOver->_playerInfo._x;
-				GClients[key]->_y = exOver->_playerInfo._y;
-				GClients[key]->_sectorX = GSector->GetMySector_X(GClients[key]->_x);
-				GClients[key]->_sectorY = GSector->GetMySector_Y(GClients[key]->_y);
-				GSector->AddPlayerInSector(key, GSector->GetMySector_X(GClients[key]->_x), GSector->GetMySector_Y(GClients[key]->_y));
-				GClients[key]->_state = SOCKET_STATE::ST_INGAME;
-			}
-			GClients[key]->SendLoginSuccessPacket();
-			dynamic_pointer_cast<Player>(GClients[key])->Heal();
-
-			const short sectorX = GClients[key]->_sectorX;
-			const short sectorY = GClients[key]->_sectorY;
-
-			for (int16 dy = -1; dy <= 1; ++dy) {
-				for (int16 dx = -1; dx <= 1; ++dx) {
-					int16 sectorY = GClients[key]->_sectorY + dy;
-					int16 sectorX = GClients[key]->_sectorX + dx;
-					if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-						sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-						continue;
-					}
-
-					unordered_set<uint32> currentSector;
-					{
-						lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-						currentSector = GSector->sectors[sectorY][sectorX];
-					}
-
-					for (const auto& id : currentSector) {
-						auto& client = GClients[id];
-						if (SOCKET_STATE::ST_INGAME != client->_state) continue;
-						if (client->_id == key) continue;
-						if (!CanSee(key, id)) continue;
-						if (IsPc(client->_id)) client->SendAddPlayerPacket(key);
-						else WakeUpNpc(client->_id, key);
-						GClients[key]->SendAddPlayerPacket(client->_id);
-					}
-				}
-			}
-
-			xdelete(exOver);
-			break;
-		}
-		case IO_TYPE::IO_ADD_PLAYER_INFO: {		
-			{
-				lock_guard<mutex> ll(GClients[key]->_socketStateLock);
-				strcpy_s(GClients[key]->_name, exOver->_playerInfo._name.c_str());
-				GClients[key]->_x = rand() % W_WIDTH;
-				GClients[key]->_y = rand() % W_HEIGHT;
-				GClients[key]->_sectorX = GSector->GetMySector_X(GClients[key]->_x);
-				GClients[key]->_sectorY = GSector->GetMySector_Y(GClients[key]->_y);
-				GSector->AddPlayerInSector(key, GSector->GetMySector_X(GClients[key]->_x), GSector->GetMySector_Y(GClients[key]->_y));
-				GClients[key]->_state = SOCKET_STATE::ST_INGAME;
-			}
-			GClients[key]->SendLoginSuccessPacket();
-			dynamic_pointer_cast<Player>(GClients[key])->Heal();
-
-			DB_PLAYER_INFO addPlayer{};
-
-			addPlayer._name = GClients[key]->_name;
-			addPlayer._x = GClients[key]->_x;
-			addPlayer._y = GClients[key]->_y;
-
-			DB_EVENT playerLoginEvent{ key, chrono::system_clock::now(), DB_EVENT_TYPE::EV_ADD_PLAYER_INFO, addPlayer };
-			GDataBaseJobQueue.push(playerLoginEvent);
-
-			const short sectorX = GClients[key]->_sectorX;
-			const short sectorY = GClients[key]->_sectorY;
-
-			for (int16 dy = -1; dy <= 1; ++dy) {
-				for (int16 dx = -1; dx <= 1; ++dx) {
-					int16 sectorY = GClients[key]->_sectorY + dy;
-					int16 sectorX = GClients[key]->_sectorX + dx;
-					if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-						sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-						continue;
-					}
-
-					unordered_set<uint32> currentSector;
-
-					{
-						lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-						currentSector = GSector->sectors[sectorY][sectorX];
-					}
-
-					for (const auto& id : currentSector) {
-						auto& client = GClients[id];
-						if (SOCKET_STATE::ST_INGAME != client->_state) continue;
-						if (client->_id == key) continue;
-						if (!CanSee(key, id)) continue;
-						if (IsPc(client->_id)) client->SendAddPlayerPacket(key);
-						else WakeUpNpc(client->_id, key);
-						GClients[key]->SendAddPlayerPacket(client->_id);
-					}
-				}
-			}
-
-			xdelete(exOver);
-			break;
-		}
-		case IO_TYPE::IO_NPC_RANDOM_MOVE: {
-			bool keepGoing = false;
-			auto& moveNPC = GClients[key];
-
-			for (int16 dy = -1; dy <= 1; ++dy) {
-				for (int16 dx = -1; dx <= 1; ++dx) {
-					int16 sectorY = moveNPC->_sectorY + dy;
-					int16 sectorX = moveNPC->_sectorX + dx;
-					if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-						sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-						continue;
-					}
-
-					unordered_set<uint32> currentSector;
-
-					{
-						lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-						currentSector = GSector->sectors[sectorY][sectorX];
-					}
-
-					for (const auto& id : currentSector) {
-						if (GClients[id]->_state != ST_INGAME) continue;
-						if (IsNPC(id)) continue;
-						if (!CanSee(key, id)) continue;
-						if (!CanAttack(key, id)) {
-							keepGoing = true;
-							break;
-						}
-						else {
-							TIMER_EVENT ev{ key,chrono::system_clock::now() ,TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER,id };
-							GTimerJobQueue.push(ev);
-						}
-					}
-				}
-
-			}
-
-			if (keepGoing) {
-				GNPC->NPCRandomMove(key);
-				TIMER_EVENT ev{ key,chrono::system_clock::now() + 1s, TIMER_EVENT_TYPE::EV_RANOM_MOVE,0 };
-				GTimerJobQueue.push(ev);
-			}
-			else
-				GClients[key]->_active.store(false);
-			xdelete(exOver);
-			break;
-		}
-		case IO_TYPE::IO_NPC_RESPAWN: {		
-			{
-				lock_guard<mutex> ll(GClients[key]->_socketStateLock);
-				while (true) {
-					GClients[key]->_x = rand() % W_WIDTH;
-					GClients[key]->_y = rand() % W_HEIGHT;
-					if (!isCollision(GClients[key]->_x, GClients[key]->_y)) {
-						GSector->AddPlayerInSector(key, GSector->GetMySector_X(GClients[key]->_x), GSector->GetMySector_Y(GClients[key]->_y));
-						GClients[key]->_sectorX = GSector->GetMySector_X(GClients[key]->_x);
-						GClients[key]->_sectorY = GSector->GetMySector_X(GClients[key]->_y);
-						break;
-					}
-				}
-				GClients[key]->_die.store(false);
-				GClients[key]->_hp = NPC_MAX_HP;
-				GClients[key]->_state = SOCKET_STATE::ST_INGAME;
-			}
-
-			for (int16 dy = -1; dy <= 1; ++dy) {
-				for (int16 dx = -1; dx <= 1; ++dx) {
-					int16 sectorY = GClients[key]->_sectorY + dy;
-					int16 sectorX = GClients[key]->_sectorX + dx;
-					if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-						sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-						continue;
-					}
-
-					unordered_set<uint32> currentSector;
-
-					{
-						lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-						currentSector = GSector->sectors[sectorY][sectorX];
-					}
-
-					for (const auto& id : currentSector) {
-						if (GClients[id]->_state != SOCKET_STATE::ST_INGAME) continue;
-						if (IsNPC(id)) continue;
-						if (CanSee(key, id)) {
-							GClients[id]->SendRespawnNPCPacket(key);
-						}
-					}
-				}
-			}
-
-			xdelete(exOver);
-			break;
-		}
-		case IO_TYPE::IO_PLAYER_RESPAWN: {
-			{
-				lock_guard<mutex> ll(GClients[key]->_socketStateLock);
-				while (true) {
-					GClients[key]->_x = rand() % W_WIDTH;
-					GClients[key]->_y = rand() % W_HEIGHT;
-					if (!isCollision(GClients[key]->_x, GClients[key]->_y)) {
-						GSector->AddPlayerInSector(GClients[key]->_id, GSector->GetMySector_X(GClients[key]->_x), GSector->GetMySector_Y(GClients[key]->_y));
-						GClients[key]->_sectorX = GSector->GetMySector_X(GClients[key]->_x);
-						GClients[key]->_sectorY = GSector->GetMySector_X(GClients[key]->_y);
-						break;
-					}
-				}
-				GClients[key]->_die.store(false);
-				GClients[key]->_hp = PLAYER_MAX_HP;
-				GClients[key]->_state = SOCKET_STATE::ST_INGAME;
-			}
-
-			for (int16 dy = -1; dy <= 1; ++dy) {
-				for (int16 dx = -1; dx <= 1; ++dx) {
-					int16 sectorY = GClients[key]->_sectorY + dy;
-					int16 sectorX = GClients[key]->_sectorX + dx;
-					if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-						sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-						continue;
-					}
-
-					unordered_set<uint32> currentSector;
-
-					{
-						lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-						currentSector = GSector->sectors[sectorY][sectorX];
-					}
-
-					for (const auto& id : currentSector) {
-						if (GClients[id]->_state != SOCKET_STATE::ST_INGAME) continue;
-						if (!CanSee(GClients[key]->_id, id)) continue;
-						if (IsPc(id)) GClients[id]->SendRespawnPlayerPacket(GClients[key]->_id);
-						else GWorkerThread->WakeUpNpc(id, GClients[key]->_id);
-						GClients[key]->SendAddPlayerPacket(id);
-					}
-				}
-			}
-
-			dynamic_pointer_cast<Player>(GClients[key])->Heal();
-
-			xdelete(exOver);
-			break;
-		}
-		case IO_TYPE::IO_NPC_AGGRO_MOVE: {
-			{
-				lock_guard<mutex> ll(GClients[exOver->_aiTargetId]->_socketStateLock);
-				if (GClients[exOver->_aiTargetId]->_state != ST_INGAME) {
-					GClients[key]->_active.store(false);
-					GClients[key]->_attack.store(false);
-					xdelete(exOver);
-					break;
-				}
-			}
-
-			auto moveMonster = dynamic_pointer_cast<Monster>(GClients[key]);
-
-			if (moveMonster->GetPath().empty()) {
-				moveMonster->SetPath(FindPath(GClients[key]->_x, GClients[key]->_y, GClients[exOver->_aiTargetId]->_x, GClients[exOver->_aiTargetId]->_y));
-			}
-
-			vector<NODE> path = moveMonster->GetPath();
-
-			if (!path.empty()) {
-				short nextX = path.back()._x;
-				short nextY = path.back()._y;
-				moveMonster->GetPath().pop_back();
-				GNPC->NPCAStarMove(key, nextX, nextY);
-			}
-
-			if (CanAttack(key, exOver->_aiTargetId)) {
-				if (!GClients[key]->_attack.load()) {
-					TIMER_EVENT ev{ key,chrono::system_clock::now() ,TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER,exOver->_aiTargetId };
-					GTimerJobQueue.push(ev);
-				}
-			}
-
-			if (CanSee(key, exOver->_aiTargetId)) {
-				GClients[key]->_active.store(true);
-				TIMER_EVENT ev{ key,chrono::system_clock::now() + 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE,exOver->_aiTargetId };
-				GTimerJobQueue.push(ev);
-			}
-			else {
-				GClients[key]->_active.store(false);
-			}
-			xdelete(exOver);
-			break;
-		}
-		case IO_TYPE::IO_HEAL: {
-			if (GClients[key]->_die.load()) {
-				xdelete(exOver);
-				break;
-			}
-
-			if ((GClients[key]->_hp += HEAL_SIZE) >= PLAYER_MAX_HP)
-				GClients[key]->_hp = 100;
-	
-			GClients[key]->SendHealPacket();
-
-			TIMER_EVENT healEvent{ key,chrono::system_clock::now() + 5s, TIMER_EVENT_TYPE::EV_HEAL,0 };
-			GTimerJobQueue.push(healEvent);
-			xdelete(exOver);
+			ReleaseIoContext(ioContext);
 			break;
 		}
 		}
 	}
 }
 
-uint32 WorkerThread::GetNewClientId()
+void WorkerThread::InitializeConnectedClient(uint32 clientId, uint64 sessionToken)
 {
-	for (int i = 0; i < MAX_USER; ++i) {
-		lock_guard<mutex> ll(GClients[i]->_socketStateLock);
-		if (GClients[i]->_state == SOCKET_STATE::ST_FREE) {
-			return static_cast<uint32>(i);
+	if (IsActiveSession(clientId, sessionToken) == false)
+		return;
+
+	User* client = GClients[clientId].get();
+	client->ResetGameplayState();
+	client->_maxHp = PLAYER_MAX_HP;
+	client->_hp = PLAYER_MAX_HP;
+	client->_offensive = PLAYER_OFFENSIVE;
+	client->_die.store(false);
+	client->_state = SOCKET_STATE::ST_ALLOC;
+}
+
+void WorkerThread::HandleGetPlayerInfo(uint32 clientId, uint64 sessionToken, const DB_PLAYER_INFO& playerInfo)
+{
+	if (IsActiveSession(clientId, sessionToken) == false)
+		return;
+	if (GClients[clientId]->_state != SOCKET_STATE::ST_ALLOC)
+		return;
+
+	strcpy_s(GClients[clientId]->_name, playerInfo._name.c_str());
+	GClients[clientId]->_x = playerInfo._x;
+	GClients[clientId]->_y = playerInfo._y;
+	const bool sectorAssigned = GSector->UpdateObjectSector(clientId, GClients[clientId]->_x, GClients[clientId]->_y, GClients[clientId]->_sectorX, GClients[clientId]->_sectorY);
+	ASSERT_CRASH(sectorAssigned);
+	GClients[clientId]->_state = SOCKET_STATE::ST_INGAME;
+
+	GClients[clientId]->SendLoginSuccessPacket();
+	AsPlayer(clientId)->Heal();
+	NotifyPlayerEnteredWorld(*this, clientId, false);
+}
+
+void WorkerThread::HandleAddPlayerInfo(uint32 clientId, uint64 sessionToken, const DB_PLAYER_INFO& playerInfo)
+{
+	if (IsActiveSession(clientId, sessionToken) == false)
+		return;
+	if (GClients[clientId]->_state != SOCKET_STATE::ST_ALLOC)
+		return;
+
+	strcpy_s(GClients[clientId]->_name, playerInfo._name.c_str());
+	GClients[clientId]->_x = rand() % W_WIDTH;
+	GClients[clientId]->_y = rand() % W_HEIGHT;
+	const bool sectorAssigned = GSector->UpdateObjectSector(clientId, GClients[clientId]->_x, GClients[clientId]->_y, GClients[clientId]->_sectorX, GClients[clientId]->_sectorY);
+	ASSERT_CRASH(sectorAssigned);
+	GClients[clientId]->_state = SOCKET_STATE::ST_INGAME;
+
+	GClients[clientId]->SendLoginSuccessPacket();
+	AsPlayer(clientId)->Heal();
+
+	DB_PLAYER_INFO addPlayer{};
+	addPlayer._name = GClients[clientId]->_name;
+	addPlayer._x = GClients[clientId]->_x;
+	addPlayer._y = GClients[clientId]->_y;
+
+	GDBThread->RequestAddPlayer(clientId, addPlayer);
+	NotifyPlayerEnteredWorld(*this, clientId, false);
+}
+
+void WorkerThread::HandleNpcRandomMove(uint32 npcId)
+{
+	bool keepGoing = false;
+	auto& moveNPC = GClients[npcId];
+	const uint64 npcTimerEpoch = moveNPC->GetTimerEpoch();
+
+	GSector->ForEachNeighborObject(moveNPC->_sectorX, moveNPC->_sectorY, [&](uint32 id)
+	{
+		if (GClients[id]->_state != ST_INGAME) return;
+		if (IsNPC(id)) return;
+		if (!CanSee(npcId, id)) return;
+		if (!CanAttack(npcId, id)) {
+			keepGoing = true;
+			return;
+		}
+
+		GTimerThread->ScheduleNow(npcId, npcTimerEpoch, TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER, id);
+	});
+
+	if (keepGoing) {
+		GNPC->NPCRandomMove(npcId);
+		GTimerThread->ScheduleAfter(npcId, npcTimerEpoch, 1s, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
+	}
+	else {
+		GClients[npcId]->_active.store(false);
+	}
+}
+
+void WorkerThread::HandleNpcRespawn(uint32 npcId)
+{
+	while (true) {
+		GClients[npcId]->_x = rand() % W_WIDTH;
+		GClients[npcId]->_y = rand() % W_HEIGHT;
+		if (!isCollision(GClients[npcId]->_x, GClients[npcId]->_y)) {
+			const bool sectorAssigned = GSector->UpdateObjectSector(npcId, GClients[npcId]->_x, GClients[npcId]->_y, GClients[npcId]->_sectorX, GClients[npcId]->_sectorY);
+			ASSERT_CRASH(sectorAssigned);
+			break;
 		}
 	}
-	return -1;
+
+	GClients[npcId]->_die.store(false);
+	GClients[npcId]->_hp = NPC_MAX_HP;
+	GClients[npcId]->_state = SOCKET_STATE::ST_INGAME;
+
+	GSector->ForEachNeighborObject(GClients[npcId]->_sectorX, GClients[npcId]->_sectorY, [&](uint32 id)
+	{
+		if (GClients[id]->_state != SOCKET_STATE::ST_INGAME) return;
+		if (IsNPC(id)) return;
+		if (CanSee(npcId, id))
+			GClients[id]->SendRespawnNPCPacket(npcId);
+	});
+}
+
+void WorkerThread::HandlePlayerRespawn(uint32 playerId)
+{
+	while (true) {
+		GClients[playerId]->_x = rand() % W_WIDTH;
+		GClients[playerId]->_y = rand() % W_HEIGHT;
+		if (!isCollision(GClients[playerId]->_x, GClients[playerId]->_y)) {
+			const bool sectorAssigned = GSector->UpdateObjectSector(playerId, GClients[playerId]->_x, GClients[playerId]->_y, GClients[playerId]->_sectorX, GClients[playerId]->_sectorY);
+			ASSERT_CRASH(sectorAssigned);
+			break;
+		}
+	}
+
+	GClients[playerId]->_die.store(false);
+	GClients[playerId]->_hp = PLAYER_MAX_HP;
+	GClients[playerId]->_state = SOCKET_STATE::ST_INGAME;
+
+	NotifyPlayerEnteredWorld(*this, playerId, true);
+
+	AsPlayer(playerId)->Heal();
+}
+
+void WorkerThread::HandleNpcAggroMove(uint32 npcId, uint32 aiTargetId)
+{
+	if (GClients[aiTargetId]->_state != ST_INGAME) {
+		GClients[npcId]->_active.store(false);
+		GClients[npcId]->_attack.store(false);
+		return;
+	}
+
+	Monster* moveMonster = AsMonster(npcId);
+	const uint64 npcTimerEpoch = moveMonster->GetTimerEpoch();
+	vector<NODE>& path = moveMonster->GetPath();
+
+	if (path.empty())
+		path = FindPath(GClients[npcId]->_x, GClients[npcId]->_y, GClients[aiTargetId]->_x, GClients[aiTargetId]->_y);
+
+	if (!path.empty()) {
+		short nextX = path.back()._x;
+		short nextY = path.back()._y;
+		path.pop_back();
+		GNPC->NPCAStarMove(npcId, nextX, nextY);
+	}
+
+	if (CanAttack(npcId, aiTargetId)) {
+		if (!GClients[npcId]->_attack.load()) {
+			GTimerThread->ScheduleNow(npcId, npcTimerEpoch, TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER, aiTargetId);
+		}
+	}
+
+	if (CanSee(npcId, aiTargetId)) {
+		GClients[npcId]->_active.store(true);
+		GTimerThread->ScheduleAfter(npcId, npcTimerEpoch, 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, aiTargetId);
+	}
+	else {
+		GClients[npcId]->_active.store(false);
+	}
+}
+
+void WorkerThread::HandleHeal(uint32 playerId)
+{
+	if (GClients[playerId]->_die.load())
+		return;
+
+	const uint32 currentHp = GClients[playerId]->_hp.load();
+	uint16 desiredHp = static_cast<uint16>(currentHp + HEAL_SIZE);
+	if (currentHp + HEAL_SIZE > PLAYER_MAX_HP)
+		desiredHp = PLAYER_MAX_HP;
+
+	GClients[playerId]->_hp.store(desiredHp);
+
+	GClients[playerId]->SendHealPacket();
+
+	GTimerThread->ScheduleAfter(playerId, GClients[playerId]->GetTimerEpoch(), 5s, TIMER_EVENT_TYPE::EV_HEAL);
+}
+
+void WorkerThread::HandleNpcAttackToPlayer(uint32 npcId, uint32 playerId)
+{
+	Player* heatedPlayer = AsPlayer(playerId);
+	Monster* heatPlayer = AsMonster(npcId);
+
+	heatPlayer->_attack.store(true);
+
+	if (heatedPlayer->_die.load() || !CanAttack(playerId, npcId) || heatPlayer->_die.load()) {
+		heatPlayer->_attack.store(false);
+		return;
+	}
+
+	uint16 currentHp;
+	uint16 desiredHp;
+
+	currentHp = heatedPlayer->_hp.load();
+	desiredHp = (currentHp > NPC_OFFENSIVE) ? static_cast<uint16>(currentHp - NPC_OFFENSIVE) : 0;
+	heatedPlayer->_hp.store(desiredHp);
+	if (desiredHp == 0) {
+		heatedPlayer->_die.store(true);
+	}
+
+	if (!heatedPlayer->_die.load()) {
+		const auto viewList = heatedPlayer->_viewList;
+		for (auto id : viewList) {
+			if (SOCKET_STATE::ST_INGAME != GClients[id]->_state) continue;
+			if (!CanSee(playerId, id)) continue;
+			if (IsPc(GClients[id]->_id))  GClients[id]->SendNPCAttackToPlayerPacket(heatedPlayer->_id);
+		}
+
+		if (CanAttack(npcId, playerId)) {
+			GTimerThread->ScheduleAfter(npcId, heatPlayer->GetTimerEpoch(), 1s, TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER, playerId);
+		}
+		else {
+			heatPlayer->_attack.store(false);
+		}
+		return;
+	}
+
+	const auto viewList = heatedPlayer->_viewList;
+	for (auto id : viewList) {
+		if (SOCKET_STATE::ST_INGAME != GClients[id]->_state) continue;
+		if (!CanSee(playerId, id)) continue;
+		if (IsPc(GClients[id]->_id)) GClients[id]->SendPlayerDiePacket(playerId);
+	}
+
+	heatPlayer->_attack.store(false);
+	heatPlayer->_active.store(false);
+	GSector->RemoveObject(playerId, heatedPlayer->_sectorX, heatedPlayer->_sectorY);
+	heatedPlayer->ResetGameplayState();
+	GTimerThread->ScheduleAfter(heatedPlayer->_id, heatedPlayer->GetTimerEpoch(), 30s, TIMER_EVENT_TYPE::EV_PLAYER_RESPAWN);
+}
+
+bool WorkerThread::FlushPlayerSave(uint32 clientId)
+{
+	if (IsPc(clientId) == false)
+		return false;
+
+	DB_PLAYER_INFO playerInfo{};
+	if (AsPlayer(clientId)->TryBuildSaveInfo(playerInfo) == false)
+		return false;
+
+	GDBThread->RequestSavePlayer(clientId, playerInfo);
+	return true;
+}
+
+uint32 WorkerThread::GetNewClientId()
+{
+	return GSessionManager->AcquirePlayerSessionId();
 }
 
 void WorkerThread::HandlePacket(uint32 clientId, char* packet)
@@ -449,19 +539,17 @@ void WorkerThread::HandlePacket(uint32 clientId, char* packet)
 	{
 	case static_cast<char>(PacketType::CS_LOGIN):
 	{
+		if (GClients[clientId]->_state != SOCKET_STATE::ST_ALLOC)
+			break;
+
 		CS_LOGIN_PACKET* p = reinterpret_cast<CS_LOGIN_PACKET*>(packet);
-
-		DB_PLAYER_INFO loginPlayer{};
-		loginPlayer._name = p->name;
-		loginPlayer._x = NULL;
-		loginPlayer._y = NULL;
-
-		DB_EVENT playerLoginEvent{ clientId, chrono::system_clock::now(),DB_EVENT_TYPE::EV_LOGIN_PLAYER, loginPlayer };
-		GDataBaseJobQueue.push(playerLoginEvent);
+		GDBThread->RequestLogin(clientId, GClients[clientId]->GetSessionToken(), p->name);
 	}
 		break;
 	case static_cast<char>(PacketType::CS_MOVE):
 	{
+		if (GClients[clientId]->_state != SOCKET_STATE::ST_INGAME)
+			break;
 		if (GClients[clientId]->_die.load()) break;
 
 		CS_MOVE_PACKET* p = reinterpret_cast<CS_MOVE_PACKET*>(packet);
@@ -475,12 +563,8 @@ void WorkerThread::HandlePacket(uint32 clientId, char* packet)
 
 			MovePlayer(x, y, p->direction);
 
-
-			if (GSector->UpdatePlayerInSector(clientId, GSector->GetMySector_X(x), GSector->GetMySector_Y(y),
-				GSector->GetMySector_X(GClients[clientId]->_x), GSector->GetMySector_Y(GClients[clientId]->_y))) {
-				GClients[clientId]->_sectorX = GSector->GetMySector_X(x);
-				GClients[clientId]->_sectorY = GSector->GetMySector_Y(y);
-			}
+			const bool sectorChanged = GSector->UpdateObjectSector(clientId, x, y, GClients[clientId]->_sectorX, GClients[clientId]->_sectorY);
+			(void)sectorChanged;
 			GClients[clientId]->_x = x;
 			GClients[clientId]->_y = y;
 
@@ -492,8 +576,7 @@ void WorkerThread::HandlePacket(uint32 clientId, char* packet)
 			savePlayerInfo._x = GClients[clientId]->_x;
 			savePlayerInfo._y = GClients[clientId]->_y;
 
-			DB_EVENT playerUpdateEvent{ clientId,chrono::system_clock::now(), EV_SAVE_PLAYER_INFO,savePlayerInfo };
-			GDataBaseJobQueue.push(playerUpdateEvent);*/
+			GDBThread->RequestSavePlayer(clientId, savePlayerInfo);*/
 
 			UpdateViewList(clientId);
 		}
@@ -501,6 +584,8 @@ void WorkerThread::HandlePacket(uint32 clientId, char* packet)
 		break;
 	case static_cast<char>(PacketType::CS_ATTACK):
 	{
+		if (GClients[clientId]->_state != SOCKET_STATE::ST_INGAME)
+			break;
 		if (GClients[clientId]->_die.load()) break;
 
 		CS_ATTACK_PACKET* p = reinterpret_cast<CS_ATTACK_PACKET*>(packet);
@@ -511,32 +596,14 @@ void WorkerThread::HandlePacket(uint32 clientId, char* packet)
 			GClients[clientId]->_lastMoveTime = p->attack_time;
 			auto& attackPlayer = GClients[clientId];
 
-
-			for (int16 dy = -1; dy <= 1; ++dy) {
-				for (int16 dx = -1; dx <= 1; ++dx) {
-					int16 sectorY = attackPlayer->_sectorY + dy;
-					int16 sectorX = attackPlayer->_sectorX + dx;
-					if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-						sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-						continue;
-					}
-
-					unordered_set<uint32> currentSector;
-
-					{
-						lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-						currentSector = GSector->sectors[sectorY][sectorX];
-					}
-
-					for (const auto& id : currentSector) {
-						if (GClients[id]->_state != ST_INGAME) continue;
-						if (!IsNPC(id)) continue;
-						if (CanAttack(clientId, id)) {
-							AttackToNPC(id, clientId);
-						}
-					}
+			GSector->ForEachNeighborObject(attackPlayer->_sectorX, attackPlayer->_sectorY, [&](uint32 id)
+			{
+				if (GClients[id]->_state != ST_INGAME) return;
+				if (!IsNPC(id)) return;
+				if (CanAttack(clientId, id)) {
+					AttackToNPC(id, clientId);
 				}
-			}
+			});
 
 		}
 	}
@@ -590,38 +657,19 @@ void WorkerThread::UpdateViewList(uint32 clientId)
 	
 	auto& myPlayer = GClients[clientId];
 	{
-		for (int16 dy = -1; dy <= 1; ++dy) {
-			for (int16 dx = -1; dx <= 1; ++dx) {
-				int16 sectorY = myPlayer->_sectorY + dy;
-				int16 sectorX = myPlayer->_sectorX + dx;
-				if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-					sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-					continue;
-				}
-
-				unordered_set<uint32> currentSector;
-
-				{
-					lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-					currentSector = GSector->sectors[sectorY][sectorX];
-				}
-
-				for (const auto& id : currentSector) {
-
-					const auto& object = GClients[id];
-					if (object->_state != SOCKET_STATE::ST_INGAME) continue;
-					if (!CanSee(object->_id, clientId)) continue;
-					nearList.insert(id);
-				}
-			}
-		}
-
-		unordered_set<uint32> oldList;
-
+		GSector->ForEachNeighborObject(myPlayer->_sectorX, myPlayer->_sectorY, [&](uint32 id)
 		{
-			lock_guard<mutex> ll(myPlayer->_viewListLock);
-			oldList = myPlayer->_viewList;
-		}
+			const auto& object = GClients[id];
+			if (id == clientId)
+				return;
+			if (object->_state != SOCKET_STATE::ST_INGAME)
+				return;
+			if (!CanSee(object->_id, clientId))
+				return;
+			nearList.insert(id);
+		});
+
+		const unordered_set<uint32> oldList = myPlayer->_viewList;
 
 		for (auto& id : nearList) {
 			auto& object = GClients[id];
@@ -663,22 +711,20 @@ void WorkerThread::WakeUpNpc(uint32 npcId, uint32 wakerId)
 	bool expected = false;
 	bool desired = true;
 
-	auto npc = dynamic_pointer_cast<Monster>(GClients[npcId]);
-	auto waker = dynamic_pointer_cast<Player>(GClients[wakerId]);
+	Monster* npc = AsMonster(npcId);
+	Player* waker = AsPlayer(wakerId);
 
 	switch (npc->GetType()) {
 	case MONSTER_TYPE::PASSIVE: {
 		if (!atomic_compare_exchange_strong(&GClients[npcId]->_active, &expected, desired)) return;
-		TIMER_EVENT randomMoveEvent{ npcId,chrono::system_clock::now() + 1s,TIMER_EVENT_TYPE::EV_RANOM_MOVE,0 };
-		GTimerJobQueue.push(randomMoveEvent);
+		GTimerThread->ScheduleAfter(npcId, npc->GetTimerEpoch(), 1s, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
 		break;
 	}
 	case MONSTER_TYPE::AGGRO: {
-		if (waker->GetTaget() != -1) break;
+		if (waker->GetTarget() != -1) break;
 		if (!atomic_compare_exchange_strong(&GClients[npcId]->_active, &expected, desired)) return;
 		waker->SetTarget(npcId);
-		TIMER_EVENT aggroMoveEvent{ npcId,chrono::system_clock::now() + 1s,TIMER_EVENT_TYPE::EV_AGGRO_MOVE,wakerId };
-		GTimerJobQueue.push(aggroMoveEvent);
+		GTimerThread->ScheduleAfter(npcId, npc->GetTimerEpoch(), 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, wakerId);
 		break;
 	}
 	}
@@ -689,51 +735,36 @@ void WorkerThread::AttackToNPC(uint32 npcId, uint32 playerId)
 {
 	if (GClients[npcId]->_die.load()) return;
 
-	auto npc = dynamic_pointer_cast<Monster>(GClients[npcId]);
-	auto attacker = dynamic_pointer_cast<Player>(GClients[playerId]);
+	Monster* npc = AsMonster(npcId);
+	Player* attacker = AsPlayer(playerId);
 
-	if ((GClients[npcId]->_hp -= PLAYER_OFFENSIVE) <= 0) {
+	const uint16 currentHp = GClients[npcId]->_hp.load();
+	const uint16 desiredHp = (currentHp > PLAYER_OFFENSIVE) ? static_cast<uint16>(currentHp - PLAYER_OFFENSIVE) : 0;
+	GClients[npcId]->_hp.store(desiredHp);
+
+	if (desiredHp == 0) {
 
 		if (npc->GetType() == MONSTER_TYPE::AGGRO) {
-			if (attacker->GetTaget()== npcId)
+			if (attacker->GetTarget() == static_cast<int>(npcId))
 				attacker->SetTarget(-1);
 		}
 
-		for (int16 dy = -1; dy <= 1; ++dy) {
-			for (int16 dx = -1; dx <= 1; ++dx) {
-				int16 sectorY = GClients[npcId]->_sectorY + dy;
-				int16 sectorX = GClients[npcId]->_sectorX + dx;
-				if (sectorY < 0 || sectorY >= W_WIDTH / SECTOR_RANGE ||
-					sectorX < 0 || sectorX >= W_HEIGHT / SECTOR_RANGE) {
-					continue;
-				}
-
-				unordered_set<uint32> currentSector;
-
-				{
-					lock_guard<mutex> ll(GSector->sectorLocks[sectorY][sectorX]);
-					currentSector = GSector->sectors[sectorY][sectorX];
-				}
-
-				for (const auto& id : currentSector) {
-					if (GClients[id]->_state != SOCKET_STATE::ST_INGAME) continue;
-					if (IsNPC(id)) continue;
-					if (CanSee(id, npcId)) {
-						GClients[id]->SendNPCDiePacket(npcId);
-					}
-				}
+		GSector->ForEachNeighborObject(GClients[npcId]->_sectorX, GClients[npcId]->_sectorY, [&](uint32 id)
+		{
+			if (GClients[id]->_state != SOCKET_STATE::ST_INGAME) return;
+			if (IsNPC(id)) return;
+			if (CanSee(id, npcId)) {
+				GClients[id]->SendNPCDiePacket(npcId);
 			}
-
-		}
+		});
 
 		GClients[npcId]->_die.store(true);
 		GClients[playerId]->SendNPCDiePacket(npcId);
 
-		GSector->RemovePlayerInSector(npcId, GSector->GetMySector_X(GClients[npcId]->_sectorX), GSector->GetMySector_Y(GClients[npcId]->_sectorY));
-		GClients[npcId]->InitSession();
+		GSector->RemoveObject(npcId, GClients[npcId]->_sectorX, GClients[npcId]->_sectorY);
+		GClients[npcId]->ResetGameplayState();
 
-		TIMER_EVENT respawnEvent{ npcId,chrono::system_clock::now() + 10s,TIMER_EVENT_TYPE::EV_NPC_RESPAWN,0 };
-		GTimerJobQueue.push(respawnEvent);
+		GTimerThread->ScheduleAfter(npcId, GClients[npcId]->GetTimerEpoch(), 10s, TIMER_EVENT_TYPE::EV_NPC_RESPAWN);
 	}
 	else {
 		GClients[playerId]->SendPlayerAtackToNPCPacket(npcId);
