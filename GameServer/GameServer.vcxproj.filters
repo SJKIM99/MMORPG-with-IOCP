@@ -40,6 +40,9 @@
     <Filter Include="Core">
       <UniqueIdentifier>{d9d5f933-6ca0-4c19-b73c-e4015050f4a0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Helpers">
+      <UniqueIdentifier>{ee5b1988-381f-45f0-a445-31b5f6dc3662}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GameServer.cpp">
@@ -119,6 +122,21 @@
     </ClCompile>
     <ClCompile Include="Core\ThreadManager.cpp">
       <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Subject.cpp">
+      <Filter>GameSession</Filter>
+    </ClCompile>
+    <ClCompile Include="UserHelper.cpp">
+      <Filter>Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="WorldHelper.cpp">
+      <Filter>Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="Stat.cpp">
+      <Filter>GameSession</Filter>
+    </ClCompile>
+    <ClCompile Include="Transform.cpp">
+      <Filter>GameSession</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -208,6 +226,21 @@
     </ClInclude>
     <ClInclude Include="Core\Types.h">
       <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Subject.h">
+      <Filter>GameSession</Filter>
+    </ClInclude>
+    <ClInclude Include="UserHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="WorldHelper.h">
+      <Filter>Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Stat.h">
+      <Filter>GameSession</Filter>
+    </ClInclude>
+    <ClInclude Include="Transform.h">
+      <Filter>GameSession</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -50,8 +50,9 @@ enum DB_EVENT_TYPE
 struct DB_PLAYER_INFO
 {
 	string _name;
-	int _x;
-	int _y;
+	string _password;
+	int    _x = 0;
+	int    _y = 0;
 };
 
 struct DB_EVENT

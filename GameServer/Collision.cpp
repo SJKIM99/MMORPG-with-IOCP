@@ -8,7 +8,7 @@ constexpr int SCREEN_HEIGHT = 16;
 
 bool checkCollision(short x_pos, short y_pos)
 {
-    if (x_pos < 0 || y_pos < 0 || x_pos >= W_HEIGHT || y_pos >= W_WIDTH) return false;
+    if (x_pos < 0 || y_pos < 0 || x_pos >= W_WIDTH || y_pos >= W_HEIGHT) return false;
     if ((x_pos / 3 + y_pos / 3) % 3 == 0) return false;
     else if ((x_pos / 3 + y_pos / 3) % 3 == 1) return false;
     else {
@@ -20,6 +20,8 @@ bool checkCollision(short x_pos, short y_pos)
 
 bool isCollision(short x_pos, short y_pos)
 {
+    if (x_pos < 0 || y_pos < 0 || x_pos >= W_WIDTH || y_pos >= W_HEIGHT)
+        return true;
     return GCollision[y_pos][x_pos];
 }
 

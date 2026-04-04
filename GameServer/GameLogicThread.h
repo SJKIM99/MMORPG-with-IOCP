@@ -40,8 +40,9 @@ private:
 	void Drain();
 
 private:
-	Queue _queue;
-	HANDLE _wakeEvent = nullptr;
+	Queue          _queue;
+	HANDLE         _wakeEvent = nullptr;
+	Atomic<bool>   _sleeping{ false };
 };
 
 extern class GameLogicThread* GGameLogicThread;

@@ -175,6 +175,7 @@
     <ClCompile Include="GameLogicThread.cpp" />
     <ClCompile Include="GameObject.cpp" />
     <ClCompile Include="GameServer.cpp" />
+    <ClCompile Include="GameObjectManager.cpp" />
     <ClCompile Include="GameSession.cpp" />
     <ClCompile Include="GameSessionManager.cpp" />
     <ClCompile Include="NPC.cpp" />
@@ -187,9 +188,14 @@
     <ClCompile Include="Sector.cpp" />
     <ClCompile Include="ServerGlobal.cpp" />
     <ClCompile Include="SocketManager.cpp" />
+    <ClCompile Include="Stat.cpp" />
+    <ClCompile Include="Subject.cpp" />
     <ClCompile Include="TimerThread.cpp" />
+    <ClCompile Include="Transform.cpp" />
     <ClCompile Include="User.cpp" />
+    <ClCompile Include="UserHelper.cpp" />
     <ClCompile Include="WorkerThread.cpp" />
+    <ClCompile Include="WorldHelper.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AStar.h" />
@@ -210,6 +216,7 @@
     <ClInclude Include="DBThread.h" />
     <ClInclude Include="GameLogicThread.h" />
     <ClInclude Include="GameObject.h" />
+    <ClInclude Include="GameObjectManager.h" />
     <ClInclude Include="GameSession.h" />
     <ClInclude Include="GameSessionManager.h" />
     <ClInclude Include="NPC.h" />
@@ -218,9 +225,14 @@
     <ClInclude Include="Sector.h" />
     <ClInclude Include="ServerGlobal.h" />
     <ClInclude Include="SocketManager.h" />
+    <ClInclude Include="Stat.h" />
+    <ClInclude Include="Subject.h" />
     <ClInclude Include="TimerThread.h" />
+    <ClInclude Include="Transform.h" />
     <ClInclude Include="User.h" />
+    <ClInclude Include="UserHelper.h" />
     <ClInclude Include="WorkerThread.h" />
+    <ClInclude Include="WorldHelper.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

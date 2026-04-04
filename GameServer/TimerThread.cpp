@@ -52,7 +52,7 @@ void TimerThread::ScheduleAfter(uint32 playerId, uint64 sourceEpoch, Duration de
 
 void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 {
-	if (timerEvent.sourceEpoch != 0 && GClients[timerEvent.player_id]->GetTimerEpoch() != timerEvent.sourceEpoch)
+	if (timerEvent.sourceEpoch != 0 && (*GObjectManager)[timerEvent.player_id]->GetTimerEpoch() != timerEvent.sourceEpoch)
 		return;
 
 	switch (timerEvent.event) {
@@ -111,22 +111,19 @@ void TimerThread::DoTimer()
 			return _events.empty() == false;
 		});
 
-		while (_events.empty() == false) {
-			const auto nextWakeup = _events.top().wakeup_time;
-			const bool rescheduledEarlierEvent = _cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
-			{
-				return _events.empty() || _events.top().wakeup_time < nextWakeup;
-			});
-
-			if (_events.empty())
-				break;
-
-			if (rescheduledEarlierEvent)
+		while (!_events.empty()) {
+			// Event not yet due: wait until its wakeup time (or until an earlier one arrives).
+			if (_events.top().wakeup_time > Now()) {
+				const auto nextWakeup = _events.top().wakeup_time;
+				_cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
+				{
+					return _events.empty() || _events.top().wakeup_time < nextWakeup;
+				});
 				continue;
+			}
 
-			if (_events.top().wakeup_time > Now())
-				continue;
-
+			// Event is already due: pop and dispatch immediately without wait_until.
+			// Under NPC AI flood thousands of due events are processed without extra kernel calls.
 			TIMER_EVENT timerEvent = _events.top();
 			_events.pop();
 

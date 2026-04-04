@@ -43,10 +43,11 @@ bool DBThread::DBEventCompare::operator()(const DB_EVENT& lhs, const DB_EVENT& r
 	return lhs.sequence > rhs.sequence;
 }
 
-void DBThread::RequestLogin(uint32 playerId, uint64 sessionToken, const std::string& playerName)
+void DBThread::RequestLogin(uint32 playerId, uint64 sessionToken, const std::string& playerName, const std::string& password)
 {
 	DB_PLAYER_INFO playerInfo{};
-	playerInfo._name = playerName;
+	playerInfo._name     = playerName;
+	playerInfo._password = password;
 	ScheduleNow(playerId, DB_EVENT_TYPE::EV_LOGIN_PLAYER, std::move(playerInfo), sessionToken);
 }
 
@@ -95,18 +96,26 @@ void DBThread::ProcessEvent(const DB_EVENT& event)
 	switch (event.event) {
 	case DB_EVENT_TYPE::EV_LOGIN_PLAYER: {
 		const bool isRegistered = connection->IsPlayerRegistered(event.player_info._name);
-		DB_PLAYER_INFO playerInfo = isRegistered
-			? connection->ExtractPlayerInfo(event.player_info._name)
-			: event.player_info;
 
 		if (isRegistered) {
-			GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo]()
-			{
-				GWorkerThread->HandleGetPlayerInfo(playerId, sessionToken, playerInfo);
-			});
+			const bool passwordOk = connection->VerifyPlayerPassword(event.player_info._name, event.player_info._password);
+			if (passwordOk) {
+				DB_PLAYER_INFO playerInfo = connection->ExtractPlayerInfo(event.player_info._name);
+				GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo]()
+				{
+					GWorkerThread->HandleGetPlayerInfo(playerId, sessionToken, playerInfo);
+				});
+			}
+			else {
+				GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token]()
+				{
+					GWorkerThread->HandleLoginFail(playerId, sessionToken);
+				});
+			}
 		}
 		else {
-			GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo]()
+			// 신규 계정 생성
+			GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo = event.player_info]()
 			{
 				GWorkerThread->HandleAddPlayerInfo(playerId, sessionToken, playerInfo);
 			});
@@ -118,7 +127,11 @@ void DBThread::ProcessEvent(const DB_EVENT& event)
 		break;
 	}
 	case DB_EVENT_TYPE::EV_ADD_PLAYER_INFO: {
-		connection->AddPlayerInfoInDataBase(event.player_info._name, event.player_info._x, event.player_info._y);
+		connection->AddPlayerInfoInDataBase(
+			event.player_info._name,
+			event.player_info._password,
+			static_cast<short>(event.player_info._x),
+			static_cast<short>(event.player_info._y));
 		break;
 	}
 	}

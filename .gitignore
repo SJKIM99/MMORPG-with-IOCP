@@ -1,0 +1,70 @@
+# [ Visual Studio ]
+# 빌드 결과물 (Output)
+[Dd]ebug/
+[Rr]elease/
+[Xx]64/
+[Xx]86/
+[Aa]rm/
+[Aa]rm64/
+bin/
+obj/
+
+# MSVC 증분 빌드 및 프리컴파일 헤더
+*.pch
+*.obj
+*.ilk
+*.pdb
+*.tlog
+*.lastbuildstate
+*.idb
+*.ipch
+*.res
+*.sbr
+*.exp
+*.lib
+*.exe
+
+# Visual Studio 솔루션 및 프로젝트 사용자 설정
+.vs/
+*.user
+*.suo
+*.ncb
+*.opened
+*.cache
+*.db
+*.opendb
+*.sdf
+*.sln.docqueries
+
+# [ CMake ]
+# CMake 빌드 폴더 및 생성물
+/CMakeLists.txt.user
+/CMakeCache.txt
+/CMakeFiles/
+/CMakeScripts/
+/Testing/
+/Makefile
+/cmake_install.cmake
+/install_manifest.txt
+/compile_commands.json
+/CTestTestfile.cmake
+/cmake-build-*/
+
+# [ 외부 라이브러리 및 패키지 매니저 ]
+# vcpkg, NuGet 등
+vcpkg_installed/
+packages/
+*.nuget.props
+*.nuget.targets
+
+# [ OS & 기타 ]
+# Windows 썸네일 및 기타 시스템 파일
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 임시 파일 및 백업
+*.bak
+*.tmp
+*.swp
+*~

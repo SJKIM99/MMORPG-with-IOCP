@@ -225,15 +225,34 @@ bool DBConnection::IsPlayerRegistered(const string& name)
 	return (isRegistered == 1);
 }
 
-bool DBConnection::AddPlayerInfoInDataBase(const string& name, short x, short y)
+bool DBConnection::VerifyPlayerPassword(const string& name, const string& password)
 {
 	StatementCleanup cleanup(*this);
 
-	wstring query = L"EXEC AddNewPlayer ?, ?, ?";
+	wstring query = L"EXEC VerifyPlayerPassword ?, ?";
 
-	if (!BindParam(1, SQL_C_CHAR, SQL_VARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return false;
-	if (!BindParam(2, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&x, nullptr)) return false;
-	if (!BindParam(3, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&y, nullptr)) return false;
+	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(),     (SQLPOINTER)name.c_str(),     nullptr)) return false;
+	if (!BindParam(2, SQL_C_CHAR, SQL_WVARCHAR, password.size(), (SQLPOINTER)password.c_str(), nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+
+	SQLCHAR matched{};
+	SQLLEN  cb_matched{};
+	if (!BindCol(1, SQL_BIT, sizeof(matched), &matched, &cb_matched)) return false;
+	if (!Fetch()) return false;
+
+	return (matched == 1);
+}
+
+bool DBConnection::AddPlayerInfoInDataBase(const string& name, const string& password, short x, short y)
+{
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC AddNewPlayer ?, ?, ?, ?";
+
+	if (!BindParam(1, SQL_C_CHAR, SQL_VARCHAR,  name.size(),     (SQLPOINTER)name.c_str(),     nullptr)) return false;
+	if (!BindParam(2, SQL_C_CHAR, SQL_VARCHAR,  password.size(), (SQLPOINTER)password.c_str(), nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT, SQL_INTEGER, 0,               (SQLPOINTER)&x,               nullptr)) return false;
+	if (!BindParam(4, SQL_C_SHORT, SQL_INTEGER, 0,               (SQLPOINTER)&y,               nullptr)) return false;
 	return Execute(query.c_str());
 }
 

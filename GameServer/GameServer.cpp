@@ -12,7 +12,6 @@
 #include "SocketManager.h"
 #include "DBThread.h"
 #include "TimerThread.h"
-#include "NPC.h"
 #include "Collision.h"
 
 int main()
@@ -24,12 +23,13 @@ int main()
 	SocketManager::Listen();
 	SocketManager::CreateIocpHandle();
 
-	NPC::InitNPC();
+	InitCollisionTile();
+
 	User::InitializePlayers();
+	Monster::InitAll();
 
 	//DB풀 초기화
 	GDBConnectionPool->Connect(8);
-	InitCollisionTile();
 	//Sector 생성
 	
 	//작업자 스레드 생성
@@ -44,7 +44,6 @@ int main()
 				GWorkerThread->DoWork();
 				GThreadManager->DestroyTLS();
 			}
-
 		});
 	}
 
@@ -56,7 +55,7 @@ int main()
 	});
 
 	//DB스레드 생성
-	for (int i = 0; i < 2; ++i)
+	for (int i = 0; i < 8; ++i)
 	{
 		GThreadManager->Launch([]()
 		{

@@ -3,11 +3,13 @@
 
 constexpr int PORT_NUM = 4000;
 
-constexpr int NAME_SIZE = 20;
-constexpr int CHAT_SIZE = 20;
+constexpr int NAME_SIZE     = 20;
+constexpr int PASSWORD_SIZE = 20;
+constexpr int CHAT_SIZE     = 20;
 
 constexpr int MAX_USER = 20000;
 constexpr int MAX_NPC = 200000;
+constexpr int AGGRO_NPC_BOUNDARY = MAX_USER + MAX_NPC / 4;  // First 25% of NPCs are AGGRO
 
 constexpr int W_WIDTH = 2000;
 constexpr int W_HEIGHT = 2000;
@@ -58,9 +60,10 @@ enum class PacketType : uint16
 #pragma pack (push, 1)
 struct CS_LOGIN_PACKET
 {
-	unsigned short	size;
-	char			type;
-	char			name[NAME_SIZE];
+	unsigned short size;
+	char           type;
+	char           name[NAME_SIZE];
+	char           password[PASSWORD_SIZE];
 };
 
 struct CS_MOVE_PACKET
@@ -98,6 +101,12 @@ struct SC_LOGIN_SUCCESS_PACKET
 	short	x, y;
 	uint16	maxhp;
 	uint16	hp;
+};
+
+struct SC_LOGIN_FAIL_PACKET
+{
+	unsigned short size;
+	char           type;
 };
 
 struct SC_ADD_OBJECT_PACKET
@@ -138,7 +147,7 @@ struct SC_NPC_RESPAWN_PACKET
 {
 	unsigned short size;
 	char type;
-	int npc_id;
+	int32 npc_id;
 	short	x, y;
 };
 
@@ -146,22 +155,22 @@ struct SC_PLAYER_ATTACK_NPC_PACKET
 {
 	unsigned short size;
 	char type;
-	int id;
-	int hp;
+	int32 id;
+	int32 hp;
 };
 
 struct SC_NPC_ATTACK_PLAYER_PACKET
 {
 	unsigned short size;
 	char type;
-	int hp;
+	int32 hp;
 };
 
 struct SC_HEAL_PACKET
 {
 	unsigned short size;
 	char type;
-	int hp;
+	int32 hp;
 };
 
 struct SC_PLAYER_DIE_PACKET

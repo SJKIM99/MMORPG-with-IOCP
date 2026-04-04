@@ -1,69 +1,37 @@
 #pragma once
 
 #include "AStar.h"
-#include "GameObject.h"
+#include "Subject.h"
+#include "GameObjectManager.h"
 
-class User : public GameObject
+// -------------------------------------------------------
+// User  : 플레이어(PC) 전용 클래스
+//         Player 클래스 제거 후 기능을 흡수
+// -------------------------------------------------------
+class User : public Subject
 {
 public:
 	User();
-	virtual ~User() = default;
 
 	static void InitializePlayers();
 
 	void InitInstance() override;
-	void OnUpdate(const UpdateTimePoint& updateTime) override;
-	virtual void ResetGameplayState();
-
-	void SendMovePacket(uint32 clientId);
-	void SendAddPlayerPacket(uint32 clientId);
-	void SendRemovePlayerPacket(uint32 clientId);
-	void SendLoginSuccessPacket();
-	void SendPlayerAtackToNPCPacket(uint32 clientId);
-	void SendNPCDiePacket(uint32 clientId);
-	void SendRespawnNPCPacket(uint32 clientId);
-	void SendNPCAttackToPlayerPacket(uint32 clientId);
-	void SendHealPacket();
-	void SendPlayerDiePacket(uint32 clientId);
-	void SendRespawnPlayerPacket(uint32 clientId);
-
-	[[nodiscard]] uint64 GetTimerEpoch() const { return _timerEpoch.load(); }
-
-public:
-	char					_name[NAME_SIZE]{};
-	short					_x = -1;
-	short					_y = -1;
-	uint16					_maxHp = 0;
-	Atomic<uint16>			_hp = 0;
-	uint16					_offensive = 0;
-	Atomic<bool>			_die = true;
-	uint32					_lastMoveTime = 0;
-	short					_sectorX = -1;
-	short					_sectorY = -1;
-	unordered_set<uint32>	_viewList;
-	Atomic<bool>			_active = false;
-	Atomic<bool>			_attack = false;
-	Atomic<uint64>			_timerEpoch = 1;
-};
-
-class Player : public User
-{
-public:
-	Player();
-
-	void InitInstance() override;
 	void ResetGameplayState() override;
+
 	void Heal();
 	[[nodiscard]] bool TryBuildSaveInfo(DB_PLAYER_INFO& outPlayerInfo) const;
 
-	int GetTarget() const { return _traceNpcId.load(); }
-	void SetTarget(int id) { _traceNpcId.store(id); }
+	int  GetTarget() const     { return _traceNpcId.load(); }
+	void SetTarget(int id)     { _traceNpcId.store(id); }
 
 private:
-	Atomic<int> _traceNpcId;
+	Atomic<int> _traceNpcId = -1;
 };
 
-class Monster : public User
+// -------------------------------------------------------
+// Monster : NPC 전용 클래스 (Subject 직접 상속)
+// -------------------------------------------------------
+class Monster : public Subject
 {
 public:
 	Monster();
@@ -71,24 +39,25 @@ public:
 	void InitInstance() override;
 	void ResetGameplayState() override;
 
-	MONSTER_TYPE GetType() const { return _type; }
-	void SetType(MONSTER_TYPE type) { _type = type; }
-	vector<NODE>& GetPath() { return _astarPath; }
-	void ClearPath() { _astarPath.clear(); }
+	MONSTER_TYPE    GetType()  const         { return _type; }
+	void            SetType(MONSTER_TYPE t)  { _type = t; }
+	vector<NODE>&   GetPath()                { return _astarPath; }
+	void            ClearPath()              { _astarPath.clear(); }
+
+	// Lifecycle (moved from NPC singleton)
+	static void InitAll();
+	static void RandomMove(uint32 npcId);
+	static void AStarMove(uint32 npcId, short nextX, short nextY);
 
 private:
 	MONSTER_TYPE _type;
 	vector<NODE> _astarPath;
 };
 
-extern array<shared_ptr<User>, MAX_USER + MAX_NPC> GClients;
-
-inline Player* AsPlayer(uint32 id)
-{
-	return static_cast<Player*>(GClients[id].get());
-}
-
-inline Monster* AsMonster(uint32 id)
-{
-	return static_cast<Monster*>(GClients[id].get());
-}
+// -------------------------------------------------------
+// ID helpers  (PC: [0, MAX_USER), NPC: [MAX_USER, MAX_USER+MAX_NPC))
+// -------------------------------------------------------
+inline bool     IsPc(uint32 id)      { return id < MAX_USER; }
+inline bool     IsNPC(uint32 id)     { return !IsPc(id); }
+inline User*    AsUser(uint32 id)    { return static_cast<User*>((*GObjectManager)[id].get()); }
+inline Monster* AsMonster(uint32 id) { return static_cast<Monster*>((*GObjectManager)[id].get()); }

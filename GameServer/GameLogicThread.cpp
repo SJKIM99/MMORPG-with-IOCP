@@ -3,7 +3,7 @@
 
 GameLogicThread::Queue::Queue()
 {
-	_stub = new TaskNode([] {});
+	_stub = xnew<TaskNode>([] {});
 	_head.store(_stub);
 	_tail = _stub;
 }
@@ -11,9 +11,9 @@ GameLogicThread::Queue::Queue()
 GameLogicThread::Queue::~Queue()
 {
 	while (TaskNode* node = Pop())
-		delete node;
+		xdelete(node);
 
-	delete _stub;
+	xdelete(_stub);
 	_stub = nullptr;
 	_tail = nullptr;
 }
@@ -78,16 +78,30 @@ GameLogicThread::~GameLogicThread()
 
 void GameLogicThread::Enqueue(Task task)
 {
-	TaskNode* node = new TaskNode(move(task));
+	TaskNode* node = xnew<TaskNode>(move(task));
 	_queue.Push(node);
-	::SetEvent(_wakeEvent);
+
+	// Only call SetEvent when the thread is actually sleeping.
+	// If it is already draining, it will pick up the new node on its own.
+	bool wasSleeping = true;
+	if (_sleeping.compare_exchange_strong(wasSleeping, false, memory_order_acq_rel, memory_order_relaxed))
+		::SetEvent(_wakeEvent);
 }
 
 void GameLogicThread::Run()
 {
 	while (true)
 	{
+		_sleeping.store(false, memory_order_relaxed);
 		Drain();
+
+		// Signal sleeping before the second drain so that any concurrent Enqueue
+		// will call SetEvent rather than silently skip it.
+		_sleeping.store(true, memory_order_seq_cst);
+
+		// Second drain: catches tasks pushed between the first Drain and the store above.
+		Drain();
+
 		::WaitForSingleObject(_wakeEvent, INFINITE);
 	}
 }
@@ -97,6 +111,6 @@ void GameLogicThread::Drain()
 	while (TaskNode* node = _queue.Pop())
 	{
 		node->task();
-		delete node;
+		xdelete(node);
 	}
 }

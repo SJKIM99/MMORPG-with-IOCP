@@ -10,13 +10,14 @@ struct NODE {
     }
 };
 
-// 해시 함수 정의
 struct hash_pair {
     template <class T1, class T2>
-    size_t operator()(const pair<T1, T2>& pair) const {
-        auto hash1 = hash<T1>()(pair.first);
-        auto hash2 = hash<T2>()(pair.second);
-        return hash1 ^ (hash2 << 1);
+    size_t operator()(const pair<T1, T2>& p) const {
+        size_t h1 = hash<T1>{}(p.first);
+        size_t h2 = hash<T2>{}(p.second);
+        // Boost hash_combine style: reduces collisions for grid coordinates
+        h1 ^= h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2);
+        return h1;
     }
 };
 

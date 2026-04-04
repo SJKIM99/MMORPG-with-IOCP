@@ -24,7 +24,8 @@ public:
 
 public:
 	bool			IsPlayerRegistered(const string& name);
-	bool			AddPlayerInfoInDataBase(const string& name, short x, short y);
+	bool			VerifyPlayerPassword(const string& name, const string& password);
+	bool			AddPlayerInfoInDataBase(const string& name, const string& password, short x, short y);
 	DB_PLAYER_INFO	ExtractPlayerInfo(const string& name);
 	bool			SavePlayerInfo(const string& name, short x, short y);
 

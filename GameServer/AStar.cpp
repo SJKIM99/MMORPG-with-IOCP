@@ -22,9 +22,15 @@ vector<NODE> FindPath(short startX, short startY, short goalX, short goalY)
     short dx[] = { 0, 0, -1, 1 };
     short dy[] = { -1, 1, 0, 0 };
 
+    unordered_set<pair<short, short>, hash_pair> closedSet;
+
     while (!openSet.empty()) {
         NODE current = openSet.top();
         openSet.pop();
+
+        if (closedSet.count({ current._x, current._y }))
+            continue;
+        closedSet.insert({ current._x, current._y });
 
         if (current._x == goalX && current._y == goalY) {
             vector<NODE> path;
@@ -54,5 +60,5 @@ vector<NODE> FindPath(short startX, short startY, short goalX, short goalY)
         }
     }
 
-    return {}; // °æ·Î¸¦ Ã£Áö ¸øÇÑ °æ¿ì
+    return {}; // ï¿½ï¿½Î¸ï¿½ Ã£ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
 }

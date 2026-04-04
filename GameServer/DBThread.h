@@ -12,7 +12,7 @@ public:
 	~DBThread() = default;
 
 	void DoDataBase();
-	void RequestLogin(uint32 playerId, uint64 sessionToken, const std::string& playerName);
+	void RequestLogin(uint32 playerId, uint64 sessionToken, const std::string& playerName, const std::string& password);
 	void RequestAddPlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo);
 	void RequestSavePlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo);
 	void Schedule(DB_EVENT event);
