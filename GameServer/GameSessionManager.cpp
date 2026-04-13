@@ -1,40 +1,29 @@
 #include "pch.h"
 #include "GameSessionManager.h"
+#include "GameSession.h"
 
-GameSessionManager::GameSessionManager()
+shared_ptr<GameSession> GameSessionManager::CreateSession()
 {
-	_freePlayerIds.reserve(MAX_USER);
+	unique_lock lock(_lock);
 
-	for (int32 playerId = MAX_USER - 1; playerId >= 0; --playerId)
-	{
-		_freePlayerIds.push_back(static_cast<uint32>(playerId));
-	}
+	if (_nextObjectId >= NPC_ID_START)
+		return nullptr;
+
+	auto session      = std::make_shared<GameSession>();
+	session->_objectId = _nextObjectId++;
+	_sessions.emplace(session.get(), session);
+	return session;
 }
 
-uint32 GameSessionManager::AcquirePlayerSessionId()
+shared_ptr<GameSession> GameSessionManager::FindSession(GameSession* key) const
 {
-	std::scoped_lock lock(_lock);
-
-	if (_freePlayerIds.empty())
-		return static_cast<uint32>(-1);
-
-	const uint32 playerId = _freePlayerIds.back();
-	_freePlayerIds.pop_back();
-	_inUse[playerId] = true;
-	return playerId;
+	shared_lock lock(_lock);
+	auto it = _sessions.find(key);
+	return it != _sessions.end() ? it->second : nullptr;
 }
 
-bool GameSessionManager::ReleasePlayerSessionId(uint32 playerId)
+bool GameSessionManager::ReleaseSession(GameSession* key)
 {
-	if (playerId >= MAX_USER)
-		return false;
-
-	std::scoped_lock lock(_lock);
-
-	if (_inUse[playerId] == false)
-		return false;
-
-	_inUse[playerId] = false;
-	_freePlayerIds.push_back(playerId);
-	return true;
+	unique_lock lock(_lock);
+	return _sessions.erase(key) > 0;
 }

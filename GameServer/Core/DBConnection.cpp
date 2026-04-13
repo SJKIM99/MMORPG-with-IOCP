@@ -208,7 +208,7 @@ void DBConnection::HandleError(SQLRETURN ret)
 	}
 }
 
-bool DBConnection::IsPlayerRegistered(const string& name)
+bool DBConnection::IsUserRegistered(const string& name)
 {
 	StatementCleanup cleanup(*this);
 	wstring query = L"EXEC isPlayerRegistered ?";
@@ -225,7 +225,7 @@ bool DBConnection::IsPlayerRegistered(const string& name)
 	return (isRegistered == 1);
 }
 
-bool DBConnection::VerifyPlayerPassword(const string& name, const string& password)
+bool DBConnection::VerifyUserPassword(const string& name, const string& password)
 {
 	StatementCleanup cleanup(*this);
 
@@ -243,50 +243,60 @@ bool DBConnection::VerifyPlayerPassword(const string& name, const string& passwo
 	return (matched == 1);
 }
 
-bool DBConnection::AddPlayerInfoInDataBase(const string& name, const string& password, short x, short y)
+bool DBConnection::AddUserInfoInDataBase(const string& name, const string& password, short x, short y, uint8 level, uint32 exp)
 {
 	StatementCleanup cleanup(*this);
 
-	wstring query = L"EXEC AddNewPlayer ?, ?, ?, ?";
+	wstring query = L"EXEC AddNewPlayer ?, ?, ?, ?, ?, ?";
 
-	if (!BindParam(1, SQL_C_CHAR, SQL_VARCHAR,  name.size(),     (SQLPOINTER)name.c_str(),     nullptr)) return false;
-	if (!BindParam(2, SQL_C_CHAR, SQL_VARCHAR,  password.size(), (SQLPOINTER)password.c_str(), nullptr)) return false;
-	if (!BindParam(3, SQL_C_SHORT, SQL_INTEGER, 0,               (SQLPOINTER)&x,               nullptr)) return false;
-	if (!BindParam(4, SQL_C_SHORT, SQL_INTEGER, 0,               (SQLPOINTER)&y,               nullptr)) return false;
+	if (!BindParam(1, SQL_C_CHAR,  SQL_VARCHAR,  name.size(),     (SQLPOINTER)name.c_str(),     nullptr)) return false;
+	if (!BindParam(2, SQL_C_CHAR,  SQL_VARCHAR,  password.size(), (SQLPOINTER)password.c_str(), nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT, SQL_INTEGER,  0,               (SQLPOINTER)&x,               nullptr)) return false;
+	if (!BindParam(4, SQL_C_SHORT, SQL_INTEGER,  0,               (SQLPOINTER)&y,               nullptr)) return false;
+	if (!BindParam(5, SQL_C_UTINYINT, SQL_TINYINT, 0,             (SQLPOINTER)&level,           nullptr)) return false;
+	if (!BindParam(6, SQL_C_ULONG, SQL_INTEGER,  0,               (SQLPOINTER)&exp,             nullptr)) return false;
 	return Execute(query.c_str());
 }
 
-DB_PLAYER_INFO DBConnection::ExtractPlayerInfo(const string& name)
+DB_PLAYER_INFO DBConnection::ExtractUserInfo(const string& name)
 {
 	DB_PLAYER_INFO playerInfo{};
 	StatementCleanup cleanup(*this);
 
 	wstring query = L"EXEC ExtractPlayerInfo ?";
 
-	SQLINTEGER player_x{}, player_y{};
-	SQLLEN cb_x{}, cb_y{};
+	SQLINTEGER  player_x{}, player_y{};
+	SQLCHAR     player_level{};
+	SQLUINTEGER player_exp{};
+	SQLLEN cb_x{}, cb_y{}, cb_level{}, cb_exp{};
 
 	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return playerInfo;
 	if (!Execute(query.c_str())) return playerInfo;
-	if (!BindCol(1, SQL_INTEGER, sizeof(player_x), &player_x, &cb_x)) return playerInfo;
-	if (!BindCol(2, SQL_INTEGER, sizeof(player_y), &player_y, &cb_y)) return playerInfo;
+	if (!BindCol(1, SQL_INTEGER,  sizeof(player_x),     &player_x,     &cb_x))     return playerInfo;
+	if (!BindCol(2, SQL_INTEGER,  sizeof(player_y),     &player_y,     &cb_y))     return playerInfo;
+	if (!BindCol(3, SQL_TINYINT,  sizeof(player_level), &player_level, &cb_level)) return playerInfo;
+	if (!BindCol(4, SQL_INTEGER,  sizeof(player_exp),   &player_exp,   &cb_exp))   return playerInfo;
 	if (!Fetch()) return playerInfo;
 
-	playerInfo._name = name;
-	playerInfo._x = player_x;
-	playerInfo._y = player_y;
+	playerInfo._name  = name;
+	playerInfo._x     = player_x;
+	playerInfo._y     = player_y;
+	playerInfo._level = static_cast<uint8>(player_level);
+	playerInfo._exp   = static_cast<uint32>(player_exp);
 
 	return playerInfo;
 }
 
-bool DBConnection::SavePlayerInfo(const string& name, short x, short y)
+bool DBConnection::SaveUserInfo(const string& name, short x, short y, uint8 level, uint32 exp)
 {
 	StatementCleanup cleanup(*this);
 
-	wstring query = L"EXEC SavePlayerInfo ?, ?, ?";
+	wstring query = L"EXEC SavePlayerInfo ?, ?, ?, ?, ?";
 
-	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return false;
-	if (!BindParam(2, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&x, nullptr)) return false;
-	if (!BindParam(3, SQL_C_SHORT, SQL_INTEGER, 0, (SQLPOINTER)&y, nullptr)) return false;
+	if (!BindParam(1, SQL_C_CHAR,     SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return false;
+	if (!BindParam(2, SQL_C_SHORT,    SQL_INTEGER,  0,           (SQLPOINTER)&x,           nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT,    SQL_INTEGER,  0,           (SQLPOINTER)&y,           nullptr)) return false;
+	if (!BindParam(4, SQL_C_UTINYINT, SQL_TINYINT,  0,           (SQLPOINTER)&level,       nullptr)) return false;
+	if (!BindParam(5, SQL_C_ULONG,    SQL_INTEGER,  0,           (SQLPOINTER)&exp,         nullptr)) return false;
 	return Execute(query.c_str());
 }

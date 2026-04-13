@@ -1,33 +1,29 @@
 #include "pch.h"
 #include "GameObject.h"
+#include "GameObjectManager.h"
+
+GameObject::GameObject(const ObjID& objID)
+{
+	SetObjID(objID);
+}
+
+GameObject::GameObject(const ObjID& objID, const ObjID& ownerID)
+{
+	SetObjID(objID);
+	SetOwnerID(ownerID);
+}
 
 void GameObject::InitInstance()
 {
-	ResetParent();
-	_initialized.store(true);
+	SetParent(nullptr);
 }
 
-void GameObject::OnUpdate(const UpdateTimePoint& updateTime)
+bool GameObject::OnUpdate()
 {
-	(void)updateTime;
+	return true;
 }
 
-GameObject::Ptr GameObject::GetParent() const noexcept
+void GameObject::SetParent(const SharedPtr& parent) noexcept
 {
-	return _parent.lock();
-}
-
-void GameObject::SetParent(const Ptr& parent) noexcept
-{
-	_parent = parent;
-}
-
-void GameObject::ResetParent() noexcept
-{
-	_parent.reset();
-}
-
-bool GameObject::HasParent() const noexcept
-{
-	return _parent.expired() == false;
+	m_parent = parent;
 }

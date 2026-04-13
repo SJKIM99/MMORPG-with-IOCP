@@ -1,10 +1,14 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "GameSession.h"
+#include "User.h"
 
 AcceptContext GAcceptContext;
 
 namespace
 {
+	mutex GPendingIoLock;
+	unordered_map<IoContext*, shared_ptr<IoContext>> GPendingIoContexts;
+
 	template<typename Type>
 	bool SetSocketOption(SOCKET socket, int level, int option, Type value)
 	{
@@ -12,7 +16,31 @@ namespace
 	}
 }
 
-GameSession::GameSession()
+bool RegisterPendingIoContext(const shared_ptr<IoContext>& context)
+{
+	if (context == nullptr)
+		return false;
+
+	scoped_lock lock(GPendingIoLock);
+	return GPendingIoContexts.emplace(context.get(), context).second;
+}
+
+shared_ptr<IoContext> TakePendingIoContext(IoContext* context)
+{
+	if (context == nullptr)
+		return nullptr;
+
+	scoped_lock lock(GPendingIoLock);
+	auto found = GPendingIoContexts.find(context);
+	if (found == GPendingIoContexts.end())
+		return nullptr;
+
+	auto owned = std::move(found->second);
+	GPendingIoContexts.erase(found);
+	return owned;
+}
+
+GameSession::GameSession() : _recvContext(MakeShared<RecvContext>())
 {
 	ResetNetworkState();
 }
@@ -22,7 +50,17 @@ GameSession::~GameSession()
 	CloseSession();
 }
 
-bool GameSession::AttachSocket(SOCKET socket, uint32 sessionId)
+void GameSession::BindOwner(const shared_ptr<User>& owner)
+{
+	_owner = owner;
+}
+
+shared_ptr<User> GameSession::GetOwner() const
+{
+	return _owner.lock();
+}
+
+bool GameSession::AttachSocket(SOCKET socket)
 {
 	lock_guard<mutex> guard(_sessionLock);
 
@@ -32,10 +70,7 @@ bool GameSession::AttachSocket(SOCKET socket, uint32 sessionId)
 		return false;
 
 	_socket = socket;
-	_id = sessionId;
-	_state = SOCKET_STATE::ST_ALLOC;
 	_pendingRecvBytes = 0;
-	_sessionToken.fetch_add(1);
 
 	BOOL noDelay = TRUE;
 	SetSocketOption(_socket, IPPROTO_TCP, TCP_NODELAY, noDelay);
@@ -53,33 +88,33 @@ void GameSession::CloseSession()
 {
 	lock_guard<mutex> guard(_sessionLock);
 	CloseSocketUnsafe();
-	_state = SOCKET_STATE::ST_FREE;
-	_id = static_cast<uint32>(-1);
-	_sessionToken.fetch_add(1);
 }
 
 void GameSession::ResetNetworkState()
 {
 	_socket = INVALID_SOCKET;
-	_state = SOCKET_STATE::ST_FREE;
 	_pendingRecvBytes = 0;
-	_id = static_cast<uint32>(-1);
 }
 
 bool GameSession::PostRecv()
 {
-	if (_socket == INVALID_SOCKET)
+	if (_socket == INVALID_SOCKET || _recvContext == nullptr)
 		return false;
 
 	DWORD recvFlag = 0;
-	_recvContext.Prepare(_pendingRecvBytes, GetSessionToken());
+	_recvContext->Prepare(_pendingRecvBytes);
+	if (RegisterPendingIoContext(_recvContext) == false)
+		return false;
 
-	const int result = ::WSARecv(_socket, &_recvContext._wsaBuf, 1, nullptr, &recvFlag, &_recvContext._over, nullptr);
+	const int result = ::WSARecv(_socket, &_recvContext->_wsaBuf, 1, nullptr, &recvFlag, &_recvContext->_over, nullptr);
 	if (result == SOCKET_ERROR)
 	{
 		const int errorCode = ::WSAGetLastError();
 		if (errorCode != WSA_IO_PENDING)
+		{
+			(void)TakePendingIoContext(_recvContext.get());
 			return false;
+		}
 	}
 
 	return true;

@@ -1,31 +1,19 @@
 #include "pch.h"
 #include "GameObjectManager.h"
 
-void GameObjectManager::Register(uint32 id, shared_ptr<Subject> obj)
+bool GameObjectManager::Insert(const ObjID& objID, GameObject::SharedPtr gameObject)
 {
-    _objects.emplace(id, move(obj));
+	unique_lock lock(m_lock);
+	auto [iter, success] = m_gameObjects.emplace(objID, gameObject);
+
+	return success;
 }
 
-shared_ptr<Subject>& GameObjectManager::operator[](uint32 id)
+bool GameObjectManager::Delete(const ObjID& objID)
 {
-    auto it = _objects.find(id);
-    ASSERT_CRASH(it != _objects.end());
-    return it->second;
+	unique_lock lock(m_lock); 
+	size_t erasedCount = m_gameObjects.erase(objID);
+
+	return erasedCount > 0;
 }
 
-const shared_ptr<Subject>& GameObjectManager::operator[](uint32 id) const
-{
-    auto it = _objects.find(id);
-    ASSERT_CRASH(it != _objects.end());
-    return it->second;
-}
-
-bool GameObjectManager::Contains(uint32 id) const
-{
-    return _objects.count(id) > 0;
-}
-
-size_t GameObjectManager::Size() const
-{
-    return _objects.size();
-}

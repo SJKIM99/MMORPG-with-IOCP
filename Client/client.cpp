@@ -7,6 +7,10 @@
 #include <chrono>
 #include "C:\Repository\MMORPG-with-IOCP\MMORPG-with-IOCP\GameServer\Protocol.h"
 
+// ObjID static member definitions (required by linker)
+ContentID ContentID::npos{};
+ObjID ObjID::npos{};
+
 using namespace std;
 
 #pragma comment (lib, "opengl32.lib")
@@ -24,7 +28,7 @@ constexpr auto WINDOW_HEIGHT = SCREEN_WIDTH * TILE_WIDTH;
 
 int g_left_x;
 int g_top_y;
-int g_myid;
+ObjID g_myid;
 int chat = -1;
 sf::RenderWindow* g_window;
 sf::Font g_font;
@@ -38,7 +42,7 @@ private:
 	sf::Text m_chat;
 	chrono::system_clock::time_point m_mess_end_time;
 public:
-	int id;
+	ObjID id;
 	int m_x, m_y;
 	int level, hp, maxhp, exp;
 	char name[20];
@@ -92,8 +96,10 @@ public:
 	void set_name(const char str[]) {
 		m_name.setFont(g_font);
 		m_name.setString(str);
-		if (id < MAX_USER) m_name.setFillColor(sf::Color(255, 255, 255));
-		else m_name.setFillColor(sf::Color(255, 255, 0));
+		if (id.GetCategory<EnumCategory>() == EnumCategory::eUser)
+			m_name.setFillColor(sf::Color(255, 255, 255));
+		else
+			m_name.setFillColor(sf::Color(255, 255, 0));
 		m_name.setStyle(sf::Text::Bold);
 	}
 
@@ -110,7 +116,7 @@ OBJECT avatar;
 OBJECT monster;
 OBJECT obstacle;
 
-unordered_map <int, OBJECT> players;
+unordered_map <ObjID, OBJECT> players;
 
 //OBJECT white_tile;
 //OBJECT black_tile;
@@ -136,12 +142,12 @@ void client_initialize()
 	liquid_monster = new sf::Texture;
 	aggro_monster = new sf::Texture;
 
-	board1->loadFromFile("¹Ù´Ú1.png");
-	board2->loadFromFile("¹Ù´Ú2.png");
-	wall->loadFromFile("Àå¾Ö¹°.png");
-	knight->loadFromFile("±â»ç.png");
-	liquid_monster->loadFromFile("¾×Ã¼¸ó½ºÅÍ.png");
-	aggro_monster->loadFromFile("¾î±×·Î¸ó½ºÅÍ.png");
+	board1->loadFromFile("floor1.png");
+	board2->loadFromFile("floor2.png");
+	wall->loadFromFile("obstacle.png");
+	knight->loadFromFile("knight.png");
+	liquid_monster->loadFromFile("liquid_monster.png");
+	aggro_monster->loadFromFile("aggro_monster.png");
 
 	if (false == g_font.loadFromFile("cour.ttf")) {
 		cout << "Font Loading Error!\n";
@@ -180,13 +186,12 @@ void ProcessPacket(char* ptr)
 		g_myid = packet->id;
 		avatar.id = g_myid;
 		avatar.move(packet->x, packet->y);
-		/*avatar.level = packet->level;
-		avatar.hp = packet->hp;
-		avatar.maxhp = packet->max_hp;*/
 		g_left_x = packet->x - SCREEN_WIDTH / 2;
 		g_top_y = packet->y - SCREEN_HEIGHT / 2;
 		avatar.maxhp = packet->maxhp;
 		avatar.hp = packet->hp;
+		avatar.level = packet->level;
+		avatar.exp = packet->exp;
 		avatar.show();
 	}
 	break;
@@ -194,7 +199,7 @@ void ProcessPacket(char* ptr)
 	case static_cast<char>(PacketType::SC_ADD_OBJECT):
 	{
 		SC_ADD_OBJECT_PACKET* my_packet = reinterpret_cast<SC_ADD_OBJECT_PACKET*>(ptr);
-		int id = my_packet->id;
+		ObjID id = my_packet->id;
 
 		if (id == g_myid) {
 			avatar.move(my_packet->x, my_packet->y);
@@ -202,7 +207,7 @@ void ProcessPacket(char* ptr)
 			g_top_y = my_packet->y - SCREEN_HEIGHT / 2;
 			avatar.show();
 		}
-		else if (id < MAX_USER) {
+		else if (id.GetCategory<EnumCategory>() == EnumCategory::eUser) {
 			players[id] = OBJECT{ *knight, 0, 0, 64, 64 };
 			players[id].id = id;
 			players[id].move(my_packet->x, my_packet->y);
@@ -221,10 +226,10 @@ void ProcessPacket(char* ptr)
 		}
 		break;
 	}
-	case  static_cast<char>(PacketType::SC_MOVE_OBJECT):
+	case static_cast<char>(PacketType::SC_MOVE_OBJECT):
 	{
 		SC_MOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_MOVE_OBJECT_PACKET*>(ptr);
-		int other_id = my_packet->id;
+		ObjID other_id = my_packet->id;
 		if (other_id == g_myid) {
 			avatar.move(my_packet->x, my_packet->y);
 			g_left_x = my_packet->x - SCREEN_WIDTH / 2;
@@ -239,8 +244,7 @@ void ProcessPacket(char* ptr)
 	case static_cast<char>(PacketType::SC_REMOVE_OBJECT):
 	{
 		SC_REMOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_REMOVE_OBJECT_PACKET*>(ptr);
-		//cout << my_packet->id << "¹ø ÇÃ·¹ÀÌ¾î REMOVE_PACKET" << endl;
-		int other_id = my_packet->id;
+		ObjID other_id = my_packet->id;
 		if (other_id == g_myid) {
 			avatar.hide();
 		}
@@ -251,52 +255,52 @@ void ProcessPacket(char* ptr)
 	}
 	case static_cast<char>(PacketType::SC_PLAYER_ATTACK_NPC):
 	{
-		SC_PLAYER_ATTACK_NPC_PACKET* packet = reinterpret_cast<SC_PLAYER_ATTACK_NPC_PACKET*>(ptr);
-		int npcId = packet->id;
-
-		//cout << npcId << "¹ø NPC Ã¼·Â : " << packet->hp << endl;
+		// SC_PLAYER_ATTACK_NPC_PACKET* packet = reinterpret_cast<SC_PLAYER_ATTACK_NPC_PACKET*>(ptr);
+		break;
+	}
+	case static_cast<char>(PacketType::SC_STAT_CHANGE):
+	{
+		SC_STAT_CHANGE_PACKET* packet = reinterpret_cast<SC_STAT_CHANGE_PACKET*>(ptr);
+		avatar.level = packet->level;
+		avatar.hp    = packet->hp;
+		avatar.maxhp = packet->maxhp;
+		avatar.exp   = packet->exp;
 		break;
 	}
 	case static_cast<char>(PacketType::SC_NPC_DIE):
 	{
 		SC_NPC_DIE_PACKET* packet = reinterpret_cast<SC_NPC_DIE_PACKET*>(ptr);
 		players.erase(packet->npc_id);
-
-		//cout << packet->npc_id << "¹ø NPC »ç¸Á" << endl;
 		break;
 	}
 	case static_cast<char>(PacketType::SC_NPC_RESPAWN):
 	{
 		SC_NPC_RESPAWN_PACKET* packet = reinterpret_cast<SC_NPC_RESPAWN_PACKET*>(ptr);
-
-		players[packet->npc_id].m_x = packet->x;
-		players[packet->npc_id].m_y = packet->y;
-		
-		//cout << packet->npc_id << "¹ø NPC ¸®½ºÆù" << endl;
+		ObjID npcId = packet->npc_id;
+		if (players.count(npcId)) {
+			players[npcId].move(packet->x, packet->y);
+			players[npcId].show();
+		}
 		break;
 	}
 	case static_cast<char>(PacketType::SC_NPC_ATTACK_PLAYER):
 	{
 		SC_NPC_ATTACK_PLAYER_PACKET* packet = reinterpret_cast<SC_NPC_ATTACK_PLAYER_PACKET*>(ptr);
-
 		avatar.hp = packet->hp;
 		break;
 	}
 	case static_cast<char>(PacketType::SC_HEAL):
 	{
 		SC_HEAL_PACKET* packet = reinterpret_cast<SC_HEAL_PACKET*>(ptr);
-
 		avatar.hp = packet->hp;
 		break;
 	}
 	case static_cast<char>(PacketType::SC_PLAYER_DIE):
 	{
 		SC_PLAYER_DIE_PACKET* packet = reinterpret_cast<SC_PLAYER_DIE_PACKET*>(ptr);
-		//cout << packet->id << " ¹ø ÇÃ·¹ÀÌ¾î »ç¸Á ÆÐÅ¶ Àü¼Û" << endl;
-
-		if (packet->id == g_myid) { 
+		if (packet->id == g_myid) {
 			avatar.hp = packet->hp;
-			avatar.hide(); 
+			avatar.hide();
 		}
 		else {
 			players[packet->id].hp = packet->hp;
@@ -307,7 +311,6 @@ void ProcessPacket(char* ptr)
 	case static_cast<char>(PacketType::SC_PLAYER_RESPAWN):
 	{
 		SC_PLAYER_RESPAWN_PACKET* packet = reinterpret_cast<SC_PLAYER_RESPAWN_PACKET*>(ptr);
-
 		if (packet->id == g_myid) {
 			g_left_x = packet->x - SCREEN_WIDTH / 2;
 			g_top_y = packet->y - SCREEN_HEIGHT / 2;
@@ -316,15 +319,15 @@ void ProcessPacket(char* ptr)
 			avatar.show();
 		}
 		else {
-			avatar.move(packet->x, packet->y);
-			avatar.hp = packet->hp;
+			players[packet->id].move(packet->x, packet->y);
+			players[packet->id].hp = packet->hp;
 			players[packet->id].show();
 		}
 		break;
 	}
 	/*
 	case SC_LOGIN_FAIL:
-		cout << "ÀÌ¹Ì Á¢¼ÓÇÑ ÇÃ·¹ÀÌ¾îÀÌ¹Ç·Î ·Î±×ÀÎÇÒ ¼ö ¾ø½À´Ï´Ù. " << endl;
+		cout << "ï¿½Ì¹ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ã·ï¿½ï¿½Ì¾ï¿½ï¿½Ì¹Ç·ï¿½ ï¿½Î±ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½. " << endl;
 		client_finish();
 
 		break;
@@ -418,7 +421,7 @@ void client_main()
 	auto recv_result = s_socket.receive(net_buf, BUF_SIZE, received);
 	if (recv_result == sf::Socket::Error)
 	{
-		wcout << L"Recv ¿¡·¯!";
+		wcout << L"Recv ï¿½ï¿½ï¿½ï¿½!";
 		exit(-1);
 	}
 	if (recv_result == sf::Socket::Disconnected) {
@@ -427,7 +430,7 @@ void client_main()
 	}
 	if (recv_result != sf::Socket::NotReady)
 		if (received > 0) process_data(net_buf, received);
-	//cout << " µ¥ÀÌÅÍ Å©±â - " << received << endl;
+	//cout << " ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Å©ï¿½ï¿½ - " << received << endl;
 
 	for (int i = 0; i < SCREEN_WIDTH; ++i)
 		for (int j = 0; j < SCREEN_HEIGHT; ++j)
@@ -444,7 +447,7 @@ void client_main()
 				tile2.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
 				tile2.a_draw();
 			}
-			else {	//Àå¾Ö¹° Ãæµ¹ Ã³¸® ÇØ¾ßÇÔ
+			else {	//ï¿½ï¿½Ö¹ï¿½ ï¿½æµ¹ Ã³ï¿½ï¿½ ï¿½Ø¾ï¿½ï¿½ï¿½
 				if (0 == (tile_x / 2 + tile_y / 2) % 3) {
 					obstacle.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
 					obstacle.a_draw();
@@ -464,7 +467,7 @@ void client_main()
 	sf::Text text;
 	text.setFont(g_font);
 	char buf[512];
-	sprintf_s(buf, "(%d, %d), level = %d, hp = %d/%d", avatar.m_x, avatar.m_y, avatar.level, avatar.hp, avatar.maxhp);
+	sprintf_s(buf, "(%d, %d)  Lv.%d  HP:%d/%d  EXP:%d", avatar.m_x, avatar.m_y, avatar.level, avatar.hp, avatar.maxhp, avatar.exp);
 	text.setString(buf);
 	g_window->draw(text);
 }
@@ -483,13 +486,13 @@ int main()
 	s_socket.setBlocking(false);
 
 	if (status != sf::Socket::Done) {
-		wcout << L"¼­¹ö¿Í ¿¬°áÇÒ ¼ö ¾ø½À´Ï´Ù.\n";
+		wcout << L"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½.\n";
 		exit(-1);
 	}
 
 	client_initialize();
 	char id[20];
-	cout << "ID¸¦ ÀÔ·ÂÇÏ¼¼¿ä:";
+	cout << "ID :";
 	cin >> id;
 	CS_LOGIN_PACKET p;
 	p.size = sizeof(p);
@@ -557,7 +560,7 @@ int main()
 			}
 			else {
 			/*	char chatting[CHAT_SIZE];
-				cout << "Ã¤ÆÃÀÔ·Â : ";
+				cout << "Ã¤ï¿½ï¿½ï¿½Ô·ï¿½ : ";
 				cin >> chatting;
 
 				CS_CHAT_PACKET p;

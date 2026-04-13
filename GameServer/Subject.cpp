@@ -1,32 +1,35 @@
 #include "pch.h"
 #include "Subject.h"
-
-Subject::Subject()
-{
-	::memset(_name, 0, sizeof(_name));
-}
+#include "Monster.h"
 
 void Subject::InitInstance()
 {
 	GameObject::InitInstance();
-	ResetGameplayState();
+	m_stat = std::make_shared<Stat>();
 }
 
-void Subject::OnUpdate(const UpdateTimePoint& updateTime)
+bool Subject::OnUpdate()
 {
-	GameObject::OnUpdate(updateTime);
+	GameObject::OnUpdate();
+
+	return true;
 }
 
-void Subject::ResetGameplayState()
+Subject::SharedPtr MakeNewSubject(const ObjID& e, const ObjID& OwnerID)
 {
-	_timerEpoch.fetch_add(1);
-	if (_state != SOCKET_STATE::ST_FREE)
-		_state = SOCKET_STATE::ST_ALLOC;
-	_transform.Reset();
-	_stat.Reset();
-	_lastMoveTime   = 0;
-	_lastAttackTime = 0;
-	_viewList.clear();
-	_active.store(false);
-	_attack.store(false);
+	Subject::SharedPtr newSubject{};
+
+	switch (e.GetCategory())
+	{
+	case EnumCategory::eMonster:
+		newSubject = std::make_shared<Monster>(e);
+		if (newSubject)
+		{
+			newSubject->SetOwnerID(OwnerID);
+			newSubject->InitInstance();
+		}
+		break;
+	}
+
+	return newSubject;
 }

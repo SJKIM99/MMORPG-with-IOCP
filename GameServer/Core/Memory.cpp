@@ -1,4 +1,4 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "Memory.h"
 #include "MemoryPool.h"
 
@@ -13,7 +13,7 @@ Memory::Memory()
 
 	for (size = 32; size <= 1024; size += 32)
 	{
-		MemoryPool* pool = new MemoryPool(size);
+		auto pool = make_shared<MemoryPool>(size);
 		_pools.push_back(pool);
 
 		while (tableIndex <= size)
@@ -25,7 +25,7 @@ Memory::Memory()
 
 	for (; size <= 2048; size += 128)
 	{
-		MemoryPool* pool = new MemoryPool(size);
+		auto pool = make_shared<MemoryPool>(size);
 		_pools.push_back(pool);
 
 		while (tableIndex <= size)
@@ -37,7 +37,7 @@ Memory::Memory()
 
 	for (; size <= 4096; size += 256)
 	{
-		MemoryPool* pool = new MemoryPool(size);
+		auto pool = make_shared<MemoryPool>(size);
 		_pools.push_back(pool);
 
 		while (tableIndex <= size)
@@ -50,9 +50,6 @@ Memory::Memory()
 
 Memory::~Memory()
 {
-	for (MemoryPool* pool : _pools)
-		delete pool;
-
 	_pools.clear();
 }
 
@@ -66,13 +63,15 @@ void* Memory::Allocate(int32 size)
 #else
 	if (allocSize > MAX_ALLOC_SIZE)
 	{
-		// ¸Ş¸ğ¸® Ç®¸µ ÃÖ´ë Å©±â¸¦ ¹ş¾î³ª¸é ÀÏ¹İ ÇÒ´ç
+		// ë©”ëª¨ë¦¬ í’€ë§ ìµœëŒ€ í¬ê¸°ë¥¼ ë²—ì–´ë‚˜ë©´ ì¼ë°˜ í• ë‹¹
 		header = reinterpret_cast<MemoryHeader*>(::_aligned_malloc(allocSize, SLIST_ALIGNMENT));
 	}
 	else
 	{
-		// ¸Ş¸ğ¸® Ç®¿¡¼­ ²¨³»¿Â´Ù
-		header = _poolTable[allocSize]->Pop();
+		// ë©”ëª¨ë¦¬ í’€ì—ì„œ êº¼ë‚´ì˜¨ë‹¤
+		auto pool = _poolTable[allocSize].lock();
+		ASSERT_CRASH(pool != nullptr);
+		header = pool->Pop();
 	}
 #endif	
 
@@ -91,13 +90,15 @@ void Memory::Release(void* ptr)
 #else
 	if (allocSize > MAX_ALLOC_SIZE)
 	{
-		// ¸Ş¸ğ¸® Ç®¸µ ÃÖ´ë Å©±â¸¦ ¹ş¾î³ª¸é ÀÏ¹İ ÇØÁ¦
+		// ë©”ëª¨ë¦¬ í’€ë§ ìµœëŒ€ í¬ê¸°ë¥¼ ë²—ì–´ë‚˜ë©´ ì¼ë°˜ í•´ì œ
 		::_aligned_free(header);
 	}
 	else
 	{
-		// ¸Ş¸ğ¸® Ç®¿¡ ¹İ³³ÇÑ´Ù
-		_poolTable[allocSize]->Push(header);
+		// ë©”ëª¨ë¦¬ í’€ì— ë°˜ë‚©í•œë‹¤
+		auto pool = _poolTable[allocSize].lock();
+		ASSERT_CRASH(pool != nullptr);
+		pool->Push(header);
 	}
 #endif	
 }

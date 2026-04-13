@@ -1,65 +1,5 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "GameLogicThread.h"
-
-GameLogicThread::Queue::Queue()
-{
-	_stub = xnew<TaskNode>([] {});
-	_head.store(_stub);
-	_tail = _stub;
-}
-
-GameLogicThread::Queue::~Queue()
-{
-	while (TaskNode* node = Pop())
-		xdelete(node);
-
-	xdelete(_stub);
-	_stub = nullptr;
-	_tail = nullptr;
-}
-
-void GameLogicThread::Queue::Push(TaskNode* node)
-{
-	node->next.store(nullptr, memory_order_relaxed);
-	TaskNode* prev = _head.exchange(node, memory_order_acq_rel);
-	prev->next.store(node, memory_order_release);
-}
-
-GameLogicThread::TaskNode* GameLogicThread::Queue::Pop()
-{
-	TaskNode* tail = _tail;
-	TaskNode* next = tail->next.load(memory_order_acquire);
-
-	if (tail == _stub)
-	{
-		if (next == nullptr)
-			return nullptr;
-
-		_tail = next;
-		tail = next;
-		next = tail->next.load(memory_order_acquire);
-	}
-
-	if (next != nullptr)
-	{
-		_tail = next;
-		return tail;
-	}
-
-	TaskNode* head = _head.load(memory_order_acquire);
-	if (tail != head)
-		return nullptr;
-
-	Push(_stub);
-	next = tail->next.load(memory_order_acquire);
-	if (next != nullptr)
-	{
-		_tail = next;
-		return tail;
-	}
-
-	return nullptr;
-}
 
 GameLogicThread::GameLogicThread()
 {
@@ -78,39 +18,37 @@ GameLogicThread::~GameLogicThread()
 
 void GameLogicThread::Enqueue(Task task)
 {
-	TaskNode* node = xnew<TaskNode>(move(task));
-	_queue.Push(node);
+	{
+		scoped_lock lock(_queueLock);
+		_queue.push(move(task));
+	}
 
-	// Only call SetEvent when the thread is actually sleeping.
-	// If it is already draining, it will pick up the new node on its own.
-	bool wasSleeping = true;
-	if (_sleeping.compare_exchange_strong(wasSleeping, false, memory_order_acq_rel, memory_order_relaxed))
-		::SetEvent(_wakeEvent);
+	::SetEvent(_wakeEvent);
 }
 
 void GameLogicThread::Run()
 {
 	while (true)
 	{
-		_sleeping.store(false, memory_order_relaxed);
 		Drain();
-
-		// Signal sleeping before the second drain so that any concurrent Enqueue
-		// will call SetEvent rather than silently skip it.
-		_sleeping.store(true, memory_order_seq_cst);
-
-		// Second drain: catches tasks pushed between the first Drain and the store above.
-		Drain();
-
 		::WaitForSingleObject(_wakeEvent, INFINITE);
 	}
 }
 
 void GameLogicThread::Drain()
 {
-	while (TaskNode* node = _queue.Pop())
+	while (true)
 	{
-		node->task();
-		xdelete(node);
+		Task task;
+		{
+			scoped_lock lock(_queueLock);
+			if (_queue.empty())
+				return;
+
+			task = move(_queue.front());
+			_queue.pop();
+		}
+
+		task();
 	}
 }

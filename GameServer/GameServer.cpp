@@ -6,6 +6,7 @@
 #include <future>
 #include "ThreadManager.h"
 #include "User.h"
+#include "Monster.h"
 #include "GameLogicThread.h"
 #include "WorkerThread.h"
 #include "DBConnectionPool.h"
@@ -13,6 +14,7 @@
 #include "DBThread.h"
 #include "TimerThread.h"
 #include "Collision.h"
+#include "MonsterHelper.h"
 
 int main()
 {
@@ -25,8 +27,7 @@ int main()
 
 	InitCollisionTile();
 
-	User::InitializePlayers();
-	Monster::InitAll();
+	MonsterHelper::Init();
 
 	//DB풀 초기화
 	GDBConnectionPool->Connect(8);
@@ -76,3 +77,4 @@ int main()
 
 	GThreadManager->Join();
 }
+

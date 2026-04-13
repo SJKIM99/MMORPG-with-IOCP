@@ -23,11 +23,11 @@ public:
 	void			HandleError(SQLRETURN ret);
 
 public:
-	bool			IsPlayerRegistered(const string& name);
-	bool			VerifyPlayerPassword(const string& name, const string& password);
-	bool			AddPlayerInfoInDataBase(const string& name, const string& password, short x, short y);
-	DB_PLAYER_INFO	ExtractPlayerInfo(const string& name);
-	bool			SavePlayerInfo(const string& name, short x, short y);
+	bool			IsUserRegistered(const string& name);
+	bool			VerifyUserPassword(const string& name, const string& password);
+	bool			AddUserInfoInDataBase(const string& name, const string& password, short x, short y, uint8 level = 1, uint32 exp = 0);
+	DB_USER_INFO	ExtractUserInfo(const string& name);
+	bool			SaveUserInfo(const string& name, short x, short y, uint8 level, uint32 exp);
 
 private:
 	SQLHENV			_enviroment = SQL_NULL_HANDLE;

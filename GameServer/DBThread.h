@@ -1,40 +1,36 @@
 #pragma once
 
 class DBConnectionPool;
+class GameSession;
 
 class DBThread
 {
 public:
-	using Clock = std::chrono::steady_clock;
+	using Clock    = std::chrono::steady_clock;
 	using Duration = Clock::duration;
 
 	DBThread() = default;
 	~DBThread() = default;
 
 	void DoDataBase();
-	void RequestLogin(uint32 playerId, uint64 sessionToken, const std::string& playerName, const std::string& password);
-	void RequestAddPlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo);
-	void RequestSavePlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo);
-	void Schedule(DB_EVENT event);
-	void ScheduleNow(uint32 playerId, DB_EVENT_TYPE eventType, DB_PLAYER_INFO playerInfo = {}, uint64 sessionToken = 0);
-	void ScheduleAfter(uint32 playerId, Duration delay, DB_EVENT_TYPE eventType, DB_PLAYER_INFO playerInfo = {}, uint64 sessionToken = 0);
+	void RequestLogin(const shared_ptr<GameSession>& session, const std::string& name, const std::string& password);
+	void RequestAddUser(const ObjID& subjectId, const DB_USER_INFO& info);
+	void RequestSaveUser(const ObjID& subjectId, const DB_USER_INFO& info);
+	void Schedule(shared_ptr<DB_EVENT_BASE> event);
 
-	[[nodiscard]] static Clock::time_point Now() noexcept
-	{
-		return Clock::now();
-	}
+	[[nodiscard]] static Clock::time_point Now() noexcept { return Clock::now(); }
 
 private:
 	struct DBEventCompare
 	{
-		bool operator()(const DB_EVENT& lhs, const DB_EVENT& rhs) const noexcept;
+		bool operator()(const shared_ptr<DB_EVENT_BASE>& lhs, const shared_ptr<DB_EVENT_BASE>& rhs) const noexcept;
 	};
 
-	void ProcessEvent(const DB_EVENT& event);
+	void ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event);
 
 private:
-	std::priority_queue<DB_EVENT, std::vector<DB_EVENT>, DBEventCompare> _events;
-	std::mutex _lock;
+	std::priority_queue<shared_ptr<DB_EVENT_BASE>, std::vector<shared_ptr<DB_EVENT_BASE>>, DBEventCompare> _events;
+	std::mutex             _lock;
 	std::condition_variable _cv;
-	uint64 _nextSequence = 0;
+	uint64                 _nextSequence = 0;
 };

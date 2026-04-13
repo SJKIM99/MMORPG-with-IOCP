@@ -5,6 +5,7 @@
 #include "Core\\GameServerCore.h"
 #include "Protocol.h"
 #include "ServerGlobal.h"
+#include "EnumCategory.h"
 
 enum IO_TYPE
 {
@@ -19,3 +20,5 @@ enum SOCKET_STATE
 	ST_ALLOC,
 	ST_INGAME
 };
+
+#include "GameObjectManager.h"

@@ -25,9 +25,6 @@
     <Filter Include="Global">
       <UniqueIdentifier>{93d557e1-9826-4023-b430-42eaf65c531b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="NPC">
-      <UniqueIdentifier>{eaf1bcc0-329b-4ee8-935f-37dd4eda06f3}</UniqueIdentifier>
-    </Filter>
     <Filter Include="TimerThread">
       <UniqueIdentifier>{61271a4a-7a18-43ab-a2b8-db74a1a32463}</UniqueIdentifier>
     </Filter>
@@ -42,6 +39,12 @@
     </Filter>
     <Filter Include="Helpers">
       <UniqueIdentifier>{ee5b1988-381f-45f0-a445-31b5f6dc3662}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ObjID">
+      <UniqueIdentifier>{8a72f0bb-235c-47b7-a100-84a072bbc260}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Monster">
+      <UniqueIdentifier>{eaf1bcc0-329b-4ee8-935f-37dd4eda06f3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -81,8 +84,8 @@
     <ClCompile Include="ServerGlobal.cpp">
       <Filter>Global</Filter>
     </ClCompile>
-    <ClCompile Include="NPC.cpp">
-      <Filter>NPC</Filter>
+    <ClCompile Include="Monster.cpp">
+      <Filter>Monster</Filter>
     </ClCompile>
     <ClCompile Include="TimerThread.cpp">
       <Filter>TimerThread</Filter>
@@ -138,6 +141,12 @@
     <ClCompile Include="Transform.cpp">
       <Filter>GameSession</Filter>
     </ClCompile>
+    <ClCompile Include="GameObjectManager.cpp" />
+    <ClCompile Include="ObjID.cpp" />
+    <ClCompile Include="ContentiD.cpp" />
+    <ClCompile Include="MonsterHelper.cpp">
+      <Filter>Monster</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -173,8 +182,8 @@
     <ClInclude Include="ServerGlobal.h">
       <Filter>Global</Filter>
     </ClInclude>
-    <ClInclude Include="NPC.h">
-      <Filter>NPC</Filter>
+    <ClInclude Include="Monster.h">
+      <Filter>Monster</Filter>
     </ClInclude>
     <ClInclude Include="TimerThread.h">
       <Filter>TimerThread</Filter>
@@ -241,6 +250,12 @@
     </ClInclude>
     <ClInclude Include="Transform.h">
       <Filter>GameSession</Filter>
+    </ClInclude>
+    <ClInclude Include="GameObjectManager.h" />
+    <ClInclude Include="ObjID.h" />
+    <ClInclude Include="ContentiD.h" />
+    <ClInclude Include="MonsterHelper.h">
+      <Filter>Monster</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

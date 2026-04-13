@@ -1,14 +1,15 @@
-#pragma once
+﻿#pragma once
 
-// Forward declaration only — full definition requires Subject.h which
-// needs IO_TYPE/SOCKET_STATE defined in pch.h first.
+#include <memory>
+
+// Forward declaration only; full definition requires Subject.h,
+// which needs IO_TYPE/SOCKET_STATE defined in pch.h first.
 class GameObjectManager;
-extern GameObjectManager* GObjectManager;
+extern std::shared_ptr<GameObjectManager> GGameObjectManager;
 
-extern class DBThread*           GDBThread;
-extern class Sector*             GSector;
-extern class GameLogicThread*    GGameLogicThread;
-extern class WorkerThread*       GWorkerThread;
-extern class TimerThread*        GTimerThread;
-extern class GameSessionManager* GSessionManager;
-
+extern std::shared_ptr<class DBThread>           GDBThread;
+extern std::shared_ptr<class Sector>             GSector;
+extern std::shared_ptr<class GameLogicThread>    GGameLogicThread;
+extern std::shared_ptr<class WorkerThread>       GWorkerThread;
+extern std::shared_ptr<class TimerThread>        GTimerThread;
+extern std::shared_ptr<class GameSessionManager> GSessionManager;

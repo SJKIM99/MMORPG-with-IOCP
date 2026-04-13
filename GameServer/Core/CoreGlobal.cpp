@@ -1,31 +1,31 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "CoreGlobal.h"
 #include "ThreadManager.h"
 #include "Memory.h"
 #include "DeadLockProfiler.h"
 #include "DBConnectionPool.h"
 
-ThreadManager*		GThreadManager = nullptr;
-Memory*				GMemory = nullptr;
-DeadLockProfiler*	GDeadLockProfiler = nullptr;
-DBConnectionPool*	GDBConnectionPool = nullptr;
+shared_ptr<ThreadManager>    GThreadManager = nullptr;
+shared_ptr<Memory>           GMemory = nullptr;
+shared_ptr<DeadLockProfiler> GDeadLockProfiler = nullptr;
+shared_ptr<DBConnectionPool> GDBConnectionPool = nullptr;
 
 class CoreGlobal
 {
 public:
 	CoreGlobal()
 	{
-		GThreadManager = new ThreadManager();
-		GMemory = new Memory();
-		GDeadLockProfiler = new DeadLockProfiler();
-		GDBConnectionPool = new DBConnectionPool();
+		GThreadManager = make_shared<ThreadManager>();
+		GMemory = make_shared<Memory>();
+		GDeadLockProfiler = make_shared<DeadLockProfiler>();
+		GDBConnectionPool = make_shared<DBConnectionPool>();
 	}
 
 	~CoreGlobal()
 	{
-		delete GThreadManager;
-		delete GMemory;
-		delete GDeadLockProfiler;
-		delete GDBConnectionPool;
+		GDBConnectionPool.reset();
+		GDeadLockProfiler.reset();
+		GMemory.reset();
+		GThreadManager.reset();
 	}
 } GCoreGlobal;

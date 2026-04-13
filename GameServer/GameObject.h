@@ -1,52 +1,47 @@
 #pragma once
 
+#include "ObjID.h"
 #include "GameSession.h"
 
-class GameObject : public GameSession, public enable_shared_from_this<GameObject>
+class GameObject : public ObjID, public enable_shared_from_this<GameObject>
 {
+	weak_ptr<GameObject> m_parent;
+	ObjID m_AccountID;
+	ObjID m_OwnerID;
+
 public:
-	using Ptr = shared_ptr<GameObject>;
+	using SharedPtr = shared_ptr<GameObject>;
 	using WeakPtr = weak_ptr<GameObject>;
-	using UpdateClock = chrono::steady_clock;
-	using UpdateTimePoint = UpdateClock::time_point;
 
 public:
 	GameObject() = default;
+	explicit GameObject(const ObjID& objID);
+	explicit GameObject(const ObjID& objID, const ObjID& ownerID);
+
 	virtual ~GameObject() = default;
 
-	virtual void InitInstance();
-	virtual void OnUpdate(const UpdateTimePoint& updateTime);
+	[[nodiscard]] ObjID& GetAccountID()       noexcept { return m_AccountID; }
+	[[nodiscard]] const ObjID& GetAccountID() const noexcept { return m_AccountID; }
+	[[nodiscard]] ObjID& GetOwnerID()         noexcept { return m_OwnerID; }
+	[[nodiscard]] const ObjID& GetOwnerID()   const noexcept { return m_OwnerID; }
+	
+	void    SetAccountID(const decltype(m_AccountID)& o) noexcept { m_AccountID = o; }
+	void    SetOwnerID(const decltype(m_OwnerID)& o) noexcept { m_OwnerID = o; }
 
-	[[nodiscard]] Ptr GetParent() const noexcept;
-
-	template<typename TObject>
-	requires derived_from<TObject, GameObject>
+	template<typename TObject> requires derived_from<TObject, GameObject>
 	[[nodiscard]] shared_ptr<TObject> GetParent() const noexcept
 	{
-		return dynamic_pointer_cast<TObject>(_parent.lock());
+		return dynamic_pointer_cast<TObject>(m_parent.lock());
 	}
 
-	void SetParent(const Ptr& parent) noexcept;
-	void ResetParent() noexcept;
+	void SetParent(const SharedPtr& parent) noexcept;
 
-	[[nodiscard]] bool HasParent() const noexcept;
-	[[nodiscard]] bool IsInitialized() const noexcept { return _initialized.load(); }
-
-	template<typename TObject = GameObject>
-	requires derived_from<TObject, GameObject>
-	[[nodiscard]] shared_ptr<TObject> SharedFromThis()
+	template<typename TObject = GameObject> requires derived_from<TObject, GameObject>
+	[[nodiscard]] shared_ptr<TObject> self()
 	{
-		return dynamic_pointer_cast<TObject>(weak_from_this().lock());
+		return dynamic_pointer_cast<TObject>(shared_from_this());
 	}
 
-	template<typename TObject = const GameObject>
-	requires derived_from<remove_cvref_t<TObject>, GameObject>
-	[[nodiscard]] shared_ptr<TObject> SharedFromThis() const
-	{
-		return dynamic_pointer_cast<TObject>(weak_from_this().lock());
-	}
-
-private:
-	WeakPtr _parent;
-	Atomic<bool> _initialized = false;
+	virtual void InitInstance();
+	virtual bool OnUpdate();
 };

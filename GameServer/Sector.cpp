@@ -29,13 +29,40 @@ const Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorY) co
 	return _sectors[sectorY][sectorX];
 }
 
+Sector::NeighborSnapshot Sector::CollectNeighborObjects(short sectorX, short sectorY) const
+{
+	NeighborSnapshot snapshot;
+
+	if (IsValidSector(sectorX, sectorY) == false)
+		return snapshot;
+
+	const short minY = std::max<short>(0, static_cast<short>(sectorY - 1));
+	const short maxY = std::min<short>(static_cast<short>(kSectorHeight - 1), static_cast<short>(sectorY + 1));
+	const short minX = std::max<short>(0, static_cast<short>(sectorX - 1));
+	const short maxX = std::min<short>(static_cast<short>(kSectorWidth - 1), static_cast<short>(sectorX + 1));
+
+	for (short currentY = minY; currentY <= maxY; ++currentY)
+	{
+		for (short currentX = minX; currentX <= maxX; ++currentX)
+		{
+			for (const ObjID subjectId : _sectors[currentY][currentX])
+			{
+				if (const auto subject = ::GetGameObject<Subject>(subjectId); subject != nullptr)
+					snapshot.push_back(subject);
+			}
+		}
+	}
+
+	return snapshot;
+}
+
 Sector::SectorObjects& Sector::GetObjectsMutable(short sectorX, short sectorY)
 {
 	ASSERT_CRASH(IsValidSector(sectorX, sectorY));
 	return _sectors[sectorY][sectorX];
 }
 
-bool Sector::UpdateObjectSector(uint32 objectId, short worldX, short worldY, short& inOutSectorX, short& inOutSectorY)
+bool Sector::UpdateObjectSector(ObjID& subjectId, short worldX, short worldY, short& inOutSectorX, short& inOutSectorY)
 {
 	const SectorCoord nextSector = GetSectorCoord(worldX, worldY);
 	if (IsValidSector(nextSector) == false)
@@ -45,15 +72,15 @@ bool Sector::UpdateObjectSector(uint32 objectId, short worldX, short worldY, sho
 		return false;
 
 	if (IsValidSector(inOutSectorX, inOutSectorY))
-		GetObjectsMutable(inOutSectorX, inOutSectorY).erase(objectId);
+		GetObjectsMutable(inOutSectorX, inOutSectorY).erase(subjectId);
 
-	GetObjectsMutable(nextSector.x, nextSector.y).insert(objectId);
+	GetObjectsMutable(nextSector.x, nextSector.y).insert(subjectId);
 	inOutSectorX = nextSector.x;
 	inOutSectorY = nextSector.y;
 	return true;
 }
 
-void Sector::RemoveObject(uint32 objectId, short& inOutSectorX, short& inOutSectorY)
+void Sector::RemoveObject(ObjID& objectId, short& inOutSectorX, short& inOutSectorY)
 {
 	if (IsValidSector(inOutSectorX, inOutSectorY) == false)
 		return;

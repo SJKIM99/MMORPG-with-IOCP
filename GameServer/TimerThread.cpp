@@ -1,13 +1,14 @@
 #include "pch.h"
 #include "TimerThread.h"
 #include "GameLogicThread.h"
-#include "User.h"
-#include "WorkerThread.h"
+#include "GameObjectManager.h"
+#include "MonsterHelper.h"
+#include "UserHelper.h"
 
 bool TimerThread::TimerEventCompare::operator()(const TIMER_EVENT& lhs, const TIMER_EVENT& rhs) const noexcept
 {
-	if (lhs.wakeup_time != rhs.wakeup_time)
-		return lhs.wakeup_time > rhs.wakeup_time;
+	if (lhs.wakeupTime != rhs.wakeupTime)
+		return lhs.wakeupTime > rhs.wakeupTime;
 
 	return lhs.sequence > rhs.sequence;
 }
@@ -23,81 +24,85 @@ void TimerThread::Schedule(TIMER_EVENT timerEvent)
 	_cv.notify_one();
 }
 
-void TimerThread::ScheduleNow(uint32 playerId, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
+void TimerThread::ScheduleNow(const ObjID& subjectId, TIMER_EVENT_TYPE eventType)
 {
-	ScheduleAfter(playerId, 0, Duration::zero(), eventType, aiTargetId);
+	ScheduleAfter(subjectId, Duration::zero(), eventType);
 }
 
-void TimerThread::ScheduleNow(uint32 playerId, uint64 sourceEpoch, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
+void TimerThread::ScheduleNow(const ObjID& subjectId, TIMER_EVENT_TYPE eventType, const ObjID& targetId)
 {
-	ScheduleAfter(playerId, sourceEpoch, Duration::zero(), eventType, aiTargetId);
+	ScheduleAfter(subjectId, Duration::zero(), eventType, targetId);
 }
 
-void TimerThread::ScheduleAfter(uint32 playerId, Duration delay, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
-{
-	ScheduleAfter(playerId, 0, delay, eventType, aiTargetId);
-}
-
-void TimerThread::ScheduleAfter(uint32 playerId, uint64 sourceEpoch, Duration delay, TIMER_EVENT_TYPE eventType, uint32 aiTargetId)
+void TimerThread::ScheduleAfter(const ObjID& subjectId, Duration delay, TIMER_EVENT_TYPE eventType)
 {
 	TIMER_EVENT timerEvent{};
-	timerEvent.player_id = playerId;
-	timerEvent.wakeup_time = Now() + delay;
+	timerEvent.subjectId = subjectId;
+	timerEvent.wakeupTime = Now() + delay;
 	timerEvent.event = eventType;
-	timerEvent.aiTargetId = aiTargetId;
-	timerEvent.sourceEpoch = sourceEpoch;
+
+	Schedule(std::move(timerEvent));
+}
+
+void TimerThread::ScheduleAfter(const ObjID& subjectId, Duration delay, TIMER_EVENT_TYPE eventType, const ObjID& targetId)
+{
+	TIMER_EVENT timerEvent{};
+	timerEvent.subjectId = subjectId;
+	timerEvent.wakeupTime = Now() + delay;
+	timerEvent.event = eventType;
+	timerEvent.targetId = targetId;
 
 	Schedule(std::move(timerEvent));
 }
 
 void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 {
-	if (timerEvent.sourceEpoch != 0 && (*GObjectManager)[timerEvent.player_id]->GetTimerEpoch() != timerEvent.sourceEpoch)
-		return;
+	const ObjID subjectId = timerEvent.subjectId;
+	const ObjID targetId  = timerEvent.targetId;
 
-	switch (timerEvent.event) {
-	case TIMER_EVENT_TYPE::EV_RANOM_MOVE: {
-		GGameLogicThread->Enqueue([npcId = timerEvent.player_id]()
+	switch (timerEvent.event)
+	{
+	case TIMER_EVENT_TYPE::EV_RANOM_MOVE:
+		GGameLogicThread->Enqueue([subjectId]()
 		{
-			GWorkerThread->HandleNpcRandomMove(npcId);
+			MonsterHelper::HandleRandomMove(subjectId);
 		});
 		break;
-	}
-	case TIMER_EVENT_TYPE::EV_NPC_RESPAWN: {
-		GGameLogicThread->Enqueue([npcId = timerEvent.player_id]()
+
+	case TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN:
+		GGameLogicThread->Enqueue([subjectId]()
 		{
-			GWorkerThread->HandleNpcRespawn(npcId);
+			MonsterHelper::HandleRespawn(subjectId);
 		});
 		break;
-	}
-	case TIMER_EVENT_TYPE::EV_NPC_ATTACK_TO_PLAYER: {
-		GGameLogicThread->Enqueue([npcId = timerEvent.player_id, playerId = timerEvent.aiTargetId]()
+
+	case TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER:
+		GGameLogicThread->Enqueue([subjectId, targetId]()
 		{
-			GWorkerThread->HandleNpcAttackToPlayer(npcId, playerId);
+			MonsterHelper::HandleAttackToPlayer(subjectId, targetId);
 		});
 		break;
-	}
-	case TIMER_EVENT_TYPE::EV_HEAL: {
-		GGameLogicThread->Enqueue([playerId = timerEvent.player_id]()
+
+	case TIMER_EVENT_TYPE::EV_AGGRO_MOVE:
+		GGameLogicThread->Enqueue([subjectId, targetId]()
 		{
-			GWorkerThread->HandleHeal(playerId);
+			MonsterHelper::HandleAggroMove(subjectId, targetId);
 		});
 		break;
-	}
-	case TIMER_EVENT_TYPE::EV_PLAYER_RESPAWN: {
-		GGameLogicThread->Enqueue([playerId = timerEvent.player_id]()
+
+	case TIMER_EVENT_TYPE::EV_HEAL:
+		GGameLogicThread->Enqueue([subjectId]()
 		{
-			GWorkerThread->HandlePlayerRespawn(playerId);
+			UserHelper::HandleHeal(subjectId);
 		});
 		break;
-	}
-	case TIMER_EVENT_TYPE::EV_AGGRO_MOVE: {
-		GGameLogicThread->Enqueue([npcId = timerEvent.player_id, playerId = timerEvent.aiTargetId]()
+
+	case TIMER_EVENT_TYPE::EV_USER_RESPAWN:
+		GGameLogicThread->Enqueue([subjectId]()
 		{
-			GWorkerThread->HandleNpcAggroMove(npcId, playerId);
+			UserHelper::HandleRespawn(subjectId);
 		});
 		break;
-	}
 	}
 }
 
@@ -105,25 +110,25 @@ void TimerThread::DoTimer()
 {
 	std::unique_lock lock(_lock);
 
-	while (true) {
+	while (true)
+	{
 		_cv.wait(lock, [this]()
 		{
 			return _events.empty() == false;
 		});
 
-		while (!_events.empty()) {
-			// Event not yet due: wait until its wakeup time (or until an earlier one arrives).
-			if (_events.top().wakeup_time > Now()) {
-				const auto nextWakeup = _events.top().wakeup_time;
+		while (!_events.empty())
+		{
+			if (_events.top().wakeupTime > Now())
+			{
+				const auto nextWakeup = _events.top().wakeupTime;
 				_cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
 				{
-					return _events.empty() || _events.top().wakeup_time < nextWakeup;
+					return _events.empty() || _events.top().wakeupTime < nextWakeup;
 				});
 				continue;
 			}
 
-			// Event is already due: pop and dispatch immediately without wait_until.
-			// Under NPC AI flood thousands of due events are processed without extra kernel calls.
 			TIMER_EVENT timerEvent = _events.top();
 			_events.pop();
 

@@ -1,17 +1,22 @@
 #pragma once
 
+#include <shared_mutex>
+#include <unordered_map>
+
+class GameSession;
+
 class GameSessionManager
 {
 public:
-	GameSessionManager();
+	GameSessionManager() = default;
 	~GameSessionManager() = default;
 
-	[[nodiscard]] uint32 AcquirePlayerSessionId();
-	bool ReleasePlayerSessionId(uint32 playerId);
+	[[nodiscard]] shared_ptr<GameSession> CreateSession();
+	[[nodiscard]] shared_ptr<GameSession> FindSession(GameSession* key) const;
+	bool                                  ReleaseSession(GameSession* key);
 
 private:
-	std::mutex _lock;
-	std::vector<uint32> _freePlayerIds;
-	std::array<bool, MAX_USER> _inUse{};
+	mutable shared_mutex                                 _lock;
+	unordered_map<GameSession*, shared_ptr<GameSession>> _sessions;
+	uint32                                               _nextObjectId = PLAYER_ID_START;
 };
-

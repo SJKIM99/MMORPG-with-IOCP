@@ -1,6 +1,7 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "WorldHelper.h"
 #include "User.h"
+#include "Monster.h"
 #include "UserHelper.h"
 #include "Sector.h"
 #include "TimerThread.h"
@@ -25,37 +26,50 @@ namespace WorldHelper
 		}
 	}
 
-	bool CanSee(uint32 from, uint32 to)
+	bool CanSee(const ObjID& a, const ObjID& b)
 	{
-		if (abs((*GObjectManager)[from]->_transform.GetX() - (*GObjectManager)[to]->_transform.GetX()) >= VIEW_RANGE)
+		const auto aSubject = ::GetGameObject<Subject>(a);
+		const auto bSubject = ::GetGameObject<Subject>(b);
+		if (aSubject == nullptr || bSubject == nullptr)
 			return false;
 
-		return abs((*GObjectManager)[from]->_transform.GetY() - (*GObjectManager)[to]->_transform.GetY()) <= VIEW_RANGE;
-	}
-
-	bool CanAttack(uint32 from, uint32 to)
-	{
-		if (abs((*GObjectManager)[from]->_transform.GetX() - (*GObjectManager)[to]->_transform.GetX()) >= ATTACK_RANGE)
+		if (abs(aSubject->GetX() - bSubject->GetX()) >= VIEW_RANGE)
 			return false;
 
-		return abs((*GObjectManager)[from]->_transform.GetY() - (*GObjectManager)[to]->_transform.GetY()) <= ATTACK_RANGE;
+		return abs(aSubject->GetY() - bSubject->GetY()) <= VIEW_RANGE;
 	}
 
-	void UpdateObjectPosition(uint32 objectId, short nextX, short nextY)
+	bool CanAttack(const ObjID& a, const ObjID& b)
 	{
-		auto& object = *(*GObjectManager)[objectId];
+		const auto aSubject = ::GetGameObject<Subject>(a);
+		const auto bSubject = ::GetGameObject<Subject>(b);
+		if (aSubject == nullptr || bSubject == nullptr)
+			return false;
+
+		if (abs(aSubject->GetX() - bSubject->GetX()) >= ATTACK_RANGE)
+			return false;
+
+		return abs(aSubject->GetY() - bSubject->GetY()) <= ATTACK_RANGE;
+	}
+
+	void UpdateObjectPosition(ObjID& subjectId, short nextX, short nextY)
+	{
+		auto object = ::GetGameObject<Subject>(subjectId);
+		if (object == nullptr)
+			return;
+
 		const bool updated = GSector->UpdateObjectSector(
-			objectId,
+			subjectId,
 			nextX,
 			nextY,
-			object._transform.RefSectorX(),
-			object._transform.RefSectorY());
+			object->RefSectorX(),
+			object->RefSectorY());
 
 		ASSERT_CRASH(updated || GSector->GetSectorCoord(nextX, nextY).IsAssigned());
-		object._transform.SetPosition(nextX, nextY);
+		object->SetPosition(nextX, nextY);
 	}
 
-	void PlaceObjectAtRandomWalkablePosition(uint32 objectId)
+	void PlaceObjectAtRandomWalkablePosition(ObjID& subjectId)
 	{
 		while (true)
 		{
@@ -64,35 +78,44 @@ namespace WorldHelper
 			if (isCollision(x, y))
 				continue;
 
-			UpdateObjectPosition(objectId, x, y);
+			UpdateObjectPosition(subjectId, x, y);
 			return;
 		}
 	}
 
-	std::vector<uint32> CollectVisiblePlayersAround(uint32 npcId)
+	std::vector<ObjID> CollectVisiblePlayersAround(ObjID& monsterId)
 	{
-		std::vector<uint32> visiblePlayers;
+		std::vector<ObjID> visiblePlayers;
 		visiblePlayers.reserve(16);
-		const auto& npc = *(*GObjectManager)[npcId];
+		const auto monster = ::GetGameObject<Monster>(monsterId);
+		if (monster == nullptr)
+			return visiblePlayers;
 
-		GSector->ForEachNeighborObject(npc._transform.GetSectorX(), npc._transform.GetSectorY(), [&](uint32 id)
+		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
-			const auto& object = (*GObjectManager)[id];
-			if (IsNPC(id)) return;
-			if (object->_state != ST_INGAME) return;
-			if (!CanSee(object->_id, npcId)) return;
-			visiblePlayers.push_back(object->_id);
+			auto id = object->GetObjID();
+			if (id.GetCategory() != EnumCategory::eUser) return;
+			auto user = ::GetGameObject<User>(id);
+			if (!user)
+				return;
+
+			auto session = user->GetGameSession();
+			if (!session)
+				return;
+
+			if (session->_state != ST_INGAME) return;
+			if (!CanSee(id, monsterId)) return;
+			visiblePlayers.push_back(id);
 		});
 
 		return visiblePlayers;
 	}
 
 	void BroadcastNpcVisibilityDelta(
-		uint32 npcId,
-		const std::vector<uint32>& oldList,
-		const std::vector<uint32>& newList)
+		ObjID npcId,
+		const std::vector<ObjID>& oldList,
+		const std::vector<ObjID>& newList)
 	{
-		// Lists are tiny (VIEW_RANGE=5) so linear scan beats hash lookup.
 		const auto inOld = [&](uint32 id) {
 			return std::find(oldList.begin(), oldList.end(), id) != oldList.end();
 		};
@@ -100,157 +123,154 @@ namespace WorldHelper
 			return std::find(newList.begin(), newList.end(), id) != newList.end();
 		};
 
-		for (const uint32 id : newList)
+		for (const ObjID& id : newList)
 		{
-			if (!inOld(id)) UserHelper::SendAddPlayerPacket(*(*GObjectManager)[id], npcId);
-			else            UserHelper::SendMovePacket(*(*GObjectManager)[id], npcId);
+			auto viewer = GGameObjectManager->Seek<Subject>(id);
+			if (viewer == nullptr)
+				continue;
+
+			if (!inOld(id)) UserHelper::SendAddPlayerPacket(viewer, npcId);
+			else            UserHelper::SendMovePacket(viewer, npcId);
 		}
 
-		for (const uint32 id : oldList)
+		for (const ObjID& id : oldList)
 		{
+			auto viewer = GGameObjectManager->Seek<Subject>(id);
+			if (viewer == nullptr)
+				continue;
+
 			if (!inNew(id))
-				UserHelper::SendRemovePlayerPacket(*(*GObjectManager)[id], npcId);
+				UserHelper::SendRemovePlayerPacket(viewer, npcId);
 		}
 	}
 
-	void NotifyPlayerEnteredWorld(uint32 playerId, bool isRespawn)
+	void NotifyPlayerEnteredWorld(ObjID& playerId, bool isRespawn)
 	{
-		const auto& player = *(*GObjectManager)[playerId];
-		GSector->ForEachNeighborObject(player._transform.GetSectorX(), player._transform.GetSectorY(), [&](uint32 id)
-		{
-			auto& object = (*GObjectManager)[id];
-			if (id == playerId) return;
-			if (object->_state != SOCKET_STATE::ST_INGAME) return;
-			if (!CanSee(playerId, id)) return;
+		const auto player = GGameObjectManager->Seek<User>(playerId);
+		if (player == nullptr)
+			return;
 
-			if (IsPc(id))
+		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			ObjID id = object->GetObjID();
+			if (id == playerId) return;
+
+			if (id.GetCategory<EnumCategory>() == EnumCategory::eUser)
 			{
-				if (isRespawn) UserHelper::SendRespawnPlayerPacket(*object, playerId);
-				else           UserHelper::SendAddPlayerPacket(*object, playerId);
+				auto user = GGameObjectManager->Seek<User>(id);
+				if (!user) return;
+
+				auto session = user->GetGameSession();
+				if (!session || session->_state != SOCKET_STATE::ST_INGAME) return;
+				if (!CanSee(playerId, id)) return;
+
+				if (isRespawn) UserHelper::SendRespawnPlayerPacket(user, playerId);
+				else           UserHelper::SendAddPlayerPacket(user, playerId);
+
+				UserHelper::SendAddPlayerPacket(player, id);
 			}
-			else
+			else if (id.GetCategory<EnumCategory>() == EnumCategory::eMonster)
 			{
+				if (!CanSee(playerId, id)) return;
+				UserHelper::SendAddPlayerPacket(player, id);
 				WakeUpNpc(id, playerId);
 			}
-
-			UserHelper::SendAddPlayerPacket(*(*GObjectManager)[playerId], id);
 		});
 	}
 
-	void UpdatePlayerViewList(uint32 clientId)
+	void UpdatePlayerViewList(ObjID& clientId)
 	{
-		auto& myPlayer = (*GObjectManager)[clientId];
+		auto myPlayer = GGameObjectManager->Seek<User>(clientId);
+		if (myPlayer == nullptr)
+			return;
 
-		// vector instead of unordered_set: no hash bucket allocation, cache-friendly for small N.
-		std::vector<uint32> nearList;
-		nearList.reserve(64);
-
-		GSector->ForEachNeighborObject(myPlayer->_transform.GetSectorX(), myPlayer->_transform.GetSectorY(), [&](uint32 id)
+		GSector->ForEachNeighborObject(myPlayer->GetSectorX(), myPlayer->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
+			ObjID id = object->GetObjID();
 			if (id == clientId) return;
-			if ((*GObjectManager)[id]->_state != SOCKET_STATE::ST_INGAME) return;
 			if (!CanSee(id, clientId)) return;
-			nearList.push_back(id);
-		});
 
-		const auto inNear = [&](uint32 id) {
-			return std::find(nearList.begin(), nearList.end(), id) != nearList.end();
-		};
-
-		// Collect removals before modifying _viewList (avoids a full copy of the set).
-		std::vector<uint32> toRemove;
-		toRemove.reserve(myPlayer->_viewList.size());
-		for (const uint32 id : myPlayer->_viewList)
-		{
-			if (!inNear(id))
-				toRemove.push_back(id);
-		}
-
-		// Process additions: viewList is still unmodified at this point.
-		for (const uint32 id : nearList)
-		{
-			if (IsPc(id))
+			if (id.GetCategory<EnumCategory>() == EnumCategory::eUser)
 			{
-				if ((*GObjectManager)[id]->_viewList.count(clientId)) UserHelper::SendMovePacket(*(*GObjectManager)[id], clientId);
-				else                                         UserHelper::SendAddPlayerPacket(*(*GObjectManager)[id], clientId);
+				auto otherPlayer = GGameObjectManager->Seek<User>(id);
+				if (otherPlayer == nullptr) return;
+
+				auto otherSession = otherPlayer->GetGameSession();
+				if (!otherSession || otherSession->_state != SOCKET_STATE::ST_INGAME) return;
+
+				UserHelper::SendAddPlayerPacket(otherPlayer, myPlayer->GetObjID());
+				UserHelper::SendAddPlayerPacket(myPlayer, id);
 			}
 			else
 			{
+				UserHelper::SendAddPlayerPacket(myPlayer, id);
 				WakeUpNpc(id, clientId);
 			}
-
-			if (myPlayer->_viewList.count(id) == 0)
-				UserHelper::SendAddPlayerPacket(*myPlayer, id);
-		}
-
-		// Process removals: notify about objects that left the view.
-		for (const uint32 id : toRemove)
-		{
-			UserHelper::SendRemovePlayerPacket(*myPlayer, id);
-			if (IsPc(id))
-				UserHelper::SendRemovePlayerPacket(*(*GObjectManager)[id], clientId);
-		}
+		});
 	}
 
-	void WakeUpNpc(uint32 npcId, uint32 wakerId)
+	void WakeUpNpc(ObjID& npcId, ObjID& wakerId)
 	{
-		if ((*GObjectManager)[npcId]->_stat.IsDead()) return;
-		if ((*GObjectManager)[npcId]->_attack.load()) return;
-		if ((*GObjectManager)[npcId]->_active.load()) return;
+		auto npc = GGameObjectManager->Seek<Monster>(npcId);
+		auto waker = GGameObjectManager->Seek<User>(wakerId);
+		if (npc == nullptr || waker == nullptr)
+			return;
+		if (npc->GetStat()->IsDead()) return;
 
-		Monster* npc   = AsMonster(npcId);
-		User*    waker = AsUser(wakerId);
-
-		bool expected = false;
+		// atomic exchange: 이미 활성화된 경우 중복 스케줄링 방지
+		if (!npc->TryActivate()) return;
 
 		switch (npc->GetType())
 		{
 		case MONSTER_TYPE::PASSIVE:
-			if (!(*GObjectManager)[npcId]->_active.compare_exchange_strong(expected, true)) return;
-			GTimerThread->ScheduleAfter(npcId, npc->GetTimerEpoch(), 1s, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
+			GTimerThread->ScheduleAfter(npcId, 1s, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
 			return;
 
 		case MONSTER_TYPE::AGGRO:
-			if (waker->GetTarget() != -1) return;
-			if (!(*GObjectManager)[npcId]->_active.compare_exchange_strong(expected, true)) return;
-			waker->SetTarget(npcId);
-			GTimerThread->ScheduleAfter(npcId, npc->GetTimerEpoch(), 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, wakerId);
+			GTimerThread->ScheduleAfter(npcId, 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, wakerId);
 			return;
 		}
 	}
 
-	void AttackNpc(uint32 npcId, uint32 playerId)
+	void AttackNpc(ObjID& npcId, ObjID& playerId)
 	{
-		auto& npc = (*GObjectManager)[npcId];
-		if (npc->_stat.IsDead())
+		auto npc = GGameObjectManager->Seek<Monster>(npcId);
+		auto attacker = GGameObjectManager->Seek<User>(playerId);
+		if (npc == nullptr || attacker == nullptr)
+			return;
+		if (npc->GetStat()->IsDead())
 			return;
 
-		Monster* monster  = AsMonster(npcId);
-		User*    attacker = AsUser(playerId);
-
-		const uint16 remaining = npc->_stat.TakeDamage(PLAYER_OFFENSIVE);
+		const uint16 remaining = npc->GetStat()->TakeDamage(PLAYER_OFFENSIVE);
 		if (remaining > 0)
 		{
-			UserHelper::SendPlayerAttackToNpcPacket(*(*GObjectManager)[playerId], npcId);
+			UserHelper::SendPlayerAttackToNpcPacket(attacker, npcId);
 			return;
 		}
 
-		if (monster->GetType() == MONSTER_TYPE::AGGRO)
+		GSector->ForEachNeighborObject(npc->GetSectorX(), npc->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
-			if (attacker->GetTarget() == static_cast<int>(npcId))
-				attacker->SetTarget(-1);
-		}
+			ObjID id = object->GetObjID();
+			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
 
-		GSector->ForEachNeighborObject(npc->_transform.GetSectorX(), npc->_transform.GetSectorY(), [&](uint32 id)
-		{
-			if ((*GObjectManager)[id]->_state != SOCKET_STATE::ST_INGAME) return;
-			if (IsNPC(id)) return;
-			if (CanSee(id, npcId)) UserHelper::SendNpcDiePacket(*(*GObjectManager)[id], npcId);
+			auto viewer = GGameObjectManager->Seek<User>(id);
+			if (viewer == nullptr) return;
+			auto session = viewer->GetGameSession();
+			if (!session || session->_state != SOCKET_STATE::ST_INGAME) return;
+
+			if (CanSee(id, npcId))
+				UserHelper::SendNpcDiePacket(viewer, npcId);
 		});
 
-		UserHelper::SendNpcDiePacket(*(*GObjectManager)[playerId], npcId);
-		GSector->RemoveObject(npcId, npc->_transform.RefSectorX(), npc->_transform.RefSectorY());
-		npc->ResetGameplayState();
-		GTimerThread->ScheduleAfter(npcId, npc->GetTimerEpoch(), 10s, TIMER_EVENT_TYPE::EV_NPC_RESPAWN);
+		GSector->RemoveObject(npcId, npc->RefSectorX(), npc->RefSectorY());
+		npc->SetActive(false);
+		npc->SetAttack(false);
+
+		const uint32 expGain = (npc->GetType() == MONSTER_TYPE::PASSIVE) ? 3 : 5;
+		attacker->GetStat()->AddExp(expGain);
+		UserHelper::SendStatChangePacket(attacker);
+
+		GTimerThread->ScheduleAfter(npcId, 10s, TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN);
 	}
 }
+

@@ -11,10 +11,10 @@ public:
 
 	void DoTimer();
 	void Schedule(TIMER_EVENT timerEvent);
-	void ScheduleNow(uint32 playerId, TIMER_EVENT_TYPE eventType, uint32 aiTargetId = 0);
-	void ScheduleNow(uint32 playerId, uint64 sourceEpoch, TIMER_EVENT_TYPE eventType, uint32 aiTargetId = 0);
-	void ScheduleAfter(uint32 playerId, Duration delay, TIMER_EVENT_TYPE eventType, uint32 aiTargetId = 0);
-	void ScheduleAfter(uint32 playerId, uint64 sourceEpoch, Duration delay, TIMER_EVENT_TYPE eventType, uint32 aiTargetId = 0);
+	void ScheduleNow(const ObjID& subjectId, TIMER_EVENT_TYPE eventType);
+	void ScheduleNow(const ObjID& subjectId, TIMER_EVENT_TYPE eventType, const ObjID& targetId);
+	void ScheduleAfter(const ObjID& subjectId, Duration delay, TIMER_EVENT_TYPE eventType);
+	void ScheduleAfter(const ObjID& subjectId, Duration delay, TIMER_EVENT_TYPE eventType, const ObjID& targetId);
 
 	[[nodiscard]] static Clock::time_point Now() noexcept
 	{

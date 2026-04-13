@@ -1,6 +1,11 @@
 #include "pch.h"
 #include "Stat.h"
 
+bool Stat::OnUpdate()
+{
+	return true;
+}
+
 uint16 Stat::TakeDamage(uint16 amount) noexcept
 {
 	const uint16 current = _hp.load();
@@ -20,10 +25,19 @@ void Stat::HealHp(uint16 amount, uint16 maxCap) noexcept
 	_hp.store(next);
 }
 
-void Stat::Reset() noexcept
+bool Stat::AddExp(uint32 amount) noexcept
 {
-	_maxHp = 0;
-	_hp.store(0);
-	_offensive = 0;
-	_die.store(true);
+	if (_level >= MAX_LEVEL)
+		return false;
+
+	_exp += amount;
+	const uint32 needed = EXP_TABLE[_level - 1];
+	if (_exp >= needed)
+	{
+		_exp -= needed;
+		_level++;
+		return true;
+	}
+	return false;
 }
+

@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "ServerGlobal.h"
 #include "GameObjectManager.h"
 #include "Sector.h"
@@ -8,35 +8,36 @@
 #include "TimerThread.h"
 #include "GameSessionManager.h"
 
-DBThread*            GDBThread       = nullptr;
-Sector*              GSector         = nullptr;
-GameLogicThread*     GGameLogicThread = nullptr;
-WorkerThread*        GWorkerThread   = nullptr;
-TimerThread*         GTimerThread    = nullptr;
-GameSessionManager*  GSessionManager = nullptr;
-GameObjectManager*   GObjectManager  = nullptr;
+shared_ptr<DBThread>           GDBThread = nullptr;
+shared_ptr<Sector>             GSector = nullptr;
+shared_ptr<GameLogicThread>    GGameLogicThread = nullptr;
+shared_ptr<WorkerThread>       GWorkerThread = nullptr;
+shared_ptr<TimerThread>        GTimerThread = nullptr;
+shared_ptr<GameSessionManager> GSessionManager = nullptr;
+shared_ptr<GameObjectManager>  GGameObjectManager = nullptr;
 
 class ServerGlobal
 {
 public:
     ServerGlobal()
     {
-        GObjectManager  = new GameObjectManager();
-        GSector         = new Sector();
-        GDBThread       = new DBThread();
-        GGameLogicThread = new GameLogicThread();
-        GWorkerThread   = new WorkerThread();
-        GTimerThread    = new TimerThread();
-        GSessionManager = new GameSessionManager();
+        GGameObjectManager = make_shared<GameObjectManager>();
+        GSector = make_shared<Sector>();
+        GDBThread = make_shared<DBThread>();
+        GGameLogicThread = make_shared<GameLogicThread>();
+        GWorkerThread = make_shared<WorkerThread>();
+        GTimerThread = make_shared<TimerThread>();
+        GSessionManager = make_shared<GameSessionManager>();
     }
+
     ~ServerGlobal()
     {
-        delete GObjectManager;
-        delete GSector;
-        delete GDBThread;
-        delete GGameLogicThread;
-        delete GWorkerThread;
-        delete GTimerThread;
-        delete GSessionManager;
+        GSessionManager.reset();
+        GTimerThread.reset();
+        GWorkerThread.reset();
+        GGameLogicThread.reset();
+        GDBThread.reset();
+        GSector.reset();
+        GGameObjectManager.reset();
     }
 } GServerGlobal;

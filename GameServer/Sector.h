@@ -1,5 +1,7 @@
 #pragma once
 
+#include "GameObjectManager.h"
+
 struct SectorCoord
 {
 	short x = -1;
@@ -16,7 +18,8 @@ struct SectorCoord
 class Sector
 {
 public:
-	using SectorObjects = std::unordered_set<uint32>;
+	using SectorObjects = std::unordered_set<ObjID>;
+	using NeighborSnapshot = std::vector<shared_ptr<Subject>>;
 	static constexpr short kSectorWidth = static_cast<short>(W_WIDTH / SECTOR_RANGE);
 	static constexpr short kSectorHeight = static_cast<short>(W_HEIGHT / SECTOR_RANGE);
 
@@ -28,31 +31,19 @@ public:
 	[[nodiscard]] bool IsValidSector(const SectorCoord& sector) const noexcept;
 	[[nodiscard]] SectorCoord GetSectorCoord(short worldX, short worldY) const noexcept;
 	[[nodiscard]] const SectorObjects& GetObjects(short sectorX, short sectorY) const;
-	[[nodiscard]] bool UpdateObjectSector(uint32 objectId, short worldX, short worldY, short& inOutSectorX, short& inOutSectorY);
-	void RemoveObject(uint32 objectId, short& inOutSectorX, short& inOutSectorY);
+	[[nodiscard]] NeighborSnapshot CollectNeighborObjects(short sectorX, short sectorY) const;
+	[[nodiscard]] bool UpdateObjectSector(ObjID& subjectId, short worldX, short worldY, short& inOutSectorX, short& inOutSectorY);
+	void RemoveObject(ObjID& objectId, short& inOutSectorX, short& inOutSectorY);
 
 	template<typename Callback>
-	requires std::invocable<Callback&, uint32>
+	requires std::invocable<Callback&, const shared_ptr<Subject>&>
 	void ForEachNeighborObject(short sectorX, short sectorY, Callback&& callback) const
 	{
-		if (IsValidSector(sectorX, sectorY) == false)
-			return;
-
-		const short minY = std::max<short>(0, static_cast<short>(sectorY - 1));
-		const short maxY = std::min<short>(static_cast<short>(kSectorHeight - 1), static_cast<short>(sectorY + 1));
-		const short minX = std::max<short>(0, static_cast<short>(sectorX - 1));
-		const short maxX = std::min<short>(static_cast<short>(kSectorWidth - 1), static_cast<short>(sectorX + 1));
-
-		for (short currentY = minY; currentY <= maxY; ++currentY)
-		{
-			for (short currentX = minX; currentX <= maxX; ++currentX)
-			{
-				for (const uint32 objectId : _sectors[currentY][currentX])
-				{
-					callback(objectId);
-				}
-			}
-		}
+		// Iterate over a shared_ptr snapshot so callbacks may safely remove objects
+		// from sectors/object manager without invalidating the traversal.
+		NeighborSnapshot snapshot = CollectNeighborObjects(sectorX, sectorY);
+		for (const auto& object : snapshot)
+			callback(object);
 	}
 
 private:

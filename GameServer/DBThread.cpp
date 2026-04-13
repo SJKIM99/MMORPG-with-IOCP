@@ -2,138 +2,128 @@
 #include "DBThread.h"
 #include "DBConnectionPool.h"
 #include "GameLogicThread.h"
-#include "WorkerThread.h"
+#include "UserHelper.h"
 
 namespace
 {
 	class ScopedDBConnection
 	{
 	public:
-		explicit ScopedDBConnection(DBConnectionPool& pool) : _pool(pool), _connection(pool.Pop())
-		{
-		}
+		explicit ScopedDBConnection(const shared_ptr<DBConnectionPool>& pool)
+			: _pool(pool), _connection(pool != nullptr ? pool->Pop() : nullptr) {}
 
 		~ScopedDBConnection()
 		{
-			if (_connection != nullptr)
-				_pool.Push(_connection);
+			if (_pool != nullptr && _connection != nullptr)
+				_pool->Push(_connection);
 		}
 
-		[[nodiscard]] DBConnection* Get() const noexcept
-		{
-			return _connection;
-		}
-
-		DBConnection* operator->() const noexcept
-		{
-			return _connection;
-		}
+		[[nodiscard]] const shared_ptr<DBConnection>& Get() const noexcept { return _connection; }
 
 	private:
-		DBConnectionPool& _pool;
-		DBConnection* _connection = nullptr;
+		shared_ptr<DBConnectionPool> _pool;
+		shared_ptr<DBConnection>     _connection;
 	};
 }
 
-bool DBThread::DBEventCompare::operator()(const DB_EVENT& lhs, const DB_EVENT& rhs) const noexcept
+bool DBThread::DBEventCompare::operator()(const shared_ptr<DB_EVENT_BASE>& lhs, const shared_ptr<DB_EVENT_BASE>& rhs) const noexcept
 {
-	if (lhs.wakeup_time != rhs.wakeup_time)
-		return lhs.wakeup_time > rhs.wakeup_time;
-
-	return lhs.sequence > rhs.sequence;
+	if (lhs->wakeupTime != rhs->wakeupTime)
+		return lhs->wakeupTime > rhs->wakeupTime;
+	return lhs->sequence > rhs->sequence;
 }
 
-void DBThread::RequestLogin(uint32 playerId, uint64 sessionToken, const std::string& playerName, const std::string& password)
-{
-	DB_PLAYER_INFO playerInfo{};
-	playerInfo._name     = playerName;
-	playerInfo._password = password;
-	ScheduleNow(playerId, DB_EVENT_TYPE::EV_LOGIN_PLAYER, std::move(playerInfo), sessionToken);
-}
-
-void DBThread::RequestAddPlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo)
-{
-	ScheduleNow(playerId, DB_EVENT_TYPE::EV_ADD_PLAYER_INFO, playerInfo);
-}
-
-void DBThread::RequestSavePlayer(uint32 playerId, const DB_PLAYER_INFO& playerInfo)
-{
-	ScheduleNow(playerId, DB_EVENT_TYPE::EV_SAVE_PLAYER_INFO, playerInfo);
-}
-
-void DBThread::Schedule(DB_EVENT event)
+void DBThread::Schedule(shared_ptr<DB_EVENT_BASE> event)
 {
 	{
 		std::scoped_lock lock(_lock);
-		event.sequence = _nextSequence++;
+		event->sequence = _nextSequence++;
 		_events.push(std::move(event));
 	}
-
 	_cv.notify_one();
 }
 
-void DBThread::ScheduleNow(uint32 playerId, DB_EVENT_TYPE eventType, DB_PLAYER_INFO playerInfo, uint64 sessionToken)
+void DBThread::RequestLogin(const shared_ptr<GameSession>& session, const std::string& name, const std::string& password)
 {
-	ScheduleAfter(playerId, Duration::zero(), eventType, std::move(playerInfo), sessionToken);
-}
-
-void DBThread::ScheduleAfter(uint32 playerId, Duration delay, DB_EVENT_TYPE eventType, DB_PLAYER_INFO playerInfo, uint64 sessionToken)
-{
-	DB_EVENT event{};
-	event.player_id = playerId;
-	event.wakeup_time = Now() + delay;
-	event.event = eventType;
-	event.player_info = std::move(playerInfo);
-	event.session_token = sessionToken;
-
+	auto event      = std::make_shared<DB_LOGIN_EVENT>();
+	event->wakeupTime = Now();
+	event->session  = session;
+	event->name     = name;
+	event->password = password;
 	Schedule(std::move(event));
 }
 
-void DBThread::ProcessEvent(const DB_EVENT& event)
+void DBThread::RequestAddUser(const ObjID& subjectId, const DB_USER_INFO& info)
 {
-	ScopedDBConnection connection(*GDBConnectionPool);
+	auto event        = std::make_shared<DB_ADD_EVENT>();
+	event->wakeupTime = Now();
+	event->subjectId  = subjectId;
+	event->name       = info._name;
+	event->password   = info._password;
+	event->x          = static_cast<short>(info._x);
+	event->y          = static_cast<short>(info._y);
+	event->level      = info._level;
+	event->exp        = info._exp;
+	Schedule(std::move(event));
+}
 
-	switch (event.event) {
-	case DB_EVENT_TYPE::EV_LOGIN_PLAYER: {
-		const bool isRegistered = connection->IsPlayerRegistered(event.player_info._name);
+void DBThread::RequestSaveUser(const ObjID& subjectId, const DB_USER_INFO& info)
+{
+	auto event        = std::make_shared<DB_SAVE_EVENT>();
+	event->wakeupTime = Now();
+	event->subjectId  = subjectId;
+	event->name       = info._name;
+	event->x          = static_cast<short>(info._x);
+	event->y          = static_cast<short>(info._y);
+	event->level      = info._level;
+	event->exp        = info._exp;
+	Schedule(std::move(event));
+}
+
+void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
+{
+	ScopedDBConnection scopedConnection(GDBConnectionPool);
+	const auto& connection = scopedConnection.Get();
+	if (connection == nullptr)
+		return;
+
+	if (const auto e = std::dynamic_pointer_cast<DB_LOGIN_EVENT>(event))
+	{
+		const bool isRegistered = connection->IsUserRegistered(e->name);
 
 		if (isRegistered) {
-			const bool passwordOk = connection->VerifyPlayerPassword(event.player_info._name, event.player_info._password);
+			const bool passwordOk = connection->VerifyUserPassword(e->name, e->password);
 			if (passwordOk) {
-				DB_PLAYER_INFO playerInfo = connection->ExtractPlayerInfo(event.player_info._name);
-				GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo]()
+				DB_USER_INFO userInfo = connection->ExtractUserInfo(e->name);
+				GGameLogicThread->Enqueue([session = e->session, userInfo]()
 				{
-					GWorkerThread->HandleGetPlayerInfo(playerId, sessionToken, playerInfo);
+					UserHelper::HandleGetUserInfo(session, userInfo);
 				});
 			}
 			else {
-				GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token]()
+				GGameLogicThread->Enqueue([session = e->session]()
 				{
-					GWorkerThread->HandleLoginFail(playerId, sessionToken);
+					UserHelper::HandleLoginFail(session);
 				});
 			}
 		}
 		else {
-			// 신규 계정 생성
-			GGameLogicThread->Enqueue([playerId = event.player_id, sessionToken = event.session_token, playerInfo = event.player_info]()
+			GGameLogicThread->Enqueue([session = e->session, name = e->name, password = e->password]()
 			{
-				GWorkerThread->HandleAddPlayerInfo(playerId, sessionToken, playerInfo);
+				DB_USER_INFO info;
+				info._name     = name;
+				info._password = password;
+				UserHelper::HandleAddUserInfo(session, info);
 			});
 		}
-		break;
 	}
-	case DB_EVENT_TYPE::EV_SAVE_PLAYER_INFO: {
-		connection->SavePlayerInfo(event.player_info._name, event.player_info._x, event.player_info._y);
-		break;
+	else if (const auto e = std::dynamic_pointer_cast<DB_SAVE_EVENT>(event))
+	{
+		connection->SaveUserInfo(e->name, e->x, e->y, e->level, e->exp);
 	}
-	case DB_EVENT_TYPE::EV_ADD_PLAYER_INFO: {
-		connection->AddPlayerInfoInDataBase(
-			event.player_info._name,
-			event.player_info._password,
-			static_cast<short>(event.player_info._x),
-			static_cast<short>(event.player_info._y));
-		break;
-	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_ADD_EVENT>(event))
+	{
+		connection->AddUserInfoInDataBase(e->name, e->password, e->x, e->y, e->level, e->exp);
 	}
 }
 
@@ -142,28 +132,23 @@ void DBThread::DoDataBase()
 	std::unique_lock lock(_lock);
 
 	while (true) {
-		_cv.wait(lock, [this]()
-		{
-			return _events.empty() == false;
-		});
+		_cv.wait(lock, [this]() { return !_events.empty(); });
 
-		while (_events.empty() == false) {
-			const auto nextWakeup = _events.top().wakeup_time;
+		while (!_events.empty()) {
+			const auto nextWakeup = _events.top()->wakeupTime;
 			const bool rescheduledEarlierEvent = _cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
 			{
-				return _events.empty() || _events.top().wakeup_time < nextWakeup;
+				return _events.empty() || _events.top()->wakeupTime < nextWakeup;
 			});
 
 			if (_events.empty())
 				break;
-
 			if (rescheduledEarlierEvent)
 				continue;
-
-			if (_events.top().wakeup_time > Now())
+			if (_events.top()->wakeupTime > Now())
 				continue;
 
-			DB_EVENT event = _events.top();
+			auto event = _events.top();
 			_events.pop();
 
 			lock.unlock();

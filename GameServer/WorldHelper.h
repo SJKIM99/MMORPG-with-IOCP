@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core\Types.h"
+#include "ObjID.h"
 
 #include <vector>
 
@@ -8,17 +9,17 @@ namespace WorldHelper
 {
 	[[nodiscard]] uint32 GetNowTime();
 	void MovePositionByDirection(short& x, short& y, char direction);
-	[[nodiscard]] bool CanSee(uint32 from, uint32 to);
-	[[nodiscard]] bool CanAttack(uint32 from, uint32 to);
-	void UpdateObjectPosition(uint32 objectId, short nextX, short nextY);
-	void PlaceObjectAtRandomWalkablePosition(uint32 objectId);
-	[[nodiscard]] std::vector<uint32> CollectVisiblePlayersAround(uint32 npcId);
+	[[nodiscard]] bool CanSee(const ObjID& a, const ObjID& b);
+	[[nodiscard]] bool CanAttack(const ObjID& a, const ObjID& b);
+	void UpdateObjectPosition(ObjID& subjectId, short nextX, short nextY);
+	void PlaceObjectAtRandomWalkablePosition(ObjID& subjectId);
+	[[nodiscard]] std::vector<ObjID> CollectVisiblePlayersAround(ObjID& monsterId);
 	void BroadcastNpcVisibilityDelta(
-		uint32 npcId,
-		const std::vector<uint32>& oldList,
-		const std::vector<uint32>& newList);
-	void NotifyPlayerEnteredWorld(uint32 playerId, bool isRespawn);
-	void UpdatePlayerViewList(uint32 clientId);
-	void WakeUpNpc(uint32 npcId, uint32 wakerId);
-	void AttackNpc(uint32 npcId, uint32 playerId);
+		ObjID npcId,
+		const std::vector<ObjID>& oldList,
+		const std::vector<ObjID>& newList);
+	void NotifyPlayerEnteredWorld(ObjID& playerId, bool isRespawn);
+	void UpdatePlayerViewList(ObjID& clientId);
+	void WakeUpNpc(ObjID& npcId, ObjID& wakerId);
+	void AttackNpc(ObjID& npcId, ObjID& playerId);
 }

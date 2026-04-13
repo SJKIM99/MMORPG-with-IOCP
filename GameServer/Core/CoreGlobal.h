@@ -1,8 +1,9 @@
-#pragma once
+﻿#pragma once
 
-extern class ThreadManager*		GThreadManager;
-extern class Memory*			GMemory;
+#include <memory>
 
-extern class DeadLockProfiler*	GDeadLockProfiler;
-extern class DBConnectionPool*	GDBConnectionPool;
+extern std::shared_ptr<class ThreadManager>   GThreadManager;
+extern std::shared_ptr<class Memory>          GMemory;
 
+extern std::shared_ptr<class DeadLockProfiler> GDeadLockProfiler;
+extern std::shared_ptr<class DBConnectionPool> GDBConnectionPool;

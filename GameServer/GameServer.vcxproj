@@ -29,26 +29,26 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -161,6 +161,7 @@
   <ItemGroup>
     <ClCompile Include="AStar.cpp" />
     <ClCompile Include="Collision.cpp" />
+    <ClCompile Include="ContentiD.cpp" />
     <ClCompile Include="Core\Allocator.cpp" />
     <ClCompile Include="Core\CoreGlobal.cpp" />
     <ClCompile Include="Core\CoreTLS.cpp" />
@@ -178,7 +179,9 @@
     <ClCompile Include="GameObjectManager.cpp" />
     <ClCompile Include="GameSession.cpp" />
     <ClCompile Include="GameSessionManager.cpp" />
-    <ClCompile Include="NPC.cpp" />
+    <ClCompile Include="Monster.cpp" />
+    <ClCompile Include="MonsterHelper.cpp" />
+    <ClCompile Include="ObjID.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
@@ -194,12 +197,14 @@
     <ClCompile Include="Transform.cpp" />
     <ClCompile Include="User.cpp" />
     <ClCompile Include="UserHelper.cpp" />
+    <ClCompile Include="Route.cpp" />
     <ClCompile Include="WorkerThread.cpp" />
     <ClCompile Include="WorldHelper.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AStar.h" />
     <ClInclude Include="Collision.h" />
+    <ClInclude Include="ContentiD.h" />
     <ClInclude Include="Core\Allocator.h" />
     <ClInclude Include="Core\CoreGlobal.h" />
     <ClInclude Include="Core\CoreMacro.h" />
@@ -219,7 +224,9 @@
     <ClInclude Include="GameObjectManager.h" />
     <ClInclude Include="GameSession.h" />
     <ClInclude Include="GameSessionManager.h" />
-    <ClInclude Include="NPC.h" />
+    <ClInclude Include="Monster.h" />
+    <ClInclude Include="MonsterHelper.h" />
+    <ClInclude Include="ObjID.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Protocol.h" />
     <ClInclude Include="Sector.h" />
@@ -231,6 +238,7 @@
     <ClInclude Include="Transform.h" />
     <ClInclude Include="User.h" />
     <ClInclude Include="UserHelper.h" />
+    <ClInclude Include="Route.h" />
     <ClInclude Include="WorkerThread.h" />
     <ClInclude Include="WorldHelper.h" />
   </ItemGroup>

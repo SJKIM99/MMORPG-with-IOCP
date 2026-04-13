@@ -1,5 +1,8 @@
 #pragma once
 #include "Types.h"
+#include "EnumCategory.h"
+#include "ContentID.h"
+#include "ObjID.h"
 
 constexpr int PORT_NUM = 4000;
 
@@ -7,9 +10,22 @@ constexpr int NAME_SIZE     = 20;
 constexpr int PASSWORD_SIZE = 20;
 constexpr int CHAT_SIZE     = 20;
 
-constexpr int MAX_USER = 20000;
+constexpr int MAX_USER = 20000;   // Max concurrent user sessions
 constexpr int MAX_NPC = 200000;
-constexpr int AGGRO_NPC_BOUNDARY = MAX_USER + MAX_NPC / 4;  // First 25% of NPCs are AGGRO
+
+constexpr uint32 PLAYER_ID_START = 1;
+constexpr uint32 NPC_ID_START = 1'000'000'000;
+constexpr uint32 AGGRO_NPC_BOUNDARY = NPC_ID_START + static_cast<uint32>(MAX_NPC / 4) - 1;  // First 25% of NPCs are AGGRO
+
+inline constexpr bool IsPlayerObjectId(uint32 id) noexcept
+{
+	return id >= PLAYER_ID_START && id < NPC_ID_START;
+}
+
+inline constexpr bool IsNpcObjectId(uint32 id) noexcept
+{
+	return id >= NPC_ID_START;
+}
 
 constexpr int W_WIDTH = 2000;
 constexpr int W_HEIGHT = 2000;
@@ -54,7 +70,8 @@ enum class PacketType : uint16
 	SC_NPC_ATTACK_PLAYER,
 	SC_HEAL,
 	SC_PLAYER_DIE,
-	SC_PLAYER_RESPAWN
+	SC_PLAYER_RESPAWN,
+	SC_STAT_CHANGE
 };
 
 #pragma pack (push, 1)
@@ -97,10 +114,12 @@ struct SC_LOGIN_SUCCESS_PACKET
 {
 	unsigned short size;
 	char	type;
-	int32		id;
+	ObjID	id;
 	short	x, y;
 	uint16	maxhp;
 	uint16	hp;
+	uint8	level;
+	uint32	exp;
 };
 
 struct SC_LOGIN_FAIL_PACKET
@@ -114,7 +133,7 @@ struct SC_ADD_OBJECT_PACKET
 	unsigned short size;
 	char	type;
 	char	monster_type;
-	int32		id;
+	ObjID	id;
 	short	x, y;
 	char	name[NAME_SIZE];
 };
@@ -123,14 +142,14 @@ struct SC_REMOVE_OBJECT_PACKET
 {
 	unsigned short size;
 	char	type;
-	int32		id;
+	ObjID	id;
 };
 
 struct SC_MOVE_OBJECT_PACKET
 {
 	unsigned short size;
 	char	type;
-	int32		id;
+	ObjID	id;
 	short	x, y;
 	unsigned int move_time;
 };
@@ -140,14 +159,14 @@ struct SC_NPC_DIE_PACKET
 {
 	unsigned short size;
 	char type;
-	int32 npc_id;
+	ObjID npc_id;
 };
 
 struct SC_NPC_RESPAWN_PACKET
 {
 	unsigned short size;
 	char type;
-	int32 npc_id;
+	ObjID npc_id;
 	short	x, y;
 };
 
@@ -155,7 +174,7 @@ struct SC_PLAYER_ATTACK_NPC_PACKET
 {
 	unsigned short size;
 	char type;
-	int32 id;
+	ObjID id;
 	int32 hp;
 };
 
@@ -177,7 +196,7 @@ struct SC_PLAYER_DIE_PACKET
 {
 	unsigned short size;
 	char type;
-	uint32 id;
+	ObjID id;
 	uint16 hp;
 };
 
@@ -185,8 +204,18 @@ struct SC_PLAYER_RESPAWN_PACKET
 {
 	unsigned short size;
 	char type;
-	uint32 id;
+	ObjID id;
 	short x, y;
 	uint16 hp;
+};
+
+struct SC_STAT_CHANGE_PACKET
+{
+	unsigned short size;
+	char   type;
+	uint8  level;
+	uint16 hp;
+	uint16 maxhp;
+	uint32 exp;
 };
 #pragma pack (pop)

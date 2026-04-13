@@ -39,48 +39,73 @@ using namespace std;
 
 #include "Lock.h"
 #include "Memory.h"
+#include "ContentiD.h"
+#include "ObjID.h"
 
-enum DB_EVENT_TYPE
-{
-	EV_LOGIN_PLAYER,
-	EV_SAVE_PLAYER_INFO,
-	EV_ADD_PLAYER_INFO
-};
-
-struct DB_PLAYER_INFO
+struct DB_USER_INFO
 {
 	string _name;
 	string _password;
-	int    _x = 0;
-	int    _y = 0;
+	int    _x     = 0;
+	int    _y     = 0;
+	uint8  _level = 1;
+	uint32 _exp   = 0;
 };
 
-struct DB_EVENT
+using DB_PLAYER_INFO = DB_USER_INFO;
+
+class GameSession;
+
+struct DB_EVENT_BASE : std::enable_shared_from_this<DB_EVENT_BASE>
 {
-	uint32 player_id;
-	std::chrono::steady_clock::time_point wakeup_time;
-	DB_EVENT_TYPE event;
-	DB_PLAYER_INFO player_info;
-	uint64 session_token = 0;
-	uint64 sequence = 0;
+	std::chrono::steady_clock::time_point wakeupTime;
+	uint64_t sequence = 0;
+	virtual ~DB_EVENT_BASE() = default;
+};
+
+struct DB_LOGIN_EVENT : DB_EVENT_BASE
+{
+	shared_ptr<GameSession> session;
+	string name;
+	string password;
+};
+
+struct DB_SAVE_EVENT : DB_EVENT_BASE
+{
+	ObjID   subjectId;
+	string  name;
+	short   x     = 0;
+	short   y     = 0;
+	uint8   level = 1;
+	uint32  exp   = 0;
+};
+
+struct DB_ADD_EVENT : DB_EVENT_BASE
+{
+	ObjID   subjectId;
+	string  name;
+	string  password;
+	short   x     = 0;
+	short   y     = 0;
+	uint8   level = 1;
+	uint32  exp   = 0;
 };
 
 enum TIMER_EVENT_TYPE
 {
 	EV_RANOM_MOVE,
-	EV_NPC_RESPAWN,
-	EV_NPC_ATTACK_TO_PLAYER,
+	EV_MONSTER_RESPAWN,
+	EV_MONSTER_ATTACK_TO_USER,
 	EV_HEAL,
-	EV_PLAYER_RESPAWN,
+	EV_USER_RESPAWN,
 	EV_AGGRO_MOVE
 };
 
 struct TIMER_EVENT
 {
-	uint32 player_id;
-	std::chrono::steady_clock::time_point wakeup_time;
+	ObjID subjectId;
+	std::chrono::steady_clock::time_point wakeupTime;
 	TIMER_EVENT_TYPE event;
-	uint32 aiTargetId;
-	uint64 sourceEpoch = 0;
-	uint64 sequence = 0;
+	ObjID targetId;
+	uint64_t sequence = 0;
 };

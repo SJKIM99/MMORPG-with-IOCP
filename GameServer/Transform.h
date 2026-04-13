@@ -3,6 +3,10 @@
 class Transform
 {
 public:
+	using SharedPtr = shared_ptr<Transform>;
+	using WeakPtr = weak_ptr<Transform>;
+
+public:
 	Transform() = default;
 
 	// ── Getters ──────────────────────────────────────────────

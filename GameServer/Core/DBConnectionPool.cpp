@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "DBConnectionPool.h"
 
 DBConnectionPool::DBConnectionPool()
@@ -12,23 +12,23 @@ DBConnectionPool::~DBConnectionPool()
 
 bool DBConnectionPool::Connect(int connectionCount)
 {
-	std::vector<std::unique_ptr<DBConnection>> newConnections;
+	vector<shared_ptr<DBConnection>> newConnections;
 	newConnections.reserve(connectionCount);
 
 	for (int32 i = 0; i < connectionCount; i++)
 	{
-		auto connection = std::make_unique<DBConnection>();
+		auto connection = make_shared<DBConnection>();
 		if (connection->Connect() == false)
 			return false;
 
-		newConnections.push_back(std::move(connection));
+		newConnections.push_back(connection);
 	}
 
 	{
 		std::scoped_lock lock(_lock);
 		for (auto& connection : newConnections)
 		{
-			_idleConnections.push_back(connection.get());
+			_idleConnections.push_back(connection);
 			_ownedConnections.push_back(std::move(connection));
 		}
 	}
@@ -45,7 +45,7 @@ void DBConnectionPool::Clear()
 	_ownedConnections.clear();
 }
 
-DBConnection* DBConnectionPool::Pop()
+shared_ptr<DBConnection> DBConnectionPool::Pop()
 {
 	std::unique_lock lock(_lock);
 	_cv.wait(lock, [this]()
@@ -53,16 +53,16 @@ DBConnection* DBConnectionPool::Pop()
 		return _idleConnections.empty() == false;
 	});
 
-	DBConnection* connection = _idleConnections.back();
+	auto connection = _idleConnections.back();
 	_idleConnections.pop_back();
 	return connection;
 }
 
-void DBConnectionPool::Push(DBConnection* connection)
+void DBConnectionPool::Push(shared_ptr<DBConnection> connection)
 {
 	{
 		std::scoped_lock lock(_lock);
-		_idleConnections.push_back(connection);
+		_idleConnections.push_back(std::move(connection));
 	}
 
 	_cv.notify_one();
