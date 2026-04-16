@@ -34,8 +34,8 @@ int main()
 	//Sector 생성
 	
 	//작업자 스레드 생성
-	const uint32 workerCount = thread::hardware_concurrency();
-	for (uint32 i = 0; i < workerCount; ++i)
+	const uint32_t workerCount = thread::hardware_concurrency();
+	for (uint32_t i = 0; i < workerCount; ++i)
 	{
 		GThreadManager->Launch([]()
 		{

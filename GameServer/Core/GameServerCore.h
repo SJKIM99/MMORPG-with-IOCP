@@ -1,8 +1,5 @@
 #pragma once
 
-#include "Types.h"
-#include "CoreMacro.h"
-#include "CoreTLS.h"
 #include "CoreGlobal.h"
 
 #include <array>
@@ -37,7 +34,6 @@
 
 using namespace std;
 
-#include "Lock.h"
 #include "Memory.h"
 #include "ContentiD.h"
 #include "ObjID.h"
@@ -48,8 +44,8 @@ struct DB_USER_INFO
 	string _password;
 	int    _x     = 0;
 	int    _y     = 0;
-	uint8  _level = 1;
-	uint32 _exp   = 0;
+	uint8_t  _level = 1;
+	uint32_t _exp   = 0;
 };
 
 using DB_PLAYER_INFO = DB_USER_INFO;
@@ -76,8 +72,8 @@ struct DB_SAVE_EVENT : DB_EVENT_BASE
 	string  name;
 	short   x     = 0;
 	short   y     = 0;
-	uint8   level = 1;
-	uint32  exp   = 0;
+	uint8_t   level = 1;
+	uint32_t  exp   = 0;
 };
 
 struct DB_ADD_EVENT : DB_EVENT_BASE
@@ -87,8 +83,8 @@ struct DB_ADD_EVENT : DB_EVENT_BASE
 	string  password;
 	short   x     = 0;
 	short   y     = 0;
-	uint8   level = 1;
-	uint32  exp   = 0;
+	uint8_t   level = 1;
+	uint32_t  exp   = 0;
 };
 
 enum TIMER_EVENT_TYPE

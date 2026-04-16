@@ -13,3 +13,7 @@ extern std::shared_ptr<class GameLogicThread>    GGameLogicThread;
 extern std::shared_ptr<class WorkerThread>       GWorkerThread;
 extern std::shared_ptr<class TimerThread>        GTimerThread;
 extern std::shared_ptr<class GameSessionManager> GSessionManager;
+
+// Previously defined in Core/CoreGlobal.cpp (removed with Core library)
+extern std::shared_ptr<class ThreadManager>    GThreadManager;
+extern std::shared_ptr<class DBConnectionPool> GDBConnectionPool;

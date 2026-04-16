@@ -72,22 +72,22 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)Core\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)Core\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)Core\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)Core\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -159,88 +159,79 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="AStar.cpp" />
-    <ClCompile Include="Collision.cpp" />
-    <ClCompile Include="ContentiD.cpp" />
-    <ClCompile Include="Core\Allocator.cpp" />
+    <ClCompile Include="Area\AStar.cpp" />
+    <ClCompile Include="Area\Collision.cpp" />
+    <ClCompile Include="Area\Sector.cpp" />
     <ClCompile Include="Core\CoreGlobal.cpp" />
     <ClCompile Include="Core\CoreTLS.cpp" />
     <ClCompile Include="Core\DBConnection.cpp" />
     <ClCompile Include="Core\DBConnectionPool.cpp" />
-    <ClCompile Include="Core\DeadLockProfiler.cpp" />
-    <ClCompile Include="Core\Lock.cpp" />
-    <ClCompile Include="Core\Memory.cpp" />
-    <ClCompile Include="Core\MemoryPool.cpp" />
     <ClCompile Include="Core\ThreadManager.cpp" />
-    <ClCompile Include="DBThread.cpp" />
-    <ClCompile Include="GameLogicThread.cpp" />
-    <ClCompile Include="GameObject.cpp" />
+    <ClCompile Include="GameObject\GameObject.cpp" />
+    <ClCompile Include="GameObject\GameObjectManager.cpp" />
     <ClCompile Include="GameServer.cpp" />
-    <ClCompile Include="GameObjectManager.cpp" />
-    <ClCompile Include="GameSession.cpp" />
-    <ClCompile Include="GameSessionManager.cpp" />
-    <ClCompile Include="Monster.cpp" />
-    <ClCompile Include="MonsterHelper.cpp" />
-    <ClCompile Include="ObjID.cpp" />
+    <ClCompile Include="Monster\GameSessionManager.cpp" />
+    <ClCompile Include="Monster\Monster.cpp" />
+    <ClCompile Include="Monster\MonsterHelper.cpp" />
+    <ClCompile Include="Network\GameSession.cpp" />
+    <ClCompile Include="Network\SocketManager.cpp" />
+    <ClCompile Include="ObjID\ContentiD.cpp" />
+    <ClCompile Include="ObjID\ObjID.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Sector.cpp" />
+    <ClCompile Include="Route\Route.cpp" />
     <ClCompile Include="ServerGlobal.cpp" />
-    <ClCompile Include="SocketManager.cpp" />
-    <ClCompile Include="Stat.cpp" />
-    <ClCompile Include="Subject.cpp" />
-    <ClCompile Include="TimerThread.cpp" />
-    <ClCompile Include="Transform.cpp" />
-    <ClCompile Include="User.cpp" />
-    <ClCompile Include="UserHelper.cpp" />
-    <ClCompile Include="Route.cpp" />
-    <ClCompile Include="WorkerThread.cpp" />
-    <ClCompile Include="WorldHelper.cpp" />
+    <ClCompile Include="Stat\Stat.cpp" />
+    <ClCompile Include="Subject\Subject.cpp" />
+    <ClCompile Include="Thread\DBThread.cpp" />
+    <ClCompile Include="Thread\GameLogicThread.cpp" />
+    <ClCompile Include="Thread\TimerThread.cpp" />
+    <ClCompile Include="Thread\WorkerThread.cpp" />
+    <ClCompile Include="Transform\Transform.cpp" />
+    <ClCompile Include="User\User.cpp" />
+    <ClCompile Include="Subject\SubjectHelper.cpp" />
+    <ClCompile Include="User\UserHelper.cpp" />
+    <ClCompile Include="Area\SectorHelper.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AStar.h" />
-    <ClInclude Include="Collision.h" />
-    <ClInclude Include="ContentiD.h" />
-    <ClInclude Include="Core\Allocator.h" />
+    <ClInclude Include="Area\AStar.h" />
+    <ClInclude Include="Area\Collision.h" />
+    <ClInclude Include="Area\Sector.h" />
     <ClInclude Include="Core\CoreGlobal.h" />
-    <ClInclude Include="Core\CoreMacro.h" />
     <ClInclude Include="Core\CoreTLS.h" />
     <ClInclude Include="Core\DBConnection.h" />
     <ClInclude Include="Core\DBConnectionPool.h" />
-    <ClInclude Include="Core\DeadLockProfiler.h" />
     <ClInclude Include="Core\GameServerCore.h" />
-    <ClInclude Include="Core\Lock.h" />
-    <ClInclude Include="Core\Memory.h" />
-    <ClInclude Include="Core\MemoryPool.h" />
     <ClInclude Include="Core\ThreadManager.h" />
-    <ClInclude Include="Core\Types.h" />
-    <ClInclude Include="DBThread.h" />
-    <ClInclude Include="GameLogicThread.h" />
-    <ClInclude Include="GameObject.h" />
-    <ClInclude Include="GameObjectManager.h" />
-    <ClInclude Include="GameSession.h" />
-    <ClInclude Include="GameSessionManager.h" />
-    <ClInclude Include="Monster.h" />
-    <ClInclude Include="MonsterHelper.h" />
-    <ClInclude Include="ObjID.h" />
+    <ClInclude Include="EnumCategory.h" />
+    <ClInclude Include="GameObject\GameObject.h" />
+    <ClInclude Include="GameObject\GameObjectManager.h" />
+    <ClInclude Include="Monster\GameSessionManager.h" />
+    <ClInclude Include="Monster\Monster.h" />
+    <ClInclude Include="Monster\MonsterHelper.h" />
+    <ClInclude Include="Network\GameSession.h" />
+    <ClInclude Include="Network\SocketManager.h" />
+    <ClInclude Include="ObjID\ContentiD.h" />
+    <ClInclude Include="ObjID\ObjID.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Protocol.h" />
-    <ClInclude Include="Sector.h" />
+    <ClInclude Include="Route\Route.h" />
     <ClInclude Include="ServerGlobal.h" />
-    <ClInclude Include="SocketManager.h" />
-    <ClInclude Include="Stat.h" />
-    <ClInclude Include="Subject.h" />
-    <ClInclude Include="TimerThread.h" />
-    <ClInclude Include="Transform.h" />
-    <ClInclude Include="User.h" />
-    <ClInclude Include="UserHelper.h" />
-    <ClInclude Include="Route.h" />
-    <ClInclude Include="WorkerThread.h" />
-    <ClInclude Include="WorldHelper.h" />
+    <ClInclude Include="Stat\Stat.h" />
+    <ClInclude Include="Subject\Subject.h" />
+    <ClInclude Include="Thread\DBThread.h" />
+    <ClInclude Include="Thread\GameLogicThread.h" />
+    <ClInclude Include="Thread\TimerThread.h" />
+    <ClInclude Include="Thread\WorkerThread.h" />
+    <ClInclude Include="Transform\Transform.h" />
+    <ClInclude Include="User\User.h" />
+    <ClInclude Include="Subject\SubjectHelper.h" />
+    <ClInclude Include="User\UserHelper.h" />
+    <ClInclude Include="Area\SectorHelper.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

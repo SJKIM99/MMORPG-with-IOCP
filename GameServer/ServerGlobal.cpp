@@ -16,6 +16,10 @@ shared_ptr<TimerThread>        GTimerThread = nullptr;
 shared_ptr<GameSessionManager> GSessionManager = nullptr;
 shared_ptr<GameObjectManager>  GGameObjectManager = nullptr;
 
+// Previously in Core/CoreGlobal.cpp (now defined here since Core is removed)
+shared_ptr<ThreadManager>    GThreadManager    = make_shared<ThreadManager>();
+shared_ptr<DBConnectionPool> GDBConnectionPool = make_shared<DBConnectionPool>();
+
 class ServerGlobal
 {
 public:

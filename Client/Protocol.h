@@ -6,23 +6,22 @@ constexpr int PORT_NUM = 4000;
 constexpr int NAME_SIZE = 20;
 constexpr int CHAT_SIZE = 20;
 
-constexpr int MAX_USER = 10000;
-constexpr int MAX_NPC = 200000;
+constexpr int MAX_USER    = 10000;
+constexpr int MAX_MONSTER = 200000;
 
-constexpr int W_WIDTH = 2000;
+constexpr int W_WIDTH  = 2000;
 constexpr int W_HEIGHT = 2000;
 
 constexpr int SECTOR_RANGE = 10;
 
-constexpr int VIEW_RANGE = 5;
+constexpr int VIEW_RANGE   = 5;
 constexpr int ATTACK_RANGE = 1;
 
-constexpr int PLAYER_MAX_HP = 100;
-constexpr int NPC_MAX_HP = 50;
+constexpr int PLAYER_MAX_HP  = 100;
+constexpr int MONSTER_MAX_HP = 50;
 
-
-constexpr int PLAYER_OFFENSIVE = 10;
-constexpr int NPC_OFFENSIVE = 5;
+constexpr int PLAYER_OFFENSIVE  = 10;
+constexpr int MONSTER_OFFENSIVE = 5;
 
 constexpr int BUF_SIZE = 1024;
 
@@ -39,8 +38,8 @@ enum class PacketType : uint16
 	SC_ADD_OBJECT,
 	SC_MOVE_OBJECT,
 	SC_REMOVE_OBJECT,
-	SC_PLAYER_ATTACK_NPC,
-	SC_NPC_RESPAWN
+	SC_PLAYER_ATTACK_MONSTER,
+	SC_MONSTER_RESPAWN
 };
 
 #pragma pack (push, 1)
@@ -163,22 +162,22 @@ struct SC_HEAL_PACKET
 	int hp;
 };
 
-struct SC_NPC_DIE_PACKET
+struct SC_MONSTER_DIE_PACKET
 {
 	unsigned short size;
 	int type;
-	int npc_id;
+	int monster_id;
 };
 
-struct SC_NPC_RESPAWN_PACKET
+struct SC_MONSTER_RESPAWN_PACKET
 {
 	unsigned short size;
 	int type;
-	int npc_id;
+	int monster_id;
 	short	x, y;
 };
 
-struct SC_PLAYER_ATTACK_NPC_PACKET
+struct SC_PLAYER_ATTACK_MONSTER_PACKET
 {
 	unsigned short size;
 	int type;
@@ -186,7 +185,7 @@ struct SC_PLAYER_ATTACK_NPC_PACKET
 	int hp;
 };
 
-struct SC_NPC_ATTACK_PLAYER_PACKET
+struct SC_MONSTER_ATTACK_PLAYER_PACKET
 {
 	unsigned short size;
 	int type;

@@ -1,44 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Main">
-      <UniqueIdentifier>{e8dccf15-3bdd-4854-8dd2-f0ba5d770abc}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Utils">
-      <UniqueIdentifier>{37e6aaa6-0769-426b-aa67-d42e60cd791c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="WorkerThread">
-      <UniqueIdentifier>{d2fb6594-3ad8-48a7-9578-1050607d2227}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="GameSession">
-      <UniqueIdentifier>{9b7715e2-08c3-489a-808f-b4f6fdc4b661}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="DBThread">
-      <UniqueIdentifier>{200a581e-d723-4352-b709-2108159fa159}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Protocol">
-      <UniqueIdentifier>{81390e0c-0a64-4e09-9eaa-cacf2f411723}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Sector">
-      <UniqueIdentifier>{bf5df59f-22f0-404f-a586-117054fcf150}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Global">
-      <UniqueIdentifier>{93d557e1-9826-4023-b430-42eaf65c531b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="TimerThread">
-      <UniqueIdentifier>{61271a4a-7a18-43ab-a2b8-db74a1a32463}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Socket">
-      <UniqueIdentifier>{6cb11f98-75f0-4f80-aee1-8d22bf0e24d2}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="AStar">
-      <UniqueIdentifier>{08e13234-4fa5-406e-bda8-4b8613ea99d9}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Core">
       <UniqueIdentifier>{d9d5f933-6ca0-4c19-b73c-e4015050f4a0}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Helpers">
-      <UniqueIdentifier>{ee5b1988-381f-45f0-a445-31b5f6dc3662}</UniqueIdentifier>
     </Filter>
     <Filter Include="ObjID">
       <UniqueIdentifier>{8a72f0bb-235c-47b7-a100-84a072bbc260}</UniqueIdentifier>
@@ -46,59 +10,38 @@
     <Filter Include="Monster">
       <UniqueIdentifier>{eaf1bcc0-329b-4ee8-935f-37dd4eda06f3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="GameObject">
+      <UniqueIdentifier>{34d441f3-70f2-4f9c-b0a6-e54686a468ee}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Network">
+      <UniqueIdentifier>{8d5d518b-fe4c-4459-872f-f9a95716f1d1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Route">
+      <UniqueIdentifier>{50ce9f00-75a0-420e-8c32-2dd27b3f5d9f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Stat">
+      <UniqueIdentifier>{b98d8a39-b07e-4b84-8e0a-e3826c87cbc5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Thread">
+      <UniqueIdentifier>{77864bca-d61e-405d-ac4f-450f32365fe4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Subject">
+      <UniqueIdentifier>{629c44ef-c2f8-494f-b9bc-b4630fd2135f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Transform">
+      <UniqueIdentifier>{afcb63b2-c8c2-4e8c-9e0b-a03e8fa3d0ca}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="User">
+      <UniqueIdentifier>{1772db61-30cf-47ea-860d-e210a9045006}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Area">
+      <UniqueIdentifier>{9e447f59-f7a6-4a49-8beb-3b7c159cb076}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils">
+      <UniqueIdentifier>{747ff6f9-e3db-45d1-bac9-e5c00640d85b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="GameServer.cpp">
-      <Filter>Main</Filter>
-    </ClCompile>
-    <ClCompile Include="pch.cpp">
-      <Filter>Utils</Filter>
-    </ClCompile>
-    <ClCompile Include="SocketManager.cpp">
-      <Filter>Socket</Filter>
-    </ClCompile>
-    <ClCompile Include="WorkerThread.cpp">
-      <Filter>WorkerThread</Filter>
-    </ClCompile>
-    <ClCompile Include="GameSession.cpp">
-      <Filter>GameSession</Filter>
-    </ClCompile>
-    <ClCompile Include="GameSessionManager.cpp">
-      <Filter>GameSession</Filter>
-    </ClCompile>
-    <ClCompile Include="DBThread.cpp">
-      <Filter>DBThread</Filter>
-    </ClCompile>
-    <ClCompile Include="GameLogicThread.cpp">
-      <Filter>Global</Filter>
-    </ClCompile>
-    <ClCompile Include="GameObject.cpp">
-      <Filter>GameSession</Filter>
-    </ClCompile>
-    <ClCompile Include="Sector.cpp">
-      <Filter>Sector</Filter>
-    </ClCompile>
-    <ClCompile Include="Collision.cpp">
-      <Filter>Sector</Filter>
-    </ClCompile>
-    <ClCompile Include="ServerGlobal.cpp">
-      <Filter>Global</Filter>
-    </ClCompile>
-    <ClCompile Include="Monster.cpp">
-      <Filter>Monster</Filter>
-    </ClCompile>
-    <ClCompile Include="TimerThread.cpp">
-      <Filter>TimerThread</Filter>
-    </ClCompile>
-    <ClCompile Include="AStar.cpp">
-      <Filter>AStar</Filter>
-    </ClCompile>
-    <ClCompile Include="User.cpp">
-      <Filter>GameSession</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\Allocator.cpp">
-      <Filter>Core</Filter>
-    </ClCompile>
     <ClCompile Include="Core\CoreGlobal.cpp">
       <Filter>Core</Filter>
     </ClCompile>
@@ -111,99 +54,91 @@
     <ClCompile Include="Core\DBConnectionPool.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Core\DeadLockProfiler.cpp">
-      <Filter>Core</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\Lock.cpp">
-      <Filter>Core</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\Memory.cpp">
-      <Filter>Core</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\MemoryPool.cpp">
-      <Filter>Core</Filter>
-    </ClCompile>
     <ClCompile Include="Core\ThreadManager.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Subject.cpp">
-      <Filter>GameSession</Filter>
+    <ClCompile Include="GameServer.cpp" />
+    <ClCompile Include="Area\AStar.cpp">
+      <Filter>Area</Filter>
     </ClCompile>
-    <ClCompile Include="UserHelper.cpp">
-      <Filter>Helpers</Filter>
+    <ClCompile Include="Area\Collision.cpp">
+      <Filter>Area</Filter>
     </ClCompile>
-    <ClCompile Include="WorldHelper.cpp">
-      <Filter>Helpers</Filter>
+    <ClCompile Include="Thread\DBThread.cpp">
+      <Filter>Thread</Filter>
     </ClCompile>
-    <ClCompile Include="Stat.cpp">
-      <Filter>GameSession</Filter>
+    <ClCompile Include="Thread\GameLogicThread.cpp">
+      <Filter>Thread</Filter>
     </ClCompile>
-    <ClCompile Include="Transform.cpp">
-      <Filter>GameSession</Filter>
+    <ClCompile Include="Monster\GameSessionManager.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="GameObjectManager.cpp" />
-    <ClCompile Include="ObjID.cpp" />
-    <ClCompile Include="ContentiD.cpp" />
-    <ClCompile Include="MonsterHelper.cpp">
+    <ClCompile Include="Network\GameSession.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="ObjID\ContentiD.cpp">
+      <Filter>ObjID</Filter>
+    </ClCompile>
+    <ClCompile Include="ObjID\ObjID.cpp">
+      <Filter>ObjID</Filter>
+    </ClCompile>
+    <ClCompile Include="Area\SectorHelper.cpp">
+      <Filter>Area</Filter>
+    </ClCompile>
+    <ClCompile Include="Area\Sector.cpp">
+      <Filter>Area</Filter>
+    </ClCompile>
+    <ClCompile Include="Route\Route.cpp">
+      <Filter>Route</Filter>
+    </ClCompile>
+    <ClCompile Include="Subject\Subject.cpp">
+      <Filter>Subject</Filter>
+    </ClCompile>
+    <ClCompile Include="User\User.cpp">
+      <Filter>User</Filter>
+    </ClCompile>
+    <ClCompile Include="User\UserHelper.cpp">
+      <Filter>User</Filter>
+    </ClCompile>
+    <ClCompile Include="GameObject\GameObject.cpp">
+      <Filter>GameObject</Filter>
+    </ClCompile>
+    <ClCompile Include="GameObject\GameObjectManager.cpp">
+      <Filter>GameObject</Filter>
+    </ClCompile>
+    <ClCompile Include="Stat\Stat.cpp">
+      <Filter>Stat</Filter>
+    </ClCompile>
+    <ClCompile Include="Monster\Monster.cpp">
       <Filter>Monster</Filter>
+    </ClCompile>
+    <ClCompile Include="Monster\MonsterHelper.cpp">
+      <Filter>Monster</Filter>
+    </ClCompile>
+    <ClCompile Include="Transform\Transform.cpp">
+      <Filter>Transform</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\TimerThread.cpp">
+      <Filter>Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="Thread\WorkerThread.cpp">
+      <Filter>Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="Network\SocketManager.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="Subject\SubjectHelper.cpp">
+      <Filter>Subject</Filter>
+    </ClCompile>
+    <ClCompile Include="ServerGlobal.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <Filter>Utils</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="pch.h">
-      <Filter>Utils</Filter>
-    </ClInclude>
-    <ClInclude Include="SocketManager.h">
-      <Filter>Socket</Filter>
-    </ClInclude>
-    <ClInclude Include="WorkerThread.h">
-      <Filter>WorkerThread</Filter>
-    </ClInclude>
-    <ClInclude Include="GameSession.h">
-      <Filter>GameSession</Filter>
-    </ClInclude>
-    <ClInclude Include="GameSessionManager.h">
-      <Filter>GameSession</Filter>
-    </ClInclude>
-    <ClInclude Include="DBThread.h">
-      <Filter>DBThread</Filter>
-    </ClInclude>
-    <ClInclude Include="GameLogicThread.h">
-      <Filter>Global</Filter>
-    </ClInclude>
-    <ClInclude Include="GameObject.h">
-      <Filter>GameSession</Filter>
-    </ClInclude>
-    <ClInclude Include="Sector.h">
-      <Filter>Sector</Filter>
-    </ClInclude>
-    <ClInclude Include="Collision.h">
-      <Filter>Sector</Filter>
-    </ClInclude>
-    <ClInclude Include="ServerGlobal.h">
-      <Filter>Global</Filter>
-    </ClInclude>
-    <ClInclude Include="Monster.h">
-      <Filter>Monster</Filter>
-    </ClInclude>
-    <ClInclude Include="TimerThread.h">
-      <Filter>TimerThread</Filter>
-    </ClInclude>
-    <ClInclude Include="Protocol.h">
-      <Filter>Protocol</Filter>
-    </ClInclude>
-    <ClInclude Include="AStar.h">
-      <Filter>AStar</Filter>
-    </ClInclude>
-    <ClInclude Include="User.h">
-      <Filter>GameSession</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\Allocator.h">
-      <Filter>Core</Filter>
-    </ClInclude>
     <ClInclude Include="Core\CoreGlobal.h">
-      <Filter>Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\CoreMacro.h">
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="Core\CoreTLS.h">
@@ -215,47 +150,95 @@
     <ClInclude Include="Core\DBConnectionPool.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Core\DeadLockProfiler.h">
-      <Filter>Core</Filter>
-    </ClInclude>
     <ClInclude Include="Core\GameServerCore.h">
-      <Filter>Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\Lock.h">
-      <Filter>Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\Memory.h">
-      <Filter>Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\MemoryPool.h">
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="Core\ThreadManager.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Types.h">
-      <Filter>Core</Filter>
+    <ClInclude Include="Area\Collision.h">
+      <Filter>Area</Filter>
     </ClInclude>
-    <ClInclude Include="Subject.h">
-      <Filter>GameSession</Filter>
+    <ClInclude Include="Area\AStar.h">
+      <Filter>Area</Filter>
     </ClInclude>
-    <ClInclude Include="UserHelper.h">
-      <Filter>Helpers</Filter>
+    <ClInclude Include="Thread\DBThread.h">
+      <Filter>Thread</Filter>
     </ClInclude>
-    <ClInclude Include="WorldHelper.h">
-      <Filter>Helpers</Filter>
+    <ClInclude Include="Thread\GameLogicThread.h">
+      <Filter>Thread</Filter>
     </ClInclude>
-    <ClInclude Include="Stat.h">
-      <Filter>GameSession</Filter>
+    <ClInclude Include="Monster\GameSessionManager.h">
+      <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="Transform.h">
-      <Filter>GameSession</Filter>
+    <ClInclude Include="Network\GameSession.h">
+      <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="GameObjectManager.h" />
-    <ClInclude Include="ObjID.h" />
-    <ClInclude Include="ContentiD.h" />
-    <ClInclude Include="MonsterHelper.h">
+    <ClInclude Include="ObjID\ContentiD.h">
+      <Filter>ObjID</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjID\ObjID.h">
+      <Filter>ObjID</Filter>
+    </ClInclude>
+    <ClInclude Include="Area\SectorHelper.h">
+      <Filter>Area</Filter>
+    </ClInclude>
+    <ClInclude Include="Area\Sector.h">
+      <Filter>Area</Filter>
+    </ClInclude>
+    <ClInclude Include="Route\Route.h">
+      <Filter>Route</Filter>
+    </ClInclude>
+    <ClInclude Include="Subject\Subject.h">
+      <Filter>Subject</Filter>
+    </ClInclude>
+    <ClInclude Include="User\User.h">
+      <Filter>User</Filter>
+    </ClInclude>
+    <ClInclude Include="User\UserHelper.h">
+      <Filter>User</Filter>
+    </ClInclude>
+    <ClInclude Include="GameObject\GameObjectManager.h">
+      <Filter>GameObject</Filter>
+    </ClInclude>
+    <ClInclude Include="GameObject\GameObject.h">
+      <Filter>GameObject</Filter>
+    </ClInclude>
+    <ClInclude Include="Stat\Stat.h">
+      <Filter>Stat</Filter>
+    </ClInclude>
+    <ClInclude Include="Monster\MonsterHelper.h">
       <Filter>Monster</Filter>
+    </ClInclude>
+    <ClInclude Include="Monster\Monster.h">
+      <Filter>Monster</Filter>
+    </ClInclude>
+    <ClInclude Include="Transform\Transform.h">
+      <Filter>Transform</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\WorkerThread.h">
+      <Filter>Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread\TimerThread.h">
+      <Filter>Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="Network\SocketManager.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="Subject\SubjectHelper.h">
+      <Filter>Subject</Filter>
+    </ClInclude>
+    <ClInclude Include="ServerGlobal.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Protocol.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="pch.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="EnumCategory.h">
+      <Filter>Utils</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

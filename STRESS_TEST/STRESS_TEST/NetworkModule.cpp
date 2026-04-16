@@ -65,14 +65,14 @@ atomic_int num_connections;
 atomic_int client_to_close;
 atomic_int active_clients;
 
-int			global_delay;				// ms´ÜÀ§, 1000ÀÌ ³ÑÀ¸¸é Å¬¶óÀÌ¾ðÆ® Áõ°¡ Á¾·á
+int			global_delay;				// msï¿½ï¿½ï¿½ï¿½, 1000ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Å¬ï¿½ï¿½ï¿½Ì¾ï¿½Æ® ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 
 vector <thread*> worker_threads;
 thread test_thread;
 
 float point_cloud[MAX_TEST * 2];
 
-// ³ªÁß¿¡ NPC±îÁö Ãß°¡ È®Àå ¿ë
+// ï¿½ï¿½ï¿½ß¿ï¿½ NPCï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½ È®ï¿½ï¿½ ï¿½ï¿½
 struct ALIEN {
 	int id;
 	int x, y;
@@ -89,7 +89,7 @@ void error_display(const char* msg, int err_no)
 		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 		(LPTSTR)&lpMsgBuf, 0, NULL);
 	std::cout << msg;
-	std::wcout << L"¿¡·¯" << lpMsgBuf << std::endl;
+	std::wcout << L"ï¿½ï¿½ï¿½ï¿½" << lpMsgBuf << std::endl;
 
 	MessageBox(hWnd, lpMsgBuf, L"ERROR", 0);
 	LocalFree(lpMsgBuf);
@@ -177,26 +177,26 @@ void ProcessPacket(int ci, unsigned char packet[])
 		g_clients[ci].hp = heal_packet->hp;
 		break;
 	}
-	case static_cast<char>(PacketType::SC_PLAYER_ATTACK_NPC): {
-		SC_PLAYER_ATTACK_NPC_PACKET* attack_packet = reinterpret_cast<SC_PLAYER_ATTACK_NPC_PACKET*>(packet);
+	case static_cast<char>(PacketType::SC_PLAYER_ATTACK_MONSTER): {
+		SC_PLAYER_ATTACK_MONSTER_PACKET* attack_packet = reinterpret_cast<SC_PLAYER_ATTACK_MONSTER_PACKET*>(packet);
 		g_clients[attack_packet->id].hp = attack_packet->hp;
 		break;
 	}
-	case static_cast<char>(PacketType::SC_NPC_DIE): {
-		SC_NPC_DIE_PACKET* die_packet = reinterpret_cast<SC_NPC_DIE_PACKET*>(packet);
+	case static_cast<char>(PacketType::SC_MONSTER_DIE): {
+		SC_MONSTER_DIE_PACKET* die_packet = reinterpret_cast<SC_MONSTER_DIE_PACKET*>(packet);
 
-		g_clients[die_packet->npc_id];
+		g_clients[die_packet->monster_id];
 		break;
 	}
-	case static_cast<char>(PacketType::SC_NPC_RESPAWN): {
-		SC_NPC_RESPAWN_PACKET* respawn_packet = reinterpret_cast<SC_NPC_RESPAWN_PACKET*>(packet);
+	case static_cast<char>(PacketType::SC_MONSTER_RESPAWN): {
+		SC_MONSTER_RESPAWN_PACKET* respawn_packet = reinterpret_cast<SC_MONSTER_RESPAWN_PACKET*>(packet);
 
-		g_clients[respawn_packet->npc_id].x = respawn_packet->x;
-		g_clients[respawn_packet->npc_id].y = respawn_packet->y;
+		g_clients[respawn_packet->monster_id].x = respawn_packet->x;
+		g_clients[respawn_packet->monster_id].y = respawn_packet->y;
 		break;
 	}
-	case static_cast<char>(PacketType::SC_NPC_ATTACK_PLAYER): {
-		SC_NPC_ATTACK_PLAYER_PACKET* attack_packet = reinterpret_cast<SC_NPC_ATTACK_PLAYER_PACKET*>(packet);
+	case static_cast<char>(PacketType::SC_MONSTER_ATTACK_PLAYER): {
+		SC_MONSTER_ATTACK_PLAYER_PACKET* attack_packet = reinterpret_cast<SC_MONSTER_ATTACK_PLAYER_PACKET*>(packet);
 		g_clients[ci].hp = attack_packet->hp;
 		break;
 	}
@@ -250,7 +250,7 @@ void Worker_Thread()
 			while (io_size > 0) {
 				if (0 == psize) psize = buf[0];
 				if (io_size + pr_size >= psize) {
-					// Áö±Ý ÆÐÅ¶ ¿Ï¼º °¡´É
+					// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å¶ ï¿½Ï¼ï¿½ ï¿½ï¿½ï¿½ï¿½
 					unsigned char packet[MAX_PACKET_SIZE];
 					memcpy(packet, g_clients[ci].packet_buf, pr_size);
 					memcpy(packet + pr_size, buf, psize - pr_size);
