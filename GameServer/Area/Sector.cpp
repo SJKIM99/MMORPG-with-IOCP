@@ -56,7 +56,7 @@ Sector::NeighborSnapshot Sector::CollectNeighborObjects(short sectorX, short sec
 	return snapshot;
 }
 
-Sector::SectorObjects& Sector::GetObjectsMutable(short sectorX, short sectorY)
+Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorY)
 {
 	ASSERT_CRASH(IsValidSector(sectorX, sectorY));
 	return _sectors[sectorY][sectorX];
@@ -72,9 +72,9 @@ bool Sector::UpdateObjectSector(ObjID& subjectId, short worldX, short worldY, sh
 		return false;
 
 	if (IsValidSector(inOutSectorX, inOutSectorY))
-		GetObjectsMutable(inOutSectorX, inOutSectorY).erase(subjectId);
+		GetObjects(inOutSectorX, inOutSectorY).erase(subjectId);
 
-	GetObjectsMutable(nextSector.x, nextSector.y).insert(subjectId);
+	GetObjects(nextSector.x, nextSector.y).insert(subjectId);
 	inOutSectorX = nextSector.x;
 	inOutSectorY = nextSector.y;
 	return true;
@@ -85,7 +85,7 @@ void Sector::RemoveObject(ObjID& objectId, short& inOutSectorX, short& inOutSect
 	if (IsValidSector(inOutSectorX, inOutSectorY) == false)
 		return;
 
-	GetObjectsMutable(inOutSectorX, inOutSectorY).erase(objectId);
+	GetObjects(inOutSectorX, inOutSectorY).erase(objectId);
 	inOutSectorX = -1;
 	inOutSectorY = -1;
 }

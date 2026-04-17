@@ -46,10 +46,32 @@ public:
 			callback(object);
 	}
 
+	// shared_ptr 스냅샷 없이 ObjID만 직접 순회한다.
+	// 전제: 콜백이 섹터 내용을 수정하지 않아야 한다 (GameLogicThread 단일 소비자 보장).
+	// 유저만 필요한 경우처럼, 카테고리 필터 후 필요한 객체만 조회하면
+	// 몬스터 전체에 대한 GetGameObject + atomic refcount 증가를 생략할 수 있다.
+	template<typename Callback>
+	requires std::invocable<Callback&, const ObjID&>
+	void ForEachNeighborObjID(short sectorX, short sectorY, Callback&& callback) const
+	{
+		if (!IsValidSector(sectorX, sectorY))
+			return;
+
+		const short minY = std::max<short>(0, static_cast<short>(sectorY - 1));
+		const short maxY = std::min<short>(static_cast<short>(kSectorHeight - 1), static_cast<short>(sectorY + 1));
+		const short minX = std::max<short>(0, static_cast<short>(sectorX - 1));
+		const short maxX = std::min<short>(static_cast<short>(kSectorWidth - 1), static_cast<short>(sectorX + 1));
+
+		for (short y = minY; y <= maxY; ++y)
+			for (short x = minX; x <= maxX; ++x)
+				for (const ObjID& id : _sectors[y][x])
+					callback(id);
+	}
+
 private:
 	using SectorGrid = std::array<std::array<SectorObjects, kSectorWidth>, kSectorHeight>;
 
-	[[nodiscard]] SectorObjects& GetObjectsMutable(short sectorX, short sectorY);
+	[[nodiscard]] SectorObjects& GetObjects(short sectorX, short sectorY);
 
 private:
 	SectorGrid _sectors;

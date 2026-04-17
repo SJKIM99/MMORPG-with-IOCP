@@ -13,6 +13,7 @@ void Monster::InitInstance()
 
 	SetType(GetDatabaseID() <= AGGRO_MONSTER_BOUNDARY ? MONSTER_TYPE::AGGRO : MONSTER_TYPE::PASSIVE);
 	SetName(std::format("Monster{}", GetDatabaseID()));
+	ClearPath();
 	SetActive(false);
 	SetAttack(false);
 }

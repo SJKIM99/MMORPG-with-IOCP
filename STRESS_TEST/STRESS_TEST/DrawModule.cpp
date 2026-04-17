@@ -137,9 +137,9 @@ int DrawGLScene(GLvoid)									// Here's Where We Do All The Drawing
 	glColor3f(1, 1, 0);
 	// Position The Text On The Screen
 	glRasterPos2f(-0.2f, 0.00f);
-	glPrint("STRESS TEST [%d]", (int)active_clients);	// Print GL Text To The Screen
+	glPrint("STRESS TEST [%d]", active_clients.load());	// Print GL Text To The Screen
 	glRasterPos2f(-0.2f, 0.05f);
-	glPrint("Delay : %dms", global_delay);
+	glPrint("Delay : %dms", global_delay.load());
 
 	glColor3f(1, 1, 1);
 
@@ -149,8 +149,8 @@ int DrawGLScene(GLvoid)									// Here's Where We Do All The Drawing
 	{
 		float x, y, z;
 
-		x = points[i * 2] / 200.0f - 1.25f;
-		y = 1.25f - points[i * 2 + 1] / 200.0f;
+		x = points[i * 2] / 800.0f - 1.25f;
+		y = 1.25f - points[i * 2 + 1] / 800.0f;
 		z = -1.0f;
 		glVertex3f(x, y, z);
 	}

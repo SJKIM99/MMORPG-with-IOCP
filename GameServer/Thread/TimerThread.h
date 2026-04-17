@@ -27,6 +27,8 @@ private:
 		bool operator()(const TIMER_EVENT& lhs, const TIMER_EVENT& rhs) const noexcept;
 	};
 
+	[[nodiscard]] bool ShouldNotifyForNewEventLocked(const TIMER_EVENT& timerEvent) const;
+	void DrainReadyEventsLocked(std::vector<TIMER_EVENT>& readyEvents, Clock::time_point now);
 	void Dispatch(const TIMER_EVENT& timerEvent);
 
 private:

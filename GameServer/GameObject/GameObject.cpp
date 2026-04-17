@@ -18,10 +18,6 @@ void GameObject::InitInstance()
 	SetParent(nullptr);
 }
 
-bool GameObject::OnUpdate()
-{
-	return true;
-}
 
 void GameObject::SetParent(const SharedPtr& parent) noexcept
 {

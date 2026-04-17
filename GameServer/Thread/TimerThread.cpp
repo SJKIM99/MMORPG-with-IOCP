@@ -13,15 +13,35 @@ bool TimerThread::TimerEventCompare::operator()(const TIMER_EVENT& lhs, const TI
 	return lhs.sequence > rhs.sequence;
 }
 
+bool TimerThread::ShouldNotifyForNewEventLocked(const TIMER_EVENT& timerEvent) const
+{
+	if (_events.empty())
+		return true;
+
+	return timerEvent.wakeupTime < _events.top().wakeupTime;
+}
+
+void TimerThread::DrainReadyEventsLocked(std::vector<TIMER_EVENT>& readyEvents, Clock::time_point now)
+{
+	while (!_events.empty() && _events.top().wakeupTime <= now)
+	{
+		readyEvents.push_back(_events.top());
+		_events.pop();
+	}
+}
+
 void TimerThread::Schedule(TIMER_EVENT timerEvent)
 {
+	bool shouldNotify = false;
 	{
 		std::scoped_lock lock(_lock);
 		timerEvent.sequence = _nextSequence++;
+		shouldNotify = ShouldNotifyForNewEventLocked(timerEvent);
 		_events.push(std::move(timerEvent));
 	}
 
-	_cv.notify_one();
+	if (shouldNotify)
+		_cv.notify_one();
 }
 
 void TimerThread::ScheduleNow(const ObjID& subjectId, TIMER_EVENT_TYPE eventType)
@@ -109,6 +129,8 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 void TimerThread::DoTimer()
 {
 	std::unique_lock lock(_lock);
+	std::vector<TIMER_EVENT> readyEvents;
+	readyEvents.reserve(32);
 
 	while (true)
 	{
@@ -119,7 +141,8 @@ void TimerThread::DoTimer()
 
 		while (!_events.empty())
 		{
-			if (_events.top().wakeupTime > Now())
+			const auto now = Now();
+			if (_events.top().wakeupTime > now)
 			{
 				const auto nextWakeup = _events.top().wakeupTime;
 				_cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
@@ -129,11 +152,12 @@ void TimerThread::DoTimer()
 				continue;
 			}
 
-			TIMER_EVENT timerEvent = _events.top();
-			_events.pop();
+			readyEvents.clear();
+			DrainReadyEventsLocked(readyEvents, now);
 
 			lock.unlock();
-			Dispatch(timerEvent);
+			for (const TIMER_EVENT& timerEvent : readyEvents)
+				Dispatch(timerEvent);
 			lock.lock();
 		}
 	}

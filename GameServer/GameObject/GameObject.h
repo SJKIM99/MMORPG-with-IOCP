@@ -43,5 +43,4 @@ public:
 	}
 
 	virtual void InitInstance();
-	virtual bool OnUpdate();
 };

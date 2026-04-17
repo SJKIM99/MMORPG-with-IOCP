@@ -640,17 +640,17 @@ void client_finish()
     delete orc_hurt_tex;
     delete orc_death_tex;
     delete g_font;
-    g_font = nullptr;
     exit(0);
+    g_font = nullptr;
 }
 
 void ProcessPacket(char* ptr)
 {
     static bool first_time = true;
     switch (ptr[2]) {
-    case static_cast<char>(PacketType::SC_LOGIN_SUCCESS):
+    case static_cast<char>(PacketType::USER_LOGIN_ACK):
     {
-        SC_LOGIN_SUCCESS_PACKET* packet = reinterpret_cast<SC_LOGIN_SUCCESS_PACKET*>(ptr);
+        USER_LOGIN_ACK_PACKET* packet = reinterpret_cast<USER_LOGIN_ACK_PACKET*>(ptr);
         g_myid = packet->id;
         avatar.id = g_myid;
         avatar.move(packet->x, packet->y);
@@ -664,9 +664,9 @@ void ProcessPacket(char* ptr)
     }
     break;
 
-    case static_cast<char>(PacketType::SC_ADD_OBJECT):
+    case static_cast<char>(PacketType::SUBJECT_ADD_NFY):
     {
-        SC_ADD_OBJECT_PACKET* my_packet = reinterpret_cast<SC_ADD_OBJECT_PACKET*>(ptr);
+        SUBJECT_ADD_NFY_PACKET* my_packet = reinterpret_cast<SUBJECT_ADD_NFY_PACKET*>(ptr);
         ObjID id = my_packet->id;
 
         if (id == g_myid) {
@@ -676,9 +676,17 @@ void ProcessPacket(char* ptr)
             avatar.show();
         }
         else if (static_cast<EnumCategory>(id.GetCategory()) == EnumCategory::eUser) {
-            // Other players use static knight texture for now
-            sf::Texture* ktex = soldier_idle_tex; // reuse idle frame 0 for other players
-            players[id] = OBJECT{ *ktex, 0, 0, SOLDIER_FRAME_W, SOLDIER_FRAME_H };
+            players[id] = OBJECT{};
+            players[id].SetAnimTextures(
+                soldier_idle_tex, SOLDIER_IDLE_FRAMES,
+                soldier_walk_tex, SOLDIER_WALK_FRAMES,
+                SOLDIER_FRAME_W,  SOLDIER_FRAME_H,
+                256);
+            players[id].SetAttackHurtTextures(
+                soldier_atk_tex,  SOLDIER_ATK_FRAMES,
+                soldier_hurt_tex, SOLDIER_HURT_FRAMES,
+                soldier_atk2_tex,
+                soldier_atk3_tex, SOLDIER_SKILL_FRAMES);
             players[id].id = id;
             players[id].move(my_packet->x, my_packet->y);
             players[id].set_name(my_packet->name);
@@ -713,9 +721,9 @@ void ProcessPacket(char* ptr)
         break;
     }
 
-    case static_cast<char>(PacketType::SC_MOVE_OBJECT):
+    case static_cast<char>(PacketType::SUBJECT_MOVE_NFY):
     {
-        SC_MOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_MOVE_OBJECT_PACKET*>(ptr);
+        SUBJECT_MOVE_NFY_PACKET* my_packet = reinterpret_cast<SUBJECT_MOVE_NFY_PACKET*>(ptr);
         ObjID other_id = my_packet->id;
         if (other_id == g_myid) {
             avatar.move(my_packet->x, my_packet->y);
@@ -747,9 +755,9 @@ void ProcessPacket(char* ptr)
         break;
     }
 
-    case static_cast<char>(PacketType::SC_REMOVE_OBJECT):
+    case static_cast<char>(PacketType::SUBJECT_REMOVE_NFY):
     {
-        SC_REMOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_REMOVE_OBJECT_PACKET*>(ptr);
+        SUBJECT_REMOVE_NFY_PACKET* my_packet = reinterpret_cast<SUBJECT_REMOVE_NFY_PACKET*>(ptr);
         ObjID other_id = my_packet->id;
         if (other_id == g_myid)
             avatar.hide();
@@ -758,9 +766,9 @@ void ProcessPacket(char* ptr)
         break;
     }
 
-    case static_cast<char>(PacketType::SC_PLAYER_ATTACK_MONSTER):
+    case static_cast<char>(PacketType::USER_ATTACK_ACK):
     {
-        SC_PLAYER_ATTACK_MONSTER_PACKET* packet = reinterpret_cast<SC_PLAYER_ATTACK_MONSTER_PACKET*>(ptr);
+        USER_ATTACK_ACK_PACKET* packet = reinterpret_cast<USER_ATTACK_ACK_PACKET*>(ptr);
         if (players.count(packet->id))
         {
             players[packet->id].SetHurt();
@@ -769,9 +777,9 @@ void ProcessPacket(char* ptr)
         break;
     }
 
-    case static_cast<char>(PacketType::SC_STAT_CHANGE):
+    case static_cast<char>(PacketType::USER_STAT_CHANGE_INF):
     {
-        SC_STAT_CHANGE_PACKET* packet = reinterpret_cast<SC_STAT_CHANGE_PACKET*>(ptr);
+        USER_STAT_CHANGE_INF_PACKET* packet = reinterpret_cast<USER_STAT_CHANGE_INF_PACKET*>(ptr);
         avatar.level = packet->level;
         avatar.hp    = packet->hp;
         avatar.maxhp = packet->maxhp;
@@ -779,68 +787,34 @@ void ProcessPacket(char* ptr)
         break;
     }
 
-    case static_cast<char>(PacketType::SC_MONSTER_DIE):
+    case static_cast<char>(PacketType::SUBJECT_DIE_NFY):
     {
-        SC_MONSTER_DIE_PACKET* packet = reinterpret_cast<SC_MONSTER_DIE_PACKET*>(ptr);
-        if (players.count(packet->monster_id))
-            players[packet->monster_id].SetDying(); // play death anim; render loop removes it
-        else
-            players.erase(packet->monster_id);
-        break;
-    }
-
-    case static_cast<char>(PacketType::SC_MONSTER_RESPAWN):
-    {
-        SC_MONSTER_RESPAWN_PACKET* packet = reinterpret_cast<SC_MONSTER_RESPAWN_PACKET*>(ptr);
-        ObjID monsterId = packet->monster_id;
-        if (players.count(monsterId)) {
-            players[monsterId].move(packet->x, packet->y);
-            players[monsterId].show();
-        }
-        break;
-    }
-
-    case static_cast<char>(PacketType::SC_MONSTER_ATTACK_PLAYER):
-    {
-        SC_MONSTER_ATTACK_PLAYER_PACKET* packet = reinterpret_cast<SC_MONSTER_ATTACK_PLAYER_PACKET*>(ptr);
-        avatar.hp = packet->hp;
-        avatar.SetHurt();
-        if (players.count(packet->monster_id))
+        SUBJECT_DIE_NFY_PACKET* packet = reinterpret_cast<SUBJECT_DIE_NFY_PACKET*>(ptr);
+        if (static_cast<EnumCategory>(packet->id.GetCategory()) == EnumCategory::eMonster)
         {
-            auto& npc = players[packet->monster_id];
-            // Face the player before playing the attack animation
-            const int dx = avatar.m_x - npc.m_x;
-            if (dx != 0) npc.SetFacing(dx < 0);
-            npc.SetAttacking();
+            if (players.count(packet->id))
+                players[packet->id].SetDying(); // play death anim; render loop removes it
+            else
+                players.erase(packet->id);
+        }
+        else
+        {
+            if (packet->id == g_myid) {
+                avatar.hp = packet->hp;
+                avatar.hide();
+                g_isDead   = true;
+                g_deathTime = chrono::steady_clock::now();
+            } else if (players.count(packet->id)) {
+                players[packet->id].hp = packet->hp;
+                players[packet->id].hide();
+            }
         }
         break;
     }
 
-    case static_cast<char>(PacketType::SC_HEAL):
+    case static_cast<char>(PacketType::SUBJECT_RESPAWN_NFY):
     {
-        SC_HEAL_PACKET* packet = reinterpret_cast<SC_HEAL_PACKET*>(ptr);
-        avatar.hp = packet->hp;
-        break;
-    }
-
-    case static_cast<char>(PacketType::SC_PLAYER_DIE):
-    {
-        SC_PLAYER_DIE_PACKET* packet = reinterpret_cast<SC_PLAYER_DIE_PACKET*>(ptr);
-        if (packet->id == g_myid) {
-            avatar.hp = packet->hp;
-            avatar.hide();
-            g_isDead   = true;
-            g_deathTime = chrono::steady_clock::now();
-        } else {
-            players[packet->id].hp = packet->hp;
-            players[packet->id].hide();
-        }
-        break;
-    }
-
-    case static_cast<char>(PacketType::SC_PLAYER_RESPAWN):
-    {
-        SC_PLAYER_RESPAWN_PACKET* packet = reinterpret_cast<SC_PLAYER_RESPAWN_PACKET*>(ptr);
+        SUBJECT_RESPAWN_NFY_PACKET* packet = reinterpret_cast<SUBJECT_RESPAWN_NFY_PACKET*>(ptr);
         if (packet->id == g_myid) {
             g_left_x  = packet->x - SCREEN_WIDTH / 2;
             g_top_y   = packet->y - SCREEN_HEIGHT / 2;
@@ -849,12 +823,74 @@ void ProcessPacket(char* ptr)
             avatar.SetIdle();
             avatar.show();
             g_isDead  = false;
-        } else {
+        } else if (players.count(packet->id)) {
             players[packet->id].move(packet->x, packet->y);
             players[packet->id].hp = packet->hp;
             players[packet->id].SetIdle();
             players[packet->id].show();
+        } else {
+            if (static_cast<EnumCategory>(packet->id.GetCategory()) == EnumCategory::eUser) {
+                players[packet->id] = OBJECT{};
+                players[packet->id].SetAnimTextures(
+                    soldier_idle_tex, SOLDIER_IDLE_FRAMES,
+                    soldier_walk_tex, SOLDIER_WALK_FRAMES,
+                    SOLDIER_FRAME_W,  SOLDIER_FRAME_H,
+                    256);
+                players[packet->id].SetAttackHurtTextures(
+                    soldier_atk_tex,  SOLDIER_ATK_FRAMES,
+                    soldier_hurt_tex, SOLDIER_HURT_FRAMES,
+                    soldier_atk2_tex,
+                    soldier_atk3_tex, SOLDIER_SKILL_FRAMES);
+            } else if (packet->monster_type == MONSTER_TYPE::PASSIVE) {
+                players[packet->id] = OBJECT{};
+                players[packet->id].SetOrcAnimTextures(
+                    slime_idle_tex,  SLIME_IDLE_FRAMES,
+                    slime_walk_tex,  SLIME_WALK_FRAMES,
+                    slime_atk_tex,   SLIME_ATK_FRAMES,
+                    slime_hurt_tex,  SLIME_HURT_FRAMES,
+                    slime_death_tex, SLIME_DEATH_FRAMES,
+                    SLIME_FRAME_W, SLIME_FRAME_H, SLIME_DISPLAY_SIZE);
+            } else {
+                players[packet->id] = OBJECT{};
+                players[packet->id].SetOrcAnimTextures(
+                    orc_idle_tex,  ORC_IDLE_FRAMES,
+                    orc_walk_tex,  ORC_WALK_FRAMES,
+                    orc_atk_tex,   ORC_ATK_FRAMES,
+                    orc_hurt_tex,  ORC_HURT_FRAMES,
+                    orc_death_tex, ORC_DEATH_FRAMES,
+                    ORC_FRAME_W, ORC_FRAME_H, ORC_DISPLAY_SIZE);
+            }
+
+            players[packet->id].id = packet->id;
+            players[packet->id].move(packet->x, packet->y);
+            players[packet->id].hp = packet->hp;
+            players[packet->id].set_name(packet->name);
+            players[packet->id].SetIdle();
+            players[packet->id].show();
         }
+        break;
+    }
+
+    case static_cast<char>(PacketType::SUBJECT_ATTACK_NFY):
+    {
+        SUBJECT_ATTACK_NFY_PACKET* packet = reinterpret_cast<SUBJECT_ATTACK_NFY_PACKET*>(ptr);
+        avatar.hp = packet->hp;
+        avatar.SetHurt();
+        if (players.count(packet->attacker_id))
+        {
+            auto& npc = players[packet->attacker_id];
+            // Face the player before playing the attack animation
+            const int dx = avatar.m_x - npc.m_x;
+            if (dx != 0) npc.SetFacing(dx < 0);
+            npc.SetAttacking();
+        }
+        break;
+    }
+
+    case static_cast<char>(PacketType::USER_HEAL_INF):
+    {
+        USER_HEAL_INF_PACKET* packet = reinterpret_cast<USER_HEAL_INF_PACKET*>(ptr);
+        avatar.hp = packet->hp;
         break;
     }
 
@@ -894,14 +930,14 @@ void client_main()
     // Delta time
     float dt = g_clock.restart().asSeconds();
 
-    // timer-based movement (send packet at most every 250ms)
+    // timer-based movement (send packet at most every 1000ms)
     const bool up    = sf::Keyboard::isKeyPressed(sf::Keyboard::Up);
     const bool down  = sf::Keyboard::isKeyPressed(sf::Keyboard::Down);
     const bool left  = sf::Keyboard::isKeyPressed(sf::Keyboard::Left);
     const bool right = sf::Keyboard::isKeyPressed(sf::Keyboard::Right);
     const bool moving = up || down || left || right;
 
-    if (moving && g_moveClock.getElapsedTime().asMilliseconds() >= 250)
+    if (moving && g_moveClock.getElapsedTime().asMilliseconds() >= 1000)
     {
         g_moveClock.restart();
 
@@ -937,9 +973,9 @@ void client_main()
                 if (!avatar.IsOneShot())
                     avatar.SetWalking(direction);
 
-                CS_MOVE_PACKET mp;
+                USER_MOVE_REQ_PACKET mp;
                 mp.size      = sizeof(mp);
-                mp.type      = static_cast<char>(PacketType::CS_MOVE);
+                mp.type      = static_cast<char>(PacketType::USER_MOVE_REQ);
                 mp.direction = direction;
                 mp.move_time = static_cast<unsigned>(
                     chrono::duration_cast<chrono::milliseconds>(
@@ -1129,9 +1165,9 @@ int main()
     cout << "ID :";
     cin >> id;
 
-    CS_LOGIN_PACKET p;
+    USER_LOGIN_REQ_PACKET p;
     p.size = sizeof(p);
-    p.type = static_cast<char>(PacketType::CS_LOGIN);
+    p.type = static_cast<char>(PacketType::USER_LOGIN_REQ);
     strcpy_s(p.name, id);
     send_packet(&p);
     avatar.set_name(p.name);
@@ -1162,9 +1198,9 @@ int main()
                     {
                         g_attackClock.restart();
                         avatar.SetAttacking();
-                        CS_ATTACK_PACKET ap;
+                        USER_ATTACK_REQ_PACKET ap;
                         ap.size        = sizeof(ap);
-                        ap.type        = static_cast<char>(PacketType::CS_ATTACK);
+                        ap.type        = static_cast<char>(PacketType::USER_ATTACK_REQ);
                         ap.attack_time = static_cast<unsigned>(
                             chrono::duration_cast<chrono::milliseconds>(
                                 chrono::steady_clock::now().time_since_epoch()).count());
@@ -1177,9 +1213,9 @@ int main()
                     {
                         g_skillClock.restart();
                         avatar.SetSkillAttacking();
-                        CS_SKILL_PACKET sp;
+                        USER_SKILL_REQ_PACKET sp;
                         sp.size = sizeof(sp);
-                        sp.type = static_cast<char>(PacketType::CS_SKILL);
+                        sp.type = static_cast<char>(PacketType::USER_SKILL_REQ);
                         send_packet(&sp);
                     }
                 }

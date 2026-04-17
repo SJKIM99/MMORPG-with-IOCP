@@ -9,24 +9,26 @@ constexpr size_t ConstMaxSize(size_t lhs, size_t rhs)
 
 constexpr size_t MAX_SERVER_PACKET_SIZE =
 	ConstMaxSize(
-		sizeof(SC_LOGIN_SUCCESS_PACKET),
+		sizeof(USER_LOGIN_ACK_PACKET),
 		ConstMaxSize(
-			sizeof(SC_ADD_OBJECT_PACKET),
+			sizeof(USER_LOGIN_FAIL_ACK_PACKET),
 			ConstMaxSize(
-				sizeof(SC_REMOVE_OBJECT_PACKET),
+				sizeof(SUBJECT_ADD_NFY_PACKET),
 				ConstMaxSize(
-					sizeof(SC_MOVE_OBJECT_PACKET),
+					sizeof(SUBJECT_REMOVE_NFY_PACKET),
 					ConstMaxSize(
-						sizeof(SC_MONSTER_DIE_PACKET),
+						sizeof(SUBJECT_MOVE_NFY_PACKET),
 						ConstMaxSize(
-							sizeof(SC_MONSTER_RESPAWN_PACKET),
+							sizeof(SUBJECT_DIE_NFY_PACKET),
 							ConstMaxSize(
-								sizeof(SC_PLAYER_ATTACK_MONSTER_PACKET),
+								sizeof(SUBJECT_RESPAWN_NFY_PACKET),
 								ConstMaxSize(
-									sizeof(SC_MONSTER_ATTACK_PLAYER_PACKET),
+									sizeof(USER_ATTACK_ACK_PACKET),
 									ConstMaxSize(
-										sizeof(SC_HEAL_PACKET),
-										ConstMaxSize(sizeof(SC_PLAYER_DIE_PACKET), sizeof(SC_PLAYER_RESPAWN_PACKET))
+										sizeof(SUBJECT_ATTACK_NFY_PACKET),
+										ConstMaxSize(
+											sizeof(USER_HEAL_INF_PACKET),
+											sizeof(USER_STAT_CHANGE_INF_PACKET))
 									)
 								)
 							)
@@ -37,11 +39,16 @@ constexpr size_t MAX_SERVER_PACKET_SIZE =
 		)
 	);
 
+constexpr size_t SEND_BATCH_BUFFER_SIZE = 4096;
+static_assert(SEND_BATCH_BUFFER_SIZE >= MAX_SERVER_PACKET_SIZE, "Send batch buffer must fit one server packet.");
+
+class GameSession;
 class IoContext
 {
 public:
 	WSAOVERLAPPED m_over;
 	IO_TYPE m_type;
+	shared_ptr<GameSession> m_session;
 
 public:
 	explicit IoContext(IO_TYPE type) : m_type(type)
@@ -52,6 +59,23 @@ public:
 	void ResetOverlapped()
 	{
 		::ZeroMemory(&m_over, sizeof(m_over));
+	}
+
+	void AttachSession(const shared_ptr<GameSession>& session) noexcept
+	{
+		m_session = session;
+	}
+
+	[[nodiscard]] shared_ptr<GameSession> DetachSession() noexcept
+	{
+		auto session = std::move(m_session);
+		m_session.reset();
+		return session;
+	}
+
+	[[nodiscard]] static IoContext* FromOverlapped(WSAOVERLAPPED* over) noexcept
+	{
+		return over != nullptr ? CONTAINING_RECORD(over, IoContext, m_over) : nullptr;
 	}
 };
 
@@ -90,19 +114,81 @@ class SendContext : public IoContext
 {
 public:
 	WSABUF m_wsaBuf{};
-	char m_buffer[MAX_SERVER_PACKET_SIZE]{};
+	char m_buffer[SEND_BATCH_BUFFER_SIZE]{};
+	uint32_t m_bytes = 0;
+	uint32_t m_packetCount = 0;
 
 public:
+	SendContext() : IoContext(IO_TYPE::IO_SEND)
+	{
+		m_wsaBuf.buf = m_buffer;
+		m_wsaBuf.len = 0;
+	}
+
+	void ResetPayload()
+	{
+		m_type = IO_TYPE::IO_SEND;
+		ResetOverlapped();
+		m_wsaBuf.buf = m_buffer;
+		m_wsaBuf.len = 0;
+		m_bytes = 0;
+		m_packetCount = 0;
+	}
+
+	[[nodiscard]] bool AppendPacket(const char* packet, uint16_t packetSize)
+	{
+		if (packet == nullptr || packetSize == 0 || m_bytes + packetSize > SEND_BATCH_BUFFER_SIZE)
+			return false;
+
+		::memcpy(m_buffer + m_bytes, packet, packetSize);
+		m_bytes += packetSize;
+		m_wsaBuf.len = m_bytes;
+		++m_packetCount;
+		return true;
+	}
+
+	[[nodiscard]] uint32_t GetPacketCount() const noexcept
+	{
+		return m_packetCount;
+	}
+
+	[[nodiscard]] uint32_t GetBufferedBytes() const noexcept
+	{
+		return m_bytes;
+	}
+};
+
+struct PendingSendPacket
+{
+	uint16_t size = 0;
+	uint16_t offset = 0;
+	char buffer[MAX_SERVER_PACKET_SIZE]{};
+
 	template<typename Packet>
-	explicit SendContext(const Packet& packet) : IoContext(IO_TYPE::IO_SEND)
+	void Assign(const Packet& packet)
 	{
 		static_assert(std::is_trivially_copyable_v<Packet>, "Packet must be trivially copyable.");
-
 		ASSERT_CRASH(packet.size <= MAX_SERVER_PACKET_SIZE);
 
-		m_wsaBuf.buf = m_buffer;
-		m_wsaBuf.len = packet.size;
-		::memcpy(m_buffer, &packet, packet.size);
+		size = packet.size;
+		offset = 0;
+		::memcpy(buffer, &packet, size);
+	}
+
+	[[nodiscard]] const char* Data() const noexcept
+	{
+		return buffer + offset;
+	}
+
+	[[nodiscard]] uint16_t RemainingSize() const noexcept
+	{
+		return static_cast<uint16_t>(size - offset);
+	}
+
+	void Consume(uint32_t bytes)
+	{
+		ASSERT_CRASH(bytes <= RemainingSize());
+		offset = static_cast<uint16_t>(offset + bytes);
 	}
 };
 
@@ -110,10 +196,7 @@ class User;
 
 extern AcceptContext GAcceptContext;
 
-bool RegisterPendingIoContext(const shared_ptr<IoContext>& context);
-shared_ptr<IoContext> TakePendingIoContext(IoContext* context);
-
-class GameSession
+class GameSession : public enable_shared_from_this<GameSession>
 {
 public:
 	SOCKET m_socket = INVALID_SOCKET;
@@ -124,7 +207,10 @@ public:
 	weak_ptr<User> m_owner;
 
 protected:
-	shared_ptr<RecvContext> m_recvContext;
+	unique_ptr<RecvContext> m_recvContext;
+	SendContext             m_sendContext;
+	deque<PendingSendPacket> m_sendQueue;
+	bool                    m_sendInFlight = false;
 
 public:
 	GameSession();
@@ -137,31 +223,29 @@ public:
 	void CloseSession();
 	void ResetNetworkState();
 	bool PostRecv();
+	bool HandleSendCompletion(const shared_ptr<GameSession>& self, uint32_t bytesTransferred);
+	void HandleSendFailure();
 
 	template<typename Packet>
 	bool PostSend(const Packet& packet)
 	{
-		if (m_socket == INVALID_SOCKET)
-			return false;
-
-		auto sendContext = make_shared<SendContext>(packet);
-		if (RegisterPendingIoContext(sendContext) == false)
-			return false;
-
-		const int result = ::WSASend(m_socket, &sendContext->m_wsaBuf, 1, nullptr, 0, &sendContext->m_over, nullptr);
-		if (result == SOCKET_ERROR)
+		auto self = shared_from_this();
 		{
-			const int errorCode = ::WSAGetLastError();
-			if (errorCode != WSA_IO_PENDING)
-			{
-				(void)TakePendingIoContext(sendContext.get());
+			lock_guard<mutex> guard(m_sessionLock);
+			if (m_socket == INVALID_SOCKET)
 				return false;
-			}
-		}
 
-		return true;
+			auto& pending = m_sendQueue.emplace_back();
+			pending.Assign(packet);
+
+			if (m_sendInFlight)
+				return true;
+
+			return SubmitSendBatchImpl(self);
+		}
 	}
 
 private:
-	void CloseSocketUnsafe();
+	void CloseSocketImpl();
+	bool SubmitSendBatchImpl(const shared_ptr<GameSession>& self);
 };

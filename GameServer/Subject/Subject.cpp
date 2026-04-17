@@ -8,13 +8,6 @@ void Subject::InitInstance()
 	m_stat = std::make_shared<Stat>();
 }
 
-bool Subject::OnUpdate()
-{
-	GameObject::OnUpdate();
-
-	return true;
-}
-
 Subject::SharedPtr MakeNewSubject(const ObjID& e, const ObjID& OwnerID)
 {
 	Subject::SharedPtr newSubject{};

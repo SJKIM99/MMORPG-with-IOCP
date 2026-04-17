@@ -14,12 +14,12 @@ namespace Route
 	{
 		switch (static_cast<PacketType>(packet[2]))
 		{
-		case PacketType::CS_LOGIN:
+		case PacketType::USER_LOGIN_REQ:
 		{
 			if (session->m_state != SOCKET_STATE::ST_ALLOC)
 				break;
 
-			auto* p = reinterpret_cast<const CS_LOGIN_PACKET*>(packet);
+			auto* p = reinterpret_cast<const USER_LOGIN_REQ_PACKET*>(packet);
 			char name[NAME_SIZE + 1]{};
 			char password[PASSWORD_SIZE + 1]{};
 			::strncpy_s(name, p->name, NAME_SIZE);
@@ -28,7 +28,7 @@ namespace Route
 			GDBThread->RequestLogin(session, name, password);
 			break;
 		}
-		case PacketType::CS_MOVE:
+		case PacketType::USER_MOVE_REQ:
 		{
 			if (session->m_state != SOCKET_STATE::ST_INGAME)
 				break;
@@ -36,12 +36,12 @@ namespace Route
 			if (client == nullptr || client->GetStat()->IsDead())
 				break;
 
-			auto* p = reinterpret_cast<const CS_MOVE_PACKET*>(packet);
+			auto* p = reinterpret_cast<const USER_MOVE_REQ_PACKET*>(packet);
 			if (p->direction > 7)
 				break;
 
 			const uint32_t now = GetNowTime();
-			if (now > client->m_lastMoveTime + 250)
+			if (now > client->m_lastMoveTime + 1000)
 			{
 				client->m_lastMoveTime = now;
 
@@ -55,14 +55,11 @@ namespace Route
 				else if (dir == 3 || dir == 5 || dir == 7) client->SetFacingLeft(false);
 				// dir 0(up) / 1(down): no change to horizontal facing
 
-				ObjID clientId = client->GetObjID();
-				SectorHelper::UpdateObjectPosition(clientId, x, y);
-				UserHelper::SendMovePacket(client, clientId);
-				SectorHelper::UpdatePlayerViewList(clientId);
+				SectorHelper::HandlePlayerMove(client, x, y);
 			}
 			break;
 		}
-		case PacketType::CS_ATTACK:
+		case PacketType::USER_ATTACK_REQ:
 		{
 			if (session->m_state != SOCKET_STATE::ST_INGAME)
 				break;
@@ -70,7 +67,7 @@ namespace Route
 			if (client == nullptr || client->GetStat()->IsDead())
 				break;
 
-			auto* p = reinterpret_cast<const CS_ATTACK_PACKET*>(packet);
+			auto* p = reinterpret_cast<const USER_ATTACK_REQ_PACKET*>(packet);
 			const uint32_t now = GetNowTime();
 			if (now > client->m_lastAttackTime + 1000)
 			{
@@ -86,13 +83,13 @@ namespace Route
 					ObjID id = object->GetObjID();
 					if (id.GetCategory<EnumCategory>() != EnumCategory::eMonster)
 						return;
-					if (SubjectHelper::CanAttack(clientId, id))
+					if (SubjectHelper::CanAttack(client, object))
 						UserHelper::AttackMonster(id, clientId);
 				});
 			}
 			break;
 		}
-		case PacketType::CS_SKILL:
+		case PacketType::USER_SKILL_REQ:
 		{
 			if (session->m_state != SOCKET_STATE::ST_INGAME)
 				break;

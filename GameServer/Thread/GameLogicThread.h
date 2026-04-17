@@ -13,12 +13,13 @@ public:
 	void Run();
 
 private:
-	void Drain();
+	[[nodiscard]] bool Drain();
 
 private:
-	mutex       _queueLock;
-	queue<Task> _queue;
-	HANDLE      _wakeEvent = nullptr;
+	mutex              _queueLock;
+	queue<Task>        _queue;
+	HANDLE             _wakeEvent = nullptr;
+	atomic<bool>       _sleeping{ false };
 };
 
 extern shared_ptr<GameLogicThread> GGameLogicThread;

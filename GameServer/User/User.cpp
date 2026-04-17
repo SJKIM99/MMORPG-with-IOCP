@@ -12,11 +12,6 @@ void User::InitInstance()
 	GetStat()->SetDead(false);
 }
 
-bool User::OnUpdate()
-{
-	return true;
-}
-
 shared_ptr<GameSession> User::GetGameSession() const
 {
 	return m_session;

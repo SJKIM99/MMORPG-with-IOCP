@@ -5,20 +5,23 @@ class GameSession;
 
 namespace UserHelper
 {
-	void SendMovePacket(Subject::SharedPtr sender, const ObjID& targetId);
-	void SendAddPlayerPacket(Subject::SharedPtr sender, const ObjID& targetId);
-	void SendRemovePlayerPacket(Subject::SharedPtr sender, const ObjID& targetId);
-	void SendLoginSuccessPacket(Subject::SharedPtr sender);
-	void SendLoginFailPacket(Subject::SharedPtr sender);
-	void SendPlayerAttackToMonsterPacket(Subject::SharedPtr sender, const ObjID& targetId, int32_t damage);
-	void SendMonsterDiePacket(Subject::SharedPtr sender, const ObjID& targetId);
-	void SendRespawnMonsterPacket(Subject::SharedPtr sender, const ObjID& targetId);
-	void SendMonsterAttackToPlayerPacket(Subject::SharedPtr sender, const ObjID& monsterId);
-	void SendHealPacket(Subject::SharedPtr sender);
-	void SendPlayerDiePacket(Subject::SharedPtr sender, const ObjID& targetId);
-	void SendRespawnPlayerPacket(Subject::SharedPtr sender, const ObjID& targetId);
-	void SendStatChangePacket(Subject::SharedPtr sender);
-	[[nodiscard]] bool FlushPlayerSave(const ObjID& targetId);
+	void SendSUBJECT_MOVE_NFY(Subject::SharedPtr sender, const ObjID& targetId);
+	void SendSUBJECT_MOVE_NFY(Subject::SharedPtr sender, Subject::SharedPtr target);
+	void SendSUBJECT_ADD_NFY(Subject::SharedPtr sender, const ObjID& targetId);
+	void SendSUBJECT_ADD_NFY(Subject::SharedPtr sender, Subject::SharedPtr target);
+	void SendSUBJECT_REMOVE_NFY(Subject::SharedPtr sender, const ObjID& targetId);
+	void SendUSER_LOGIN_ACK(Subject::SharedPtr sender);
+	void SendUSER_LOGIN_FAIL_ACK(Subject::SharedPtr sender);
+	void SendUSER_ATTACK_ACK(Subject::SharedPtr sender, const ObjID& targetId, int32_t damage);
+	void SendUSER_ATTACK_ACK(Subject::SharedPtr sender, Subject::SharedPtr target, int32_t damage);
+	void SendSUBJECT_DIE_NFY(Subject::SharedPtr sender, const ObjID& targetId);
+	void SendSUBJECT_DIE_NFY(Subject::SharedPtr sender, Subject::SharedPtr target);
+	void SendSUBJECT_RESPAWN_NFY(Subject::SharedPtr sender, const ObjID& targetId);
+	void SendSUBJECT_RESPAWN_NFY(Subject::SharedPtr sender, Subject::SharedPtr target);
+	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr sender, const ObjID& attackerId);
+	void SendUSER_HEAL_INF(Subject::SharedPtr sender);
+	void SendUSER_STAT_CHANGE_INF(Subject::SharedPtr sender);
+	[[nodiscard]] bool SaveUserInfo(const ObjID& targetId);
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage = PLAYER_OFFENSIVE);
 	void SkillAttack(ObjID& playerId);

@@ -21,7 +21,6 @@ public:
 	~User() = default;
 
 	virtual void InitInstance() override;
-	virtual bool OnUpdate() override;
 
 	[[nodiscard]] shared_ptr<GameSession> GetGameSession() const;
 	void SetGameSession(const shared_ptr<GameSession>& session);

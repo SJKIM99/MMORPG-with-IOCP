@@ -34,50 +34,32 @@ namespace SubjectHelper
 		}
 	}
 
-	bool CanSee(const ObjID& a, const ObjID& b)
+	bool CanSee(const Subject::SharedPtr& a, const Subject::SharedPtr& b)
 	{
-		const auto aSubject = ::GetGameObject<Subject>(a);
-		const auto bSubject = ::GetGameObject<Subject>(b);
-		if (aSubject == nullptr || bSubject == nullptr)
-			return false;
-
-		if (abs(aSubject->GetX() - bSubject->GetX()) >= VIEW_RANGE)
-			return false;
-
-		return abs(aSubject->GetY() - bSubject->GetY()) <= VIEW_RANGE;
+		if (!a || !b) return false;
+		if (abs(a->GetX() - b->GetX()) > VIEW_RANGE) return false;
+		return abs(a->GetY() - b->GetY()) <= VIEW_RANGE;
 	}
 
-	bool IsAdjacent(const ObjID& a, const ObjID& b)
+	bool IsAdjacent(const Subject::SharedPtr& a, const Subject::SharedPtr& b)
 	{
-		const auto aSubject = ::GetGameObject<Subject>(a);
-		const auto bSubject = ::GetGameObject<Subject>(b);
-		if (aSubject == nullptr || bSubject == nullptr)
-			return false;
-
-		const int dx = bSubject->GetX() - aSubject->GetX();
-		const int dy = bSubject->GetY() - aSubject->GetY();
+		if (!a || !b) return false;
+		const int dx = b->GetX() - a->GetX();
+		const int dy = b->GetY() - a->GetY();
 		return abs(dx) + abs(dy) == 1;
 	}
 
-	bool CanAttack(const ObjID& a, const ObjID& b)
+	bool CanAttack(const Subject::SharedPtr& a, const Subject::SharedPtr& b)
 	{
-		const auto aSubject = ::GetGameObject<Subject>(a);
-		const auto bSubject = ::GetGameObject<Subject>(b);
-		if (aSubject == nullptr || bSubject == nullptr)
-			return false;
+		if (!a || !b) return false;
+		const int dx = b->GetX() - a->GetX();
+		const int dy = b->GetY() - a->GetY();
 
-		const int dx = bSubject->GetX() - aSubject->GetX();
-		const int dy = bSubject->GetY() - aSubject->GetY();
+		if (abs(dx) + abs(dy) != 1) return false;
+		if (dx > 0 && a->IsFacingLeft())  return false;
+		if (dx < 0 && !a->IsFacingLeft()) return false;
 
-		// Must be exactly 1 cardinal tile away (no diagonals, no same tile)
-		if (abs(dx) + abs(dy) != 1)
-			return false;
-
-		// Horizontal attack: attacker must be facing the target's direction
-		if (dx > 0 && aSubject->IsFacingLeft())  return false; // target is right, facing left
-		if (dx < 0 && !aSubject->IsFacingLeft()) return false; // target is left, facing right
-
-		// Vertical attack (dx == 0): always valid regardless of horizontal facing
 		return true;
 	}
+
 }

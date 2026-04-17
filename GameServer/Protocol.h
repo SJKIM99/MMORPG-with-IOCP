@@ -54,30 +54,32 @@ enum MONSTER_TYPE
 
 enum class PacketType : uint16_t
 {
-	//client to server
-	CS_LOGIN,
-	CS_MOVE,
-	CS_ATTACK,
-	CS_SKILL,
+	// Client → Server (REQ)
+	USER_LOGIN_REQ,
+	USER_MOVE_REQ,
+	USER_ATTACK_REQ,
+	USER_SKILL_REQ,
 
-	//server to client
-	SC_LOGIN_SUCCESS,
-	SC_LOGIN_FAIL,
-	SC_ADD_OBJECT,
-	SC_MOVE_OBJECT,
-	SC_REMOVE_OBJECT,
-	SC_PLAYER_ATTACK_MONSTER,
-	SC_MONSTER_DIE,
-	SC_MONSTER_RESPAWN,
-	SC_MONSTER_ATTACK_PLAYER,
-	SC_HEAL,
-	SC_PLAYER_DIE,
-	SC_PLAYER_RESPAWN,
-	SC_STAT_CHANGE
+	// Server → Client, unicast ACK (response to requester only)
+	USER_LOGIN_ACK,
+	USER_LOGIN_FAIL_ACK,
+	USER_ATTACK_ACK,
+
+	// Server → Client(s), NFY (server-initiated notification / broadcast)
+	SUBJECT_ADD_NFY,
+	SUBJECT_MOVE_NFY,
+	SUBJECT_REMOVE_NFY,
+	SUBJECT_DIE_NFY,
+	SUBJECT_RESPAWN_NFY,
+	SUBJECT_ATTACK_NFY,
+
+	// Server → Client(s), INF (Server-only notifications)
+	USER_HEAL_INF,
+	USER_STAT_CHANGE_INF,
 };
 
 #pragma pack (push, 1)
-struct CS_LOGIN_PACKET
+struct USER_LOGIN_REQ_PACKET
 {
 	unsigned short size;
 	char           type;
@@ -85,7 +87,7 @@ struct CS_LOGIN_PACKET
 	char           password[PASSWORD_SIZE];
 };
 
-struct CS_MOVE_PACKET
+struct USER_MOVE_REQ_PACKET
 {
 	unsigned short	size;
 	char			type;
@@ -93,7 +95,7 @@ struct CS_MOVE_PACKET
 	uint32_t		move_time;
 };
 
-struct CS_ATTACK_PACKET
+struct USER_ATTACK_REQ_PACKET
 {
 	unsigned short	size;
 	char			type;
@@ -101,25 +103,43 @@ struct CS_ATTACK_PACKET
 	uint8_t			facing;   // 0 = right, 1 = left
 };
 
-struct CS_SKILL_PACKET
+struct USER_SKILL_REQ_PACKET
 {
 	unsigned short	size;
 	char			type;
 };
 
-struct CS_TELEPORT_PACKET
+struct USER_TELEPORT_REQ_PACKET
 {
 	unsigned short size;
 	char	type;
 };
 
-struct CS_LOGOUT_PACKET
+struct USER_LOGOUT_REQ_PACKET
 {
 	unsigned short size;
 	char	type;
 };
 
-struct SC_LOGIN_SUCCESS_PACKET
+constexpr size_t ProtocolConstMaxSize(size_t lhs, size_t rhs)
+{
+	return (lhs > rhs) ? lhs : rhs;
+}
+
+constexpr size_t MAX_CLIENT_PACKET_SIZE =
+	ProtocolConstMaxSize(
+		sizeof(USER_LOGIN_REQ_PACKET),
+		ProtocolConstMaxSize(
+			sizeof(USER_MOVE_REQ_PACKET),
+			ProtocolConstMaxSize(
+				sizeof(USER_ATTACK_REQ_PACKET),
+				ProtocolConstMaxSize(sizeof(USER_SKILL_REQ_PACKET),
+					ProtocolConstMaxSize(sizeof(USER_TELEPORT_REQ_PACKET), sizeof(USER_LOGOUT_REQ_PACKET)))
+			)
+		)
+	);
+
+struct USER_LOGIN_ACK_PACKET
 {
 	unsigned short size;
 	char	type;
@@ -131,13 +151,13 @@ struct SC_LOGIN_SUCCESS_PACKET
 	uint32_t	exp;
 };
 
-struct SC_LOGIN_FAIL_PACKET
+struct USER_LOGIN_FAIL_ACK_PACKET
 {
 	unsigned short size;
 	char           type;
 };
 
-struct SC_ADD_OBJECT_PACKET
+struct SUBJECT_ADD_NFY_PACKET
 {
 	unsigned short size;
 	char	type;
@@ -147,14 +167,14 @@ struct SC_ADD_OBJECT_PACKET
 	char	name[NAME_SIZE];
 };
 
-struct SC_REMOVE_OBJECT_PACKET
+struct SUBJECT_REMOVE_NFY_PACKET
 {
 	unsigned short size;
 	char	type;
 	ObjID	id;
 };
 
-struct SC_MOVE_OBJECT_PACKET
+struct SUBJECT_MOVE_NFY_PACKET
 {
 	unsigned short size;
 	char	type;
@@ -164,22 +184,26 @@ struct SC_MOVE_OBJECT_PACKET
 };
 
 
-struct SC_MONSTER_DIE_PACKET
+struct SUBJECT_DIE_NFY_PACKET
 {
 	unsigned short size;
 	char type;
-	ObjID monster_id;
+	ObjID id;
+	uint16_t hp;
 };
 
-struct SC_MONSTER_RESPAWN_PACKET
+struct SUBJECT_RESPAWN_NFY_PACKET
 {
 	unsigned short size;
 	char type;
-	ObjID monster_id;
+	char monster_type;
+	ObjID id;
 	short	x, y;
+	uint16_t hp;
+	char	name[NAME_SIZE];
 };
 
-struct SC_PLAYER_ATTACK_MONSTER_PACKET
+struct USER_ATTACK_ACK_PACKET
 {
 	unsigned short size;
 	char type;
@@ -188,39 +212,22 @@ struct SC_PLAYER_ATTACK_MONSTER_PACKET
 	int32_t damage;
 };
 
-struct SC_MONSTER_ATTACK_PLAYER_PACKET
+struct SUBJECT_ATTACK_NFY_PACKET
 {
 	unsigned short size;
 	char  type;
-	ObjID monster_id;
+	ObjID attacker_id;
 	int32_t hp;
 };
 
-struct SC_HEAL_PACKET
+struct USER_HEAL_INF_PACKET
 {
 	unsigned short size;
 	char type;
 	int32_t hp;
 };
 
-struct SC_PLAYER_DIE_PACKET
-{
-	unsigned short size;
-	char type;
-	ObjID id;
-	uint16_t hp;
-};
-
-struct SC_PLAYER_RESPAWN_PACKET
-{
-	unsigned short size;
-	char type;
-	ObjID id;
-	short x, y;
-	uint16_t hp;
-};
-
-struct SC_STAT_CHANGE_PACKET
+struct USER_STAT_CHANGE_INF_PACKET
 {
 	unsigned short size;
 	char   type;

@@ -2,17 +2,18 @@
 
 #include "ObjID.h"
 
+#include <memory>
 #include <vector>
+
+class User;
 
 namespace SectorHelper
 {
-	void UpdateObjectPosition(ObjID& subjectId, short nextX, short nextY);
-	void PlaceObjectAtRandomWalkablePosition(ObjID& subjectId);
-	[[nodiscard]] std::vector<ObjID> CollectVisiblePlayersAround(ObjID& monsterId);
-	void BroadcastMonsterVisibilityDelta(
-		ObjID monsterId,
-		const std::vector<ObjID>& oldList,
-		const std::vector<ObjID>& newList);
+	void UpdatePosition(ObjID& subjectId, short nextX, short nextY);
+	void GetRandomPosition(ObjID& subjectId);
+	[[nodiscard]] std::vector<ObjID> CollectUsers(ObjID& monsterId);
+	[[nodiscard]] std::vector<ObjID> CollectSubjects(const std::shared_ptr<User>& player);
+	void Replace(ObjID monsterId, const std::vector<ObjID>& oldList, const std::vector<ObjID>& newList);
 	void NotifyPlayerEnteredWorld(ObjID& playerId, bool isRespawn);
-	void UpdatePlayerViewList(ObjID& clientId);
+	void HandlePlayerMove(const std::shared_ptr<User>& player, short nextX, short nextY);
 }

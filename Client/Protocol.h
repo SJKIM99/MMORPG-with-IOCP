@@ -27,30 +27,30 @@ constexpr int BUF_SIZE = 1024;
 
 enum class PacketType : uint16
 {
-	//client to server
-	CS_LOGIN,
-	CS_MOVE,
-	CS_ATTACK,
+	// Client → Server (REQ)
+	USER_LOGIN_REQ,
+	USER_MOVE_REQ,
+	USER_ATTACK_REQ,
 
-	//server to client
-	SC_LOGIN_SUCCESS,
-	SC_LOGIN_FAIL,
-	SC_ADD_OBJECT,
-	SC_MOVE_OBJECT,
-	SC_REMOVE_OBJECT,
-	SC_PLAYER_ATTACK_MONSTER,
-	SC_MONSTER_RESPAWN
+	// Server → Client, unicast ACK
+	USER_LOGIN_ACK,
+	USER_LOGIN_FAIL_ACK,
+	OBJECT_ADD_INF,
+	OBJECT_MOVE_INF,
+	OBJECT_REMOVE_INF,
+	USER_ATTACK_ACK,
+	MONSTER_RESPAWN_INF
 };
 
 #pragma pack (push, 1)
-struct CS_LOGIN_PACKET
+struct USER_LOGIN_REQ_PACKET
 {
 	unsigned short	size;
 	char			type;
 	char			name[NAME_SIZE];
 };
 
-struct CS_MOVE_PACKET
+struct USER_MOVE_REQ_PACKET
 {
 	unsigned short	size;
 	char			type;
@@ -58,7 +58,7 @@ struct CS_MOVE_PACKET
 	uint32			move_time;
 };
 
-struct CS_ATTACK_PACKET
+struct USER_ATTACK_REQ_PACKET
 {
 	unsigned short	size;
 	char			type;
@@ -84,7 +84,7 @@ struct CS_LOGOUT_PACKET
 	char	type;
 };
 
-struct SC_LOGIN_SUCCESS_PACKET
+struct USER_LOGIN_ACK_PACKET
 {
 	unsigned short size;
 	char	type;
@@ -92,7 +92,7 @@ struct SC_LOGIN_SUCCESS_PACKET
 	short	x, y;
 };
 
-struct SC_ADD_OBJECT_PACKET
+struct OBJECT_ADD_INF_PACKET
 {
 	unsigned short size;
 	char	type;
@@ -101,14 +101,14 @@ struct SC_ADD_OBJECT_PACKET
 	char	name[NAME_SIZE];
 };
 
-struct SC_REMOVE_OBJECT_PACKET
+struct OBJECT_REMOVE_INF_PACKET
 {
 	unsigned short size;
 	char	type;
 	int32		id;
 };
 
-struct SC_MOVE_OBJECT_PACKET
+struct OBJECT_MOVE_INF_PACKET
 {
 	unsigned short size;
 	char	type;
@@ -126,14 +126,14 @@ struct SC_CHAT_PACKET
 };
 
 
-struct SC_LOGIN_FAIL_PACKET
+struct USER_LOGIN_FAIL_ACK_PACKET
 {
 	unsigned short size;
 	char	type;
 
 };
 
-struct SC_STAT_CHANGE_PACKET
+struct USER_STAT_CHANGE_INF_PACKET
 {
 	unsigned short size;
 	char	type;
@@ -155,21 +155,21 @@ struct SC_PC_DIE_PACKET
 	int y;
 };
 
-struct SC_HEAL_PACKET
+struct USER_HEAL_INF_PACKET
 {
 	unsigned short size;
 	int type;
 	int hp;
 };
 
-struct SC_MONSTER_DIE_PACKET
+struct MONSTER_DIE_INF_PACKET
 {
 	unsigned short size;
 	int type;
 	int monster_id;
 };
 
-struct SC_MONSTER_RESPAWN_PACKET
+struct MONSTER_RESPAWN_INF_PACKET
 {
 	unsigned short size;
 	int type;
@@ -177,7 +177,7 @@ struct SC_MONSTER_RESPAWN_PACKET
 	short	x, y;
 };
 
-struct SC_PLAYER_ATTACK_MONSTER_PACKET
+struct USER_ATTACK_ACK_PACKET
 {
 	unsigned short size;
 	int type;
@@ -185,7 +185,7 @@ struct SC_PLAYER_ATTACK_MONSTER_PACKET
 	int hp;
 };
 
-struct SC_MONSTER_ATTACK_PLAYER_PACKET
+struct MONSTER_ATTACK_INF_PACKET
 {
 	unsigned short size;
 	int type;

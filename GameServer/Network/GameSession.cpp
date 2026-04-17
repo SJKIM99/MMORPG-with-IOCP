@@ -6,9 +6,6 @@ AcceptContext GAcceptContext;
 
 namespace
 {
-	mutex GPendingIoLock;
-	unordered_map<IoContext*, shared_ptr<IoContext>> GPendingIoContexts;
-
 	template<typename Type>
 	bool SetSocketOption(SOCKET socket, int level, int option, Type value)
 	{
@@ -16,31 +13,7 @@ namespace
 	}
 }
 
-bool RegisterPendingIoContext(const shared_ptr<IoContext>& context)
-{
-	if (context == nullptr)
-		return false;
-
-	scoped_lock lock(GPendingIoLock);
-	return GPendingIoContexts.emplace(context.get(), context).second;
-}
-
-shared_ptr<IoContext> TakePendingIoContext(IoContext* context)
-{
-	if (context == nullptr)
-		return nullptr;
-
-	scoped_lock lock(GPendingIoLock);
-	auto found = GPendingIoContexts.find(context);
-	if (found == GPendingIoContexts.end())
-		return nullptr;
-
-	auto owned = std::move(found->second);
-	GPendingIoContexts.erase(found);
-	return owned;
-}
-
-GameSession::GameSession() : m_recvContext(make_shared<RecvContext>())
+GameSession::GameSession() : m_recvContext(make_unique<RecvContext>())
 {
 	ResetNetworkState();
 }
@@ -64,7 +37,7 @@ bool GameSession::AttachSocket(SOCKET socket)
 {
 	lock_guard<mutex> guard(m_sessionLock);
 
-	CloseSocketUnsafe();
+	CloseSocketImpl();
 
 	if (socket == INVALID_SOCKET)
 		return false;
@@ -81,19 +54,22 @@ bool GameSession::AttachSocket(SOCKET socket)
 void GameSession::CloseSocket()
 {
 	lock_guard<mutex> guard(m_sessionLock);
-	CloseSocketUnsafe();
+	CloseSocketImpl();
 }
 
 void GameSession::CloseSession()
 {
 	lock_guard<mutex> guard(m_sessionLock);
-	CloseSocketUnsafe();
+	CloseSocketImpl();
 }
 
 void GameSession::ResetNetworkState()
 {
 	m_socket = INVALID_SOCKET;
 	m_pendingRecvBytes = 0;
+	m_sendQueue.clear();
+	m_sendContext.ResetPayload();
+	m_sendInFlight = false;
 }
 
 bool GameSession::PostRecv()
@@ -101,10 +77,10 @@ bool GameSession::PostRecv()
 	if (m_socket == INVALID_SOCKET || m_recvContext == nullptr)
 		return false;
 
+	auto self = shared_from_this();
 	DWORD recvFlag = 0;
 	m_recvContext->Prepare(m_pendingRecvBytes);
-	if (RegisterPendingIoContext(m_recvContext) == false)
-		return false;
+	m_recvContext->AttachSession(self);
 
 	const int result = ::WSARecv(m_socket, &m_recvContext->m_wsaBuf, 1, nullptr, &recvFlag, &m_recvContext->m_over, nullptr);
 	if (result == SOCKET_ERROR)
@@ -112,7 +88,7 @@ bool GameSession::PostRecv()
 		const int errorCode = ::WSAGetLastError();
 		if (errorCode != WSA_IO_PENDING)
 		{
-			(void)TakePendingIoContext(m_recvContext.get());
+			(void)m_recvContext->DetachSession();
 			return false;
 		}
 	}
@@ -120,8 +96,56 @@ bool GameSession::PostRecv()
 	return true;
 }
 
-void GameSession::CloseSocketUnsafe()
+bool GameSession::HandleSendCompletion(const shared_ptr<GameSession>& self, uint32_t bytesTransferred)
 {
+	lock_guard<mutex> guard(m_sessionLock);
+
+	const uint32_t bufferedBytes = m_sendContext.GetBufferedBytes();
+	if (bytesTransferred > bufferedBytes)
+		return false;
+
+	uint32_t remainingToConsume = bytesTransferred;
+	while (remainingToConsume > 0)
+	{
+		if (m_sendQueue.empty())
+			return false;
+
+		auto& pending = m_sendQueue.front();
+		const uint32_t pendingBytes = pending.RemainingSize();
+		if (remainingToConsume < pendingBytes)
+		{
+			pending.Consume(remainingToConsume);
+			remainingToConsume = 0;
+			break;
+		}
+
+		remainingToConsume -= pendingBytes;
+		m_sendQueue.pop_front();
+	}
+
+	(void)m_sendContext.DetachSession();
+	m_sendContext.ResetPayload();
+	m_sendInFlight = false;
+
+	if (m_socket == INVALID_SOCKET || m_sendQueue.empty())
+		return true;
+
+	return SubmitSendBatchImpl(self);
+}
+
+void GameSession::HandleSendFailure()
+{
+	lock_guard<mutex> guard(m_sessionLock);
+	m_sendQueue.clear();
+	(void)m_sendContext.DetachSession();
+	m_sendContext.ResetPayload();
+	m_sendInFlight = false;
+}
+
+void GameSession::CloseSocketImpl()
+{
+	m_sendQueue.clear();
+
 	if (m_socket != INVALID_SOCKET)
 	{
 		::shutdown(m_socket, SD_BOTH);
@@ -131,3 +155,47 @@ void GameSession::CloseSocketUnsafe()
 	m_socket = INVALID_SOCKET;
 	m_pendingRecvBytes = 0;
 }
+
+bool GameSession::SubmitSendBatchImpl(const shared_ptr<GameSession>& self)
+{
+	if (m_socket == INVALID_SOCKET)
+		return false;
+	if (m_sendInFlight)
+		return true;
+	if (m_sendQueue.empty())
+		return true;
+
+	m_sendContext.ResetPayload();
+
+	for (const PendingSendPacket& pending : m_sendQueue)
+	{
+		if (m_sendContext.AppendPacket(pending.Data(), pending.RemainingSize()) == false)
+			break;
+	}
+
+	if (m_sendContext.GetPacketCount() == 0)
+		return false;
+
+	m_sendContext.AttachSession(self);
+	m_sendInFlight = true;
+
+	const int result = ::WSASend(m_socket, &m_sendContext.m_wsaBuf, 1, nullptr, 0, &m_sendContext.m_over, nullptr);
+	if (result == SOCKET_ERROR)
+	{
+		const int errorCode = ::WSAGetLastError();
+		if (errorCode != WSA_IO_PENDING)
+		{
+			m_sendInFlight = false;
+			(void)m_sendContext.DetachSession();
+			m_sendContext.ResetPayload();
+			return false;
+		}
+	}
+
+	return true;
+}
+
+//void GameSession::ClearPendingSendsUnsafe()
+//{
+//	m_sendQueue.clear();
+//}

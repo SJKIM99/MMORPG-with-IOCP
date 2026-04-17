@@ -30,7 +30,6 @@ public:
 	void SetName(const std::string& name) { m_Name = name; }
 
 	virtual void InitInstance() override;
-	virtual bool OnUpdate() override;
 };
 
 Subject::SharedPtr MakeNewSubject(const ObjID& e, const ObjID& OwnerID);

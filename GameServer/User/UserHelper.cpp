@@ -9,6 +9,8 @@
 #include "TimerThread.h"
 #include "SubjectHelper.h"
 #include "SectorHelper.h"
+#include "Collision.h"
+#include "CoreTLS.h"
 
 namespace
 {
@@ -27,13 +29,59 @@ namespace
 			return nullptr;
 		return user->GetGameSession();
 	}
+
+	bool IsValidWorldPosition(int x, int y)
+	{
+		if (x < 0 || x >= W_WIDTH || y < 0 || y >= W_HEIGHT)
+			return false;
+
+		return !isCollision(static_cast<short>(x), static_cast<short>(y));
+	}
+
+	pair<short, short> FindRandomValidPosition()
+	{
+		std::uniform_int_distribution<short> distX(0, W_WIDTH - 1);
+		std::uniform_int_distribution<short> distY(0, W_HEIGHT - 1);
+		while (true)
+		{
+			const short x = distX(LRng);
+			const short y = distY(LRng);
+			if (isCollision(x, y))
+				continue;
+
+			return { x, y };
+		}
+	}
+
+	void QueueUserSave(const shared_ptr<User>& user, short saveX, short saveY)
+	{
+		if (user == nullptr)
+			return;
+
+		DB_USER_INFO info{};
+		info._name  = user->GetName();
+		info._x     = saveX;
+		info._y     = saveY;
+		info._level = user->GetStat()->GetLevel();
+		info._exp   = user->GetStat()->GetExp();
+
+		GDBThread->RequestSaveUser(user->GetObjID(), info);
+	}
 }
 
 namespace UserHelper
 {
-	void SendMovePacket(Subject::SharedPtr sender, const ObjID& targetId)
+	void SendSUBJECT_MOVE_NFY(Subject::SharedPtr sender, const ObjID& targetId)
 	{
-		const auto target = GGameObjectManager->Seek<Subject>(targetId);
+		const auto target = ::GetGameObject<Subject>(targetId);
+		if (target == nullptr)
+			return;
+
+		SendSUBJECT_MOVE_NFY(sender, target);
+	}
+
+	void SendSUBJECT_MOVE_NFY(Subject::SharedPtr sender, Subject::SharedPtr target)
+	{
 		if (target == nullptr)
 			return;
 
@@ -41,18 +89,26 @@ namespace UserHelper
 		if (!session)
 			return;
 
-		SC_MOVE_OBJECT_PACKET packet;
-		InitializePacket(packet, PacketType::SC_MOVE_OBJECT);
-		packet.id = targetId;
+		SUBJECT_MOVE_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_MOVE_NFY);
+		packet.id = target->GetObjID();
 		packet.x = target->GetX();
 		packet.y = target->GetY();
 
 		session->PostSend(packet);
 	}
 
-	void SendAddPlayerPacket(Subject::SharedPtr sender, const ObjID& targetId)
+	void SendSUBJECT_ADD_NFY(Subject::SharedPtr sender, const ObjID& targetId)
 	{
-		const auto target = GGameObjectManager->Seek<Subject>(targetId);
+		const auto target = ::GetGameObject<Subject>(targetId);
+		if (target == nullptr)
+			return;
+
+		SendSUBJECT_ADD_NFY(sender, target);
+	}
+
+	void SendSUBJECT_ADD_NFY(Subject::SharedPtr sender, Subject::SharedPtr target)
+	{
 		if (target == nullptr)
 			return;
 
@@ -60,38 +116,42 @@ namespace UserHelper
 		if (!session)
 			return;
 
-		SC_ADD_OBJECT_PACKET packet;
-		InitializePacket(packet, PacketType::SC_ADD_OBJECT);
-		if (const auto monster = GGameObjectManager->Seek<Monster>(targetId); monster != nullptr)
+		SUBJECT_ADD_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_ADD_NFY);
+		if (target->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eMonster)
+		{
+			const auto monster = static_pointer_cast<Monster>(target);
 			packet.monster_type = static_cast<char>(monster->GetType());
-		packet.id = targetId;
+		}
+		packet.id = target->GetObjID();
 		packet.x = target->GetX();
 		packet.y = target->GetY();
+		::strncpy_s(packet.name, NAME_SIZE, target->GetName().c_str(), _TRUNCATE);
 
 		session->PostSend(packet);
 	}
 
-	void SendRemovePlayerPacket(Subject::SharedPtr sender, const ObjID& targetId)
+	void SendSUBJECT_REMOVE_NFY(Subject::SharedPtr sender, const ObjID& targetId)
 	{
 		auto session = GetSession(sender);
 		if (!session)
 			return;
 
-		SC_REMOVE_OBJECT_PACKET packet;
-		InitializePacket(packet, PacketType::SC_REMOVE_OBJECT);
+		SUBJECT_REMOVE_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_REMOVE_NFY);
 		packet.id = targetId;
 
 		session->PostSend(packet);
 	}
 
-	void SendLoginSuccessPacket(Subject::SharedPtr sender)
+	void SendUSER_LOGIN_ACK(Subject::SharedPtr sender)
 	{
 		auto session = GetSession(sender);
 		if (!session)
 			return;
 
-		SC_LOGIN_SUCCESS_PACKET packet;
-		InitializePacket(packet, PacketType::SC_LOGIN_SUCCESS);
+		USER_LOGIN_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::USER_LOGIN_ACK);
 		packet.id    = sender->GetObjID();
 		packet.x     = sender->GetX();
 		packet.y     = sender->GetY();
@@ -103,21 +163,26 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
-	void SendLoginFailPacket(Subject::SharedPtr sender)
+	void SendUSER_LOGIN_FAIL_ACK(Subject::SharedPtr sender)
 	{
 		auto session = GetSession(sender);
 		if (!session)
 			return;
 
-		SC_LOGIN_FAIL_PACKET packet;
-		InitializePacket(packet, PacketType::SC_LOGIN_FAIL);
+		USER_LOGIN_FAIL_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::USER_LOGIN_FAIL_ACK);
 
 		session->PostSend(packet);
 	}
 
-	void SendPlayerAttackToMonsterPacket(Subject::SharedPtr sender, const ObjID& targetId, int32_t damage)
+	void SendUSER_ATTACK_ACK(Subject::SharedPtr sender, const ObjID& targetId, int32_t damage)
 	{
-		const auto target = GGameObjectManager->Seek<Subject>(targetId);
+		const auto target = ::GetGameObject<Subject>(targetId);
+		SendUSER_ATTACK_ACK(sender, target, damage);
+	}
+
+	void SendUSER_ATTACK_ACK(Subject::SharedPtr sender, Subject::SharedPtr target, int32_t damage)
+	{
 		if (target == nullptr)
 			return;
 
@@ -125,31 +190,23 @@ namespace UserHelper
 		if (!session)
 			return;
 
-		SC_PLAYER_ATTACK_MONSTER_PACKET packet;
-		InitializePacket(packet, PacketType::SC_PLAYER_ATTACK_MONSTER);
-		packet.id     = targetId;
+		USER_ATTACK_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::USER_ATTACK_ACK);
+		packet.id     = target->GetObjID();
 		packet.hp     = target->GetStat()->GetHp();
 		packet.damage = damage;
 
 		session->PostSend(packet);
 	}
 
-	void SendMonsterDiePacket(Subject::SharedPtr sender, const ObjID& targetId)
+	void SendSUBJECT_DIE_NFY(Subject::SharedPtr sender, const ObjID& targetId)
 	{
-		auto session = GetSession(sender);
-		if (!session)
-			return;
-
-		SC_MONSTER_DIE_PACKET packet;
-		InitializePacket(packet, PacketType::SC_MONSTER_DIE);
-		packet.monster_id = targetId;
-
-		session->PostSend(packet);
+		const auto target = ::GetGameObject<Subject>(targetId);
+		SendSUBJECT_DIE_NFY(sender, target);
 	}
 
-	void SendRespawnMonsterPacket(Subject::SharedPtr sender, const ObjID& targetId)
+	void SendSUBJECT_DIE_NFY(Subject::SharedPtr sender, Subject::SharedPtr target)
 	{
-		const auto target = GGameObjectManager->Seek<Subject>(targetId);
 		if (target == nullptr)
 			return;
 
@@ -157,68 +214,80 @@ namespace UserHelper
 		if (!session)
 			return;
 
-		SC_MONSTER_RESPAWN_PACKET packet;
-		InitializePacket(packet, PacketType::SC_MONSTER_RESPAWN);
-		packet.monster_id = targetId;
-		packet.x = target->GetX();
-		packet.y = target->GetY();
-
-		session->PostSend(packet);
-	}
-
-	void SendMonsterAttackToPlayerPacket(Subject::SharedPtr sender, const ObjID& monsterId)
-	{
-		auto session = GetSession(sender);
-		if (!session)
-			return;
-
-		SC_MONSTER_ATTACK_PLAYER_PACKET packet;
-		InitializePacket(packet, PacketType::SC_MONSTER_ATTACK_PLAYER);
-		packet.monster_id = monsterId;
-		packet.hp         = sender->GetStat()->GetHp();
-
-		session->PostSend(packet);
-	}
-
-	void SendHealPacket(Subject::SharedPtr sender)
-	{
-		auto session = GetSession(sender);
-		if (!session)
-			return;
-
-		SC_HEAL_PACKET packet;
-		InitializePacket(packet, PacketType::SC_HEAL);
-		packet.hp = sender->GetStat()->GetHp();
-
-		session->PostSend(packet);
-	}
-
-	void SendPlayerDiePacket(Subject::SharedPtr sender, const ObjID& targetId)
-	{
-		const auto target = GGameObjectManager->Seek<User>(targetId);
-		if (target == nullptr)
-			return;
-
-		auto session = GetSession(sender);
-		if (!session)
-			return;
-
-		SC_PLAYER_DIE_PACKET packet;
-		InitializePacket(packet, PacketType::SC_PLAYER_DIE);
-		packet.id = targetId;
+		SUBJECT_DIE_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_DIE_NFY);
+		packet.id = target->GetObjID();
 		packet.hp = target->GetStat()->GetHp();
 
 		session->PostSend(packet);
 	}
 
-	void SendStatChangePacket(Subject::SharedPtr sender)
+	void SendSUBJECT_RESPAWN_NFY(Subject::SharedPtr sender, const ObjID& targetId)
+	{
+		const auto target = ::GetGameObject<Subject>(targetId);
+		SendSUBJECT_RESPAWN_NFY(sender, target);
+	}
+
+	void SendSUBJECT_RESPAWN_NFY(Subject::SharedPtr sender, Subject::SharedPtr target)
+	{
+		if (target == nullptr)
+			return;
+
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		SUBJECT_RESPAWN_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_RESPAWN_NFY);
+		if (target->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eMonster)
+		{
+			const auto monster = static_pointer_cast<Monster>(target);
+			packet.monster_type = static_cast<char>(monster->GetType());
+		}
+		packet.id = target->GetObjID();
+		packet.x = target->GetX();
+		packet.y = target->GetY();
+		packet.hp = target->GetStat()->GetHp();
+		::strncpy_s(packet.name, NAME_SIZE, target->GetName().c_str(), _TRUNCATE);
+
+		session->PostSend(packet);
+	}
+
+	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr sender, const ObjID& attackerId)
 	{
 		auto session = GetSession(sender);
 		if (!session)
 			return;
 
-		SC_STAT_CHANGE_PACKET packet;
-		InitializePacket(packet, PacketType::SC_STAT_CHANGE);
+		SUBJECT_ATTACK_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_ATTACK_NFY);
+		packet.attacker_id = attackerId;
+		packet.hp          = sender->GetStat()->GetHp();
+
+		session->PostSend(packet);
+	}
+
+	void SendUSER_HEAL_INF(Subject::SharedPtr sender)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		USER_HEAL_INF_PACKET packet;
+		InitializePacket(packet, PacketType::USER_HEAL_INF);
+		packet.hp = sender->GetStat()->GetHp();
+
+		session->PostSend(packet);
+	}
+
+	void SendUSER_STAT_CHANGE_INF(Subject::SharedPtr sender)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		USER_STAT_CHANGE_INF_PACKET packet;
+		InitializePacket(packet, PacketType::USER_STAT_CHANGE_INF);
 		packet.level = sender->GetStat()->GetLevel();
 		packet.hp    = sender->GetStat()->GetHp();
 		packet.maxhp = sender->GetStat()->GetMaxHp();
@@ -227,47 +296,33 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
-	void SendRespawnPlayerPacket(Subject::SharedPtr sender, const ObjID& targetId)
+	bool SaveUserInfo(const ObjID& targetId)
 	{
-		const auto target = GGameObjectManager->Seek<User>(targetId);
-		if (target == nullptr)
-			return;
-
-		auto session = GetSession(sender);
-		if (!session)
-			return;
-
-		SC_PLAYER_RESPAWN_PACKET packet;
-		InitializePacket(packet, PacketType::SC_PLAYER_RESPAWN);
-		packet.id = targetId;
-		packet.x = target->GetX();
-		packet.y = target->GetY();
-		packet.hp = target->GetStat()->GetHp();
-
-		session->PostSend(packet);
-	}
-
-	bool FlushPlayerSave(const ObjID& targetId)
-	{
-		const auto target = GGameObjectManager->Seek<User>(targetId);
+		const auto target = ::GetGameObject<User>(targetId);
 		if (target == nullptr)
 			return false;
 
-		DB_USER_INFO info{};
-		info._name  = target->GetName();
-		info._x     = target->GetX();
-		info._y     = target->GetY();
-		info._level = target->GetStat()->GetLevel();
-		info._exp   = target->GetStat()->GetExp();
+		short saveX = target->GetX();
+		short saveY = target->GetY();
+		if (!IsValidWorldPosition(saveX, saveY))
+		{
+			const auto [fallbackX, fallbackY] = FindRandomValidPosition();
+			saveX = fallbackX;
+			saveY = fallbackY;
 
-		GDBThread->RequestSaveUser(targetId, info);
+			cout << "Recovered invalid logout position for [" << target->GetName()
+				<< "] from (" << target->GetX() << ", " << target->GetY()
+				<< ") to (" << saveX << ", " << saveY << ")\n";
+		}
+
+		QueueUserSave(target, saveX, saveY);
 		return true;
 	}
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage)
 	{
-		auto monster = GGameObjectManager->Seek<Monster>(monsterId);
-		auto attacker = GGameObjectManager->Seek<User>(playerId);
+		auto monster = ::GetGameObject<Monster>(monsterId);
+		auto attacker = ::GetGameObject<User>(playerId);
 		if (monster == nullptr || attacker == nullptr)
 			return;
 		if (monster->GetStat()->IsDead())
@@ -276,7 +331,7 @@ namespace UserHelper
 		const uint16_t remaining = monster->GetStat()->TakeDamage(static_cast<uint16_t>(damage));
 		if (remaining > 0)
 		{
-			SendPlayerAttackToMonsterPacket(attacker, monsterId, damage);
+			SendUSER_ATTACK_ACK(attacker, monster, damage);
 			return;
 		}
 
@@ -285,29 +340,29 @@ namespace UserHelper
 			ObjID id = object->GetObjID();
 			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
 
-			auto viewer = GGameObjectManager->Seek<User>(id);
-			if (viewer == nullptr) return;
+			auto viewer = static_pointer_cast<User>(object);
 			auto session = viewer->GetGameSession();
 			if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
 
-			if (SubjectHelper::CanSee(id, monsterId))
-				SendMonsterDiePacket(viewer, monsterId);
+			if (SubjectHelper::CanSee(object, monster))
+				SendSUBJECT_DIE_NFY(viewer, monster);
 		});
 
 		GSector->RemoveObject(monsterId, monster->RefSectorX(), monster->RefSectorY());
 		monster->SetActive(false);
 		monster->SetAttack(false);
+		monster->ClearViewList(); // 다음 리스폰 시 oldList가 빈 상태로 시작하도록 초기화
 
 		const uint32_t expGain = (monster->GetType() == MONSTER_TYPE::PASSIVE) ? 3 : 5;
 		attacker->GetStat()->AddExp(expGain);
-		SendStatChangePacket(attacker);
+		SendUSER_STAT_CHANGE_INF(attacker);
 
 		GTimerThread->ScheduleAfter(monsterId, 10s, TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN);
 	}
 
 	void SkillAttack(ObjID& playerId)
 	{
-		auto player = GGameObjectManager->Seek<User>(playerId);
+		auto player = ::GetGameObject<User>(playerId);
 		if (player == nullptr || player->GetStat()->IsDead())
 			return;
 
@@ -334,7 +389,7 @@ namespace UserHelper
 
 	void HandleHeal(const ObjID& playerId)
 	{
-		auto player = GGameObjectManager->Seek<User>(playerId);
+		auto player = ::GetGameObject<User>(playerId);
 		if (player == nullptr)
 			return;
 
@@ -346,22 +401,22 @@ namespace UserHelper
 			return;
 
 		player->GetStat()->HealHp(HEAL_SIZE, PLAYER_MAX_HP);
-		SendHealPacket(player);
+		SendUSER_HEAL_INF(player);
 		GTimerThread->ScheduleAfter(playerId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 	}
 
 	void HandleRespawn(const ObjID& playerId)
 	{
-		auto player = GGameObjectManager->Seek<User>(playerId);
+		auto player = ::GetGameObject<User>(playerId);
 		if (player == nullptr)
 			return;
 
-		SectorHelper::PlaceObjectAtRandomWalkablePosition(const_cast<ObjID&>(playerId));
+		SectorHelper::GetRandomPosition(const_cast<ObjID&>(playerId));
 		player->GetStat()->SetDead(false);
 		player->GetStat()->SetHp(PLAYER_MAX_HP);
 
 		// Tell the respawning player their own new position/HP
-		SendRespawnPlayerPacket(player, playerId);
+		SendSUBJECT_RESPAWN_NFY(player, player);
 
 		SectorHelper::NotifyPlayerEnteredWorld(const_cast<ObjID&>(playerId), true);
 		GTimerThread->ScheduleAfter(playerId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
@@ -372,8 +427,8 @@ namespace UserHelper
 		if (session == nullptr)
 			return;
 
-		SC_LOGIN_FAIL_PACKET packet;
-		InitializePacket(packet, PacketType::SC_LOGIN_FAIL);
+		USER_LOGIN_FAIL_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::USER_LOGIN_FAIL_ACK);
 		session->PostSend(packet);
 	}
 
@@ -397,9 +452,22 @@ namespace UserHelper
 		session->m_state = SOCKET_STATE::ST_INGAME;
 
 		ObjID objId = player->GetObjID();
-		SectorHelper::UpdateObjectPosition(objId, static_cast<short>(userInfo._x), static_cast<short>(userInfo._y));
+		if (IsValidWorldPosition(userInfo._x, userInfo._y))
+		{
+			SectorHelper::UpdatePosition(objId, static_cast<short>(userInfo._x), static_cast<short>(userInfo._y));
+		}
+		else
+		{
+			const auto [fallbackX, fallbackY] = FindRandomValidPosition();
+			SectorHelper::UpdatePosition(objId, fallbackX, fallbackY);
+			QueueUserSave(player, fallbackX, fallbackY);
 
-		SendLoginSuccessPacket(player);
+			cout << "Recovered invalid login position for [" << player->GetName()
+				<< "] from (" << userInfo._x << ", " << userInfo._y
+				<< ") to (" << fallbackX << ", " << fallbackY << ")\n";
+		}
+
+		SendUSER_LOGIN_ACK(player);
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
 	}
@@ -422,9 +490,9 @@ namespace UserHelper
 		session->m_state = SOCKET_STATE::ST_INGAME;
 
 		ObjID objId = player->GetObjID();
-		SectorHelper::PlaceObjectAtRandomWalkablePosition(objId);
+		SectorHelper::GetRandomPosition(objId);
 
-		SendLoginSuccessPacket(player);
+		SendUSER_LOGIN_ACK(player);
 
 		DB_USER_INFO save{};
 		save._name     = player->GetName();
