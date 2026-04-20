@@ -29,8 +29,6 @@ public:
 	Stat(const Stat&)            = delete;
 	Stat& operator=(const Stat&) = delete;
 
-	virtual bool OnUpdate() override;
-
 	// ── Getters ──────────────────────────────────────────────
 	uint16_t GetMaxHp()    const noexcept { return m_maxHp; }
 	uint16_t GetHp()       const noexcept { return m_hp.load(); }

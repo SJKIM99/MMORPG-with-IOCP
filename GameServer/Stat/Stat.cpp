@@ -1,11 +1,6 @@
 #include "pch.h"
 #include "Stat.h"
 
-bool Stat::OnUpdate()
-{
-	return true;
-}
-
 uint16_t Stat::TakeDamage(uint16_t amount) noexcept
 {
 	const uint16_t current = m_hp.load();
