@@ -1,504 +1,713 @@
-/*
-*		This Code Was Created By Jeff Molofee 2000
-*		Modified by Shawn T. to handle (%3.2f, num) parameters.
-*		A HUGE Thanks To Fredric Echols For Cleaning Up
-*		And Optimizing The Base Code, Making It More Flexible!
-*		If You've Found This Code Useful, Please Let Me Know.
-*		Visit My Site At nehe.gamedev.net
-*/
-
-#include <windows.h>		// Header File For Windows
-#include <math.h>			// Header File For Windows Math Library
-#include <stdio.h>			// Header File For Standard Input/Output
-#include <stdarg.h>			// Header File For Variable Argument Routines
-#include <gl\gl.h>			// Header File For The OpenGL32 Library
-#include <gl\glu.h>			// Header File For The GLu32 Library
+#include <windows.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <climits>
+#include <gl\gl.h>
+#include <gl\glu.h>
 #include <atomic>
-#include <memory>
-//#include <gl\glaux.h>		// Header File For The Glaux Library
 
-#pragma comment (lib, "opengl32.lib")
-#pragma comment (lib, "glu32.lib")
+#pragma comment(lib, "opengl32.lib")
+#pragma comment(lib, "glu32.lib")
 
 #include "NetworkModule.h"
 
-HDC			hDC = NULL;		// Private GDI Device Context
-HGLRC		hRC = NULL;		// Permanent Rendering Context
-HWND		hWnd = NULL;		// Holds Our Window Handle
-HINSTANCE	hInstance;		// Holds The Instance Of The Application
+// ---------------------------------------------------------------------------
+// Window / GL globals
+// ---------------------------------------------------------------------------
+HDC       hDC      = NULL;
+HGLRC     hRC      = NULL;
+HWND      hWnd     = NULL;
+HINSTANCE hInstance;
 
-GLuint	base;				// Base Display List For The Font Set
-GLfloat	cnt1;				// 1st Counter Used To Move Text & For Coloring
-GLfloat	cnt2;				// 2nd Counter Used To Move Text & For Coloring
+bool keys[256];
+bool active    = TRUE;
+bool fullscreen = FALSE;
 
-bool	keys[256];			// Array Used For The Keyboard Routine
-bool	active = TRUE;		// Window Active Flag Set To TRUE By Default
-bool	fullscreen = TRUE;	// Fullscreen Flag Set To Fullscreen Mode By Default
+// ---------------------------------------------------------------------------
+// Layout constants  (all in virtual screen pixels, y=0 bottom)
+// ---------------------------------------------------------------------------
+static const int WIN_W    = 1280;
+static const int WIN_H    = 720;
+static const int TITLE_H  = 40;      // top title bar
+static const int STATS_W  = 240;     // left panel width
+static const int GRAPH_W  = 330;     // right panel width
+// map occupies x: STATS_W .. WIN_W-GRAPH_W,  y: 0 .. WIN_H-TITLE_H
+static const int MAP_X1   = STATS_W;
+static const int MAP_X2   = WIN_W - GRAPH_W;
+static const int MAP_Y1   = 0;
+static const int MAP_Y2   = WIN_H - TITLE_H;
+static const int CONTENT_H = WIN_H - TITLE_H;  // 680
 
-LRESULT	CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	// Declaration For WndProc
+// Font display-list base
+static GLuint g_fontBase = 0;
 
-GLvoid BuildFont(GLvoid)								// Build Our Bitmap Font
+// Start tick for uptime display
+static DWORD g_startTick = 0;
+
+// ---------------------------------------------------------------------------
+// Forward declarations
+// ---------------------------------------------------------------------------
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+GLvoid KillGLWindow();
+
+// ---------------------------------------------------------------------------
+// Font
+// ---------------------------------------------------------------------------
+static void BuildFont()
 {
-	HFONT	font;										// Windows Font ID
-	HFONT	oldfont;									// Used For Good House Keeping
-
-	base = glGenLists(96);								// Storage For 96 Characters
-
-	font = CreateFont(-24,							// Height Of Font
-		0,								// Width Of Font
-		0,								// Angle Of Escapement
-		0,								// Orientation Angle
-		FW_BOLD,						// Font Weight
-		FALSE,							// Italic
-		FALSE,							// Underline
-		FALSE,							// Strikeout
-		ANSI_CHARSET,					// Character Set Identifier
-		OUT_TT_PRECIS,					// Output Precision
-		CLIP_DEFAULT_PRECIS,			// Clipping Precision
-		ANTIALIASED_QUALITY,			// Output Quality
-		FF_DONTCARE | DEFAULT_PITCH,		// Family And Pitch
-		L"Courier New");					// Font Name
-
-	oldfont = (HFONT)SelectObject(hDC, font);           // Selects The Font We Want
-	wglUseFontBitmaps(hDC, 32, 96, base);				// Builds 96 Characters Starting At Character 32
-	SelectObject(hDC, oldfont);							// Selects The Font We Want
-	DeleteObject(font);									// Delete The Font
+    HFONT font = CreateFont(
+        -14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, FF_DONTCARE | DEFAULT_PITCH,
+        L"Courier New");
+    g_fontBase = glGenLists(96);
+    HFONT old  = (HFONT)SelectObject(hDC, font);
+    wglUseFontBitmaps(hDC, 32, 96, g_fontBase);
+    SelectObject(hDC, old);
+    DeleteObject(font);
 }
 
-GLvoid KillFont(GLvoid)									// Delete The Font List
+static void KillFont() { glDeleteLists(g_fontBase, 96); }
+
+// Print text at screen position (x,y) — y=0 is bottom
+static void DrawText2D(float x, float y, const char* fmt, ...)
 {
-	glDeleteLists(base, 96);							// Delete All 96 Characters
+    char text[256];
+    va_list ap;
+    if (!fmt) return;
+    va_start(ap, fmt);
+    vsprintf_s(text, fmt, ap);
+    va_end(ap);
+    glRasterPos2f(x, y);
+    glPushAttrib(GL_LIST_BIT);
+    glListBase(g_fontBase - 32);
+    glCallLists((GLsizei)strlen(text), GL_UNSIGNED_BYTE, text);
+    glPopAttrib();
 }
 
-GLvoid glPrint(const char* fmt, ...)					// Custom GL "Print" Routine
+// ---------------------------------------------------------------------------
+// Primitive helpers
+// ---------------------------------------------------------------------------
+static void FillRect2D(float x1, float y1, float x2, float y2,
+                       float r, float g, float b, float a = 1.0f)
 {
-	char		text[256];								// Holds Our String
-	va_list		ap;										// Pointer To List Of Arguments
-
-	if (fmt == NULL)									// If There's No Text
-		return;											// Do Nothing
-
-	va_start(ap, fmt);									// Parses The String For Variables
-	vsprintf_s(text, fmt, ap);						// And Converts Symbols To Actual Numbers
-	va_end(ap);											// Results Are Stored In Text
-
-	glPushAttrib(GL_LIST_BIT);							// Pushes The Display List Bits
-	glListBase(base - 32);								// Sets The Base Character to 32
-	glCallLists((GLsizei)strlen(text), GL_UNSIGNED_BYTE, text);	// Draws The Display List Text
-	glPopAttrib();										// Pops The Display List Bits
+    if (a < 1.0f) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    glColor4f(r, g, b, a);
+    glBegin(GL_QUADS);
+    glVertex2f(x1, y1); glVertex2f(x2, y1);
+    glVertex2f(x2, y2); glVertex2f(x1, y2);
+    glEnd();
+    if (a < 1.0f) glDisable(GL_BLEND);
 }
 
-GLvoid ReSizeGLScene(GLsizei width, GLsizei height)		// Resize And Initialize The GL Window
+static void StrokeRect2D(float x1, float y1, float x2, float y2,
+                         float r, float g, float b)
 {
-	if (height == 0)										// Prevent A Divide By Zero By
-	{
-		height = 1;										// Making Height Equal One
-	}
-
-	glViewport(0, 0, width, height);						// Reset The Current Viewport
-
-	glMatrixMode(GL_PROJECTION);						// Select The Projection Matrix
-	glLoadIdentity();									// Reset The Projection Matrix
-
-														// Calculate The Aspect Ratio Of The Window
-	gluPerspective(45.0f, (GLfloat)width / (GLfloat)height, 0.1f, 100.0f);
-
-	glMatrixMode(GL_MODELVIEW);							// Select The Modelview Matrix
-	glLoadIdentity();									// Reset The Modelview Matrix
-
-	glMatrixMode(GL_MODELVIEW);							// Select The Modelview Matrix
-	glLoadIdentity();									// Reset The Modelview Matrix
+    glColor3f(r, g, b);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(x1, y1); glVertex2f(x2, y1);
+    glVertex2f(x2, y2); glVertex2f(x1, y2);
+    glEnd();
 }
 
-int InitGL(GLvoid)										// All Setup For OpenGL Goes Here
+static void DrawHLine(float x1, float x2, float y, float r, float g, float b)
 {
-	glShadeModel(GL_SMOOTH);							// Enable Smooth Shading
-	glClearColor(0.0f, 0.0f, 0.0f, 0.5f);				// Black Background
-	glClearDepth(1.0f);									// Depth Buffer Setup
-	glEnable(GL_DEPTH_TEST);							// Enables Depth Testing
-	glDepthFunc(GL_LEQUAL);								// The Type Of Depth Testing To Do
-	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);	// Really Nice Perspective Calculations
-
-	BuildFont();										// Build The Font
-
-	return TRUE;										// Initialization Went OK
+    glColor3f(r, g, b);
+    glBegin(GL_LINES);
+    glVertex2f(x1, y); glVertex2f(x2, y);
+    glEnd();
 }
 
-int DrawGLScene(GLvoid)									// Here's Where We Do All The Drawing
+static void DrawVLine(float x, float y1, float y2, float r, float g, float b)
 {
-	int size = 0;
-	float* points = nullptr;
-	GetPointCloud(&size, &points);
-
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// Clear Screen And Depth Buffer
-	glLoadIdentity();									// Reset The Current Modelview Matrix
-	glTranslatef(0.14f, -0.4f, -1.0f);						// Move One Unit Into The Screen
-															// Pulsing Colors Based On Text Position
-	glColor3f(1, 1, 0);
-	// Position The Text On The Screen
-	glRasterPos2f(-0.2f, 0.00f);
-	glPrint("STRESS TEST [%d]", active_clients.load());	// Print GL Text To The Screen
-	glRasterPos2f(-0.2f, 0.05f);
-	glPrint("Delay : %dms", global_delay.load());
-
-	glColor3f(1, 1, 1);
-
-	glPointSize(2.0);
-	glBegin(GL_POINTS);
-	for (int i = 0; i < size; i++)
-	{
-		float x, y, z;
-
-		x = points[i * 2] / 800.0f - 1.25f;
-		y = 1.25f - points[i * 2 + 1] / 800.0f;
-		z = -1.0f;
-		glVertex3f(x, y, z);
-	}
-	glEnd();
-
-	return TRUE;										// Everything Went OK
+    glColor3f(r, g, b);
+    glBegin(GL_LINES);
+    glVertex2f(x, y1); glVertex2f(x, y2);
+    glEnd();
 }
 
-GLvoid KillGLWindow(GLvoid)								// Properly Kill The Window
+// Dashed horizontal line using GL_LINE_STIPPLE
+static void DrawDashedHLine(float x1, float x2, float y,
+                            float r, float g, float b)
 {
-	if (fullscreen)										// Are We In Fullscreen Mode?
-	{
-		ChangeDisplaySettings(NULL, 0);					// If So Switch Back To The Desktop
-		ShowCursor(TRUE);								// Show Mouse Pointer
-	}
-
-	if (hRC)											// Do We Have A Rendering Context?
-	{
-		if (!wglMakeCurrent(NULL, NULL))					// Are We Able To Release The DC And RC Contexts?
-		{
-			MessageBox(NULL, L"Release Of DC And RC Failed.", L"SHUTDOWN ERROR", MB_OK | MB_ICONINFORMATION);
-		}
-
-		if (!wglDeleteContext(hRC))						// Are We Able To Delete The RC?
-		{
-			MessageBox(NULL, L"Release Rendering Context Failed.", L"SHUTDOWN ERROR", MB_OK | MB_ICONINFORMATION);
-		}
-		hRC = NULL;										// Set RC To NULL
-	}
-
-	if (hDC && !ReleaseDC(hWnd, hDC))					// Are We Able To Release The DC
-	{
-		MessageBox(NULL, L"Release Device Context Failed.", L"SHUTDOWN ERROR", MB_OK | MB_ICONINFORMATION);
-		hDC = NULL;										// Set DC To NULL
-	}
-
-	if (hWnd && !DestroyWindow(hWnd))					// Are We Able To Destroy The Window?
-	{
-		MessageBox(NULL, L"Could Not Release hWnd.", L"SHUTDOWN ERROR", MB_OK | MB_ICONINFORMATION);
-		hWnd = NULL;										// Set hWnd To NULL
-	}
-
-	if (!UnregisterClass(L"OpenGL", hInstance))			// Are We Able To Unregister Class
-	{
-		MessageBox(NULL, L"Could Not Unregister Class.", L"SHUTDOWN ERROR", MB_OK | MB_ICONINFORMATION);
-		hInstance = NULL;									// Set hInstance To NULL
-	}
-
-	KillFont();
+    glColor3f(r, g, b);
+    glEnable(GL_LINE_STIPPLE);
+    glLineStipple(2, 0x5555);
+    glBegin(GL_LINES);
+    glVertex2f(x1, y); glVertex2f(x2, y);
+    glEnd();
+    glDisable(GL_LINE_STIPPLE);
 }
 
-/*	This Code Creates Our OpenGL Window.  Parameters Are:					*
-*	title			- Title To Appear At The Top Of The Window				*
-*	width			- Width Of The GL Window Or Fullscreen Mode				*
-*	height			- Height Of The GL Window Or Fullscreen Mode			*
-*	bits			- Number Of Bits To Use For Color (8/16/24/32)			*
-*	fullscreenflag	- Use Fullscreen Mode (TRUE) Or Windowed Mode (FALSE)	*/
-
-BOOL CreateGLWindow(const wchar_t* title, int width, int height, BYTE bits, bool fullscreenflag)
+// ---------------------------------------------------------------------------
+// Graph helper
+//   Draws the history ring buffer as a line strip inside [x1,y1]-[x2,y2].
+//   threshold1 / threshold2: draw dashed reference lines (0 = skip).
+// ---------------------------------------------------------------------------
+static void DrawGraph(float x1, float y1, float x2, float y2,
+                      const float* data, int historySize, int headIndex,
+                      float maxVal,
+                      float lr, float lg, float lb,
+                      float threshold1, float threshold2)
 {
-	GLuint		PixelFormat;			// Holds The Results After Searching For A Match
-	WNDCLASS	wc;						// Windows Class Structure
-	DWORD		dwExStyle;				// Window Extended Style
-	DWORD		dwStyle;				// Window Style
-	RECT		WindowRect;				// Grabs Rectangle Upper Left / Lower Right Values
-	WindowRect.left = (long)0;			// Set Left Value To 0
-	WindowRect.right = (long)width;		// Set Right Value To Requested Width
-	WindowRect.top = (long)0;				// Set Top Value To 0
-	WindowRect.bottom = (long)height;		// Set Bottom Value To Requested Height
+    if (maxVal <= 0.0f) maxVal = 1.0f;
+    const float w = x2 - x1;
+    const float h = y2 - y1;
 
-	fullscreen = fullscreenflag;			// Set The Global Fullscreen Flag
+    // Reference threshold lines
+    if (threshold1 > 0.0f && threshold1 <= maxVal)
+    {
+        float ty = y1 + (threshold1 / maxVal) * h;
+        DrawDashedHLine(x1, x2, ty, 1.0f, 1.0f, 0.2f);
+    }
+    if (threshold2 > 0.0f && threshold2 <= maxVal)
+    {
+        float ty = y1 + (threshold2 / maxVal) * h;
+        DrawDashedHLine(x1, x2, ty, 1.0f, 0.4f, 0.1f);
+    }
 
-	hInstance = GetModuleHandle(NULL);				// Grab An Instance For Our Window
-	wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;	// Redraw On Size, And Own DC For Window.
-	wc.lpfnWndProc = (WNDPROC)WndProc;					// WndProc Handles Messages
-	wc.cbClsExtra = 0;									// No Extra Window Data
-	wc.cbWndExtra = 0;									// No Extra Window Data
-	wc.hInstance = hInstance;							// Set The Instance
-	wc.hIcon = LoadIcon(NULL, IDI_WINLOGO);			// Load The Default Icon
-	wc.hCursor = LoadCursor(NULL, IDC_ARROW);			// Load The Arrow Pointer
-	wc.hbrBackground = NULL;									// No Background Required For GL
-	wc.lpszMenuName = NULL;									// We Don't Want A Menu
-	wc.lpszClassName = L"OpenGL";								// Set The Class Name
-
-	if (!RegisterClass(&wc))									// Attempt To Register The Window Class
-	{
-		MessageBox(NULL, L"Failed To Register The Window Class.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;											// Return FALSE
-	}
-
-	if (fullscreen)												// Attempt Fullscreen Mode?
-	{
-		DEVMODE dmScreenSettings;								// Device Mode
-		memset(&dmScreenSettings, 0, sizeof(dmScreenSettings));	// Makes Sure Memory's Cleared
-		dmScreenSettings.dmSize = sizeof(dmScreenSettings);		// Size Of The Devmode Structure
-		dmScreenSettings.dmPelsWidth = width;				// Selected Screen Width
-		dmScreenSettings.dmPelsHeight = height;				// Selected Screen Height
-		dmScreenSettings.dmBitsPerPel = bits;					// Selected Bits Per Pixel
-		dmScreenSettings.dmFields = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
-
-		// Try To Set Selected Mode And Get Results.  NOTE: CDS_FULLSCREEN Gets Rid Of Start Bar.
-		if (ChangeDisplaySettings(&dmScreenSettings, CDS_FULLSCREEN) != DISP_CHANGE_SUCCESSFUL)
-		{
-			// If The Mode Fails, Offer Two Options.  Quit Or Use Windowed Mode.
-			if (MessageBox(NULL, L"The Requested Fullscreen Mode Is Not Supported By\nYour Video Card. Use Windowed Mode Instead?", L"NeHe GL", MB_YESNO | MB_ICONEXCLAMATION) == IDYES)
-			{
-				fullscreen = FALSE;		// Windowed Mode Selected.  Fullscreen = FALSE
-			}
-			else
-			{
-				// Pop Up A Message Box Letting User Know The Program Is Closing.
-				MessageBox(NULL, L"Program Will Now Close.", L"ERROR", MB_OK | MB_ICONSTOP);
-				return FALSE;									// Return FALSE
-			}
-		}
-	}
-
-	if (fullscreen)												// Are We Still In Fullscreen Mode?
-	{
-		dwExStyle = WS_EX_APPWINDOW;								// Window Extended Style
-		dwStyle = WS_POPUP;										// Windows Style
-		ShowCursor(FALSE);										// Hide Mouse Pointer
-	}
-	else
-	{
-		dwExStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;			// Window Extended Style
-		dwStyle = WS_OVERLAPPEDWINDOW;							// Windows Style
-	}
-
-	AdjustWindowRectEx(&WindowRect, dwStyle, FALSE, dwExStyle);		// Adjust Window To True Requested Size
-
-																	// Create The Window
-	if (!(hWnd = CreateWindowEx(dwExStyle,							// Extended Style For The Window
-		L"OpenGL",							// Class Name
-		title,								// Window Title
-		dwStyle |							// Defined Window Style
-		WS_CLIPSIBLINGS |					// Required Window Style
-		WS_CLIPCHILDREN,					// Required Window Style
-		0, 0,								// Window Position
-		WindowRect.right - WindowRect.left,	// Calculate Window Width
-		WindowRect.bottom - WindowRect.top,	// Calculate Window Height
-		NULL,								// No Parent Window
-		NULL,								// No Menu
-		hInstance,							// Instance
-		NULL)))								// Dont Pass Anything To WM_CREATE
-	{
-		KillGLWindow();								// Reset The Display
-		MessageBox(NULL, L"Window Creation Error.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;								// Return FALSE
-	}
-
-	static	PIXELFORMATDESCRIPTOR pfd =				// pfd Tells Windows How We Want Things To Be
-	{
-		sizeof(PIXELFORMATDESCRIPTOR),				// Size Of This Pixel Format Descriptor
-		1,											// Version Number
-		PFD_DRAW_TO_WINDOW |						// Format Must Support Window
-		PFD_SUPPORT_OPENGL |						// Format Must Support OpenGL
-		PFD_DOUBLEBUFFER,							// Must Support Double Buffering
-		PFD_TYPE_RGBA,								// Request An RGBA Format
-		bits,										// Select Our Color Depth
-		0, 0, 0, 0, 0, 0,							// Color Bits Ignored
-		0,											// No Alpha Buffer
-		0,											// Shift Bit Ignored
-		0,											// No Accumulation Buffer
-		0, 0, 0, 0,									// Accumulation Bits Ignored
-		16,											// 16Bit Z-Buffer (Depth Buffer)  
-		0,											// No Stencil Buffer
-		0,											// No Auxiliary Buffer
-		PFD_MAIN_PLANE,								// Main Drawing Layer
-		0,											// Reserved
-		0, 0, 0										// Layer Masks Ignored
-	};
-
-	if (!(hDC = GetDC(hWnd)))							// Did We Get A Device Context?
-	{
-		KillGLWindow();								// Reset The Display
-		MessageBox(NULL, L"Can't Create A GL Device Context.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;								// Return FALSE
-	}
-
-	if (!(PixelFormat = ChoosePixelFormat(hDC, &pfd)))	// Did Windows Find A Matching Pixel Format?
-	{
-		KillGLWindow();								// Reset The Display
-		MessageBox(NULL, L"Can't Find A Suitable PixelFormat.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;								// Return FALSE
-	}
-
-	if (!SetPixelFormat(hDC, PixelFormat, &pfd))		// Are We Able To Set The Pixel Format?
-	{
-		KillGLWindow();								// Reset The Display
-		MessageBox(NULL, L"Can't Set The PixelFormat.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;								// Return FALSE
-	}
-
-	if (!(hRC = wglCreateContext(hDC)))				// Are We Able To Get A Rendering Context?
-	{
-		KillGLWindow();								// Reset The Display
-		MessageBox(NULL, L"Can't Create A GL Rendering Context.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;								// Return FALSE
-	}
-
-	if (!wglMakeCurrent(hDC, hRC))					// Try To Activate The Rendering Context
-	{
-		KillGLWindow();								// Reset The Display
-		MessageBox(NULL, L"Can't Activate The GL Rendering Context.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;								// Return FALSE
-	}
-
-	ShowWindow(hWnd, SW_SHOW);						// Show The Window
-	SetForegroundWindow(hWnd);						// Slightly Higher Priority
-	SetFocus(hWnd);									// Sets Keyboard Focus To The Window
-	ReSizeGLScene(width, height);					// Set Up Our Perspective GL Screen
-
-	if (!InitGL())									// Initialize Our Newly Created GL Window
-	{
-		KillGLWindow();								// Reset The Display
-		MessageBox(NULL, L"Initialization Failed.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
-		return FALSE;								// Return FALSE
-	}
-
-	return TRUE;									// Success
+    // Data line
+    glColor3f(lr, lg, lb);
+    glBegin(GL_LINE_STRIP);
+    for (int i = 0; i < historySize; ++i)
+    {
+        // Walk forward from the sample just after head (oldest) to head-1 (newest)
+        int idx = (headIndex + i) % historySize;
+        float val = data[idx];
+        float px  = x1 + (float)i / (float)(historySize - 1) * w;
+        float py  = y1 + (val / maxVal) * h;
+        if (py > y2) py = y2;
+        glVertex2f(px, py);
+    }
+    glEnd();
 }
 
-LRESULT CALLBACK WndProc(HWND	hWnd,			// Handle For This Window
-	UINT	uMsg,			// Message For This Window
-	WPARAM	wParam,			// Additional Message Information
-	LPARAM	lParam)			// Additional Message Information
+// ---------------------------------------------------------------------------
+// Color helpers
+// ---------------------------------------------------------------------------
+static void SetDelayColor(int ms)
 {
-	switch (uMsg)									// Check For Windows Messages
-	{
-	case WM_ACTIVATE:							// Watch For Window Activate Message
-	{
-		if (!HIWORD(wParam))					// Check Minimization State
-		{
-			active = TRUE;						// Program Is Active
-		}
-		else
-		{
-			active = FALSE;						// Program Is No Longer Active
-		}
-
-		return 0;								// Return To The Message Loop
-	}
-
-	case WM_SYSCOMMAND:							// Intercept System Commands
-	{
-		switch (wParam)							// Check System Calls
-		{
-		case SC_SCREENSAVE:					// Screensaver Trying To Start?
-		case SC_MONITORPOWER:				// Monitor Trying To Enter Powersave?
-			return 0;							// Prevent From Happening
-		}
-		break;									// Exit
-	}
-
-	case WM_CLOSE:								// Did We Receive A Close Message?
-	{
-		PostQuitMessage(0);						// Send A Quit Message
-		return 0;								// Jump Back
-	}
-
-	case WM_KEYDOWN:							// Is A Key Being Held Down?
-	{
-		keys[wParam] = TRUE;					// If So, Mark It As TRUE
-		return 0;								// Jump Back
-	}
-
-	case WM_KEYUP:								// Has A Key Been Released?
-	{
-		keys[wParam] = FALSE;					// If So, Mark It As FALSE
-		return 0;								// Jump Back
-	}
-
-	case WM_SIZE:								// Resize The OpenGL Window
-	{
-		ReSizeGLScene(LOWORD(lParam), HIWORD(lParam));  // LoWord=Width, HiWord=Height
-		return 0;								// Jump Back
-	}
-	}
-
-	// Pass All Unhandled Messages To DefWindowProc
-	return DefWindowProc(hWnd, uMsg, wParam, lParam);
+    if      (ms <  100) glColor3f(0.2f, 1.0f, 0.4f);  // green: good
+    else if (ms <  150) glColor3f(1.0f, 1.0f, 0.2f);  // yellow: caution
+    else                glColor3f(1.0f, 0.3f, 0.2f);  // red: bad
 }
 
-int WINAPI WinMain(HINSTANCE	hInstance,			// Instance
-	HINSTANCE	hPrevInstance,		// Previous Instance
-	LPSTR		lpCmdLine,			// Command Line Parameters
-	int			nCmdShow)			// Window Show State
+// ---------------------------------------------------------------------------
+// Main draw
+// ---------------------------------------------------------------------------
+static int DrawGLScene()
 {
-	MSG		msg;									// Windows Message Structure
-	BOOL	done = FALSE;								// Bool Variable To Exit Loop
+    // --- Gather data ---
+    int    ptSize     = 0;
+    float* positions  = nullptr;
+    int*   states     = nullptr;
+    GetPointCloud(&ptSize, &positions, &states);
 
-	fullscreen = FALSE;							// Windowed Mode
+    const int  activeCount  = active_clients.load();
+    const int  totalConns   = num_connections.load();
+    const int  deadCount    = dead_clients_count.load();
+    const int  delayNow     = global_delay.load();
+    int        delayMin     = delay_min_val.load();
+    const int  delayMax     = delay_max_val.load();
+    const int  delayAvg     = delay_avg_val.load();
+    const TestPhase phase   = current_phase.load();
+    const float avgMonsters = g_avg_visible_monsters.load();
+    const float avgPlayers  = g_avg_visible_players.load();
 
-	// Create Our OpenGL Window
-	if (!CreateGLWindow(L"Stress Test Client", 640, 480, 16, fullscreen))
-	{
-		return 0;									// Quit If Window Was Not Created
-	}
+    // Sentinel check: delay_min_val initialises to INT_MAX before first sample
+    if (delayMin > 99999) delayMin = 0;
 
-	InitializeNetwork();
+    // Uptime
+    DWORD elapsed = GetTickCount() - g_startTick;
+    int hours   = (int)(elapsed / 3600000);
+    int minutes = (int)((elapsed % 3600000) / 60000);
+    int seconds = (int)((elapsed % 60000)   / 1000);
 
-	while (!done)									// Loop That Runs While done=FALSE
-	{
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))	// Is There A Message Waiting?
-		{
-			if (msg.message == WM_QUIT)				// Have We Received A Quit Message?
-			{
-				done = TRUE;							// If So done=TRUE
-			}
-			else									// If Not, Deal With Window Messages
-			{
-				TranslateMessage(&msg);				// Translate The Message
-				DispatchMessage(&msg);				// Dispatch The Message
-			}
-		}
-		else										// If There Are No Messages
-		{
-			// Draw The Scene.  Watch For ESC Key And Quit Messages From DrawGLScene()
-			if ((active && !DrawGLScene()) || keys[VK_ESCAPE])	// Active?  Was There A Quit Received?
-			{
-				done = TRUE;							// ESC or DrawGLScene Signalled A Quit
-			}
-			else									// Not Time To Quit, Update Screen
-			{
-				SwapBuffers(hDC);					// Swap Buffers (Double Buffering)
-			}
+    // -----------------------------------------------------------------------
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glLoadIdentity();
 
-			if (keys[VK_F1])						// Is F1 Being Pressed?
-			{
-				keys[VK_F1] = FALSE;					// If So Make Key FALSE
-				KillGLWindow();						// Kill Our Current Window
-				fullscreen = !fullscreen;				// Toggle Fullscreen / Windowed Mode
-														// Recreate Our OpenGL Window
-				if (!CreateGLWindow(L"NeHe's Bitmap Font Tutorial", 640, 480, 16, fullscreen))
-				{
-					return 0;						// Quit If Window Was Not Created
-				}
-			}
-		}
-	}
+    // =======================================================================
+    // TITLE BAR  (y: 680 .. 720)
+    // =======================================================================
+    FillRect2D(0.0f, (float)MAP_Y2, (float)WIN_W, (float)WIN_H,
+               0.07f, 0.07f, 0.12f);
+    DrawHLine(0.0f, (float)WIN_W, (float)MAP_Y2, 0.25f, 0.35f, 0.5f);
 
-	// Shutdown
-	KillGLWindow();									// Kill The Window
-	return ((int)msg.wParam);							// Exit The Program
+    glColor3f(0.85f, 0.95f, 1.0f);
+    DrawText2D(12,  (float)MAP_Y2 + 13, "MMORPG STRESS TEST");
+
+    glColor3f(0.45f, 0.65f, 0.85f);
+    DrawText2D(370, (float)MAP_Y2 + 13, "Server: 127.0.0.1:4000");
+
+    glColor3f(0.6f, 0.6f, 0.6f);
+    DrawText2D(860, (float)MAP_Y2 + 13, "Uptime: %02d:%02d:%02d",
+               hours, minutes, seconds);
+
+    // =======================================================================
+    // LEFT STATS PANEL  (x: 0..240, y: 0..680)
+    // =======================================================================
+    FillRect2D(0.0f, 0.0f, (float)STATS_W, (float)MAP_Y2,
+               0.04f, 0.04f, 0.07f);
+    DrawVLine((float)STATS_W, 0.0f, (float)MAP_Y2, 0.22f, 0.28f, 0.38f);
+
+    const float LX  = 10.0f;   // left x for text
+    const float LH  = 18.0f;   // line height
+    float sy        = (float)MAP_Y2 - 24.0f;  // current y, moving downward
+
+    // Helper: draw a section header
+    auto SectionHeader = [&](const char* title) {
+        glColor3f(0.35f, 0.75f, 1.0f);
+        DrawText2D(LX, sy, title);
+        sy -= LH * 0.4f;
+        DrawHLine(LX, (float)STATS_W - 8.0f, sy, 0.2f, 0.3f, 0.45f);
+        sy -= LH * 0.8f;
+    };
+
+    // -- CONNECTIONS --
+    SectionHeader("[ CONNECTIONS ]");
+    glColor3f(0.2f, 1.0f, 0.45f);
+    DrawText2D(LX, sy, "Active  : %d", activeCount);   sy -= LH;
+    glColor3f(1.0f, 0.38f, 0.38f);
+    DrawText2D(LX, sy, "Dead    : %d", deadCount);      sy -= LH;
+    glColor3f(0.75f, 0.75f, 0.75f);
+    DrawText2D(LX, sy, "Total   : %d", totalConns);     sy -= LH * 1.8f;
+
+    // -- PHASE --
+    SectionHeader("[ PHASE ]");
+    const char* phaseStr;
+    float pr, pg, pb;
+    switch (phase) {
+    case TestPhase::RAMP_UP:
+        phaseStr = "^ RAMP UP";   pr = 0.2f;  pg = 1.0f;  pb = 0.45f; break;
+    case TestPhase::STABLE:
+        phaseStr = "= STABLE";    pr = 1.0f;  pg = 1.0f;  pb = 0.2f;  break;
+    case TestPhase::REDUCING:
+        phaseStr = "v REDUCING";  pr = 1.0f;  pg = 0.38f; pb = 0.2f;  break;
+    default:
+        phaseStr = "UNKNOWN";     pr = pg = pb = 0.7f;                  break;
+    }
+    glColor3f(pr, pg, pb);
+    DrawText2D(LX, sy, "%s", phaseStr);
+    sy -= LH * 1.8f;
+
+    // -- NETWORK --
+    SectionHeader("[ NETWORK ]");
+    SetDelayColor(delayNow);
+    DrawText2D(LX, sy, "Current : %dms", delayNow);  sy -= LH;
+    glColor3f(0.5f, 1.0f, 0.6f);
+    DrawText2D(LX, sy, "Min     : %dms", delayMin);  sy -= LH;
+    glColor3f(1.0f, 0.5f, 0.5f);
+    DrawText2D(LX, sy, "Max     : %dms", delayMax);  sy -= LH;
+    glColor3f(0.75f, 0.75f, 0.75f);
+    DrawText2D(LX, sy, "Avg     : %dms", delayAvg);  sy -= LH * 1.8f;
+
+    // -- VISIBILITY --
+    SectionHeader("[ VISIBILITY ]");
+    glColor3f(1.0f, 0.65f, 0.25f);
+    DrawText2D(LX, sy, "Monsters: %.1f", avgMonsters); sy -= LH;
+    glColor3f(0.55f, 0.78f, 1.0f);
+    DrawText2D(LX, sy, "Players : %.1f", avgPlayers);  sy -= LH * 1.8f;
+
+    // -- THRESHOLDS --
+    SectionHeader("[ THRESHOLDS ]");
+    glColor3f(0.2f, 1.0f, 0.45f);
+    DrawText2D(LX, sy, "Good    : <100ms");  sy -= LH;
+    glColor3f(1.0f, 1.0f, 0.2f);
+    DrawText2D(LX, sy, "Caution : <150ms");  sy -= LH;
+    glColor3f(1.0f, 0.3f, 0.2f);
+    DrawText2D(LX, sy, "Bad     : >150ms");  sy -= LH * 1.8f;
+
+    // -- LEGEND --
+    SectionHeader("[ LEGEND ]");
+    glColor3f(0.2f, 1.0f, 0.45f);
+    DrawText2D(LX, sy, "* Alive");   sy -= LH;
+    glColor3f(1.0f, 0.3f, 0.3f);
+    DrawText2D(LX, sy, "* Dead");
+
+    // =======================================================================
+    // WORLD MAP  (x: 240..950, y: 0..680)
+    // =======================================================================
+    FillRect2D((float)MAP_X1, (float)MAP_Y1, (float)MAP_X2, (float)MAP_Y2,
+               0.02f, 0.02f, 0.05f);
+
+    // Grid lines (10 divisions, every 200 world units)
+    glColor3f(0.08f, 0.12f, 0.18f);
+    const float mapW = (float)(MAP_X2 - MAP_X1);
+    const float mapH = (float)(MAP_Y2 - MAP_Y1);
+    glBegin(GL_LINES);
+    for (int g = 1; g < 10; ++g)
+    {
+        float gx = (float)MAP_X1 + (float)g / 10.0f * mapW;
+        float gy = (float)MAP_Y1 + (float)g / 10.0f * mapH;
+        glVertex2f(gx, (float)MAP_Y1); glVertex2f(gx, (float)MAP_Y2);  // vertical
+        glVertex2f((float)MAP_X1, gy); glVertex2f((float)MAP_X2, gy);  // horizontal
+    }
+    glEnd();
+
+    // Map border
+    StrokeRect2D((float)MAP_X1, (float)MAP_Y1, (float)MAP_X2, (float)MAP_Y2,
+                 0.28f, 0.38f, 0.52f);
+
+    // Map title
+    glColor3f(0.45f, 0.55f, 0.65f);
+    DrawText2D((float)MAP_X1 + 8, (float)MAP_Y2 - 16,
+               "WORLD MAP (2000x2000)  |  %d clients visible", ptSize);
+
+    // Draw client points
+    glPointSize(2.5f);
+    glBegin(GL_POINTS);
+    for (int i = 0; i < ptSize; ++i)
+    {
+        float wx = positions[i * 2];
+        float wy = positions[i * 2 + 1];
+        float sx = (float)MAP_X1 + (wx / 2000.0f) * mapW;
+        float sy_p = (float)MAP_Y1 + (1.0f - wy / 2000.0f) * mapH;
+
+        if (states[i] == 1)
+            glColor3f(1.0f, 0.22f, 0.22f);   // dead  → red
+        else
+            glColor3f(0.22f, 1.0f, 0.45f);   // alive → green
+        glVertex2f(sx, sy_p);
+    }
+    glEnd();
+
+    // =======================================================================
+    // RIGHT GRAPH PANEL  (x: 950..1280, y: 0..680)
+    // =======================================================================
+    FillRect2D((float)MAP_X2, (float)MAP_Y1, (float)WIN_W, (float)MAP_Y2,
+               0.04f, 0.04f, 0.07f);
+    DrawVLine((float)MAP_X2, (float)MAP_Y1, (float)MAP_Y2, 0.22f, 0.28f, 0.38f);
+
+    const float GX1 = (float)MAP_X2 + 10.0f;
+    const float GX2 = (float)WIN_W  - 8.0f;
+
+    // Mid-divider between two graphs
+    const float G_MID_Y = (float)MAP_Y2 / 2.0f;  // 340
+    DrawHLine((float)MAP_X2, (float)WIN_W, G_MID_Y, 0.18f, 0.24f, 0.32f);
+
+    // ------------------------------------------------------------------
+    // TOP GRAPH: DELAY  (y: G_MID_Y .. MAP_Y2)
+    // ------------------------------------------------------------------
+    const float DGY1 = G_MID_Y + 28.0f;   // graph draw area bottom
+    const float DGY2 = (float)MAP_Y2 - 20.0f;  // graph draw area top
+
+    glColor3f(0.35f, 0.75f, 1.0f);
+    DrawText2D(GX1, (float)MAP_Y2 - 16.0f, "DELAY (ms)");
+
+    StrokeRect2D(GX1, DGY1, GX2, DGY2, 0.18f, 0.24f, 0.32f);
+
+    {
+        float maxDelay = (float)max(200, delayMax + 20);
+        DrawGraph(GX1, DGY1, GX2, DGY2,
+                  g_delay_history, GRAPH_HISTORY_SIZE, g_history_index,
+                  maxDelay, 0.3f, 0.9f, 0.3f, 100.0f, 150.0f);
+
+        // Threshold labels
+        float t1y = DGY1 + (100.0f / maxDelay) * (DGY2 - DGY1);
+        float t2y = DGY1 + (150.0f / maxDelay) * (DGY2 - DGY1);
+        if (t1y < DGY2) {
+            glColor3f(1.0f, 1.0f, 0.2f);
+            DrawText2D(GX2 - 50.0f, t1y + 2.0f, "100ms");
+        }
+        if (t2y < DGY2) {
+            glColor3f(1.0f, 0.4f, 0.15f);
+            DrawText2D(GX2 - 50.0f, t2y + 2.0f, "150ms");
+        }
+
+        // Current value
+        SetDelayColor(delayNow);
+        DrawText2D(GX1, DGY1 - 16.0f, "Now:%dms  Max:%dms", delayNow, delayMax);
+    }
+
+    // ------------------------------------------------------------------
+    // BOTTOM GRAPH: CLIENTS  (y: 0 .. G_MID_Y)
+    // ------------------------------------------------------------------
+    const float CGY1 = 28.0f;
+    const float CGY2 = G_MID_Y - 20.0f;
+
+    glColor3f(0.35f, 0.75f, 1.0f);
+    DrawText2D(GX1, G_MID_Y - 16.0f, "CLIENTS");
+
+    StrokeRect2D(GX1, CGY1, GX2, CGY2, 0.18f, 0.24f, 0.32f);
+
+    {
+        float maxClients = 100.0f;
+        for (int i = 0; i < GRAPH_HISTORY_SIZE; ++i)
+            if (g_client_history[i] > maxClients) maxClients = g_client_history[i];
+        maxClients *= 1.15f;
+        if (maxClients < 100.0f) maxClients = 100.0f;
+
+        DrawGraph(GX1, CGY1, GX2, CGY2,
+                  g_client_history, GRAPH_HISTORY_SIZE, g_history_index,
+                  maxClients, 0.35f, 0.6f, 1.0f, 0.0f, 0.0f);
+
+        glColor3f(0.2f, 1.0f, 0.45f);
+        DrawText2D(GX1, CGY1 - 16.0f, "Active:%d  Peak:%.0f", activeCount, maxClients / 1.15f);
+    }
+
+    return TRUE;
 }
 
-int main()
+// ---------------------------------------------------------------------------
+// GL window setup
+// ---------------------------------------------------------------------------
+GLvoid ReSizeGLScene(GLsizei width, GLsizei height)
 {
-	WinMain(0, 0, 0, 0);
+    if (height == 0) height = 1;
+    glViewport(0, 0, width, height);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    // Orthographic: pixel coords, y=0 bottom, y=WIN_H top
+    glOrtho(0.0, (double)WIN_W, 0.0, (double)WIN_H, -1.0, 1.0);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
 }
+
+static int InitGL()
+{
+    glShadeModel(GL_SMOOTH);
+    glClearColor(0.02f, 0.02f, 0.04f, 1.0f);
+    glClearDepth(1.0f);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+    BuildFont();
+    return TRUE;
+}
+
+GLvoid KillGLWindow()
+{
+    if (fullscreen)
+    {
+        ChangeDisplaySettings(NULL, 0);
+        ShowCursor(TRUE);
+    }
+    if (hRC)
+    {
+        if (!wglMakeCurrent(NULL, NULL))
+            MessageBox(NULL, L"Release Of DC And RC Failed.", L"SHUTDOWN ERROR",
+                       MB_OK | MB_ICONINFORMATION);
+        if (!wglDeleteContext(hRC))
+            MessageBox(NULL, L"Release Rendering Context Failed.", L"SHUTDOWN ERROR",
+                       MB_OK | MB_ICONINFORMATION);
+        hRC = NULL;
+    }
+    if (hDC && !ReleaseDC(hWnd, hDC))
+    {
+        MessageBox(NULL, L"Release Device Context Failed.", L"SHUTDOWN ERROR",
+                   MB_OK | MB_ICONINFORMATION);
+        hDC = NULL;
+    }
+    if (hWnd && !DestroyWindow(hWnd))
+    {
+        MessageBox(NULL, L"Could Not Release hWnd.", L"SHUTDOWN ERROR",
+                   MB_OK | MB_ICONINFORMATION);
+        hWnd = NULL;
+    }
+    if (!UnregisterClass(L"OpenGL", hInstance))
+    {
+        MessageBox(NULL, L"Could Not Unregister Class.", L"SHUTDOWN ERROR",
+                   MB_OK | MB_ICONINFORMATION);
+        hInstance = NULL;
+    }
+    KillFont();
+}
+
+BOOL CreateGLWindow(const wchar_t* title, int width, int height,
+                    BYTE bits, bool fullscreenflag)
+{
+    WNDCLASS wc{};
+    DWORD    dwExStyle, dwStyle;
+    RECT     wr = { 0, 0, (LONG)width, (LONG)height };
+
+    fullscreen = fullscreenflag;
+
+    hInstance            = GetModuleHandle(NULL);
+    wc.style             = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    wc.lpfnWndProc       = (WNDPROC)WndProc;
+    wc.hInstance         = hInstance;
+    wc.hIcon             = LoadIcon(NULL, IDI_WINLOGO);
+    wc.hCursor           = LoadCursor(NULL, IDC_ARROW);
+    wc.lpszClassName     = L"OpenGL";
+
+    if (!RegisterClass(&wc))
+    {
+        MessageBox(NULL, L"Failed To Register The Window Class.", L"ERROR",
+                   MB_OK | MB_ICONEXCLAMATION);
+        return FALSE;
+    }
+
+    if (fullscreen)
+    {
+        DEVMODE dm{};
+        dm.dmSize       = sizeof(dm);
+        dm.dmPelsWidth  = (DWORD)width;
+        dm.dmPelsHeight = (DWORD)height;
+        dm.dmBitsPerPel = bits;
+        dm.dmFields     = DM_BITSPERPEL | DM_PELSWIDTH | DM_PELSHEIGHT;
+
+        if (ChangeDisplaySettings(&dm, CDS_FULLSCREEN) != DISP_CHANGE_SUCCESSFUL)
+        {
+            if (MessageBox(NULL,
+                    L"Fullscreen mode not supported. Use windowed mode?",
+                    L"Stress Test", MB_YESNO | MB_ICONEXCLAMATION) == IDYES)
+                fullscreen = FALSE;
+            else
+            {
+                MessageBox(NULL, L"Program will now close.", L"ERROR",
+                           MB_OK | MB_ICONSTOP);
+                return FALSE;
+            }
+        }
+    }
+
+    if (fullscreen)
+    {
+        dwExStyle = WS_EX_APPWINDOW;
+        dwStyle   = WS_POPUP;
+        ShowCursor(FALSE);
+    }
+    else
+    {
+        dwExStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+        dwStyle   = WS_OVERLAPPEDWINDOW;
+    }
+
+    AdjustWindowRectEx(&wr, dwStyle, FALSE, dwExStyle);
+
+    hWnd = CreateWindowEx(dwExStyle, L"OpenGL", title,
+                          dwStyle | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+                          0, 0,
+                          wr.right - wr.left, wr.bottom - wr.top,
+                          NULL, NULL, hInstance, NULL);
+    if (!hWnd)
+    {
+        KillGLWindow();
+        MessageBox(NULL, L"Window Creation Error.", L"ERROR",
+                   MB_OK | MB_ICONEXCLAMATION);
+        return FALSE;
+    }
+
+    static PIXELFORMATDESCRIPTOR pfd = {
+        sizeof(PIXELFORMATDESCRIPTOR), 1,
+        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+        PFD_TYPE_RGBA, bits,
+        0,0,0,0,0,0, 0, 0, 0, 0,0,0,0,
+        16, 0, 0, PFD_MAIN_PLANE, 0, 0,0,0
+    };
+
+    GLuint pf;
+    if (!(hDC = GetDC(hWnd)))                                  goto err;
+    if (!(pf  = ChoosePixelFormat(hDC, &pfd)))                 goto err;
+    if (!SetPixelFormat(hDC, pf, &pfd))                        goto err;
+    if (!(hRC = wglCreateContext(hDC)))                        goto err;
+    if (!wglMakeCurrent(hDC, hRC))                             goto err;
+
+    ShowWindow(hWnd, SW_SHOW);
+    SetForegroundWindow(hWnd);
+    SetFocus(hWnd);
+    ReSizeGLScene(width, height);
+    if (!InitGL()) goto err;
+    return TRUE;
+
+err:
+    KillGLWindow();
+    MessageBox(NULL, L"Initialization Failed.", L"ERROR", MB_OK | MB_ICONEXCLAMATION);
+    return FALSE;
+}
+
+// ---------------------------------------------------------------------------
+// WndProc
+// ---------------------------------------------------------------------------
+LRESULT CALLBACK WndProc(HWND hW, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+    case WM_ACTIVATE:
+        active = !HIWORD(wParam);
+        return 0;
+
+    case WM_SYSCOMMAND:
+        if (wParam == SC_SCREENSAVE || wParam == SC_MONITORPOWER) return 0;
+        break;
+
+    case WM_CLOSE:
+        PostQuitMessage(0);
+        return 0;
+
+    case WM_KEYDOWN:
+        keys[wParam] = TRUE;
+        return 0;
+
+    case WM_KEYUP:
+        keys[wParam] = FALSE;
+        return 0;
+
+    case WM_SIZE:
+        ReSizeGLScene(LOWORD(lParam), HIWORD(lParam));
+        return 0;
+    }
+    return DefWindowProc(hW, uMsg, wParam, lParam);
+}
+
+// ---------------------------------------------------------------------------
+// WinMain / main
+// ---------------------------------------------------------------------------
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int)
+{
+    MSG  msg{};
+    BOOL done = FALSE;
+
+    fullscreen = FALSE;
+
+    if (!CreateGLWindow(L"MMORPG Stress Test", WIN_W, WIN_H, 32, fullscreen))
+        return 0;
+
+    g_startTick = GetTickCount();
+    InitializeNetwork();
+
+    while (!done)
+    {
+        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        {
+            if (msg.message == WM_QUIT)
+                done = TRUE;
+            else
+            {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
+        }
+        else
+        {
+            if (active)
+            {
+                if (!DrawGLScene() || keys[VK_ESCAPE])
+                    done = TRUE;
+                else
+                    SwapBuffers(hDC);
+            }
+
+            if (keys[VK_F1])
+            {
+                keys[VK_F1] = FALSE;
+                KillGLWindow();
+                fullscreen = !fullscreen;
+                if (!CreateGLWindow(L"MMORPG Stress Test", WIN_W, WIN_H, 32, fullscreen))
+                    return 0;
+            }
+        }
+    }
+
+    KillGLWindow();
+    return (int)msg.wParam;
+}
+
+int main() { return WinMain(0, 0, 0, 0); }
