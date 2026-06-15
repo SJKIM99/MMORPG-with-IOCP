@@ -196,6 +196,8 @@
     <ClCompile Include="Subject\SubjectHelper.cpp" />
     <ClCompile Include="User\UserHelper.cpp" />
     <ClCompile Include="Area\SectorHelper.cpp" />
+    <ClCompile Include="Zone\Zone.cpp" />
+    <ClCompile Include="Zone\ZoneManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Area\AStar.h" />
@@ -232,6 +234,10 @@
     <ClInclude Include="Subject\SubjectHelper.h" />
     <ClInclude Include="User\UserHelper.h" />
     <ClInclude Include="Area\SectorHelper.h" />
+    <ClInclude Include="Zone\Zone.h" />
+    <ClInclude Include="Zone\ZoneLayout.h" />
+    <ClInclude Include="Zone\ZoneManager.h" />
+    <ClInclude Include="Zone\ZoneTypes.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

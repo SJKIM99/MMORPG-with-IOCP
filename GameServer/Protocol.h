@@ -8,9 +8,9 @@ constexpr int PORT_NUM = 4000;
 
 constexpr int NAME_SIZE     = 20;
 constexpr int PASSWORD_SIZE = 20;
-constexpr int CHAT_SIZE     = 20;
+constexpr int CHAT_SIZE     = 128;
 
-constexpr int MAX_USER    = 20000;
+constexpr int MAX_USER    = 40000;
 constexpr int MAX_MONSTER = 200000;
 
 constexpr uint32_t PLAYER_ID_START   = 1;
@@ -32,9 +32,10 @@ constexpr int W_HEIGHT = 2000;
 
 constexpr int SECTOR_RANGE = 10;
 
-constexpr int VIEW_RANGE   = 5;
-constexpr int ATTACK_RANGE = 1;
-constexpr int WAKE_RANGE   = 3;  // aggro monster wakes up when player is within this many tiles
+constexpr int VIEW_RANGE            = 5;
+constexpr int ATTACK_RANGE          = 1;
+constexpr int WAKE_RANGE            = 3;   // aggro monster wakes up when player is within this many tiles
+constexpr int ZONE_BOUNDARY_MARGIN  = 3;   // aggro monster turns back when within this many tiles of zone boundary
 
 constexpr int PLAYER_MAX_HP  = 100;
 constexpr int MONSTER_MAX_HP = 50;
@@ -59,6 +60,7 @@ enum class PacketType : uint16_t
 	USER_MOVE_REQ,
 	USER_ATTACK_REQ,
 	USER_SKILL_REQ,
+	USER_TELEPORT_REQ,
 
 	// Server → Client, unicast ACK (response to requester only)
 	USER_LOGIN_ACK,
@@ -72,10 +74,15 @@ enum class PacketType : uint16_t
 	SUBJECT_DIE_NFY,
 	SUBJECT_RESPAWN_NFY,
 	SUBJECT_ATTACK_NFY,
+	PLAYER_ATTACK_NFY,
 
 	// Server → Client(s), INF (Server-only notifications)
 	USER_HEAL_INF,
 	USER_STAT_CHANGE_INF,
+
+	// Chat
+	CS_CHAT,
+	SC_CHAT,
 };
 
 #pragma pack (push, 1)
@@ -113,6 +120,7 @@ struct USER_TELEPORT_REQ_PACKET
 {
 	unsigned short size;
 	char	type;
+	short	x, y;
 };
 
 struct USER_LOGOUT_REQ_PACKET
@@ -126,6 +134,13 @@ constexpr size_t ProtocolConstMaxSize(size_t lhs, size_t rhs)
 	return (lhs > rhs) ? lhs : rhs;
 }
 
+struct CS_CHAT_PACKET
+{
+	unsigned short size;
+	char type;
+	char mess[CHAT_SIZE];
+};
+
 constexpr size_t MAX_CLIENT_PACKET_SIZE =
 	ProtocolConstMaxSize(
 		sizeof(USER_LOGIN_REQ_PACKET),
@@ -134,7 +149,8 @@ constexpr size_t MAX_CLIENT_PACKET_SIZE =
 			ProtocolConstMaxSize(
 				sizeof(USER_ATTACK_REQ_PACKET),
 				ProtocolConstMaxSize(sizeof(USER_SKILL_REQ_PACKET),
-					ProtocolConstMaxSize(sizeof(USER_TELEPORT_REQ_PACKET), sizeof(USER_LOGOUT_REQ_PACKET)))
+					ProtocolConstMaxSize(sizeof(USER_TELEPORT_REQ_PACKET),
+						ProtocolConstMaxSize(sizeof(USER_LOGOUT_REQ_PACKET), sizeof(CS_CHAT_PACKET))))
 			)
 		)
 	);
@@ -216,6 +232,7 @@ struct SUBJECT_ATTACK_NFY_PACKET
 {
 	unsigned short size;
 	char  type;
+	ObjID victim_id;
 	ObjID attacker_id;
 	int32_t hp;
 };
@@ -235,5 +252,21 @@ struct USER_STAT_CHANGE_INF_PACKET
 	uint16_t hp;
 	uint16_t maxhp;
 	uint32_t exp;
+};
+
+struct PLAYER_ATTACK_NFY_PACKET
+{
+	unsigned short size;
+	char    type;
+	ObjID   attacker_id;
+	uint8_t facing;  // 0 = right, 1 = left
+};
+
+struct SC_CHAT_PACKET
+{
+	unsigned short size;
+	char  type;
+	ObjID sender_id;
+	char  mess[CHAT_SIZE];
 };
 #pragma pack (pop)

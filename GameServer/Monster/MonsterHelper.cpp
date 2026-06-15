@@ -5,6 +5,8 @@
 #include "SubjectHelper.h"
 #include "SectorHelper.h"
 #include "Sector.h"
+#include "Zone/ZoneLayout.h"
+#include "Zone/ZoneManager.h"
 #include "TimerThread.h"
 #include "AStar.h"
 #include "Collision.h"
@@ -13,7 +15,24 @@
 
 namespace
 {
-	std::atomic<uint64_t> _nextMonsterId{ MONSTER_ID_START + MAX_MONSTER };
+	// 존 경계는 축 정렬(axis-aligned)이므로 4방향 극단 좌표만 검사한다.
+	// 어느 한 방향이라도 ZONE_BOUNDARY_MARGIN 이내에 다른 존이 있으면 경계 근처로 판정.
+	bool IsNearZoneBoundary(short x, short y)
+	{
+		const ZoneId curZone = ZoneLayout::GetZoneIdByWorld(x, y);
+		if (curZone == InvalidZoneId)
+			return false;
+
+		const short x1 = static_cast<short>(std::max<int>(0, x - ZONE_BOUNDARY_MARGIN));
+		const short x2 = static_cast<short>(std::min<int>(W_WIDTH  - 1, x + ZONE_BOUNDARY_MARGIN));
+		const short y1 = static_cast<short>(std::max<int>(0, y - ZONE_BOUNDARY_MARGIN));
+		const short y2 = static_cast<short>(std::min<int>(W_HEIGHT - 1, y + ZONE_BOUNDARY_MARGIN));
+
+		return ZoneLayout::GetZoneIdByWorld(x1, y) != curZone
+			|| ZoneLayout::GetZoneIdByWorld(x2, y) != curZone
+			|| ZoneLayout::GetZoneIdByWorld(x,  y1) != curZone
+			|| ZoneLayout::GetZoneIdByWorld(x,  y2) != curZone;
+	}
 
 	int ManhattanDistance(short x1, short y1, short x2, short y2)
 	{
@@ -154,6 +173,17 @@ namespace MonsterHelper
 		const short prevX = x;
 
 		SubjectHelper::MovePositionByDirection(x, y, static_cast<char>(LRng() % 4));
+
+		// Guard: new position must stay inside this zone and within world bounds.
+		// Without this check a monster near y=499 can randomly step to y=500
+		// (a different zone), causing UpdateObjectSectorAndPosition to return false
+		// and ASSERT_CRASH to fire.
+		if (!ZoneLayout::IsValidWorldPosition(x, y) ||
+		    ZoneLayout::GetZoneIdByWorld(x, y) != monster->GetZoneId())
+		{
+			return;
+		}
+
 		monster->UpdateFacing(x - prevX);
 		SectorHelper::UpdatePosition(monsterId, x, y);
 
@@ -200,11 +230,11 @@ namespace MonsterHelper
 		switch (monster->GetType())
 		{
 		case MONSTER_TYPE::PASSIVE:
-			GTimerThread->ScheduleAfter(monsterId, 1s, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
+			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
 			return;
 
 		case MONSTER_TYPE::AGGRO:
-			GTimerThread->ScheduleAfter(monsterId, 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, wakerId);
+			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, wakerId);
 			return;
 		}
 	}
@@ -240,7 +270,7 @@ namespace MonsterHelper
 		{
 			ObjID mutableId = monsterId;
 			RandomMove(mutableId);
-			GTimerThread->ScheduleAfter(monsterId, 1s, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
+			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
 		}
 		else
 		{
@@ -251,16 +281,25 @@ namespace MonsterHelper
 
 	void HandleRespawn(const ObjID& monsterId)
 	{
-		GGameObjectManager->Delete(monsterId);
+		// Reuse the existing monster object so the ID stays the same.
+		// The stress-test client tracks dead monsters by ID: if we send
+		// RESPAWN_NFY with the original ID it can decrement g_monster_dead.
+		// Creating a brand-new ID (old behaviour) left the dead entry in
+		// g_monsterMap forever and g_monster_dead would only go up.
+		auto monster = ::GetGameObject<Monster>(monsterId);
+		if (monster == nullptr) return;
 
-		ObjID newId(EnumCategory::eMonster, _nextMonsterId.fetch_add(1));
-		auto newMonster = MakeNewSubject(newId, ObjID::npos);
-		GGameObjectManager->Insert(newId, newMonster);
-		SectorHelper::GetRandomPosition(newId);
+		monster->GetStat()->SetHp(MONSTER_MAX_HP);
+		monster->GetStat()->SetDead(false);
+		monster->SetActive(false);
+		monster->SetAttack(false);
+		monster->ClearPath();
 
-		dynamic_pointer_cast<Monster>(newMonster)->SetSpawn(newMonster->GetX(), newMonster->GetY());
+		ObjID mutableId = monsterId;
+		SectorHelper::GetRandomPosition(mutableId);
+		monster->SetSpawn(monster->GetX(), monster->GetY());
 
-		GSector->ForEachNeighborObject(newMonster->GetSectorX(), newMonster->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
 			ObjID id = object->GetObjID();
 			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
@@ -268,9 +307,9 @@ namespace MonsterHelper
 			auto user = static_pointer_cast<User>(object);
 			auto session = user->GetGameSession();
 			if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
-			if (!SubjectHelper::CanSee(object, newMonster)) return;
+			if (!SubjectHelper::CanSee(object, monster)) return;
 
-			UserHelper::SendSUBJECT_RESPAWN_NFY(user, newMonster);
+			UserHelper::SendSUBJECT_RESPAWN_NFY(user, monster);
 		});
 	}
 
@@ -297,6 +336,43 @@ namespace MonsterHelper
 			monster->SetAttack(false);
 			return;
 		}
+		// Player left zone — deactivate immediately (no cross-zone chasing)
+		if (target->GetZoneId() != monster->GetZoneId())
+		{
+			monster->ClearPath();
+			monster->SetActive(false);
+			monster->SetAttack(false);
+			return;
+		}
+		// ─────────────────────────────────────────────────────────────────────
+
+		// ── Zone boundary guard ───────────────────────────────────────────────
+		// 존 경계 ZONE_BOUNDARY_MARGIN 칸 이내에 도달하면 추적을 중단하고 스폰으로 복귀.
+		// 몬스터가 Zone을 넘지 않으므로 Zone Transfer 로직이 불필요해진다.
+		if (IsNearZoneBoundary(monster->GetX(), monster->GetY()))
+		{
+			monster->SetAttack(false);
+
+			const short spawnX = monster->GetSpawnX();
+			const short spawnY = monster->GetSpawnY();
+
+			// 스폰 위치도 경계 근처이면(배치 오류 등) 즉시 비활성화
+			if (IsNearZoneBoundary(spawnX, spawnY))
+			{
+				monster->ClearPath();
+				monster->SetActive(false);
+				return;
+			}
+
+			if (TryAdvanceTowardGoal(monster, monsterId, spawnX, spawnY))
+				GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			else
+			{
+				monster->ClearPath();
+				monster->SetActive(false);
+			}
+			return;
+		}
 		// ─────────────────────────────────────────────────────────────────────
 
 		// ── Leash check: stop chasing if > 7 tiles from spawn in any axis ──
@@ -307,7 +383,7 @@ namespace MonsterHelper
 
 			if (TryAdvanceTowardGoal(monster, monsterId, monster->GetSpawnX(), monster->GetSpawnY()))
 			{
-				GTimerThread->ScheduleAfter(monsterId, 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+				GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
 			}
 			else
 			{
@@ -324,7 +400,7 @@ namespace MonsterHelper
 			if (!monster->IsAttacking())
 				GTimerThread->ScheduleNow(monsterId, TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, targetId);
 
-			GTimerThread->ScheduleAfter(monsterId, 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
 			return;
 		}
 		// ─────────────────────────────────────────────────────────────────────
@@ -335,7 +411,7 @@ namespace MonsterHelper
 		if (SubjectHelper::CanSee(monster, target))
 		{
 			monster->SetActive(true);
-			GTimerThread->ScheduleAfter(monsterId, 1s, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
 		}
 		else
 		{
@@ -369,6 +445,8 @@ namespace MonsterHelper
 
 		if (!victim->GetStat()->IsDead())
 		{
+			const ObjID  victimId = victim->GetObjID();
+			const int32_t victimHp = static_cast<int32_t>(victim->GetStat()->GetHp());
 			GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
 			{
 				ObjID id = object->GetObjID();
@@ -377,7 +455,7 @@ namespace MonsterHelper
 				auto viewer = static_pointer_cast<User>(object);
 				auto session = viewer->GetGameSession();
 				if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
-				UserHelper::SendSUBJECT_ATTACK_NFY(viewer, monsterId);
+				UserHelper::SendSUBJECT_ATTACK_NFY(viewer, victimId, monsterId, victimHp);
 			});
 
 			if (SubjectHelper::CanAttack(monster, victim))
@@ -411,20 +489,24 @@ namespace MonsterHelper
 		(void)remaining;
 	}
 
-	bool Init()
+	void InitForZone(ZoneId zoneId)
 	{
-		for (int32_t i = 0; i < MAX_MONSTER; ++i)
+		// stride 분배: zoneId, zoneId+ZoneCount, zoneId+2*ZoneCount, ...
+		// → 각 존이 전체 ID 범위에서 균등한 간격으로 몬스터를 가져가므로
+		//   AGGRO(앞 25%)와 PASSIVE(나머지 75%)가 모든 존에 고르게 분포된다.
+		const int stride = static_cast<int>(ZoneLayout::ZoneCount);
+		for (int32_t i = zoneId; i < MAX_MONSTER; i += stride)
 		{
 			ObjID monsterId(EnumCategory::eMonster, MONSTER_ID_START + static_cast<uint64_t>(i));
 			auto newMonster = MakeNewSubject(monsterId, ObjID::npos);
 			ASSERT_CRASH(GGameObjectManager->Insert(monsterId, newMonster));
-			SectorHelper::GetRandomPosition(monsterId);
+			SectorHelper::GetRandomPosition(monsterId);  // GSector는 호출 전에 Zone::Run()이 설정
 
 			auto monster = ::GetGameObject<Monster>(monsterId);
 			if (monster) monster->SetSpawn(monster->GetX(), monster->GetY());
 		}
 
-		cout << "Monster Init Success" << endl;
-		return true;
+		cout << "[Zone " << zoneId << "] Monster Init Success ("
+		     << (MAX_MONSTER / stride) << " monsters)\n";
 	}
 }

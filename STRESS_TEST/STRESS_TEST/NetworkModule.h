@@ -2,6 +2,7 @@
 #include <atomic>
 
 constexpr int GRAPH_HISTORY_SIZE = 300;
+constexpr int ZONE_COUNT         = 16;   // 4x4 zone grid
 
 enum class TestPhase : int { RAMP_UP = 0, STABLE = 1, REDUCING = 2 };
 
@@ -23,3 +24,13 @@ extern int   g_history_index;
 
 extern std::atomic<float> g_avg_visible_monsters;
 extern std::atomic<float> g_avg_visible_players;
+
+// Zone player counts (index = zone_id 0..15, 4x4 grid)
+extern std::atomic<int> g_zone_player_count[ZONE_COUNT];
+
+// Monster tracking
+extern std::atomic_int g_monster_known;   // unique monsters seen so far
+extern std::atomic_int g_monster_dead;    // currently dead (awaiting respawn)
+
+// Player dead tracking (bots + human player currently dead in-game)
+extern std::atomic_int g_player_dead;

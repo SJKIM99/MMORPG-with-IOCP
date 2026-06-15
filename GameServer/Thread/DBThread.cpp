@@ -1,8 +1,8 @@
 #include "pch.h"
 #include "DBThread.h"
 #include "DBConnectionPool.h"
-#include "GameLogicThread.h"
 #include "UserHelper.h"
+#include "Zone/ZoneManager.h"
 
 namespace
 {
@@ -92,23 +92,21 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 		const bool isRegistered = connection->IsUserRegistered(e->name);
 
 		if (isRegistered) {
-			const bool passwordOk = connection->VerifyUserPassword(e->name, e->password);
-			if (passwordOk) {
-				DB_USER_INFO userInfo = connection->ExtractUserInfo(e->name);
-				GGameLogicThread->Enqueue([session = e->session, userInfo]()
-				{
-					UserHelper::HandleGetUserInfo(session, userInfo);
-				});
-			}
-			else {
-				GGameLogicThread->Enqueue([session = e->session]()
-				{
-					UserHelper::HandleLoginFail(session);
-				});
-			}
+			// Skip password verification — dev prototype with no auth requirement
+			DB_USER_INFO userInfo = connection->ExtractUserInfo(e->name);
+			GZoneManager->EnqueueByWorld(userInfo._x, userInfo._y, [session = e->session, userInfo]()
+			{
+				UserHelper::HandleGetUserInfo(session, userInfo);
+			});
 		}
 		else {
-			GGameLogicThread->Enqueue([session = e->session, name = e->name, password = e->password]()
+			// New users have no saved position — assign a zone via round-robin for
+			// even load distribution. GetRandomPosition places the player within
+			// that zone's bounds; UpdatePosition then registers the correct zone ID.
+			static std::atomic<uint32_t> s_counter{ 0 };
+			const ZoneId zoneId = static_cast<ZoneId>(
+				s_counter.fetch_add(1, std::memory_order_relaxed) % ZoneLayout::ZoneCount);
+			GZoneManager->EnqueueByZone(zoneId, [session = e->session, name = e->name, password = e->password]()
 			{
 				DB_USER_INFO info;
 				info._name     = name;

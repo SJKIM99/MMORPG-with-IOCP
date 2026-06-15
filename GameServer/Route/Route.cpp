@@ -7,6 +7,7 @@
 #include "SectorHelper.h"
 #include "UserHelper.h"
 #include "Sector.h"
+#include "Zone/ZoneLayout.h"
 
 namespace Route
 {
@@ -35,13 +36,15 @@ namespace Route
 			auto client = session->GetOwner();
 			if (client == nullptr || client->GetStat()->IsDead())
 				break;
+			if (client->IsTransferring())  // Zone Transfer 완료 전 — 이동 패킷 무시
+				break;
 
 			auto* p = reinterpret_cast<const USER_MOVE_REQ_PACKET*>(packet);
 			if (p->direction > 7)
 				break;
 
 			const uint32_t now = GetNowTime();
-			if (now > client->m_lastMoveTime + 1000)
+			if (now > client->m_lastMoveTime + 500)
 			{
 				client->m_lastMoveTime = now;
 
@@ -66,26 +69,20 @@ namespace Route
 			auto client = session->GetOwner();
 			if (client == nullptr || client->GetStat()->IsDead())
 				break;
+			if (client->IsTransferring())  // Zone Transfer 완료 전 — 공격 패킷 무시
+				break;
 
 			auto* p = reinterpret_cast<const USER_ATTACK_REQ_PACKET*>(packet);
 			const uint32_t now = GetNowTime();
-			if (now > client->m_lastAttackTime + 1000)
+			if (now > client->m_lastAttackTime + 500)
 			{
 				client->m_lastAttackTime = p->attack_time;
 
 				// Sync facing from client so CanAttack uses the correct direction
 				client->SetFacingLeft(p->facing == 1);
 
-				ObjID clientId = client->GetObjID();
-				GSector->ForEachNeighborObject(client->GetSectorX(), client->GetSectorY(),
-					[&](const shared_ptr<Subject>& object)
-				{
-					ObjID id = object->GetObjID();
-					if (id.GetCategory<EnumCategory>() != EnumCategory::eMonster)
-						return;
-					if (SubjectHelper::CanAttack(client, object))
-						UserHelper::AttackMonster(id, clientId);
-				});
+				// 단일 순회: 주변 플레이어에게 공격 애니메이션 알림 + 몬스터 공격 동시 처리
+				UserHelper::HandleAttack(client, p->facing);
 			}
 			break;
 		}
@@ -96,6 +93,8 @@ namespace Route
 			auto client = session->GetOwner();
 			if (client == nullptr || client->GetStat()->IsDead())
 				break;
+			if (client->IsTransferring())  // Zone Transfer 완료 전 — 스킬 패킷 무시
+				break;
 
 			const uint32_t now = GetNowTime();
 			if (now > client->m_lastSkillTime + 5000)
@@ -104,6 +103,36 @@ namespace Route
 				ObjID clientId = client->GetObjID();
 				UserHelper::SkillAttack(clientId);
 			}
+			break;
+		}
+		case PacketType::USER_TELEPORT_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr || client->GetStat()->IsDead())
+				break;
+			if (client->IsTransferring())
+				break;
+
+			auto* p = reinterpret_cast<const USER_TELEPORT_REQ_PACKET*>(packet);
+			if (!ZoneLayout::IsValidWorldPosition(p->x, p->y))
+				break;
+
+			SectorHelper::HandlePlayerMove(client, p->x, p->y);
+			break;
+		}
+		case PacketType::CS_CHAT:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr) break;
+
+			auto* p = reinterpret_cast<const CS_CHAT_PACKET*>(packet);
+			char mess[CHAT_SIZE + 1]{};
+			::strncpy_s(mess, p->mess, CHAT_SIZE);
+			UserHelper::BroadcastChat(client, mess);
 			break;
 		}
 		}

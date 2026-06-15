@@ -40,6 +40,9 @@
     <Filter Include="Utils">
       <UniqueIdentifier>{747ff6f9-e3db-45d1-bac9-e5c00640d85b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Zone">
+      <UniqueIdentifier>{8d160b44-9b70-473a-b7e3-09c18cb12dd5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\CoreGlobal.cpp">
@@ -135,6 +138,12 @@
     </ClCompile>
     <ClCompile Include="pch.cpp">
       <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="Zone\ZoneManager.cpp">
+      <Filter>Zone</Filter>
+    </ClCompile>
+    <ClCompile Include="Zone\Zone.cpp">
+      <Filter>Zone</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -239,6 +248,18 @@
     </ClInclude>
     <ClInclude Include="EnumCategory.h">
       <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Zone\ZoneLayout.h">
+      <Filter>Zone</Filter>
+    </ClInclude>
+    <ClInclude Include="Zone\ZoneManager.h">
+      <Filter>Zone</Filter>
+    </ClInclude>
+    <ClInclude Include="Zone\ZoneTypes.h">
+      <Filter>Zone</Filter>
+    </ClInclude>
+    <ClInclude Include="Zone\Zone.h">
+      <Filter>Zone</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

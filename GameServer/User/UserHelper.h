@@ -18,13 +18,15 @@ namespace UserHelper
 	void SendSUBJECT_DIE_NFY(Subject::SharedPtr sender, Subject::SharedPtr target);
 	void SendSUBJECT_RESPAWN_NFY(Subject::SharedPtr sender, const ObjID& targetId);
 	void SendSUBJECT_RESPAWN_NFY(Subject::SharedPtr sender, Subject::SharedPtr target);
-	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr sender, const ObjID& attackerId);
+	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr viewer, const ObjID& victimId, const ObjID& attackerId, int32_t victimHp);
 	void SendUSER_HEAL_INF(Subject::SharedPtr sender);
 	void SendUSER_STAT_CHANGE_INF(Subject::SharedPtr sender);
 	[[nodiscard]] bool SaveUserInfo(const ObjID& targetId);
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage = PLAYER_OFFENSIVE);
 	void SkillAttack(ObjID& playerId);
+	void HandleAttack(Subject::SharedPtr attacker, uint8_t facing);
+	void BroadcastChat(Subject::SharedPtr sender, const char mess[]);
 
 	void HandleHeal(const ObjID& playerId);
 	void HandleRespawn(const ObjID& playerId);

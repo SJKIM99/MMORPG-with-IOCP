@@ -6,6 +6,7 @@
 
 class GameObjectManager
 {
+    mutable shared_mutex             _objectsMutex;
     unordered_map<ObjID, GameObject::SharedPtr> m_gameObjects;
 
 public:
@@ -17,6 +18,7 @@ public:
     template<typename _Ty = GameObject> requires derived_from<_Ty, GameObject>
     [[nodiscard]] shared_ptr<_Ty> Seek(const ObjID& objID)
     {
+        shared_lock lock(_objectsMutex);
         return Find<_Ty>(objID);
     }
 

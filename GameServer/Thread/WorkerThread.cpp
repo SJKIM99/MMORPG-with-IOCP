@@ -4,7 +4,6 @@
 #include "User.h"
 #include "Monster.h"
 #include "DBThread.h"
-#include "GameLogicThread.h"
 #include "GameSessionManager.h"
 #include "GameSession.h"
 #include "Sector.h"
@@ -14,6 +13,8 @@
 #include "SubjectHelper.h"
 #include "MonsterHelper.h"
 #include "Route.h"
+#include "Zone/ZoneLayout.h"
+#include "Zone/ZoneManager.h"
 #include <malloc.h>
 
 namespace
@@ -78,7 +79,7 @@ namespace
 		job->session = session;
 		::memcpy(job->packet.data(), packet, packetSize);
 
-		GGameLogicThread->Enqueue([job]()
+		GZoneManager->EnqueueBySession(session, [job]()
 		{
 			Route::Dispatch(job->session, job->packet.data());
 			GPacketDispatchPool.Release(job);
@@ -101,12 +102,12 @@ namespace
 		if (auto player = session->GetOwner())
 		{
 			const ObjID objId = player->GetObjID();
-			GGameLogicThread->Enqueue([objId]() { GWorkerThread->Disconnect(objId); });
+			GZoneManager->EnqueueByObject(objId, [objId]() { GWorkerThread->Disconnect(objId); });
 		}
 		else
 		{
 			// 로그인 전 접속 끊김 - User 없이 세션만 정리
-			GGameLogicThread->Enqueue([session]()
+			GZoneManager->Enqueue([session]()
 			{
 				session->CloseSession();
 				GSessionManager->ReleaseSession(session.get());
@@ -126,6 +127,22 @@ void WorkerThread::Disconnect(ObjID clientId)
 	auto user = ::GetGameObject<User>(clientId);
 	if (user == nullptr)
 		return;
+
+	// Zone Transfer 진행 중이면 새 Zone 스레드로 재위임 —
+	// HandleEnterZone이 완료된 후 Disconnect가 처리되어야 섹터 상태가 일관됨.
+	// Zone B 큐는 FIFO이므로 이미 대기 중인 HandleEnterZone보다 뒤에 삽입된다.
+	if (user->IsTransferring())
+	{
+		const ZoneId targetZone = user->GetZoneId();
+		if (ZoneLayout::IsValidZoneId(targetZone))
+		{
+			GZoneManager->EnqueueByZone(targetZone, [clientId]()
+			{
+				GWorkerThread->Disconnect(clientId);
+			});
+			return;
+		}
+	}
 
 	GSector->ForEachNeighborObject(user->GetSectorX(), user->GetSectorY(), [&](const shared_ptr<Subject>& subject)
 	{
@@ -151,6 +168,7 @@ void WorkerThread::Disconnect(ObjID clientId)
 	}
 
 	(void)GGameObjectManager->Delete(clientId);
+	GZoneManager->RemoveObject(clientId);
 }
 
 void WorkerThread::DoWork()

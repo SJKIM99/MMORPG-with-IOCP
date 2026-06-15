@@ -6,6 +6,7 @@
 #include <vector>
 #include <Windows.h>
 #include <chrono>
+#include <algorithm>
 #include "C:\Repository\MMORPG-with-IOCP\MMORPG-with-IOCP\GameServer\Protocol.h"
 
 // ObjID static member definitions (required by linker)
@@ -44,17 +45,30 @@ using namespace std;
 sf::TcpSocket s_socket;
 
 constexpr auto SCREEN_WIDTH  = 16;
-constexpr auto SCREEN_HEIGHT = 16;
+constexpr auto SCREEN_HEIGHT = 13;
 
 constexpr auto TILE_WIDTH    = 65;
 constexpr auto WINDOW_WIDTH  = SCREEN_WIDTH  * TILE_WIDTH;
 constexpr auto WINDOW_HEIGHT = SCREEN_HEIGHT * TILE_WIDTH;
 
-int g_left_x;
-int g_top_y;
+int   g_left_x;
+int   g_top_y;
+float g_cam_x = 0.f;   // smooth camera position (tile units, float)
+float g_cam_y = 0.f;
 ObjID g_myid;
-int chat = -1;
+string g_chatInput;
+vector<string> g_chatHistory;
+bool g_chatMode = false;
 sf::RenderWindow* g_window;
+
+// ─── Login screen state ───────────────────────────────────────────────────────
+enum class ClientState { LOGIN, INGAME };
+ClientState g_clientState = ClientState::LOGIN;
+string  g_loginId;
+string  g_loginPass;
+int     g_loginField  = 0;   // 0 = ID focused, 1 = PW focused
+float   g_loginCursor = 0.f;
+// ─────────────────────────────────────────────────────────────────────────────
 sf::Font* g_font = nullptr;
 
 // ─── Soldier sprite sheet constants ──────────────────────────────────────────
@@ -109,9 +123,11 @@ private:
 
 public:
     ObjID id;
-    int m_x = 0, m_y = 0;
+    int   m_x = 0, m_y = 0;
+    float m_vis_x = 0.f, m_vis_y = 0.f;  // visual (interpolated) position
     int level = 0, hp = 0, maxhp = 0, exp = 0;
     char name[20] = {};
+    string name_str;
 
     // Constructor for static (non-animated) objects: tiles, monsters, etc.
     OBJECT(sf::Texture& t, int x, int y, int w, int h) {
@@ -352,17 +368,22 @@ public:
         {
             m_sprite.setColor(sf::Color::White);
         }
+
+        // Smooth position interpolation toward logical tile
+        constexpr float MOVE_LERP = 10.f;
+        m_vis_x += ((float)m_x - m_vis_x) * min(1.f, MOVE_LERP * dt);
+        m_vis_y += ((float)m_y - m_vis_y) * min(1.f, MOVE_LERP * dt);
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    void show() { m_showing = true; }
+    void show() { m_showing = true; m_vis_x = (float)m_x; m_vis_y = (float)m_y; }
     void hide() { m_showing = false; }
 
     // Scale a static (non-animated) sprite. Has no effect on animated sprites
     // (those use displaySize / frameW ratio set in SetAnimTextures).
     void SetScale(float s) { if (m_tex_idle == nullptr) m_sprite.setScale(s, s); }
 
-    void a_move(int x, int y) { m_sprite.setPosition((float)x, (float)y); }
+    void a_move(float x, float y) { m_sprite.setPosition(x, y); }
     void a_draw()              { g_window->draw(m_sprite); }
 
     void move(int x, int y) { m_x = x; m_y = y; }
@@ -371,8 +392,8 @@ public:
     {
         if (!m_showing) return;
 
-        float rx = (m_x - g_left_x) * 65.0f + 1;
-        float ry = (m_y - g_top_y)  * 65.0f + 1;
+        float rx = (m_vis_x - g_cam_x) * TILE_WIDTH + 1.f;
+        float ry = (m_vis_y - g_cam_y) * TILE_WIDTH + 1.f;
 
         if (m_tex_idle != nullptr) {
             // Animated: center on tile
@@ -381,13 +402,24 @@ public:
             m_sprite.setPosition(cx, cy);
             g_window->draw(m_sprite);
 
-            auto size = m_name.getGlobalBounds();
             float labelY = ry - 14.f;
             if (m_mess_end_time < chrono::system_clock::now()) {
+                auto size = m_name.getGlobalBounds();
                 m_name.setPosition(cx - size.width / 2.f, labelY);
                 g_window->draw(m_name);
             } else {
-                m_chat.setPosition(cx - size.width / 2.f, labelY);
+                auto cb = m_chat.getLocalBounds();
+                float bw = cb.width + 10.f;
+                float bh = cb.height + 8.f;
+                float bx = cx - bw / 2.f;
+                float by = labelY - bh - 2.f;
+                sf::RectangleShape bubble(sf::Vector2f(bw, bh));
+                bubble.setFillColor(sf::Color(20, 20, 20, 200));
+                bubble.setOutlineColor(sf::Color(220, 220, 220, 160));
+                bubble.setOutlineThickness(1.f);
+                bubble.setPosition(bx, by);
+                g_window->draw(bubble);
+                m_chat.setPosition(bx + 5.f, by + 2.f);
                 g_window->draw(m_chat);
             }
         } else {
@@ -400,7 +432,18 @@ public:
                 m_name.setPosition(rx + 32 - size.width / 2.f, ry - 10.f);
                 g_window->draw(m_name);
             } else {
-                m_chat.setPosition(rx + 32 - size.width / 2.f, ry - 10.f);
+                auto cb = m_chat.getLocalBounds();
+                float bw = cb.width + 10.f;
+                float bh = cb.height + 8.f;
+                float bx = rx + 32 - bw / 2.f;
+                float by = ry - 10.f - bh - 2.f;
+                sf::RectangleShape bubble(sf::Vector2f(bw, bh));
+                bubble.setFillColor(sf::Color(20, 20, 20, 200));
+                bubble.setOutlineColor(sf::Color(220, 220, 220, 160));
+                bubble.setOutlineThickness(1.f);
+                bubble.setPosition(bx, by);
+                g_window->draw(bubble);
+                m_chat.setPosition(bx + 5.f, by + 2.f);
                 g_window->draw(m_chat);
             }
         }
@@ -408,6 +451,7 @@ public:
 
     void set_name(const char str[])
     {
+        name_str = str;
         m_name.setFont(*g_font);
         m_name.setString(str);
         if (static_cast<EnumCategory>(id.GetCategory()) == EnumCategory::eUser)
@@ -421,10 +465,11 @@ public:
     void set_chat(const char str[])
     {
         m_chat.setFont(*g_font);
+        m_chat.setCharacterSize(13);
         m_chat.setString(str);
         m_chat.setFillColor(sf::Color(255, 255, 255));
         m_chat.setStyle(sf::Text::Bold);
-        m_mess_end_time = chrono::system_clock::now() + chrono::seconds(3);
+        m_mess_end_time = chrono::system_clock::now() + chrono::seconds(4);
     }
 };
 
@@ -432,6 +477,7 @@ OBJECT avatar;
 OBJECT obstacle;
 
 unordered_map<ObjID, OBJECT> players;
+unordered_map<ObjID, OBJECT> g_pendingObjects;  // ADD_NFY buffer during FADE_OUT
 
 OBJECT tile1;
 OBJECT tile2;
@@ -487,6 +533,22 @@ struct DamageNumber
 };
 std::vector<DamageNumber> g_damageNumbers;
 
+// ─── Zone transition ──────────────────────────────────────────────────────────
+constexpr int   ZONE_TILE_SIZE    = 500;  // SectorsPerZoneX(50) * SECTOR_RANGE(10)
+constexpr float ZONE_FADE_OUT_DUR = 0.5f;
+constexpr float ZONE_LOADING_DUR  = 0.8f;
+constexpr float ZONE_FADE_IN_DUR  = 0.5f;
+constexpr int   ZONE_COUNT_X      = 4;   // ZoneCountX from ZoneLayout
+
+enum class ZoneTransState { NONE, FADE_OUT, LOADING, FADE_IN };
+ZoneTransState g_zoneTransState  = ZoneTransState::NONE;
+sf::Clock      g_zoneTransClock;
+int            g_currentZoneCol  = -1;   // -1 = not yet initialized
+int            g_currentZoneRow  = -1;
+int            g_pendingPlayerX  = 0;
+int            g_pendingPlayerY  = 0;
+// ─────────────────────────────────────────────────────────────────────────────
+
 void SpawnDamageNumber(int worldX, int worldY, int32_t damage)
 {
     DamageNumber dn;
@@ -501,9 +563,9 @@ void SpawnDamageNumber(int worldX, int worldY, int32_t damage)
     sprintf_s(buf, "-%d", damage);
     dn.text.setString(buf);
 
-    // Convert world tile to screen pixel position
-    dn.x = static_cast<float>((worldX - g_left_x) * TILE_WIDTH + TILE_WIDTH / 2);
-    dn.y = static_cast<float>((worldY - g_top_y)  * TILE_WIDTH - 10);
+    // Convert world tile to screen pixel position (use float camera for accuracy)
+    dn.x = (worldX - g_cam_x) * TILE_WIDTH + TILE_WIDTH / 2.f;
+    dn.y = (worldY - g_cam_y) * TILE_WIDTH - 10.f;
     dn.life = DamageNumber::MAX_LIFE;
     g_damageNumbers.push_back(std::move(dn));
 }
@@ -520,8 +582,121 @@ bool IsTileOccupiedByMonster(int x, int y)
     return false;
 }
 
+inline int GetZoneCol(int wx) noexcept { return wx / ZONE_TILE_SIZE; }
+inline int GetZoneRow(int wy) noexcept { return wy / ZONE_TILE_SIZE; }
+
+void TriggerZoneTransition(int newX, int newY)
+{
+    g_pendingPlayerX = newX;
+    g_pendingPlayerY = newY;
+    g_currentZoneCol = GetZoneCol(newX);
+    g_currentZoneRow = GetZoneRow(newY);
+    players.clear();          // immediately remove old-zone objects
+    g_pendingObjects.clear(); // discard any leftover buffer
+    g_zoneTransState = ZoneTransState::FADE_OUT;
+    g_zoneTransClock.restart();
+}
+
 // Forward declaration for send_packet used before its definition
 void send_packet(void* packet);
+
+// ─── Login helpers ────────────────────────────────────────────────────────────
+static void DoLogin()
+{
+    if (g_loginId.empty()) return;
+    USER_LOGIN_REQ_PACKET p{};
+    p.size = sizeof(p);
+    p.type = static_cast<char>(PacketType::USER_LOGIN_REQ);
+    ::strncpy_s(p.name, g_loginId.c_str(), NAME_SIZE - 1);
+    send_packet(&p);
+    avatar.set_name(p.name);
+    g_clock.restart();   // reset dt so first game frame isn't huge
+    g_clientState = ClientState::INGAME;
+}
+
+static void DrawLoginScreen(float dt)
+{
+    if (!g_font || !g_window) return;
+    const float CX = WINDOW_WIDTH  / 2.f;
+    const float CY = WINDOW_HEIGHT / 2.f;
+
+    sf::RectangleShape bg(sf::Vector2f((float)WINDOW_WIDTH, (float)WINDOW_HEIGHT));
+    bg.setFillColor(sf::Color(12, 12, 28));
+    g_window->draw(bg);
+
+    // Title
+    sf::Text title;
+    title.setFont(*g_font);
+    title.setCharacterSize(36);
+    title.setStyle(sf::Text::Bold);
+    title.setFillColor(sf::Color(170, 205, 255));
+    title.setString("2D  MMORPG");
+    auto tb = title.getLocalBounds();
+    title.setOrigin(tb.left + tb.width/2.f, tb.top + tb.height/2.f);
+    title.setPosition(CX, CY - 130.f);
+    g_window->draw(title);
+
+    // Cursor blink
+    g_loginCursor += dt;
+    const bool blink = (int)(g_loginCursor * 2.f) % 2 == 0;
+
+    const float FW = 260.f, FH = 34.f;
+    const float FX = CX - FW / 2.f;
+    const float LX = FX - 42.f;
+    const float ID_Y = CY - 48.f;
+    const float PW_Y = CY + 14.f;
+
+    auto drawField = [&](const char* lbl, const string& val, float fy, bool active, bool mask)
+    {
+        sf::Text lt;
+        lt.setFont(*g_font); lt.setCharacterSize(15);
+        lt.setFillColor(sf::Color(175, 175, 200));
+        lt.setString(lbl);
+        lt.setPosition(LX, fy + 9.f);
+        g_window->draw(lt);
+
+        sf::RectangleShape box(sf::Vector2f(FW, FH));
+        box.setFillColor(active ? sf::Color(26,30,62,245) : sf::Color(18,20,44,200));
+        box.setOutlineColor(active ? sf::Color(95,165,255) : sf::Color(50,78,138));
+        box.setOutlineThickness(1.5f);
+        box.setPosition(FX, fy);
+        g_window->draw(box);
+
+        sf::Text it;
+        it.setFont(*g_font); it.setCharacterSize(15);
+        it.setFillColor(sf::Color::White);
+        string disp = mask ? string(val.size(), '*') : val;
+        if (active && blink) disp += '|';
+        it.setString(disp);
+        it.setPosition(FX + 8.f, fy + 9.f);
+        g_window->draw(it);
+    };
+
+    drawField("ID", g_loginId,   ID_Y, g_loginField == 0, false);
+    drawField("PW", g_loginPass, PW_Y, g_loginField == 1, true);
+
+    // ENTER GAME button
+    const float BW = 180.f, BH = 40.f;
+    const float BX = CX - BW / 2.f;
+    const float BY = CY + 78.f;
+    sf::RectangleShape btn(sf::Vector2f(BW, BH));
+    btn.setFillColor(sf::Color(32, 72, 152));
+    btn.setOutlineColor(sf::Color(85, 155, 255));
+    btn.setOutlineThickness(1.5f);
+    btn.setPosition(BX, BY);
+    g_window->draw(btn);
+
+    sf::Text btnTxt;
+    btnTxt.setFont(*g_font); btnTxt.setCharacterSize(18);
+    btnTxt.setStyle(sf::Text::Bold);
+    btnTxt.setFillColor(sf::Color::White);
+    btnTxt.setString("ENTER GAME");
+    auto bb = btnTxt.getLocalBounds();
+    btnTxt.setOrigin(bb.left + bb.width/2.f, bb.top + bb.height/2.f);
+    btnTxt.setPosition(CX, BY + BH/2.f);
+    g_window->draw(btnTxt);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 void client_initialize()
 {
@@ -644,6 +819,8 @@ void client_finish()
     g_font = nullptr;
 }
 
+static void PushHistory(const string& msg);
+
 void ProcessPacket(char* ptr)
 {
     static bool first_time = true;
@@ -654,15 +831,24 @@ void ProcessPacket(char* ptr)
         g_myid = packet->id;
         avatar.id = g_myid;
         avatar.move(packet->x, packet->y);
-        g_left_x = packet->x - SCREEN_WIDTH / 2;
-        g_top_y  = packet->y - SCREEN_HEIGHT / 2;
+        g_cam_x  = (float)(packet->x - SCREEN_WIDTH  / 2);
+        g_cam_y  = (float)(packet->y - SCREEN_HEIGHT / 2);
+        g_left_x = (int)g_cam_x;
+        g_top_y  = (int)g_cam_y;
         avatar.maxhp = packet->maxhp;
         avatar.hp    = packet->hp;
         avatar.level = packet->level;
         avatar.exp   = packet->exp;
         avatar.show();
+        g_currentZoneCol = GetZoneCol(packet->x);
+        g_currentZoneRow = GetZoneRow(packet->y);
     }
     break;
+
+    case static_cast<char>(PacketType::USER_LOGIN_FAIL_ACK):
+        PushHistory("> Login failed. Check account name.");
+        printf("Login failed (USER_LOGIN_FAIL_ACK received)\n");
+        break;
 
     case static_cast<char>(PacketType::SUBJECT_ADD_NFY):
     {
@@ -671,31 +857,40 @@ void ProcessPacket(char* ptr)
 
         if (id == g_myid) {
             avatar.move(my_packet->x, my_packet->y);
-            g_left_x = my_packet->x - SCREEN_WIDTH / 2;
-            g_top_y  = my_packet->y - SCREEN_HEIGHT / 2;
+            g_cam_x  = (float)(my_packet->x - SCREEN_WIDTH  / 2);
+            g_cam_y  = (float)(my_packet->y - SCREEN_HEIGHT / 2);
+            g_left_x = (int)g_cam_x;
+            g_top_y  = (int)g_cam_y;
             avatar.show();
+            break;
         }
-        else if (static_cast<EnumCategory>(id.GetCategory()) == EnumCategory::eUser) {
-            players[id] = OBJECT{};
-            players[id].SetAnimTextures(
+
+        // During FADE_OUT the screen isn't fully black yet — buffer objects instead
+        // of adding to players. They are flushed to players when LOADING starts.
+        auto& dest = (g_zoneTransState == ZoneTransState::FADE_OUT)
+            ? g_pendingObjects : players;
+
+        if (static_cast<EnumCategory>(id.GetCategory()) == EnumCategory::eUser) {
+            dest[id] = OBJECT{};
+            dest[id].SetAnimTextures(
                 soldier_idle_tex, SOLDIER_IDLE_FRAMES,
                 soldier_walk_tex, SOLDIER_WALK_FRAMES,
                 SOLDIER_FRAME_W,  SOLDIER_FRAME_H,
                 256);
-            players[id].SetAttackHurtTextures(
+            dest[id].SetAttackHurtTextures(
                 soldier_atk_tex,  SOLDIER_ATK_FRAMES,
                 soldier_hurt_tex, SOLDIER_HURT_FRAMES,
                 soldier_atk2_tex,
                 soldier_atk3_tex, SOLDIER_SKILL_FRAMES);
-            players[id].id = id;
-            players[id].move(my_packet->x, my_packet->y);
-            players[id].set_name(my_packet->name);
-            players[id].show();
+            dest[id].id = id;
+            dest[id].move(my_packet->x, my_packet->y);
+            dest[id].set_name(my_packet->name);
+            dest[id].show();
         }
         else {
             if (my_packet->monster_type == MONSTER_TYPE::PASSIVE) {
-                players[id] = OBJECT{};
-                players[id].SetOrcAnimTextures(
+                dest[id] = OBJECT{};
+                dest[id].SetOrcAnimTextures(
                     slime_idle_tex,  SLIME_IDLE_FRAMES,
                     slime_walk_tex,  SLIME_WALK_FRAMES,
                     slime_atk_tex,   SLIME_ATK_FRAMES,
@@ -703,9 +898,8 @@ void ProcessPacket(char* ptr)
                     slime_death_tex, SLIME_DEATH_FRAMES,
                     SLIME_FRAME_W, SLIME_FRAME_H, SLIME_DISPLAY_SIZE);
             } else {
-                // Aggro -> Orc animated sprite
-                players[id] = OBJECT{};
-                players[id].SetOrcAnimTextures(
+                dest[id] = OBJECT{};
+                dest[id].SetOrcAnimTextures(
                     orc_idle_tex,  ORC_IDLE_FRAMES,
                     orc_walk_tex,  ORC_WALK_FRAMES,
                     orc_atk_tex,   ORC_ATK_FRAMES,
@@ -713,10 +907,10 @@ void ProcessPacket(char* ptr)
                     orc_death_tex, ORC_DEATH_FRAMES,
                     ORC_FRAME_W, ORC_FRAME_H, ORC_DISPLAY_SIZE);
             }
-            players[id].id = id;
-            players[id].move(my_packet->x, my_packet->y);
-            players[id].set_name(my_packet->name);
-            players[id].show();
+            dest[id].id = id;
+            dest[id].move(my_packet->x, my_packet->y);
+            dest[id].set_name(my_packet->name);
+            dest[id].show();
         }
         break;
     }
@@ -726,9 +920,18 @@ void ProcessPacket(char* ptr)
         SUBJECT_MOVE_NFY_PACKET* my_packet = reinterpret_cast<SUBJECT_MOVE_NFY_PACKET*>(ptr);
         ObjID other_id = my_packet->id;
         if (other_id == g_myid) {
-            avatar.move(my_packet->x, my_packet->y);
-            g_left_x = my_packet->x - SCREEN_WIDTH / 2;
-            g_top_y  = my_packet->y - SCREEN_HEIGHT / 2;
+            const int newCol = GetZoneCol(my_packet->x);
+            const int newRow = GetZoneRow(my_packet->y);
+            const bool zoneChanged = (g_currentZoneCol >= 0)
+                && (newCol != g_currentZoneCol || newRow != g_currentZoneRow);
+
+            if (zoneChanged && g_zoneTransState == ZoneTransState::NONE) {
+                TriggerZoneTransition(my_packet->x, my_packet->y);
+            } else if (g_zoneTransState == ZoneTransState::NONE) {
+                avatar.move(my_packet->x, my_packet->y);
+                // g_cam_x/y lerp toward new position each frame — no instant snap
+            }
+            // skip position update while zone transition is in progress
         } else {
             if (players.count(other_id)) {
                 auto& obj = players[other_id];
@@ -816,9 +1019,11 @@ void ProcessPacket(char* ptr)
     {
         SUBJECT_RESPAWN_NFY_PACKET* packet = reinterpret_cast<SUBJECT_RESPAWN_NFY_PACKET*>(ptr);
         if (packet->id == g_myid) {
-            g_left_x  = packet->x - SCREEN_WIDTH / 2;
-            g_top_y   = packet->y - SCREEN_HEIGHT / 2;
             avatar.move(packet->x, packet->y);
+            g_cam_x  = (float)(packet->x - SCREEN_WIDTH  / 2);
+            g_cam_y  = (float)(packet->y - SCREEN_HEIGHT / 2);
+            g_left_x = (int)g_cam_x;
+            g_top_y  = (int)g_cam_y;
             avatar.hp = packet->hp;
             avatar.SetIdle();
             avatar.show();
@@ -874,15 +1079,29 @@ void ProcessPacket(char* ptr)
     case static_cast<char>(PacketType::SUBJECT_ATTACK_NFY):
     {
         SUBJECT_ATTACK_NFY_PACKET* packet = reinterpret_cast<SUBJECT_ATTACK_NFY_PACKET*>(ptr);
-        avatar.hp = packet->hp;
-        avatar.SetHurt();
-        if (players.count(packet->attacker_id))
+        if (packet->victim_id == g_myid)
         {
-            auto& npc = players[packet->attacker_id];
-            // Face the player before playing the attack animation
-            const int dx = avatar.m_x - npc.m_x;
-            if (dx != 0) npc.SetFacing(dx < 0);
-            npc.SetAttacking();
+            // Monster attacked me
+            avatar.hp = packet->hp;
+            avatar.SetHurt();
+            if (players.count(packet->attacker_id))
+            {
+                auto& npc = players[packet->attacker_id];
+                const int dx = avatar.m_x - npc.m_x;
+                if (dx != 0) npc.SetFacing(dx < 0);
+                npc.SetAttacking();
+            }
+        }
+        else
+        {
+            // Monster attacked another player (bot) — show hurt on that player
+            if (players.count(packet->victim_id))
+            {
+                players[packet->victim_id].hp = packet->hp;
+                players[packet->victim_id].SetHurt();
+            }
+            if (players.count(packet->attacker_id))
+                players[packet->attacker_id].SetAttacking();
         }
         break;
     }
@@ -891,6 +1110,39 @@ void ProcessPacket(char* ptr)
     {
         USER_HEAL_INF_PACKET* packet = reinterpret_cast<USER_HEAL_INF_PACKET*>(ptr);
         avatar.hp = packet->hp;
+        break;
+    }
+
+    case static_cast<char>(PacketType::PLAYER_ATTACK_NFY):
+    {
+        PLAYER_ATTACK_NFY_PACKET* packet = reinterpret_cast<PLAYER_ATTACK_NFY_PACKET*>(ptr);
+        if (players.count(packet->attacker_id))
+        {
+            auto& npc = players[packet->attacker_id];
+            npc.SetFacing(packet->facing == 1);
+            npc.SetAttacking();
+        }
+        break;
+    }
+
+    case static_cast<char>(PacketType::SC_CHAT):
+    {
+        SC_CHAT_PACKET* packet = reinterpret_cast<SC_CHAT_PACKET*>(ptr);
+        char safe[CHAT_SIZE + 1]{};
+        ::strncpy_s(safe, packet->mess, CHAT_SIZE);
+
+        if (packet->sender_id == g_myid)
+        {
+            avatar.set_chat(safe);
+            PushHistory(string("Me: ") + safe);
+        }
+        else if (players.count(packet->sender_id))
+        {
+            auto& npc = players[packet->sender_id];
+            npc.set_chat(safe);
+            string label = npc.name_str.empty() ? "??" : npc.name_str;
+            PushHistory(label + ": " + safe);
+        }
         break;
     }
 
@@ -908,7 +1160,7 @@ void process_data(char* net_buf, size_t io_byte)
 
     while (0 != io_byte) {
         if (0 == in_packet_size)
-            in_packet_size = ptr[0];
+            in_packet_size = static_cast<unsigned char>(ptr[0]);
 
         if (io_byte + saved_packet_size >= in_packet_size) {
             memcpy(packet_buffer + saved_packet_size, ptr, in_packet_size - saved_packet_size);
@@ -937,7 +1189,7 @@ void client_main()
     const bool right = sf::Keyboard::isKeyPressed(sf::Keyboard::Right);
     const bool moving = up || down || left || right;
 
-    if (moving && g_moveClock.getElapsedTime().asMilliseconds() >= 1000)
+    if (moving && g_zoneTransState == ZoneTransState::NONE && g_moveClock.getElapsedTime().asMilliseconds() >= 500)
     {
         g_moveClock.restart();
 
@@ -998,6 +1250,16 @@ void client_main()
 
     // animation update
     avatar.UpdateAnim(dt);
+
+    // ── Smooth camera: lerp toward avatar's visual (interpolated) position ─
+    {
+        const float tcx = avatar.m_vis_x - SCREEN_WIDTH  / 2.f;
+        const float tcy = avatar.m_vis_y - SCREEN_HEIGHT / 2.f;
+        g_cam_x += (tcx - g_cam_x) * min(1.f, 10.f * dt);
+        g_cam_y += (tcy - g_cam_y) * min(1.f, 10.f * dt);
+        g_left_x = static_cast<int>(g_cam_x);
+        g_top_y  = static_cast<int>(g_cam_y);
+    }
     // ──────────────────────────────────────────────────────────────────────
 
     // Network receive
@@ -1009,33 +1271,40 @@ void client_main()
     if (recv_result != sf::Socket::NotReady)
         if (received > 0) process_data(net_buf, received);
 
-    // Draw tiles
-    for (int i = 0; i < SCREEN_WIDTH; ++i)
-        for (int j = 0; j < SCREEN_HEIGHT; ++j)
-        {
-            int tile_x = i + g_left_x;
-            int tile_y = j + g_top_y;
-            if ((tile_x < 0) || (tile_y < 0)) continue;
+    // Draw tiles (subpixel offset prevents tile-edge popping during camera lerp)
+    {
+        const float frac_px = (g_cam_x - (float)g_left_x) * TILE_WIDTH;
+        const float frac_py = (g_cam_y - (float)g_top_y)  * TILE_WIDTH;
+        for (int i = 0; i < SCREEN_WIDTH + 1; ++i)
+            for (int j = 0; j < SCREEN_HEIGHT + 1; ++j)
+            {
+                int tile_x = i + g_left_x;
+                int tile_y = j + g_top_y;
+                if ((tile_x < 0) || (tile_y < 0) || tile_x >= W_WIDTH || tile_y >= W_HEIGHT) continue;
 
-            if (0 == (tile_x / 3 + tile_y / 3) % 3) {
-                tile1.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
-                tile1.a_draw();
-            } else if (1 == (tile_x / 3 + tile_y / 3) % 3) {
-                tile2.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
-                tile2.a_draw();
-            } else {
-                if (0 == (tile_x / 2 + tile_y / 2) % 3) {
-                    obstacle.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
-                    obstacle.a_draw();
-                } else if (1 == (tile_x / 2 + tile_y / 2) % 3) {
-                    tile2.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
+                const float sx = TILE_WIDTH * i - frac_px;
+                const float sy = TILE_WIDTH * j - frac_py;
+
+                if (0 == (tile_x / 3 + tile_y / 3) % 3) {
+                    tile1.a_move(sx, sy);
+                    tile1.a_draw();
+                } else if (1 == (tile_x / 3 + tile_y / 3) % 3) {
+                    tile2.a_move(sx, sy);
                     tile2.a_draw();
                 } else {
-                    tile1.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
-                    tile1.a_draw();
+                    if (0 == (tile_x / 2 + tile_y / 2) % 3) {
+                        obstacle.a_move(sx, sy);
+                        obstacle.a_draw();
+                    } else if (1 == (tile_x / 2 + tile_y / 2) % 3) {
+                        tile2.a_move(sx, sy);
+                        tile2.a_draw();
+                    } else {
+                        tile1.a_move(sx, sy);
+                        tile1.a_draw();
+                    }
                 }
             }
-        }
+    }
 
     // update monster anims + remove death-completed objects
     {
@@ -1106,6 +1375,47 @@ void client_main()
         }
     }
 
+    // Zone boundary visualization — gradient glow lines at zone edges
+    {
+        const float W    = (float)WINDOW_WIDTH;
+        const float H    = (float)WINDOW_HEIGHT;
+        const float GLOW = 14.f;
+        const sf::Color C(80, 140, 255, 110);
+        const sf::Color T(80, 140, 255, 0);
+
+        for (int bx = ZONE_TILE_SIZE; bx < W_WIDTH; bx += ZONE_TILE_SIZE) {
+            const float sx = (bx - g_cam_x) * TILE_WIDTH;
+            if (sx < -GLOW || sx > W + GLOW) continue;
+            sf::VertexArray lq(sf::Quads, 4), rq(sf::Quads, 4);
+            lq[0] = sf::Vertex(sf::Vector2f(sx - GLOW, 0.f), T);
+            lq[1] = sf::Vertex(sf::Vector2f(sx,        0.f), C);
+            lq[2] = sf::Vertex(sf::Vector2f(sx,        H  ), C);
+            lq[3] = sf::Vertex(sf::Vector2f(sx - GLOW, H  ), T);
+            rq[0] = sf::Vertex(sf::Vector2f(sx,        0.f), C);
+            rq[1] = sf::Vertex(sf::Vector2f(sx + GLOW, 0.f), T);
+            rq[2] = sf::Vertex(sf::Vector2f(sx + GLOW, H  ), T);
+            rq[3] = sf::Vertex(sf::Vector2f(sx,        H  ), C);
+            g_window->draw(lq);
+            g_window->draw(rq);
+        }
+
+        for (int by = ZONE_TILE_SIZE; by < W_HEIGHT; by += ZONE_TILE_SIZE) {
+            const float sy = (by - g_cam_y) * TILE_WIDTH;
+            if (sy < -GLOW || sy > H + GLOW) continue;
+            sf::VertexArray tq(sf::Quads, 4), bq(sf::Quads, 4);
+            tq[0] = sf::Vertex(sf::Vector2f(0.f, sy - GLOW), T);
+            tq[1] = sf::Vertex(sf::Vector2f(W,   sy - GLOW), T);
+            tq[2] = sf::Vertex(sf::Vector2f(W,   sy        ), C);
+            tq[3] = sf::Vertex(sf::Vector2f(0.f, sy        ), C);
+            bq[0] = sf::Vertex(sf::Vector2f(0.f, sy        ), C);
+            bq[1] = sf::Vertex(sf::Vector2f(W,   sy        ), C);
+            bq[2] = sf::Vertex(sf::Vector2f(W,   sy + GLOW ), T);
+            bq[3] = sf::Vertex(sf::Vector2f(0.f, sy + GLOW ), T);
+            g_window->draw(tq);
+            g_window->draw(bq);
+        }
+    }
+
     // HUD
     sf::Text text;
     text.setFont(*g_font);
@@ -1139,6 +1449,210 @@ void client_main()
     }
     skillText.setPosition(4.f, 24.f);
     g_window->draw(skillText);
+
+    {
+        const int zoneId = GetZoneRow(avatar.m_y) * ZONE_COUNT_X + GetZoneCol(avatar.m_x);
+        char zoneBuf[24];
+        sprintf_s(zoneBuf, "Zone %d", zoneId + 1);
+        sf::Text zoneLabel;
+        zoneLabel.setFont(*g_font);
+        zoneLabel.setCharacterSize(14);
+        zoneLabel.setFillColor(sf::Color(130, 190, 255, 200));
+        zoneLabel.setString(zoneBuf);
+        zoneLabel.setPosition(4.f, 44.f);
+        g_window->draw(zoneLabel);
+    }
+
+    // Zone transition overlay — drawn last, covers all game elements
+    if (g_zoneTransState != ZoneTransState::NONE)
+    {
+        const float t = g_zoneTransClock.getElapsedTime().asSeconds();
+
+        if (g_zoneTransState == ZoneTransState::FADE_OUT)
+        {
+            float alpha = t / ZONE_FADE_OUT_DUR;
+            if (alpha >= 1.f) {
+                alpha = 1.f;
+                avatar.move(g_pendingPlayerX, g_pendingPlayerY);
+                g_left_x = g_pendingPlayerX - SCREEN_WIDTH  / 2;
+                g_top_y  = g_pendingPlayerY - SCREEN_HEIGHT / 2;
+                g_cam_x  = (float)g_left_x;
+                g_cam_y  = (float)g_top_y;
+                avatar.show();
+                // Screen is now fully black — flush buffered new-zone objects
+                for (auto& kv : g_pendingObjects)
+                    players[kv.first] = std::move(kv.second);
+                g_pendingObjects.clear();
+                g_zoneTransState = ZoneTransState::LOADING;
+                g_zoneTransClock.restart();
+            }
+            sf::RectangleShape fadeOutOverlay(sf::Vector2f((float)WINDOW_WIDTH, (float)WINDOW_HEIGHT));
+            fadeOutOverlay.setFillColor(sf::Color(0, 0, 0, (uint8_t)(alpha * 255.f)));
+            g_window->draw(fadeOutOverlay);
+        }
+
+        if (g_zoneTransState == ZoneTransState::LOADING)
+        {
+            const float lt = g_zoneTransClock.getElapsedTime().asSeconds();
+            float progress = lt / ZONE_LOADING_DUR;
+            if (progress >= 1.f) {
+                progress         = 1.f;
+                g_zoneTransState = ZoneTransState::FADE_IN;
+                g_zoneTransClock.restart();
+            }
+
+            sf::RectangleShape loadingBg(sf::Vector2f((float)WINDOW_WIDTH, (float)WINDOW_HEIGHT));
+            loadingBg.setFillColor(sf::Color::Black);
+            g_window->draw(loadingBg);
+
+            char loadBuf[64] = {};
+            const int zoneIdx = g_currentZoneRow * ZONE_COUNT_X + g_currentZoneCol + 1;
+            sprintf_s(loadBuf, "Zone %d  Loading...", zoneIdx);
+
+            sf::Text loadText;
+            loadText.setFont(*g_font);
+            loadText.setCharacterSize(28);
+            loadText.setStyle(sf::Text::Bold);
+            loadText.setFillColor(sf::Color(220, 220, 220));
+            loadText.setOutlineColor(sf::Color::Black);
+            loadText.setOutlineThickness(2.f);
+            loadText.setString(loadBuf);
+            const sf::FloatRect lb = loadText.getLocalBounds();
+            loadText.setOrigin(lb.left + lb.width / 2.f, lb.top + lb.height / 2.f);
+            loadText.setPosition(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT / 2.f - 20.f);
+            g_window->draw(loadText);
+
+            const float BAR_W = 300.f, BAR_H = 8.f;
+            sf::RectangleShape barBg(sf::Vector2f(BAR_W, BAR_H));
+            barBg.setFillColor(sf::Color(60, 60, 60));
+            barBg.setOrigin(BAR_W / 2.f, BAR_H / 2.f);
+            barBg.setPosition(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT / 2.f + 20.f);
+            g_window->draw(barBg);
+
+            sf::RectangleShape barFill(sf::Vector2f(BAR_W * progress, BAR_H));
+            barFill.setFillColor(sf::Color(100, 180, 255));
+            barFill.setOrigin(0.f, BAR_H / 2.f);
+            barFill.setPosition(WINDOW_WIDTH / 2.f - BAR_W / 2.f, WINDOW_HEIGHT / 2.f + 20.f);
+            g_window->draw(barFill);
+        }
+
+        if (g_zoneTransState == ZoneTransState::FADE_IN)
+        {
+            const float it    = g_zoneTransClock.getElapsedTime().asSeconds();
+            const float alpha = 1.f - it / ZONE_FADE_IN_DUR;
+            if (alpha <= 0.f) {
+                g_zoneTransState = ZoneTransState::NONE;
+            } else {
+                sf::RectangleShape fadeInOverlay(sf::Vector2f((float)WINDOW_WIDTH, (float)WINDOW_HEIGHT));
+                fadeInOverlay.setFillColor(sf::Color(0, 0, 0, (uint8_t)(alpha * 255.f)));
+                g_window->draw(fadeInOverlay);
+            }
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── EXIT button (top-right corner) ──────────────────────────────────────
+    {
+        const float EBW = 58.f, EBH = 22.f;
+        const float EBX = (float)WINDOW_WIDTH - EBW - 5.f;
+        const float EBY = 5.f;
+        sf::RectangleShape eb(sf::Vector2f(EBW, EBH));
+        eb.setFillColor(sf::Color(90, 20, 20, 215));
+        eb.setOutlineColor(sf::Color(200, 60, 60, 185));
+        eb.setOutlineThickness(1.f);
+        eb.setPosition(EBX, EBY);
+        g_window->draw(eb);
+        sf::Text et;
+        et.setFont(*g_font); et.setCharacterSize(13);
+        et.setStyle(sf::Text::Bold);
+        et.setFillColor(sf::Color(230, 165, 165));
+        et.setString("EXIT");
+        auto ebl = et.getLocalBounds();
+        et.setOrigin(ebl.left + ebl.width/2.f, ebl.top + ebl.height/2.f);
+        et.setPosition(EBX + EBW/2.f, EBY + EBH/2.f);
+        g_window->draw(et);
+    }
+
+    // Chat panel — always visible, bottom-right
+    {
+        const float PANEL_W   = 380.f;
+        const float PANEL_X   = (float)WINDOW_WIDTH  - 400.f;
+        const float PANEL_BTM = (float)WINDOW_HEIGHT - 10.f;
+        const float LINE_H    = 19.f;
+        const float INPUT_H   = 28.f;
+        const int   MAX_SHOW  = 5;
+
+        const int   showLines = (int)min((int)g_chatHistory.size(), MAX_SHOW);
+        const float histH     = showLines > 0 ? showLines * LINE_H + 4.f : 0.f;
+        const float inputTop  = PANEL_BTM - INPUT_H;
+        const float histTop   = inputTop  - histH;
+
+        // History background + lines
+        if (showLines > 0)
+        {
+            sf::RectangleShape histBg(sf::Vector2f(PANEL_W, histH));
+            histBg.setFillColor(sf::Color(0, 0, 0, 150));
+            histBg.setPosition(PANEL_X, histTop);
+            g_window->draw(histBg);
+
+            sf::Text line;
+            line.setFont(*g_font);
+            line.setCharacterSize(13);
+
+            const int start = (int)g_chatHistory.size() - showLines;
+            for (int i = 0; i < showLines; ++i)
+            {
+                const string& entry = g_chatHistory[start + i];
+                // "Me: " = yellow, ">" = teleport/system = blue, others = white
+                if (entry.size() >= 4 && entry.substr(0, 4) == "Me: ")
+                    line.setFillColor(sf::Color(255, 230, 100));
+                else if (!entry.empty() && entry[0] == '>')
+                    line.setFillColor(sf::Color(130, 200, 255));
+                else
+                    line.setFillColor(sf::Color(220, 220, 220));
+                line.setString(entry);
+                line.setPosition(PANEL_X + 6.f, histTop + 2.f + i * LINE_H);
+                g_window->draw(line);
+            }
+        }
+
+        // Input box — always shown
+        sf::RectangleShape inputBg(sf::Vector2f(PANEL_W, INPUT_H));
+        inputBg.setFillColor(g_chatMode
+            ? sf::Color(10, 10, 40, 230)
+            : sf::Color(10, 10, 20, 140));
+        inputBg.setPosition(PANEL_X, inputTop);
+        g_window->draw(inputBg);
+
+        sf::RectangleShape inputBorder(sf::Vector2f(PANEL_W, INPUT_H));
+        inputBorder.setFillColor(sf::Color::Transparent);
+        inputBorder.setOutlineColor(g_chatMode
+            ? sf::Color(100, 160, 255, 240)
+            : sf::Color(60, 90, 150, 120));
+        inputBorder.setOutlineThickness(1.f);
+        inputBorder.setPosition(PANEL_X, inputTop);
+        g_window->draw(inputBorder);
+
+        sf::Text inputTxt;
+        inputTxt.setFont(*g_font);
+        inputTxt.setCharacterSize(13);
+
+        if (g_chatMode)
+        {
+            static float cursorTimer = 0.f;
+            cursorTimer += dt;
+            const bool showCursor = (int)(cursorTimer * 2.f) % 2 == 0;
+            inputTxt.setFillColor(sf::Color::White);
+            inputTxt.setString(g_chatInput + (showCursor ? "|" : " "));
+        }
+        else
+        {
+            inputTxt.setFillColor(sf::Color(140, 140, 140, 180));
+            inputTxt.setString("Enter 키로 채팅 입력...");
+        }
+        inputTxt.setPosition(PANEL_X + 6.f, inputTop + 6.f);
+        g_window->draw(inputTxt);
+    }
 }
 
 void send_packet(void* packet)
@@ -1148,9 +1662,42 @@ void send_packet(void* packet)
     s_socket.send(packet, p[0], sent);
 }
 
+static void PushHistory(const string& msg)
+{
+    g_chatHistory.push_back(msg);
+    if ((int)g_chatHistory.size() > 20)
+        g_chatHistory.erase(g_chatHistory.begin());
+}
+
+void ProcessChatCommand(const string& input)
+{
+    if (input.empty()) return;
+    PushHistory("> " + input);
+
+    int tx = 0, ty = 0;
+    const bool parsed =
+        sscanf_s(input.c_str(), "/teleport x=%d, y=%d", &tx, &ty) == 2 ||
+        sscanf_s(input.c_str(), "/teleport x=%d y=%d",  &tx, &ty) == 2 ||
+        sscanf_s(input.c_str(), "/teleport %d %d",       &tx, &ty) == 2 ||
+        sscanf_s(input.c_str(), "/tp %d %d",             &tx, &ty) == 2;
+
+    if (!parsed) { PushHistory("  Unknown command"); return; }
+
+    char fb[48];
+    sprintf_s(fb, "  Teleporting to (%d, %d)", tx, ty);
+    PushHistory(fb);
+
+    USER_TELEPORT_REQ_PACKET tp;
+    tp.size = sizeof(tp);
+    tp.type = static_cast<char>(PacketType::USER_TELEPORT_REQ);
+    tp.x    = static_cast<short>(tx);
+    tp.y    = static_cast<short>(ty);
+    send_packet(&tp);
+}
+
 int main()
 {
-    (void)0; // locale setup removed (no Korean wide strings)
+    (void)0;
     sf::Socket::Status status = s_socket.connect("127.0.0.1", PORT_NUM);
     s_socket.setBlocking(false);
 
@@ -1159,71 +1706,199 @@ int main()
         exit(-1);
     }
 
-    client_initialize();
-
-    char id[20];
-    cout << "ID :";
-    cin >> id;
-
-    USER_LOGIN_REQ_PACKET p;
-    p.size = sizeof(p);
-    p.type = static_cast<char>(PacketType::USER_LOGIN_REQ);
-    strcpy_s(p.name, id);
-    send_packet(&p);
-    avatar.set_name(p.name);
+    client_initialize();  // loads font + textures
 
     sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "2D CLIENT");
     g_window = &window;
+
+    // Layout constants shared between draw and event handler
+    const float LCX  = WINDOW_WIDTH  / 2.f;
+    const float LCY  = WINDOW_HEIGHT / 2.f;
+    const float LFW  = 260.f, LFH = 34.f;
+    const float LFX  = LCX - LFW / 2.f;
+    const float LID_Y = LCY - 48.f;
+    const float LPW_Y = LCY + 14.f;
+    const float LBW  = 180.f, LBH = 40.f;
+    const float LBX  = LCX - LBW / 2.f;
+    const float LBY  = LCY + 78.f;
 
     while (window.isOpen())
     {
         sf::Event event;
         while (window.pollEvent(event))
         {
-            if (chat != 1) {
-                if (event.type == sf::Event::Closed)
-                    window.close();
+            if (event.type == sf::Event::Closed)
+                window.close();
 
-                if (event.type == sf::Event::KeyPressed) {
-                    int attack = -1;
-
-                    switch (event.key.code) {
-                    case sf::Keyboard::LControl: attack = 1; break;
-                    case sf::Keyboard::Enter:    chat = 1;   break;
-                    case sf::Keyboard::Escape:   window.close(); break;
+            if (g_clientState == ClientState::LOGIN)
+            {
+                // ── Login screen events ──────────────────────────────────────
+                if (event.type == sf::Event::MouseButtonPressed &&
+                    event.mouseButton.button == sf::Mouse::Left)
+                {
+                    const float mx = (float)event.mouseButton.x;
+                    const float my = (float)event.mouseButton.y;
+                    if (mx >= LFX && mx <= LFX+LFW && my >= LID_Y && my <= LID_Y+LFH)
+                        g_loginField = 0;
+                    else if (mx >= LFX && mx <= LFX+LFW && my >= LPW_Y && my <= LPW_Y+LFH)
+                        g_loginField = 1;
+                    else if (mx >= LBX && mx <= LBX+LBW && my >= LBY && my <= LBY+LBH)
+                        DoLogin();
+                }
+                if (event.type == sf::Event::TextEntered)
+                {
+                    const uint32_t ch = event.text.unicode;
+                    string& cur = (g_loginField == 0) ? g_loginId : g_loginPass;
+                    const int lim = (g_loginField == 0) ? NAME_SIZE - 1 : PASSWORD_SIZE - 1;
+                    if (ch == 8) { if (!cur.empty()) cur.pop_back(); }
+                    else if (ch >= 32 && ch < 127 && (int)cur.size() < lim)
+                        cur += static_cast<char>(ch);
+                }
+                if (event.type == sf::Event::KeyPressed)
+                {
+                    switch (event.key.code)
+                    {
+                    case sf::Keyboard::Tab:
+                        g_loginField = 1 - g_loginField;
+                        break;
+                    case sf::Keyboard::Return:
+                        if (g_loginField == 0) g_loginField = 1;
+                        else DoLogin();
+                        break;
+                    case sf::Keyboard::Escape:
+                        window.close();
+                        break;
                     default: break;
                     }
-
-                    if (attack == 1 && g_attackClock.getElapsedTime().asMilliseconds() >= 1000)
+                }
+            }
+            else  // ClientState::INGAME
+            {
+                if (g_chatMode)
+                {
+                    // ── 채팅 입력 모드 ───────────────────────────────────────
+                    if (event.type == sf::Event::TextEntered)
                     {
-                        g_attackClock.restart();
-                        avatar.SetAttacking();
-                        USER_ATTACK_REQ_PACKET ap;
-                        ap.size        = sizeof(ap);
-                        ap.type        = static_cast<char>(PacketType::USER_ATTACK_REQ);
-                        ap.attack_time = static_cast<unsigned>(
-                            chrono::duration_cast<chrono::milliseconds>(
-                                chrono::steady_clock::now().time_since_epoch()).count());
-                        ap.facing      = avatar.IsFacingLeft() ? 1u : 0u;
-                        send_packet(&ap);
+                        const uint32_t ch = event.text.unicode;
+                        if (ch == 8) {
+                            if (!g_chatInput.empty()) g_chatInput.pop_back();
+                        } else if (ch >= 32 && ch < 127) {
+                            if ((int)g_chatInput.size() < CHAT_SIZE - 1)
+                                g_chatInput += static_cast<char>(ch);
+                        }
                     }
-
-                    if (event.key.code == sf::Keyboard::A
-                        && g_skillClock.getElapsedTime().asSeconds() >= 5.f)
+                    if (event.type == sf::Event::KeyPressed)
                     {
-                        g_skillClock.restart();
-                        avatar.SetSkillAttacking();
-                        USER_SKILL_REQ_PACKET sp;
-                        sp.size = sizeof(sp);
-                        sp.type = static_cast<char>(PacketType::USER_SKILL_REQ);
-                        send_packet(&sp);
+                        switch (event.key.code)
+                        {
+                        case sf::Keyboard::Return:
+                        {
+                            if (!g_chatInput.empty())
+                            {
+                                const bool isCmd =
+                                    g_chatInput.rfind("/teleport", 0) == 0 ||
+                                    g_chatInput.rfind("/tp", 0) == 0;
+                                if (isCmd)
+                                    ProcessChatCommand(g_chatInput);
+                                else
+                                {
+                                    CS_CHAT_PACKET cp{};
+                                    cp.size = sizeof(cp);
+                                    cp.type = static_cast<char>(PacketType::CS_CHAT);
+                                    ::strncpy_s(cp.mess, g_chatInput.c_str(), CHAT_SIZE - 1);
+                                    send_packet(&cp);
+                                }
+                                g_chatInput.clear();
+                            }
+                            g_chatMode = false;
+                            break;
+                        }
+                        case sf::Keyboard::Escape:
+                            g_chatInput.clear();
+                            g_chatMode = false;
+                            break;
+                        case sf::Keyboard::Up:
+                        case sf::Keyboard::Down:
+                        case sf::Keyboard::Left:
+                        case sf::Keyboard::Right:
+                            g_chatInput.clear();
+                            g_chatMode = false;
+                            break;
+                        default: break;
+                        }
+                    }
+                }
+                else
+                {
+                    // ── 일반 게임 입력 모드 ─────────────────────────────────
+                    if (event.type == sf::Event::MouseButtonPressed &&
+                        event.mouseButton.button == sf::Mouse::Left)
+                    {
+                        // EXIT button hit test
+                        const float EBW = 58.f, EBH = 22.f;
+                        const float EBX = (float)WINDOW_WIDTH - EBW - 5.f, EBY = 5.f;
+                        const float mx = (float)event.mouseButton.x;
+                        const float my = (float)event.mouseButton.y;
+                        if (mx >= EBX && mx <= EBX+EBW && my >= EBY && my <= EBY+EBH)
+                            window.close();
+                    }
+                    if (event.type == sf::Event::KeyPressed)
+                    {
+                        switch (event.key.code)
+                        {
+                        case sf::Keyboard::Return:
+                            g_chatMode = true;
+                            break;
+                        case sf::Keyboard::Escape:
+                            window.close();
+                            break;
+                        case sf::Keyboard::LControl:
+                        {
+                            if (g_attackClock.getElapsedTime().asMilliseconds() >= 500)
+                            {
+                                g_attackClock.restart();
+                                avatar.SetAttacking();
+                                USER_ATTACK_REQ_PACKET ap;
+                                ap.size        = sizeof(ap);
+                                ap.type        = static_cast<char>(PacketType::USER_ATTACK_REQ);
+                                ap.attack_time = static_cast<unsigned>(
+                                    chrono::duration_cast<chrono::milliseconds>(
+                                        chrono::steady_clock::now().time_since_epoch()).count());
+                                ap.facing      = avatar.IsFacingLeft() ? 1u : 0u;
+                                send_packet(&ap);
+                            }
+                            break;
+                        }
+                        case sf::Keyboard::A:
+                        {
+                            if (g_skillClock.getElapsedTime().asSeconds() >= 5.f)
+                            {
+                                g_skillClock.restart();
+                                avatar.SetSkillAttacking();
+                                USER_SKILL_REQ_PACKET sp;
+                                sp.size = sizeof(sp);
+                                sp.type = static_cast<char>(PacketType::USER_SKILL_REQ);
+                                send_packet(&sp);
+                            }
+                            break;
+                        }
+                        default: break;
+                        }
                     }
                 }
             }
         }
 
         window.clear();
-        client_main();
+        if (g_clientState == ClientState::LOGIN)
+        {
+            const float dt = g_clock.restart().asSeconds();
+            DrawLoginScreen(dt);
+        }
+        else
+        {
+            client_main();
+        }
         window.display();
     }
 

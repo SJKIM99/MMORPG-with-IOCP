@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Zone/ZoneTypes.h"
+
 constexpr int ACCEPT_BUFFER_SIZE = (sizeof(SOCKADDR_IN) + 16) * 2;
 
 constexpr size_t ConstMaxSize(size_t lhs, size_t rhs)
@@ -28,7 +30,13 @@ constexpr size_t MAX_SERVER_PACKET_SIZE =
 										sizeof(SUBJECT_ATTACK_NFY_PACKET),
 										ConstMaxSize(
 											sizeof(USER_HEAL_INF_PACKET),
-											sizeof(USER_STAT_CHANGE_INF_PACKET))
+											ConstMaxSize(
+												sizeof(USER_STAT_CHANGE_INF_PACKET),
+												ConstMaxSize(
+													sizeof(PLAYER_ATTACK_NFY_PACKET),
+													sizeof(SC_CHAT_PACKET))
+											)
+										)
 									)
 								)
 							)
@@ -203,6 +211,7 @@ public:
 	SOCKET_STATE m_state = SOCKET_STATE::ST_FREE;
 	uint32_t m_pendingRecvBytes = 0;
 	uint32_t m_objectId = 0;
+	atomic<ZoneId> m_zoneId{ InvalidZoneId };
 	mutex m_sessionLock;
 	weak_ptr<User> m_owner;
 
@@ -218,6 +227,8 @@ public:
 
 	void BindOwner(const shared_ptr<User>& owner);
 	[[nodiscard]] shared_ptr<User> GetOwner() const;
+	[[nodiscard]] ZoneId GetZoneId() const noexcept { return m_zoneId.load(memory_order_relaxed); }
+	void SetZoneId(ZoneId zoneId) noexcept { m_zoneId.store(zoneId, memory_order_relaxed); }
 	bool AttachSocket(SOCKET socket);
 	void CloseSocket();
 	void CloseSession();

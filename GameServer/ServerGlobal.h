@@ -8,8 +8,9 @@ class GameObjectManager;
 extern std::shared_ptr<GameObjectManager> GGameObjectManager;
 
 extern std::shared_ptr<class DBThread>           GDBThread;
-extern std::shared_ptr<class Sector>             GSector;
+extern thread_local class Sector*                GSector;
 extern std::shared_ptr<class GameLogicThread>    GGameLogicThread;
+extern std::shared_ptr<class ZoneManager>        GZoneManager;
 extern std::shared_ptr<class WorkerThread>       GWorkerThread;
 extern std::shared_ptr<class TimerThread>        GTimerThread;
 extern std::shared_ptr<class GameSessionManager> GSessionManager;

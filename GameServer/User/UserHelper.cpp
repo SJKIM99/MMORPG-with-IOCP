@@ -253,16 +253,45 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
-	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr sender, const ObjID& attackerId)
+	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr viewer, const ObjID& victimId, const ObjID& attackerId, int32_t victimHp)
 	{
-		auto session = GetSession(sender);
+		auto session = GetSession(viewer);
 		if (!session)
 			return;
 
 		SUBJECT_ATTACK_NFY_PACKET packet;
 		InitializePacket(packet, PacketType::SUBJECT_ATTACK_NFY);
+		packet.victim_id   = victimId;
 		packet.attacker_id = attackerId;
-		packet.hp          = sender->GetStat()->GetHp();
+		packet.hp          = victimHp;
+
+		session->PostSend(packet);
+	}
+
+	void SendPLAYER_ATTACK_NFY(Subject::SharedPtr viewer, const ObjID& attackerId, uint8_t facing)
+	{
+		auto session = GetSession(viewer);
+		if (!session)
+			return;
+
+		PLAYER_ATTACK_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::PLAYER_ATTACK_NFY);
+		packet.attacker_id = attackerId;
+		packet.facing      = facing;
+
+		session->PostSend(packet);
+	}
+
+	void SendSC_CHAT(Subject::SharedPtr viewer, const ObjID& senderId, const char mess[])
+	{
+		auto session = GetSession(viewer);
+		if (!session)
+			return;
+
+		SC_CHAT_PACKET packet;
+		InitializePacket(packet, PacketType::SC_CHAT);
+		packet.sender_id = senderId;
+		::strncpy_s(packet.mess, CHAT_SIZE, mess, _TRUNCATE);
 
 		session->PostSend(packet);
 	}
@@ -385,6 +414,59 @@ namespace UserHelper
 
 		for (ObjID& monsterId : targets)
 			AttackMonster(monsterId, playerId, SKILL_DAMAGE);
+	}
+
+	void HandleAttack(Subject::SharedPtr attacker, uint8_t facing)
+	{
+		ObjID attackerId = attacker->GetObjID();
+
+		std::vector<ObjID> monsterTargets;
+
+		GSector->ForEachNeighborObject(attacker->GetSectorX(), attacker->GetSectorY(),
+			[&](const shared_ptr<Subject>& object)
+		{
+			ObjID id = object->GetObjID();
+			const auto cat = id.GetCategory<EnumCategory>();
+
+			if (cat == EnumCategory::eUser)
+			{
+				if (id == attackerId) return;
+				auto viewer = static_pointer_cast<User>(object);
+				auto session = viewer->GetGameSession();
+				if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
+				if (SubjectHelper::CanSee(object, attacker))
+					SendPLAYER_ATTACK_NFY(viewer, attackerId, facing);
+			}
+			else if (cat == EnumCategory::eMonster)
+			{
+				if (SubjectHelper::CanAttack(attacker, object))
+					monsterTargets.push_back(id);
+			}
+		});
+
+		for (ObjID& monsterId : monsterTargets)
+			AttackMonster(monsterId, attackerId);
+	}
+
+	void BroadcastChat(Subject::SharedPtr sender, const char mess[])
+	{
+		const ObjID senderId = sender->GetObjID();
+		SendSC_CHAT(sender, senderId, mess);
+
+		GSector->ForEachNeighborObject(sender->GetSectorX(), sender->GetSectorY(),
+			[&](const shared_ptr<Subject>& object)
+		{
+			ObjID id = object->GetObjID();
+			if (id == senderId) return;
+			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
+
+			auto viewer = static_pointer_cast<User>(object);
+			auto session = viewer->GetGameSession();
+			if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
+
+			if (SubjectHelper::CanSee(object, sender))
+				SendSC_CHAT(viewer, senderId, mess);
+		});
 	}
 
 	void HandleHeal(const ObjID& playerId)

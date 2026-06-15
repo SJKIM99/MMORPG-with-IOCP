@@ -12,8 +12,10 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <mutex>
 #include <random>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 using namespace std;
@@ -57,6 +59,7 @@ struct CLIENT {
     int      visible_players  = 0;
     bool     dead        = false;
     bool     facing_left = false;
+    int      zone_id     = -1;
     uint64_t last_sent_move_ms = 0;
     atomic_bool connected{ false };
 
@@ -67,6 +70,7 @@ struct CLIENT {
     high_resolution_clock::time_point next_move_time{};
     high_resolution_clock::time_point next_attack_time{};
     high_resolution_clock::time_point next_skill_time{};
+    high_resolution_clock::time_point next_chat_time{};
 };
 
 array<CLIENT, MAX_CLIENTS> g_clients;
@@ -92,6 +96,20 @@ int   g_history_index = 0;
 atomic<float> g_avg_visible_monsters{ 0.0f };
 atomic<float> g_avg_visible_players{ 0.0f };
 
+// --- Zone player tracking (4x4 = 16 zones) ---
+std::atomic<int> g_zone_player_count[ZONE_COUNT]{};
+
+// --- Global monster state tracking ---
+static std::mutex                              g_monsterMtx;
+static std::unordered_map<uint64_t, uint8_t>  g_monsterMap;  // databaseID → 0:alive 1:dead
+std::atomic_int g_monster_known{ 0 };
+std::atomic_int g_monster_dead { 0 };
+
+// --- Player dead tracking (all players: bots + human) ---
+static std::mutex                              g_playerMtx;
+static std::unordered_map<uint64_t, uint8_t>  g_playerMap;   // databaseID → 0:alive 1:dead
+std::atomic_int g_player_dead{ 0 };
+
 // --- Point cloud buffers ---
 float point_cloud[MAX_TEST * 2];
 int   point_states[MAX_TEST];
@@ -100,6 +118,15 @@ int   point_states[MAX_TEST];
 atomic_int client_to_close = 0;
 vector<thread*> worker_threads;
 thread test_thread;
+
+static int GetZoneId(short x, short y) noexcept
+{
+    int col = static_cast<int>(x) / 500;
+    int row = static_cast<int>(y) / 500;
+    if (col < 0) col = 0; else if (col > 3) col = 3;
+    if (row < 0) row = 0; else if (row > 3) row = 3;
+    return row * 4 + col;
+}
 
 namespace
 {
@@ -125,9 +152,10 @@ namespace
     void ScheduleBehavior(CLIENT& client)
     {
         const auto now = high_resolution_clock::now();
-        client.next_move_time   = now + milliseconds(RandomRange(1000, 1200));
-        client.next_attack_time = now + milliseconds(RandomRange(1050, 1450));
+        client.next_move_time   = now + milliseconds(RandomRange(400, 600));
+        client.next_attack_time = now + milliseconds(RandomRange(400, 600));
         client.next_skill_time  = now + milliseconds(RandomRange(5200, 7000));
+        client.next_chat_time   = now + milliseconds(RandomRange(10000, 20000));
     }
 
     void ResetRuntimeState(CLIENT& client)
@@ -144,11 +172,13 @@ namespace
         client.visible_players  = 0;
         client.dead             = false;
         client.facing_left      = false;
+        client.zone_id          = -1;
         client.last_sent_move_ms = 0;
         client.buffered_bytes   = 0;
         client.next_move_time   = {};
         client.next_attack_time = {};
         client.next_skill_time  = {};
+        client.next_chat_time   = {};
         ::ZeroMemory(client.packet_buf, sizeof(client.packet_buf));
     }
 
@@ -240,8 +270,11 @@ void DisconnectClient(int clientIndex)
         client.client_socket = INVALID_SOCKET;
     }
 
-    if (wasConnected)
+    if (wasConnected) {
         --active_clients;
+        if (client.zone_id >= 0 && client.zone_id < ZONE_COUNT)
+            g_zone_player_count[client.zone_id].fetch_sub(1, std::memory_order_relaxed);
+    }
 
     ResetRuntimeState(client);
 }
@@ -367,6 +400,18 @@ void ProcessPacket(int clientIndex, unsigned char packet[])
         client.visible_monsters = 0;
         client.visible_players  = 0;
         client.last_sent_move_ms = 0;
+        {
+            const int newZone = GetZoneId(p->x, p->y);
+            if (client.zone_id >= 0 && client.zone_id < ZONE_COUNT)
+                g_zone_player_count[client.zone_id].fetch_sub(1, std::memory_order_relaxed);
+            client.zone_id = newZone;
+            g_zone_player_count[newZone].fetch_add(1, std::memory_order_relaxed);
+        }
+        {
+            const uint64_t pid = p->id.GetDatabaseID();
+            std::lock_guard<std::mutex> lk(g_playerMtx);
+            g_playerMap.emplace(pid, uint8_t(0));
+        }
         ScheduleBehavior(client);
         break;
     }
@@ -383,6 +428,13 @@ void ProcessPacket(int clientIndex, unsigned char packet[])
             client.y = p->y;
             UpdateDelayEstimate(client.last_sent_move_ms);
             client.last_sent_move_ms = 0;
+            const int newZone = GetZoneId(p->x, p->y);
+            if (newZone != client.zone_id) {
+                if (client.zone_id >= 0 && client.zone_id < ZONE_COUNT)
+                    g_zone_player_count[client.zone_id].fetch_sub(1, std::memory_order_relaxed);
+                client.zone_id = newZone;
+                g_zone_player_count[newZone].fetch_add(1, std::memory_order_relaxed);
+            }
         }
         break;
     }
@@ -391,8 +443,27 @@ void ProcessPacket(int clientIndex, unsigned char packet[])
         const auto* p = reinterpret_cast<const SUBJECT_ADD_NFY_PACKET*>(packet);
         switch (p->id.GetCategory<EnumCategory>())
         {
-        case EnumCategory::eMonster: ++client.visible_monsters; break;
-        case EnumCategory::eUser:    ++client.visible_players;  break;
+        case EnumCategory::eMonster:
+        {
+            ++client.visible_monsters;
+            const uint64_t mid = p->id.GetDatabaseID();
+            std::lock_guard<std::mutex> lk(g_monsterMtx);
+            if (g_monsterMap.emplace(mid, uint8_t(0)).second)
+                g_monster_known.fetch_add(1, std::memory_order_relaxed);
+            break;
+        }
+        case EnumCategory::eUser:
+        {
+            ++client.visible_players;
+            const uint64_t pid = p->id.GetDatabaseID();
+            std::lock_guard<std::mutex> lk(g_playerMtx);
+            auto res = g_playerMap.emplace(pid, uint8_t(0));
+            if (!res.second && res.first->second == 1) {
+                res.first->second = 0;
+                g_player_dead.fetch_sub(1, std::memory_order_relaxed);
+            }
+            break;
+        }
         default: break;
         }
         break;
@@ -419,21 +490,41 @@ void ProcessPacket(int clientIndex, unsigned char packet[])
         switch (p->id.GetCategory<EnumCategory>())
         {
         case EnumCategory::eMonster:
+        {
             client.visible_monsters = max(0, client.visible_monsters - 1);
+            const uint64_t mid = p->id.GetDatabaseID();
+            std::lock_guard<std::mutex> lk(g_monsterMtx);
+            auto it = g_monsterMap.find(mid);
+            if (it != g_monsterMap.end() && it->second == 0) {
+                it->second = 1;
+                g_monster_dead.fetch_add(1, std::memory_order_relaxed);
+            }
             break;
+        }
         case EnumCategory::eUser:
+        {
+            const uint64_t pid = p->id.GetDatabaseID();
+            {
+                std::lock_guard<std::mutex> lk(g_playerMtx);
+                auto it = g_playerMap.find(pid);
+                if (it != g_playerMap.end() && it->second == 0) {
+                    it->second = 1;
+                    g_player_dead.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
             if (p->id == client.id)
             {
                 client.hp               = p->hp;
                 client.dead             = true;
                 client.visible_monsters = 0;
                 client.visible_players  = 0;
+                if (client.zone_id >= 0 && client.zone_id < ZONE_COUNT)
+                    g_zone_player_count[client.zone_id].fetch_sub(1, std::memory_order_relaxed);
+                client.zone_id = -1;
             }
-            else
-            {
-                client.visible_players = max(0, client.visible_players - 1);
-            }
+            else { client.visible_players = max(0, client.visible_players - 1); }
             break;
+        }
         default: break;
         }
         break;
@@ -444,9 +535,30 @@ void ProcessPacket(int clientIndex, unsigned char packet[])
         switch (p->id.GetCategory<EnumCategory>())
         {
         case EnumCategory::eMonster:
+        {
             ++client.visible_monsters;
+            const uint64_t mid = p->id.GetDatabaseID();
+            std::lock_guard<std::mutex> lk(g_monsterMtx);
+            auto res = g_monsterMap.emplace(mid, uint8_t(0));
+            if (res.second) {
+                g_monster_known.fetch_add(1, std::memory_order_relaxed);
+            } else if (res.first->second == 1) {
+                res.first->second = 0;
+                g_monster_dead.fetch_sub(1, std::memory_order_relaxed);
+            }
             break;
+        }
         case EnumCategory::eUser:
+        {
+            const uint64_t pid = p->id.GetDatabaseID();
+            {
+                std::lock_guard<std::mutex> lk(g_playerMtx);
+                auto it = g_playerMap.find(pid);
+                if (it != g_playerMap.end() && it->second == 1) {
+                    it->second = 0;
+                    g_player_dead.fetch_sub(1, std::memory_order_relaxed);
+                }
+            }
             if (p->id == client.id)
             {
                 client.x    = p->x;
@@ -455,13 +567,16 @@ void ProcessPacket(int clientIndex, unsigned char packet[])
                 client.dead = false;
                 client.visible_monsters = 0;
                 client.visible_players  = 0;
+                {
+                    const int newZone = GetZoneId(p->x, p->y);
+                    client.zone_id = newZone;
+                    g_zone_player_count[newZone].fetch_add(1, std::memory_order_relaxed);
+                }
                 ScheduleBehavior(client);
             }
-            else
-            {
-                ++client.visible_players;
-            }
+            else { ++client.visible_players; }
             break;
+        }
         default: break;
         }
         break;
@@ -487,9 +602,11 @@ void ProcessPacket(int clientIndex, unsigned char packet[])
         client.exp   = p->exp;
         break;
     }
+    case static_cast<char>(PacketType::PLAYER_ATTACK_NFY):
+    case static_cast<char>(PacketType::SC_CHAT):
+        break;  // 스트레스 테스트에서 처리 불필요 — 무시
     default:
-        DisconnectClient(clientIndex);
-        break;
+        break;  // 알 수 없는 패킷 타입 — 연결 유지
     }
 }
 
@@ -550,7 +667,7 @@ void SendMovePacket(int clientIndex)
 
     client.last_sent_move_ms = pkt.move_time;
     SendPacket(clientIndex, &pkt);
-    client.next_move_time = high_resolution_clock::now() + milliseconds(RandomRange(1000, 1200));
+    client.next_move_time = high_resolution_clock::now() + milliseconds(RandomRange(400, 600));
 }
 
 void SendAttackPacket(int clientIndex)
@@ -562,7 +679,7 @@ void SendAttackPacket(int clientIndex)
     pkt.attack_time = static_cast<uint32_t>(NowMilliseconds());
     pkt.facing      = client.facing_left ? 1 : 0;
     SendPacket(clientIndex, &pkt);
-    client.next_attack_time = high_resolution_clock::now() + milliseconds(RandomRange(1050, 1450));
+    client.next_attack_time = high_resolution_clock::now() + milliseconds(RandomRange(400, 600));
 }
 
 void SendSkillPacket(int clientIndex)
@@ -573,6 +690,28 @@ void SendSkillPacket(int clientIndex)
     pkt.type = static_cast<char>(PacketType::USER_SKILL_REQ);
     SendPacket(clientIndex, &pkt);
     client.next_skill_time = high_resolution_clock::now() + milliseconds(RandomRange(5200, 7000));
+}
+
+void SendChatPacket(int clientIndex)
+{
+    static const char* const MESSAGES[] = {
+        "hello",
+        "what's your name",
+        "today weather's good",
+        "anyone here?",
+        "nice to meet you",
+        "let's fight together",
+        "watch out for monsters",
+    };
+    constexpr int MSG_COUNT = static_cast<int>(sizeof(MESSAGES) / sizeof(MESSAGES[0]));
+
+    auto& client = g_clients[clientIndex];
+    CS_CHAT_PACKET pkt{};
+    pkt.size = sizeof(pkt);
+    pkt.type = static_cast<char>(PacketType::CS_CHAT);
+    ::strncpy_s(pkt.mess, MESSAGES[RandomRange(0, MSG_COUNT - 1)], CHAT_SIZE - 1);
+    SendPacket(clientIndex, &pkt);
+    client.next_chat_time = high_resolution_clock::now() + milliseconds(RandomRange(10000, 20000));
 }
 
 void Worker_Thread()
@@ -736,6 +875,8 @@ void Test_Thread()
                 SendAttackPacket(i);
             if (client.visible_monsters > 0 && client.next_skill_time  <= now)
                 SendSkillPacket(i);
+            if (client.next_chat_time <= now)
+                SendChatPacket(i);
         }
 
         dead_clients_count.store(localDead, memory_order_relaxed);
@@ -784,6 +925,18 @@ void InitializeNetwork()
     g_avg_visible_players.store(0.0f);
     memset(g_delay_history,  0, sizeof(g_delay_history));
     memset(g_client_history, 0, sizeof(g_client_history));
+    for (auto& z : g_zone_player_count) z.store(0, std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> lk(g_monsterMtx);
+        g_monsterMap.clear();
+    }
+    g_monster_known.store(0, std::memory_order_relaxed);
+    g_monster_dead.store(0, std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> lk(g_playerMtx);
+        g_playerMap.clear();
+    }
+    g_player_dead.store(0, std::memory_order_relaxed);
     last_connect_time  = high_resolution_clock::now();
 
     WSADATA wsadata;

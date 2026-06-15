@@ -10,6 +10,7 @@
 #pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "glu32.lib")
 
+#include "Protocol.h"
 #include "NetworkModule.h"
 
 // ---------------------------------------------------------------------------
@@ -209,7 +210,7 @@ static int DrawGLScene()
 
     const int  activeCount  = active_clients.load();
     const int  totalConns   = num_connections.load();
-    const int  deadCount    = dead_clients_count.load();
+    const int  deadCount    = g_player_dead.load();
     const int  delayNow     = global_delay.load();
     int        delayMin     = delay_min_val.load();
     const int  delayMax     = delay_max_val.load();
@@ -217,6 +218,13 @@ static int DrawGLScene()
     const TestPhase phase   = current_phase.load();
     const float avgMonsters = g_avg_visible_monsters.load();
     const float avgPlayers  = g_avg_visible_players.load();
+
+    int zoneCounts[ZONE_COUNT];
+    for (int z = 0; z < ZONE_COUNT; ++z)
+        zoneCounts[z] = g_zone_player_count[z].load(std::memory_order_relaxed);
+
+    const int monsterKnown = g_monster_known.load(std::memory_order_relaxed);
+    const int monsterDead  = g_monster_dead.load(std::memory_order_relaxed);
 
     // Sentinel check: delay_min_val initialises to INT_MAX before first sample
     if (delayMin > 99999) delayMin = 0;
@@ -313,21 +321,37 @@ static int DrawGLScene()
     glColor3f(0.55f, 0.78f, 1.0f);
     DrawText2D(LX, sy, "Players : %.1f", avgPlayers);  sy -= LH * 1.8f;
 
-    // -- THRESHOLDS --
-    SectionHeader("[ THRESHOLDS ]");
-    glColor3f(0.2f, 1.0f, 0.45f);
-    DrawText2D(LX, sy, "Good    : <100ms");  sy -= LH;
-    glColor3f(1.0f, 1.0f, 0.2f);
-    DrawText2D(LX, sy, "Caution : <150ms");  sy -= LH;
-    glColor3f(1.0f, 0.3f, 0.2f);
-    DrawText2D(LX, sy, "Bad     : >150ms");  sy -= LH * 1.8f;
+    // -- MONSTERS --
+    SectionHeader("[ MONSTERS ]");
+    glColor3f(0.75f, 0.75f, 0.75f);
+    DrawText2D(LX, sy, "Total   : %d", MAX_MONSTER);   sy -= LH;
+    glColor3f(0.55f, 0.78f, 1.0f);
+    DrawText2D(LX, sy, "Known   : %d", monsterKnown);  sy -= LH;
+    glColor3f(1.0f, 0.38f, 0.38f);
+    DrawText2D(LX, sy, "Dead    : %d", monsterDead);   sy -= LH * 1.8f;
 
-    // -- LEGEND --
-    SectionHeader("[ LEGEND ]");
+    // -- ZONES (4x4 player count grid) --
+    SectionHeader("[ ZONES ]");
+    // Column header row
+    glColor3f(0.35f, 0.55f, 0.75f);
+    DrawText2D(LX, sy, "   Z1   Z2   Z3   Z4");         sy -= LH;
+    for (int row = 0; row < 4; ++row)
+    {
+        const int base = row * 4;
+        glColor3f(0.2f, 1.0f, 0.45f);
+        DrawText2D(LX, sy, "R%d %4d %4d %4d %4d",
+            row + 1,
+            zoneCounts[base + 0], zoneCounts[base + 1],
+            zoneCounts[base + 2], zoneCounts[base + 3]);
+        sy -= LH;
+    }
+    sy -= LH * 0.5f;
+
+    // -- LEGEND (compact) --
     glColor3f(0.2f, 1.0f, 0.45f);
-    DrawText2D(LX, sy, "* Alive");   sy -= LH;
+    DrawText2D(LX, sy, "* Alive");
     glColor3f(1.0f, 0.3f, 0.3f);
-    DrawText2D(LX, sy, "* Dead");
+    DrawText2D(LX + 80.0f, sy, "* Dead");
 
     // =======================================================================
     // WORLD MAP  (x: 240..950, y: 0..680)
@@ -346,6 +370,18 @@ static int DrawGLScene()
         float gy = (float)MAP_Y1 + (float)g / 10.0f * mapH;
         glVertex2f(gx, (float)MAP_Y1); glVertex2f(gx, (float)MAP_Y2);  // vertical
         glVertex2f((float)MAP_X1, gy); glVertex2f((float)MAP_X2, gy);  // horizontal
+    }
+    glEnd();
+
+    // Zone boundaries (every 500 world units = 4 zones per axis)
+    glColor3f(0.20f, 0.35f, 0.55f);
+    glBegin(GL_LINES);
+    for (int z = 1; z < 4; ++z)
+    {
+        float zx = (float)MAP_X1 + (float)z / 4.0f * mapW;
+        float zy = (float)MAP_Y1 + (float)z / 4.0f * mapH;
+        glVertex2f(zx, (float)MAP_Y1); glVertex2f(zx, (float)MAP_Y2);
+        glVertex2f((float)MAP_X1, zy); glVertex2f((float)MAP_X2, zy);
     }
     glEnd();
 
@@ -375,6 +411,27 @@ static int DrawGLScene()
         glVertex2f(sx, sy_p);
     }
     glEnd();
+
+    // Zone labels with player counts (one per zone cell)
+    for (int row = 0; row < 4; ++row)
+    {
+        for (int col = 0; col < 4; ++col)
+        {
+            const int zoneId = row * 4 + col;
+            const float cx = (float)MAP_X1 + (col + 0.5f) / 4.0f * mapW;
+            const float cy = (float)MAP_Y1 + (1.0f - (row + 0.5f) / 4.0f) * mapH;
+
+            // Zone number
+            glColor3f(0.25f, 0.45f, 0.70f);
+            DrawText2D(cx - 14.0f, cy + 7.0f, "Z%02d", zoneId + 1);
+
+            // Player count
+            const int cnt = zoneCounts[zoneId];
+            if (cnt > 0) glColor3f(0.20f, 0.90f, 0.42f);
+            else         glColor3f(0.35f, 0.35f, 0.35f);
+            DrawText2D(cx - 14.0f, cy - 8.0f, "%d", cnt);
+        }
+    }
 
     // =======================================================================
     // RIGHT GRAPH PANEL  (x: 950..1280, y: 0..680)

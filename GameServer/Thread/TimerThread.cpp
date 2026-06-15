@@ -1,9 +1,9 @@
 #include "pch.h"
 #include "TimerThread.h"
-#include "GameLogicThread.h"
 #include "GameObjectManager.h"
 #include "MonsterHelper.h"
 #include "UserHelper.h"
+#include "Zone/ZoneManager.h"
 
 bool TimerThread::TimerEventCompare::operator()(const TIMER_EVENT& lhs, const TIMER_EVENT& rhs) const noexcept
 {
@@ -83,42 +83,42 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 	switch (timerEvent.event)
 	{
 	case TIMER_EVENT_TYPE::EV_RANOM_MOVE:
-		GGameLogicThread->Enqueue([subjectId]()
+		GZoneManager->EnqueueByObject(subjectId, [subjectId]()
 		{
 			MonsterHelper::HandleRandomMove(subjectId);
 		});
 		break;
 
 	case TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN:
-		GGameLogicThread->Enqueue([subjectId]()
+		GZoneManager->EnqueueByObject(subjectId, [subjectId]()
 		{
 			MonsterHelper::HandleRespawn(subjectId);
 		});
 		break;
 
 	case TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER:
-		GGameLogicThread->Enqueue([subjectId, targetId]()
+		GZoneManager->EnqueueByObject(subjectId, [subjectId, targetId]()
 		{
 			MonsterHelper::HandleAttackToPlayer(subjectId, targetId);
 		});
 		break;
 
 	case TIMER_EVENT_TYPE::EV_AGGRO_MOVE:
-		GGameLogicThread->Enqueue([subjectId, targetId]()
+		GZoneManager->EnqueueByObject(subjectId, [subjectId, targetId]()
 		{
 			MonsterHelper::HandleAggroMove(subjectId, targetId);
 		});
 		break;
 
 	case TIMER_EVENT_TYPE::EV_HEAL:
-		GGameLogicThread->Enqueue([subjectId]()
+		GZoneManager->EnqueueByObject(subjectId, [subjectId]()
 		{
 			UserHelper::HandleHeal(subjectId);
 		});
 		break;
 
 	case TIMER_EVENT_TYPE::EV_USER_RESPAWN:
-		GGameLogicThread->Enqueue([subjectId]()
+		GZoneManager->EnqueueByObject(subjectId, [subjectId]()
 		{
 			UserHelper::HandleRespawn(subjectId);
 		});

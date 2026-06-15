@@ -98,9 +98,9 @@ constexpr int PORT_NUM = 4000;
 
 constexpr int NAME_SIZE     = 20;
 constexpr int PASSWORD_SIZE = 20;
-constexpr int CHAT_SIZE     = 20;
+constexpr int CHAT_SIZE     = 128;
 
-constexpr int MAX_USER    = 20000;
+constexpr int MAX_USER    = 40000;
 constexpr int MAX_MONSTER = 200000;
 
 constexpr uint32_t PLAYER_ID_START  = 1;
@@ -149,6 +149,7 @@ enum class PacketType : uint16_t
 	USER_MOVE_REQ,
 	USER_ATTACK_REQ,
 	USER_SKILL_REQ,
+	USER_TELEPORT_REQ,
 
 	// Server → Client, unicast ACK (response to requester only)
 	USER_LOGIN_ACK,
@@ -162,8 +163,11 @@ enum class PacketType : uint16_t
 	SUBJECT_DIE_NFY,
 	SUBJECT_RESPAWN_NFY,
 	SUBJECT_ATTACK_NFY,
+	PLAYER_ATTACK_NFY,
 	USER_HEAL_INF,
 	USER_STAT_CHANGE_INF,
+	CS_CHAT,
+	SC_CHAT,
 };
 
 #pragma pack(push, 1)
@@ -201,6 +205,7 @@ struct USER_TELEPORT_REQ_PACKET
 {
 	unsigned short size;
 	char type;
+	short x, y;
 };
 
 struct USER_LOGOUT_REQ_PACKET
@@ -324,5 +329,12 @@ struct USER_STAT_CHANGE_INF_PACKET
 	uint16_t hp;
 	uint16_t maxhp;
 	uint32_t exp;
+};
+
+struct CS_CHAT_PACKET
+{
+	unsigned short size;
+	char type;
+	char mess[CHAT_SIZE];
 };
 #pragma pack(pop)
