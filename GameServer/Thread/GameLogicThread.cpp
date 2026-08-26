@@ -1,69 +1,36 @@
 ﻿#include "pch.h"
 #include "GameLogicThread.h"
 
-GameLogicThread::GameLogicThread()
-{
-	_wakeEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
-	ASSERT_CRASH(_wakeEvent != nullptr);
-}
-
-GameLogicThread::~GameLogicThread()
-{
-	if (_wakeEvent != nullptr)
-	{
-		::CloseHandle(_wakeEvent);
-		_wakeEvent = nullptr;
-	}
-}
-
 void GameLogicThread::Enqueue(Task task)
 {
 	{
-		scoped_lock lock(_queueLock);
-		_queue.push(move(task));
+		std::scoped_lock lock(_queueLock);
+		_queue.push(std::move(task));
 	}
-
-	// 스레드가 실제로 잠든 경우에만 SetEvent 호출.
-	// seq_cst 로딩으로 Run()의 _sleeping=true store와 전체 순서를 보장.
-	if (_sleeping.load(memory_order_seq_cst))
-		::SetEvent(_wakeEvent);
+	_cv.notify_one();
 }
 
 void GameLogicThread::Run()
 {
+	std::queue<Task> localQueue;
+
 	while (true)
 	{
-		if (Drain() == false)
 		{
-			_sleeping.store(true, memory_order_seq_cst);
+			std::unique_lock lock(_queueLock);
 
-			// _sleeping=true 이전에 Enqueue된 태스크를 놓치지 않기 위해
-			// 두 번째 Drain으로 double-check.
-			if (Drain() == false)
-				::WaitForSingleObject(_wakeEvent, INFINITE);
+			_cv.wait(lock, [this]() { return !_queue.empty(); });
+			_queue.swap(localQueue);
+		} 
 
-			_sleeping.store(false, memory_order_relaxed);
+		// 락이 완전히 해제된 상태에서 큐에 쌓인 비즈니스 로직(Task) 연속 처리
+		while (!localQueue.empty())
+		{
+			Task task = std::move(localQueue.front());
+			localQueue.pop();
+
+			if (task)
+				task();
 		}
 	}
-}
-
-bool GameLogicThread::Drain()
-{
-	queue<Task> localQueue;
-	{
-		scoped_lock lock(_queueLock);
-		if (_queue.empty())
-			return false;
-
-		_queue.swap(localQueue);
-	}
-
-	while (!localQueue.empty())
-	{
-		Task task = move(localQueue.front());
-		localQueue.pop();
-		task();
-	}
-
-	return true;
 }

@@ -132,7 +132,8 @@ namespace
 {
     constexpr int DELAY_LIMIT  = 100;
     constexpr int DELAY_LIMIT2 = 150;
-    constexpr int ACCEPT_DELAY = 50;
+    constexpr int ACCEPT_DELAY = 5;    // ms per client slot during ramp-up
+    constexpr int MAX_BATCH    = 100;  // max clients to connect in one tick
 
     [[nodiscard]] uint64_t NowMilliseconds() noexcept
     {
@@ -837,9 +838,18 @@ void Adjust_Number_Of_Client()
     current_phase = TestPhase::RAMP_UP;
     increasing    = true;
     last_connect_time = now;
-    num_connections.fetch_add(1);
-    if (!ConnectClient(currentConnections))
-        DisconnectClient(currentConnections);
+
+    // batch connect: one slot per ACCEPT_DELAY ms elapsed, capped at MAX_BATCH
+    const int batchSize = min(static_cast<int>(elapsedMs / ACCEPT_DELAY), MAX_BATCH);
+    for (int b = 0; b < batchSize; ++b)
+    {
+        const int cur = num_connections.load();
+        if (cur >= MAX_CLIENTS || active_clients.load() >= MAX_TEST) break;
+        if (maxLimit - (maxLimit / 20) < active_clients.load()) break;
+        num_connections.fetch_add(1);
+        if (!ConnectClient(cur))
+            DisconnectClient(cur);
+    }
 }
 
 void Test_Thread()

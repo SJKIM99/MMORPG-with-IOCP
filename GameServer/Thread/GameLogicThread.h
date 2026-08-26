@@ -3,23 +3,19 @@
 class GameLogicThread
 {
 public:
-	using Task = function<void()>;
+	using Task = std::function<void()>;
 
 public:
-	GameLogicThread();
-	~GameLogicThread();
+	GameLogicThread() = default;
+	~GameLogicThread() = default;
 
 	void Enqueue(Task task);
 	void Run();
 
 private:
-	[[nodiscard]] bool Drain();
-
-private:
-	mutex              _queueLock;
-	queue<Task>        _queue;
-	HANDLE             _wakeEvent = nullptr;
-	atomic<bool>       _sleeping{ false };
+	std::mutex              _queueLock;
+	std::condition_variable _cv;
+	std::queue<Task>        _queue;
 };
 
-extern shared_ptr<GameLogicThread> GGameLogicThread;
+extern std::shared_ptr<GameLogicThread> GGameLogicThread;

@@ -113,7 +113,7 @@ int main()
 	
 	//작업자 스레드 생성
 	const uint32_t workerCount = thread::hardware_concurrency();
-	for (uint32_t i = 0; i < workerCount; ++i)
+	for (uint32_t i = 0; i < workerCount * 2; ++i)
 	{
 		GThreadManager->Launch([]()
 		{
