@@ -43,6 +43,9 @@
     <Filter Include="Zone">
       <UniqueIdentifier>{8d160b44-9b70-473a-b7e3-09c18cb12dd5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Item">
+      <UniqueIdentifier>{9ff642b7-4b8e-4bc7-bdb3-48e68fff3b28}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\CoreGlobal.cpp">
@@ -111,6 +114,12 @@
     </ClCompile>
     <ClCompile Include="Stat\Stat.cpp">
       <Filter>Stat</Filter>
+    </ClCompile>
+    <ClCompile Include="Item\ItemTable.cpp">
+      <Filter>Item</Filter>
+    </ClCompile>
+    <ClCompile Include="Item\Inventory.cpp">
+      <Filter>Item</Filter>
     </ClCompile>
     <ClCompile Include="Monster\Monster.cpp">
       <Filter>Monster</Filter>
@@ -215,6 +224,18 @@
     </ClInclude>
     <ClInclude Include="Stat\Stat.h">
       <Filter>Stat</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\ItemTableRow.h">
+      <Filter>Item</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\ItemTable.h">
+      <Filter>Item</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\ItemSlot.h">
+      <Filter>Item</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\Inventory.h">
+      <Filter>Item</Filter>
     </ClInclude>
     <ClInclude Include="Monster\MonsterHelper.h">
       <Filter>Monster</Filter>

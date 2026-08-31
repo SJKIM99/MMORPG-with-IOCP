@@ -84,3 +84,8 @@ ZoneId ZoneManager::GetObjectZone(const ObjID& objectId) const
 	return it->second;
 }
 
+bool ZoneManager::IsCurrentThreadOwner(const ObjID& objectId) const noexcept
+{
+	return LCurrentZoneId != InvalidZoneId && GetObjectZone(objectId) == LCurrentZoneId;
+}
+

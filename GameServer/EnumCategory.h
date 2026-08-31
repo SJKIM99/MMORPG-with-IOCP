@@ -10,4 +10,5 @@ enum EnumCategory : USHORT
 	eUserLv = 5,
 	eHp = 6,
 	eExp= 7,
+	eItem = 8,   // 인벤토리/필드 아이템 ObjID의 카테고리. KIND에 ItemTableId를 싣는다.
 };

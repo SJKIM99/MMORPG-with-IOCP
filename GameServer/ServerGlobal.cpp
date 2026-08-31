@@ -10,6 +10,7 @@
 
 shared_ptr<DBThread>           GDBThread = nullptr;
 thread_local Sector*           GSector = nullptr;
+thread_local ZoneId            LCurrentZoneId = InvalidZoneId;
 shared_ptr<GameLogicThread>    GGameLogicThread = nullptr;
 shared_ptr<ZoneManager>        GZoneManager = nullptr;
 shared_ptr<WorkerThread>       GWorkerThread = nullptr;

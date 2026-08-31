@@ -170,6 +170,8 @@
     <ClCompile Include="GameObject\GameObject.cpp" />
     <ClCompile Include="GameObject\GameObjectManager.cpp" />
     <ClCompile Include="GameServer.cpp" />
+    <ClCompile Include="Item\Inventory.cpp" />
+    <ClCompile Include="Item\ItemTable.cpp" />
     <ClCompile Include="Monster\GameSessionManager.cpp" />
     <ClCompile Include="Monster\Monster.cpp" />
     <ClCompile Include="Monster\MonsterHelper.cpp" />
@@ -212,6 +214,10 @@
     <ClInclude Include="EnumCategory.h" />
     <ClInclude Include="GameObject\GameObject.h" />
     <ClInclude Include="GameObject\GameObjectManager.h" />
+    <ClInclude Include="Item\ItemTableRow.h" />
+    <ClInclude Include="Item\ItemTable.h" />
+    <ClInclude Include="Item\ItemSlot.h" />
+    <ClInclude Include="Item\Inventory.h" />
     <ClInclude Include="Monster\GameSessionManager.h" />
     <ClInclude Include="Monster\Monster.h" />
     <ClInclude Include="Monster\MonsterHelper.h" />

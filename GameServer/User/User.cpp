@@ -10,6 +10,9 @@ void User::InitInstance()
 	GetStat()->SetHp(PLAYER_MAX_HP);
 	GetStat()->SetOffensive(PLAYER_OFFENSIVE);
 	GetStat()->SetDead(false);
+
+	m_inventory = std::make_shared<Inventory>();
+	m_inventory->Attach(self<User>());
 }
 
 shared_ptr<GameSession> User::GetGameSession() const

@@ -9,9 +9,16 @@ constexpr int PORT_NUM = 4000;
 constexpr int NAME_SIZE     = 20;
 constexpr int PASSWORD_SIZE = 20;
 constexpr int CHAT_SIZE     = 128;
+// 플레이어/몬스터 이름(NAME_SIZE)과 우연히 값이 같아도 별개 상수로 둔다 —
+// 훗날 둘 중 하나만 길이를 바꿔야 할 때 서로 영향을 주지 않기 위함.
+constexpr int ITEM_NAME_SIZE = 20;
 
 constexpr int MAX_USER    = 40000;
 constexpr int MAX_MONSTER = 200000;
+
+// 유저 한 명이 가질 수 있는 인벤토리 슬롯 수. 다른 구조에 영향을 주지 않는
+// 단일 상수이므로, 게임 디자인이 확정되면 이 값만 바꾸면 된다.
+constexpr int MAX_INVENTORY_SLOTS = 30;
 
 constexpr uint32_t PLAYER_ID_START   = 1;
 constexpr uint32_t MONSTER_ID_START  = 1'000'000'000;
