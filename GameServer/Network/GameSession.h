@@ -36,7 +36,7 @@ constexpr size_t MAX_SERVER_PACKET_SIZE =
 													sizeof(PLAYER_ATTACK_NFY_PACKET),
 													ConstMaxSize(
 														sizeof(SC_CHAT_PACKET),
-														sizeof(ITEM_LIST_ACK_PACKET)))
+														ConstMaxSize(sizeof(ITEM_LIST_ACK_PACKET), ConstMaxSize(sizeof(ITEM_EQUIP_ACK_PACKET), ConstMaxSize(sizeof(ITEM_UNEQUIP_ACK_PACKET), sizeof(ITEM_SWAP_ACK_PACKET))))))
 											)
 										)
 									)

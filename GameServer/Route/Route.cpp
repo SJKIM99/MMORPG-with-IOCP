@@ -122,6 +122,51 @@ namespace Route
 			SectorHelper::HandlePlayerMove(client, p->x, p->y);
 			break;
 		}
+		case PacketType::ITEM_EQUIP_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			if (client->IsTransferring())  // Zone Transfer 완료 전 — 인벤토리 조작 패킷 무시
+				break;
+
+			auto* p = reinterpret_cast<const ITEM_EQUIP_REQ_PACKET*>(packet);
+			const bool success = client->GetInventory()->TryEquip(p->slotIndex);
+			UserHelper::SendITEM_EQUIP_ACK(client, p->slotIndex, success);
+			break;
+		}
+		case PacketType::ITEM_UNEQUIP_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			if (client->IsTransferring())
+				break;
+
+			auto* p = reinterpret_cast<const ITEM_UNEQUIP_REQ_PACKET*>(packet);
+			const bool success = client->GetInventory()->TryUnequip(p->slotIndex);
+			UserHelper::SendITEM_UNEQUIP_ACK(client, p->slotIndex, success);
+			break;
+		}
+		case PacketType::ITEM_SWAP_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			if (client->IsTransferring())
+				break;
+
+			auto* p = reinterpret_cast<const ITEM_SWAP_REQ_PACKET*>(packet);
+			const bool success = client->GetInventory()->TrySwapSlots(p->slotIndexA, p->slotIndexB);
+			UserHelper::SendITEM_SWAP_ACK(client, p->slotIndexA, p->slotIndexB, success);
+			break;
+		}
 		case PacketType::CS_CHAT:
 		{
 			if (session->m_state != SOCKET_STATE::ST_INGAME)

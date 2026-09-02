@@ -22,6 +22,9 @@ namespace UserHelper
 	void SendUSER_HEAL_INF(Subject::SharedPtr sender);
 	void SendUSER_STAT_CHANGE_INF(Subject::SharedPtr sender);
 	void SendITEM_LIST_ACK(Subject::SharedPtr sender);
+	void SendITEM_EQUIP_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success);
+	void SendITEM_UNEQUIP_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success);
+	void SendITEM_SWAP_ACK(Subject::SharedPtr sender, uint16_t slotIndexA, uint16_t slotIndexB, bool success);
 	[[nodiscard]] bool SaveUserInfo(const ObjID& targetId);
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage = PLAYER_OFFENSIVE);

@@ -54,6 +54,26 @@ namespace
 		}
 	}
 
+	// ITEM_SLOT_DATA를 채우는 로직은 ITEM_LIST_ACK/ITEM_EQUIP_ACK/ITEM_UNEQUIP_ACK/
+	// ITEM_SWAP_ACK가 전부 공유한다 — "슬롯을 어떻게 와이어 포맷으로 바꾸는가"를
+	// 한 곳에만 두기 위함.
+	void FillItemSlotData(ITEM_SLOT_DATA& data, uint16_t slotIndex, const Item::SharedPtr& item)
+	{
+		data.slotIndex = slotIndex;
+		if (item == nullptr)
+		{
+			data.itemId = 0;
+			data.count  = 0;
+			data.equipped = 0;
+			return;
+		}
+
+		auto equipment = dynamic_pointer_cast<EquipmentItem>(item);
+		data.itemId   = item->GetItemTableId();
+		data.count    = item->GetCount();
+		data.equipped = (equipment != nullptr && equipment->IsEquipped()) ? 1 : 0;
+	}
+
 	void QueueUserSave(const shared_ptr<User>& user, short saveX, short saveY)
 	{
 		if (user == nullptr)
@@ -345,16 +365,96 @@ namespace UserHelper
 			if (slotCount >= MAX_INVENTORY_SLOTS)
 				break;  // 이론상 불가능(슬롯 자체가 MAX_INVENTORY_SLOTS를 넘을 수 없음) — 방어적으로만 둠
 
-			auto equipment = dynamic_pointer_cast<EquipmentItem>(item);
-
-			ITEM_SLOT_DATA& data = packet.items[slotCount];
-			data.slotIndex = slotIndex;
-			data.itemId    = item->GetItemTableId();
-			data.count     = item->GetCount();
-			data.equipped  = (equipment != nullptr && equipment->IsEquipped()) ? 1 : 0;
+			FillItemSlotData(packet.items[slotCount], slotIndex, item);
 			++slotCount;
 		}
 		packet.slotCount = slotCount;
+
+		session->PostSend(packet);
+	}
+
+	void SendITEM_EQUIP_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		auto user = static_pointer_cast<User>(sender);
+		if (user == nullptr)
+			return;
+
+		ITEM_EQUIP_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_EQUIP_ACK);
+		packet.success = success ? 1 : 0;
+		packet.slot.slotIndex = slotIndex;
+
+		if (success)
+		{
+			const auto& slots = user->GetInventory()->GetSlots();
+			const auto it = slots.find(slotIndex);
+			// TryEquip이 true를 반환했다는 건 이 슬롯이 방금 장착된 장비라는 뜻이므로
+			// 여기서 못 찾는 건 있을 수 없다 — 이 함수는 TryEquip과 같은 Zone 스레드
+			// 위에서, 중간에 다른 mutate 없이 곧바로 호출되기 때문(단일 스레드 소유 모델).
+			ASSERT_CRASH(it != slots.end());
+			FillItemSlotData(packet.slot, slotIndex, it->second);
+		}
+
+		session->PostSend(packet);
+	}
+
+	void SendITEM_UNEQUIP_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		auto user = static_pointer_cast<User>(sender);
+		if (user == nullptr)
+			return;
+
+		ITEM_UNEQUIP_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_UNEQUIP_ACK);
+		packet.success = success ? 1 : 0;
+		packet.slot.slotIndex = slotIndex;
+
+		if (success)
+		{
+			const auto& slots = user->GetInventory()->GetSlots();
+			const auto it = slots.find(slotIndex);
+			ASSERT_CRASH(it != slots.end());  // SendITEM_EQUIP_ACK와 같은 이유로 항상 존재해야 한다
+			FillItemSlotData(packet.slot, slotIndex, it->second);
+		}
+
+		session->PostSend(packet);
+	}
+
+	void SendITEM_SWAP_ACK(Subject::SharedPtr sender, uint16_t slotIndexA, uint16_t slotIndexB, bool success)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		auto user = static_pointer_cast<User>(sender);
+		if (user == nullptr)
+			return;
+
+		ITEM_SWAP_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_SWAP_ACK);
+		packet.success = success ? 1 : 0;
+		packet.slotA.slotIndex = slotIndexA;
+		packet.slotB.slotIndex = slotIndexB;
+
+		if (success)
+		{
+			const auto& slots = user->GetInventory()->GetSlots();
+			// 스왑 결과 어느 한쪽이 비게 될 수 있다(한쪽만 아이템이 있던 경우) — 그건
+			// 정상 결과이므로 find 실패를 ASSERT_CRASH로 다루지 않고 nullptr로 넘겨
+			// FillItemSlotData가 "빈 슬롯"(itemId=0, count=0)으로 채우게 한다.
+			const auto itA = slots.find(slotIndexA);
+			const auto itB = slots.find(slotIndexB);
+			FillItemSlotData(packet.slotA, slotIndexA, itA != slots.end() ? itA->second : nullptr);
+			FillItemSlotData(packet.slotB, slotIndexB, itB != slots.end() ? itB->second : nullptr);
+		}
 
 		session->PostSend(packet);
 	}

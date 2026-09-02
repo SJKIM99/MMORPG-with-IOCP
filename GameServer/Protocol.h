@@ -68,12 +68,18 @@ enum class PacketType : uint16_t
 	USER_ATTACK_REQ,
 	USER_SKILL_REQ,
 	USER_TELEPORT_REQ,
+	ITEM_EQUIP_REQ,
+	ITEM_UNEQUIP_REQ,
+	ITEM_SWAP_REQ,
 
 	// Server → Client, unicast ACK (response to requester only)
 	USER_LOGIN_ACK,
 	USER_LOGIN_FAIL_ACK,
 	USER_ATTACK_ACK,
 	ITEM_LIST_ACK,
+	ITEM_EQUIP_ACK,
+	ITEM_UNEQUIP_ACK,
+	ITEM_SWAP_ACK,
 
 	// Server → Client(s), NFY (server-initiated notification / broadcast)
 	SUBJECT_ADD_NFY,
@@ -137,6 +143,32 @@ struct USER_LOGOUT_REQ_PACKET
 	char	type;
 };
 
+// slotIndex는 클라이언트가 보는 인벤토리 그리드 좌표 그대로다. 범위를 벗어나거나
+// 비어있는 슬롯을 가리켜도 서버는 크래시하지 않는다 — Inventory::TryEquip 등은
+// 존재하지 않는 슬롯 조회를 그냥 실패(false)로 처리하므로, 유효성 검사는
+// Inventory 쪽에 이미 있다(여기서 중복으로 검사하지 않는다).
+struct ITEM_EQUIP_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       slotIndex;
+};
+
+struct ITEM_UNEQUIP_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       slotIndex;
+};
+
+struct ITEM_SWAP_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       slotIndexA;
+	uint16_t       slotIndexB;
+};
+
 constexpr size_t ProtocolConstMaxSize(size_t lhs, size_t rhs)
 {
 	return (lhs > rhs) ? lhs : rhs;
@@ -158,7 +190,10 @@ constexpr size_t MAX_CLIENT_PACKET_SIZE =
 				sizeof(USER_ATTACK_REQ_PACKET),
 				ProtocolConstMaxSize(sizeof(USER_SKILL_REQ_PACKET),
 					ProtocolConstMaxSize(sizeof(USER_TELEPORT_REQ_PACKET),
-						ProtocolConstMaxSize(sizeof(USER_LOGOUT_REQ_PACKET), sizeof(CS_CHAT_PACKET))))
+						ProtocolConstMaxSize(sizeof(USER_LOGOUT_REQ_PACKET),
+							ProtocolConstMaxSize(sizeof(CS_CHAT_PACKET),
+								ProtocolConstMaxSize(sizeof(ITEM_EQUIP_REQ_PACKET),
+									ProtocolConstMaxSize(sizeof(ITEM_UNEQUIP_REQ_PACKET), sizeof(ITEM_SWAP_REQ_PACKET)))))))
 			)
 		)
 	);
@@ -198,6 +233,37 @@ struct ITEM_LIST_ACK_PACKET
 	char           type;
 	uint8_t        slotCount;
 	ITEM_SLOT_DATA items[MAX_INVENTORY_SLOTS];
+};
+
+// 장착/탈착 요청 결과. success=0이면 slot은 의미 없는 값(0)이고, 실패해도
+// slot.slotIndex만은 항상 요청받은 값 그대로 채워 보낸다 — 클라이언트가 여러
+// 요청을 연달아 보낸 뒤에도 어떤 요청에 대한 응답인지 별도 상태 없이 알 수 있게.
+struct ITEM_EQUIP_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        success;
+	ITEM_SLOT_DATA slot;
+};
+
+struct ITEM_UNEQUIP_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        success;
+	ITEM_SLOT_DATA slot;
+};
+
+// 두 슬롯의 최종 상태를 함께 보낸다. 스왑 결과 어느 한쪽이 비게 되면 그 슬롯은
+// itemId=0, count=0으로 채워 보낸다 — 클라이언트는 그걸 "슬롯 비움"으로 해석한다.
+// (slotA/slotB의 slotIndex는 실패 시에도 항상 요청받은 값 그대로다.)
+struct ITEM_SWAP_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        success;
+	ITEM_SLOT_DATA slotA;
+	ITEM_SLOT_DATA slotB;
 };
 
 struct SUBJECT_ADD_NFY_PACKET
