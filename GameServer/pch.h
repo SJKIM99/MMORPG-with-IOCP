@@ -65,6 +65,7 @@ using Atomic    = std::atomic<T>;
 // ── DB user info (must come before Core\DBConnection.h which uses DB_USER_INFO) ──
 struct DB_USER_INFO
 {
+	int      _playerId = 0;  // Players.playerId (DB가 발급한 정수 PK). 로그인/계정생성 시 한 번만 조회해 캐싱한다.
 	string   _name;
 	string   _password;
 	int      _x     = 0;
@@ -73,6 +74,18 @@ struct DB_USER_INFO
 	uint32_t _exp   = 0;
 };
 using DB_PLAYER_INFO = DB_USER_INFO;
+
+// ── DB item info (must come before Core\DBConnection.h which uses it) ──
+// Inventory 테이블 한 행. ItemTableRow.h를 끌어오지 않도록 itemId는
+// ItemTableId가 아니라 그냥 uint16_t로 둔다(DB_USER_INFO가 Stat.h 타입을
+// 쓰지 않는 것과 같은 이유).
+struct DB_ITEM_INFO
+{
+	uint16_t _slotIndex = 0;
+	uint16_t _itemId    = 0;
+	uint16_t _count     = 0;
+	bool     _equipped  = false;
+};
 
 // ── Core headers still in use ─────────────────────────────────────────────────
 #include "Core\ThreadManager.h"
@@ -112,15 +125,23 @@ struct DB_SAVE_EVENT : DB_EVENT_BASE
 	uint32_t exp   = 0;
 };
 
-struct DB_ADD_EVENT : DB_EVENT_BASE
+// 인벤토리 슬롯 하나를 즉시(디바운스 없이) 저장/삭제하기 위한 이벤트.
+// Inventory의 각 mutating 메서드가 성공할 때마다 바로 Schedule된다.
+// playerId는 로그인 시 한 번 캐싱된 정수 PK를 그대로 쓴다 — name(NVARCHAR) 기반
+// 조회/조인이 DB 쪽에서 완전히 사라진다.
+struct DB_ITEM_SAVE_EVENT : DB_EVENT_BASE
 {
-	ObjID    subjectId;
-	string   name;
-	string   password;
-	short    x     = 0;
-	short    y     = 0;
-	uint8_t  level = 1;
-	uint32_t exp   = 0;
+	int      playerId  = 0;
+	uint16_t slotIndex = 0;
+	uint16_t itemId    = 0;
+	uint16_t count     = 0;
+	bool     equipped  = false;
+};
+
+struct DB_ITEM_DELETE_EVENT : DB_EVENT_BASE
+{
+	int      playerId  = 0;
+	uint16_t slotIndex = 0;
 };
 
 // ── Timer event types (previously in Core/GameServerCore.h) ──────────────────

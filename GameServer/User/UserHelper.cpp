@@ -11,6 +11,7 @@
 #include "SectorHelper.h"
 #include "Collision.h"
 #include "CoreTLS.h"
+#include "Item/EquipmentItem.h"
 
 namespace
 {
@@ -325,6 +326,39 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
+	void SendITEM_LIST_ACK(Subject::SharedPtr sender)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		auto user = static_pointer_cast<User>(sender);
+		if (user == nullptr)
+			return;
+
+		ITEM_LIST_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_LIST_ACK);
+
+		uint8_t slotCount = 0;
+		for (const auto& [slotIndex, item] : user->GetInventory()->GetSlots())
+		{
+			if (slotCount >= MAX_INVENTORY_SLOTS)
+				break;  // 이론상 불가능(슬롯 자체가 MAX_INVENTORY_SLOTS를 넘을 수 없음) — 방어적으로만 둠
+
+			auto equipment = dynamic_pointer_cast<EquipmentItem>(item);
+
+			ITEM_SLOT_DATA& data = packet.items[slotCount];
+			data.slotIndex = slotIndex;
+			data.itemId    = item->GetItemTableId();
+			data.count     = item->GetCount();
+			data.equipped  = (equipment != nullptr && equipment->IsEquipped()) ? 1 : 0;
+			++slotCount;
+		}
+		packet.slotCount = slotCount;
+
+		session->PostSend(packet);
+	}
+
 	bool SaveUserInfo(const ObjID& targetId)
 	{
 		const auto target = ::GetGameObject<User>(targetId);
@@ -514,7 +548,7 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
-	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo)
+	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items)
 	{
 		if (session == nullptr || session->m_state != SOCKET_STATE::ST_ALLOC)
 			return;
@@ -523,8 +557,11 @@ namespace UserHelper
 		player->SetObjID(EnumCategory::eUser, static_cast<uint64_t>(session->m_objectId));
 		player->InitInstance();
 		player->SetName(userInfo._name);
+		player->SetPlayerId(userInfo._playerId);
 		player->GetStat()->SetLevel(userInfo._level);
 		player->GetStat()->SetExp(userInfo._exp);
+		// GameObjectManager에 공개되기 전(아직 이 스레드만 접근 가능한 시점)에 복원한다.
+		player->GetInventory()->LoadFromDB(items);
 
 		if (!GGameObjectManager->Insert(player->GetObjID(), player))
 			return;
@@ -550,6 +587,7 @@ namespace UserHelper
 		}
 
 		SendUSER_LOGIN_ACK(player);
+		SendITEM_LIST_ACK(player);
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
 	}
@@ -563,6 +601,9 @@ namespace UserHelper
 		player->SetObjID(EnumCategory::eUser, static_cast<uint64_t>(session->m_objectId));
 		player->InitInstance();
 		player->SetName(userInfo._name);
+		// 계정 INSERT는 이미 DB 스레드에서 동기적으로 끝난 뒤(playerId 확보 후)
+		// 이 함수가 호출된다 — 여기서 다시 저장을 요청할 필요가 없다.
+		player->SetPlayerId(userInfo._playerId);
 
 		if (!GGameObjectManager->Insert(player->GetObjID(), player))
 			return;
@@ -575,13 +616,6 @@ namespace UserHelper
 		SectorHelper::GetRandomPosition(objId);
 
 		SendUSER_LOGIN_ACK(player);
-
-		DB_USER_INFO save{};
-		save._name     = player->GetName();
-		save._password = userInfo._password;
-		save._x        = player->GetX();
-		save._y        = player->GetY();
-		GDBThread->RequestAddUser(player->GetObjID(), save);
 
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);

@@ -243,7 +243,7 @@ bool DBConnection::VerifyUserPassword(const string& name, const string& password
 	return (matched == 1);
 }
 
-bool DBConnection::AddUserInfoInDataBase(const string& name, const string& password, short x, short y, uint8 level, uint32 exp)
+bool DBConnection::AddUserInfoInDataBase(const string& name, const string& password, short x, short y, uint8 level, uint32 exp, int& outPlayerId)
 {
 	StatementCleanup cleanup(*this);
 
@@ -255,7 +255,15 @@ bool DBConnection::AddUserInfoInDataBase(const string& name, const string& passw
 	if (!BindParam(4, SQL_C_SHORT, SQL_INTEGER,  0,               (SQLPOINTER)&y,               nullptr)) return false;
 	if (!BindParam(5, SQL_C_UTINYINT, SQL_TINYINT, 0,             (SQLPOINTER)&level,           nullptr)) return false;
 	if (!BindParam(6, SQL_C_ULONG, SQL_INTEGER,  0,               (SQLPOINTER)&exp,             nullptr)) return false;
-	return Execute(query.c_str());
+	if (!Execute(query.c_str())) return false;
+
+	SQLINTEGER playerId{};
+	SQLLEN cb_playerId{};
+	if (!BindCol(1, SQL_INTEGER, sizeof(playerId), &playerId, &cb_playerId)) return false;
+	if (!Fetch()) return false;
+
+	outPlayerId = static_cast<int>(playerId);
+	return true;
 }
 
 DB_PLAYER_INFO DBConnection::ExtractUserInfo(const string& name)
@@ -265,24 +273,27 @@ DB_PLAYER_INFO DBConnection::ExtractUserInfo(const string& name)
 
 	wstring query = L"EXEC ExtractPlayerInfo ?";
 
+	SQLINTEGER  player_id{};
 	SQLINTEGER  player_x{}, player_y{};
 	SQLCHAR     player_level{};
 	SQLUINTEGER player_exp{};
-	SQLLEN cb_x{}, cb_y{}, cb_level{}, cb_exp{};
+	SQLLEN cb_id{}, cb_x{}, cb_y{}, cb_level{}, cb_exp{};
 
 	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return playerInfo;
 	if (!Execute(query.c_str())) return playerInfo;
-	if (!BindCol(1, SQL_INTEGER,  sizeof(player_x),     &player_x,     &cb_x))     return playerInfo;
-	if (!BindCol(2, SQL_INTEGER,  sizeof(player_y),     &player_y,     &cb_y))     return playerInfo;
-	if (!BindCol(3, SQL_TINYINT,  sizeof(player_level), &player_level, &cb_level)) return playerInfo;
-	if (!BindCol(4, SQL_INTEGER,  sizeof(player_exp),   &player_exp,   &cb_exp))   return playerInfo;
+	if (!BindCol(1, SQL_INTEGER,  sizeof(player_id),    &player_id,    &cb_id))    return playerInfo;
+	if (!BindCol(2, SQL_INTEGER,  sizeof(player_x),     &player_x,     &cb_x))     return playerInfo;
+	if (!BindCol(3, SQL_INTEGER,  sizeof(player_y),     &player_y,     &cb_y))     return playerInfo;
+	if (!BindCol(4, SQL_TINYINT,  sizeof(player_level), &player_level, &cb_level)) return playerInfo;
+	if (!BindCol(5, SQL_INTEGER,  sizeof(player_exp),   &player_exp,   &cb_exp))   return playerInfo;
 	if (!Fetch()) return playerInfo;
 
-	playerInfo._name  = name;
-	playerInfo._x     = player_x;
-	playerInfo._y     = player_y;
-	playerInfo._level = static_cast<uint8>(player_level);
-	playerInfo._exp   = static_cast<uint32>(player_exp);
+	playerInfo._playerId = static_cast<int>(player_id);
+	playerInfo._name     = name;
+	playerInfo._x        = player_x;
+	playerInfo._y        = player_y;
+	playerInfo._level    = static_cast<uint8>(player_level);
+	playerInfo._exp      = static_cast<uint32>(player_exp);
 
 	return playerInfo;
 }
@@ -298,5 +309,73 @@ bool DBConnection::SaveUserInfo(const string& name, short x, short y, uint8 leve
 	if (!BindParam(3, SQL_C_SHORT,    SQL_INTEGER,  0,           (SQLPOINTER)&y,           nullptr)) return false;
 	if (!BindParam(4, SQL_C_UTINYINT, SQL_TINYINT,  0,           (SQLPOINTER)&level,       nullptr)) return false;
 	if (!BindParam(5, SQL_C_ULONG,    SQL_INTEGER,  0,           (SQLPOINTER)&exp,         nullptr)) return false;
+	return Execute(query.c_str());
+}
+
+vector<DB_ITEM_INFO> DBConnection::ExtractInventory(int playerId)
+{
+	vector<DB_ITEM_INFO> items;
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC GetInventory ?";
+
+	SQLINTEGER  pid = playerId;
+	SQLSMALLINT slotIndex{}, itemId{}, count{};
+	SQLCHAR     equipped{};
+	SQLLEN cb_slot{}, cb_item{}, cb_count{}, cb_equipped{};
+
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return items;
+	if (!Execute(query.c_str())) return items;
+	if (!BindCol(1, SQL_SMALLINT, sizeof(slotIndex), &slotIndex, &cb_slot))     return items;
+	if (!BindCol(2, SQL_SMALLINT, sizeof(itemId),    &itemId,    &cb_item))     return items;
+	if (!BindCol(3, SQL_SMALLINT, sizeof(count),     &count,     &cb_count))    return items;
+	if (!BindCol(4, SQL_BIT,      sizeof(equipped),  &equipped,  &cb_equipped)) return items;
+
+	// GetInventory는 슬롯 개수만큼 여러 행을 반환하므로, 다른 Extract*와 달리
+	// Fetch()를 한 번이 아니라 SQL_NO_DATA가 나올 때까지 반복한다.
+	while (Fetch())
+	{
+		DB_ITEM_INFO info{};
+		info._slotIndex = static_cast<uint16_t>(slotIndex);
+		info._itemId    = static_cast<uint16_t>(itemId);
+		info._count     = static_cast<uint16_t>(count);
+		info._equipped  = (equipped != 0);
+		items.push_back(info);
+	}
+
+	return items;
+}
+
+bool DBConnection::SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped)
+{
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC SaveInventorySlot ?, ?, ?, ?, ?";
+
+	SQLINTEGER  pid  = playerId;
+	SQLSMALLINT slot = static_cast<SQLSMALLINT>(slotIndex);
+	SQLSMALLINT item = static_cast<SQLSMALLINT>(itemId);
+	SQLSMALLINT cnt  = static_cast<SQLSMALLINT>(count);
+	SQLCHAR     eq   = equipped ? 1 : 0;
+
+	if (!BindParam(1, SQL_C_LONG,  SQL_INTEGER,  0, (SQLPOINTER)&pid,  nullptr)) return false;
+	if (!BindParam(2, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slot, nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&item, nullptr)) return false;
+	if (!BindParam(4, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&cnt,  nullptr)) return false;
+	if (!BindParam(5, SQL_C_BIT,   SQL_BIT,      0, (SQLPOINTER)&eq,   nullptr)) return false;
+	return Execute(query.c_str());
+}
+
+bool DBConnection::DeleteInventorySlot(int playerId, uint16_t slotIndex)
+{
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC DeleteInventorySlot ?, ?";
+
+	SQLINTEGER  pid  = playerId;
+	SQLSMALLINT slot = static_cast<SQLSMALLINT>(slotIndex);
+
+	if (!BindParam(1, SQL_C_LONG,  SQL_INTEGER,  0, (SQLPOINTER)&pid,  nullptr)) return false;
+	if (!BindParam(2, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slot, nullptr)) return false;
 	return Execute(query.c_str());
 }

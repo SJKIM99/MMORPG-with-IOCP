@@ -73,6 +73,7 @@ enum class PacketType : uint16_t
 	USER_LOGIN_ACK,
 	USER_LOGIN_FAIL_ACK,
 	USER_ATTACK_ACK,
+	ITEM_LIST_ACK,
 
 	// Server → Client(s), NFY (server-initiated notification / broadcast)
 	SUBJECT_ADD_NFY,
@@ -178,6 +179,25 @@ struct USER_LOGIN_FAIL_ACK_PACKET
 {
 	unsigned short size;
 	char           type;
+};
+
+struct ITEM_SLOT_DATA
+{
+	uint16_t slotIndex;
+	uint16_t itemId;
+	uint16_t count;
+	uint8_t  equipped;  // 0/1
+};
+
+// 로그인 시 1회 전송하는 인벤토리 스냅샷. slotCount만큼만(0 ~ MAX_INVENTORY_SLOTS)
+// items[]의 앞부분이 유효하고, 나머지는 의미 없는 값이다. 이후 변경은 이 패킷을
+// 다시 보내지 않고 슬롯 단위 알림(추후 추가)으로 처리한다.
+struct ITEM_LIST_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        slotCount;
+	ITEM_SLOT_DATA items[MAX_INVENTORY_SLOTS];
 };
 
 struct SUBJECT_ADD_NFY_PACKET

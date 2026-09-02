@@ -10,6 +10,7 @@ namespace
 	{
 		// { id, type, maxStack, name }
 		{ 1, ItemType::eConsumable, 99, "Health Potion" },
+		{ 2, ItemType::eEquipment,   1, "Wooden Sword" },
 	};
 
 	// id == 0(예약값) 또는 중복 id가 섞여 들어가면 Find()가 엉뚱한 행을

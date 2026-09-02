@@ -21,6 +21,7 @@ namespace UserHelper
 	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr viewer, const ObjID& victimId, const ObjID& attackerId, int32_t victimHp);
 	void SendUSER_HEAL_INF(Subject::SharedPtr sender);
 	void SendUSER_STAT_CHANGE_INF(Subject::SharedPtr sender);
+	void SendITEM_LIST_ACK(Subject::SharedPtr sender);
 	[[nodiscard]] bool SaveUserInfo(const ObjID& targetId);
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage = PLAYER_OFFENSIVE);
@@ -32,6 +33,6 @@ namespace UserHelper
 	void HandleRespawn(const ObjID& playerId);
 
 	void HandleLoginFail(const shared_ptr<GameSession>& session);
-	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo);
+	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items);
 	void HandleAddUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo);
 }

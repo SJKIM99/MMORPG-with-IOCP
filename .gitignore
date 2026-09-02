@@ -68,3 +68,7 @@ Desktop.ini
 *.tmp
 *.swp
 *~
+
+# [ Claude Code ]
+# 개인용 로컬 설정(권한 등) - 커밋 대상 아님
+.claude/settings.local.json

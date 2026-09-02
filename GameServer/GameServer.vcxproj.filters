@@ -121,6 +121,9 @@
     <ClCompile Include="Item\Inventory.cpp">
       <Filter>Item</Filter>
     </ClCompile>
+    <ClCompile Include="Item\Item.cpp">
+      <Filter>Item</Filter>
+    </ClCompile>
     <ClCompile Include="Monster\Monster.cpp">
       <Filter>Monster</Filter>
     </ClCompile>
@@ -231,7 +234,13 @@
     <ClInclude Include="Item\ItemTable.h">
       <Filter>Item</Filter>
     </ClInclude>
-    <ClInclude Include="Item\ItemSlot.h">
+    <ClInclude Include="Item\Item.h">
+      <Filter>Item</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\EquipmentItem.h">
+      <Filter>Item</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\ConsumableItem.h">
       <Filter>Item</Filter>
     </ClInclude>
     <ClInclude Include="Item\Inventory.h">
