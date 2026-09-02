@@ -46,7 +46,11 @@ public:
 
 	// itemId가 ItemTable에 없거나, count가 0이거나, 자리가 부족하면 아무것도
 	// 바꾸지 않고 false를 반환한다 — 부분 반영 없이 전부 성공하거나 전부 실패한다.
-	[[nodiscard]] bool TryAddItem(ItemTableId itemId, uint16_t count) noexcept;
+	// outTouchedSlots가 non-null이면 성공 시 실제로 채워지거나 수량이 늘어난
+	// 슬롯 인덱스들을 담아준다(스택이 여러 슬롯에 걸쳐 나뉘어 채워지면 2개 이상일
+	// 수 있다) — 호출자가 어떤 슬롯이 바뀌었는지 알아야(예: 클라이언트에 알림)
+	// 할 때 GetSlots() 전체를 다시 비교하지 않도록 하기 위함.
+	[[nodiscard]] bool TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots = nullptr) noexcept;
 
 	// slotIndex에 아이템이 없거나, count보다 적게 들어있으면 false.
 	[[nodiscard]] bool TryRemoveItem(uint16_t slotIndex, uint16_t count) noexcept;

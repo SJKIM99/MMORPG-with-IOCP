@@ -9,46 +9,33 @@ constexpr size_t ConstMaxSize(size_t lhs, size_t rhs)
 	return (lhs > rhs) ? lhs : rhs;
 }
 
-constexpr size_t MAX_SERVER_PACKET_SIZE =
-	ConstMaxSize(
-		sizeof(USER_LOGIN_ACK_PACKET),
-		ConstMaxSize(
-			sizeof(USER_LOGIN_FAIL_ACK_PACKET),
-			ConstMaxSize(
-				sizeof(SUBJECT_ADD_NFY_PACKET),
-				ConstMaxSize(
-					sizeof(SUBJECT_REMOVE_NFY_PACKET),
-					ConstMaxSize(
-						sizeof(SUBJECT_MOVE_NFY_PACKET),
-						ConstMaxSize(
-							sizeof(SUBJECT_DIE_NFY_PACKET),
-							ConstMaxSize(
-								sizeof(SUBJECT_RESPAWN_NFY_PACKET),
-								ConstMaxSize(
-									sizeof(USER_ATTACK_ACK_PACKET),
-									ConstMaxSize(
-										sizeof(SUBJECT_ATTACK_NFY_PACKET),
-										ConstMaxSize(
-											sizeof(USER_HEAL_INF_PACKET),
-											ConstMaxSize(
-												sizeof(USER_STAT_CHANGE_INF_PACKET),
-												ConstMaxSize(
-													sizeof(PLAYER_ATTACK_NFY_PACKET),
-													ConstMaxSize(
-														sizeof(SC_CHAT_PACKET),
-														ConstMaxSize(sizeof(ITEM_LIST_ACK_PACKET), ConstMaxSize(sizeof(ITEM_EQUIP_ACK_PACKET), ConstMaxSize(sizeof(ITEM_UNEQUIP_ACK_PACKET), sizeof(ITEM_SWAP_ACK_PACKET))))))
-											)
-										)
-									)
-								)
-							)
-						)
-					)
-				)
-			)
-		)
-	);
-
+// 패킷이 하나 늘 때마다 깊게 중첩된 ConstMaxSize(...) 트리를 손으로 다시 짜다가
+// 괄호 개수를 맞추기 어려워지는 걸 피하려고, 누적 최댓값을 한 단계씩 이름 붙여
+// 계산한다 — 각 줄은 항상 "지금까지의 최댓값 vs 새 패킷 하나"만 비교하므로
+// 실수할 여지가 없고, 새 패킷은 끝에 한 줄만 추가하면 된다.
+namespace ServerPacketSizeDetail
+{
+	constexpr size_t s01 = sizeof(USER_LOGIN_ACK_PACKET);
+	constexpr size_t s02 = ConstMaxSize(s01, sizeof(USER_LOGIN_FAIL_ACK_PACKET));
+	constexpr size_t s03 = ConstMaxSize(s02, sizeof(SUBJECT_ADD_NFY_PACKET));
+	constexpr size_t s04 = ConstMaxSize(s03, sizeof(SUBJECT_REMOVE_NFY_PACKET));
+	constexpr size_t s05 = ConstMaxSize(s04, sizeof(SUBJECT_MOVE_NFY_PACKET));
+	constexpr size_t s06 = ConstMaxSize(s05, sizeof(SUBJECT_DIE_NFY_PACKET));
+	constexpr size_t s07 = ConstMaxSize(s06, sizeof(SUBJECT_RESPAWN_NFY_PACKET));
+	constexpr size_t s08 = ConstMaxSize(s07, sizeof(USER_ATTACK_ACK_PACKET));
+	constexpr size_t s09 = ConstMaxSize(s08, sizeof(SUBJECT_ATTACK_NFY_PACKET));
+	constexpr size_t s10 = ConstMaxSize(s09, sizeof(USER_HEAL_INF_PACKET));
+	constexpr size_t s11 = ConstMaxSize(s10, sizeof(USER_STAT_CHANGE_INF_PACKET));
+	constexpr size_t s12 = ConstMaxSize(s11, sizeof(PLAYER_ATTACK_NFY_PACKET));
+	constexpr size_t s13 = ConstMaxSize(s12, sizeof(SC_CHAT_PACKET));
+	constexpr size_t s14 = ConstMaxSize(s13, sizeof(ITEM_LIST_ACK_PACKET));
+	constexpr size_t s15 = ConstMaxSize(s14, sizeof(ITEM_EQUIP_ACK_PACKET));
+	constexpr size_t s16 = ConstMaxSize(s15, sizeof(ITEM_UNEQUIP_ACK_PACKET));
+	constexpr size_t s17 = ConstMaxSize(s16, sizeof(ITEM_SWAP_ACK_PACKET));
+	constexpr size_t s18 = ConstMaxSize(s17, sizeof(ITEM_ACQUIRE_INF_PACKET));
+	constexpr size_t s19 = ConstMaxSize(s18, sizeof(SYSTEM_MESSAGE_INF_PACKET));
+}
+constexpr size_t MAX_SERVER_PACKET_SIZE = ServerPacketSizeDetail::s19;
 constexpr size_t SEND_BATCH_BUFFER_SIZE = 4096;
 static_assert(SEND_BATCH_BUFFER_SIZE >= MAX_SERVER_PACKET_SIZE, "Send batch buffer must fit one server packet.");
 

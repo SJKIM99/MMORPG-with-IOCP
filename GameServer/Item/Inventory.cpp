@@ -61,7 +61,7 @@ void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 	}
 }
 
-bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count) noexcept
+bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots) noexcept
 {
 	AssertOwnedByCurrentZone();
 
@@ -134,6 +134,9 @@ bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count) noexcept
 
 	for (uint16_t slotIndex : touchedSlots)
 		SaveSlotToDB(slotIndex);
+
+	if (outTouchedSlots != nullptr)
+		*outTouchedSlots = std::move(touchedSlots);
 
 	return true;
 }

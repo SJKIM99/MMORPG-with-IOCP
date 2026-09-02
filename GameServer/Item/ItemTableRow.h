@@ -14,6 +14,23 @@ enum ItemType : uint8_t
 	eEtc        = 3,  // 분류 미정
 };
 
+// 장비 등급. eNone은 "등급이 없는 장비"(예: 시작 무기)와 "장비가 아니라서 등급
+// 자체가 의미 없는 아이템"(소비/재료 등) 양쪽 모두를 가리킨다 — 후자의 경우
+// grade 필드를 그냥 확인하지 않으면 되므로 별도 값을 두지 않는다.
+// ItemType과 같은 이유로, 이미 배정된 값은 절대 바꾸지 않는다.
+// ItemType과 달리 scoped enum(enum class)으로 둔다 — unscoped로 두면 eNone이
+// EnumCategory::eNone과 같은 전역 스코프에서 충돌한다(둘 다 unscoped라면
+// 재정의 오류). eRare/eEpic 등도 흔히 쓰일 이름이라 어차피 항상
+// ItemGrade::eXxx로 명시하는 게 안전하다.
+enum class ItemGrade : uint8_t
+{
+	eNone      = 0,
+	eRare      = 1,
+	eEpic      = 2,
+	eUnique    = 3,
+	eLegendary = 4,
+};
+
 // ContentID::KIND(uint16_t)에 그대로 실려서 아이템 인스턴스 ObjID, 인벤토리 슬롯,
 // DB 저장 데이터를 오가는 영구 식별자. ItemTable(아이템 테이블) 안의 한 행(row)을 가리킨다.
 // 0은 "빈 슬롯 / 없음"을 뜻하는 예약값이므로 실제 아이템에는 절대 배정하지 않는다.
@@ -30,4 +47,5 @@ struct ItemTableRow
 	ItemType       type                 = ItemType::eEtc;
 	uint16_t       maxStack             = 1;   // 1 = 스택 불가
 	char           name[ITEM_NAME_SIZE] = {};
+	ItemGrade      grade                = ItemGrade::eNone;  // 장비가 아니면 항상 eNone
 };

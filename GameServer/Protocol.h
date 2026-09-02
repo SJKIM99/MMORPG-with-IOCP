@@ -60,6 +60,18 @@ enum MONSTER_TYPE
 	PASSIVE
 };
 
+// 상황별로 새 패킷을 계속 늘리는 대신, 서버가 클라이언트에 보내는 상황 알림을
+// 코드값 하나로 표현하는 공용 포맷(SYSTEM_MESSAGE_INF_PACKET)에서 쓰는 코드다.
+// 실제 문구는 클라이언트가 code 기준으로 자체 보유한 문자열 테이블에서 찾아
+// 렌더링한다(서버가 언어별 문자열을 들고 있을 필요가 없다). 새 상황이 생기면
+// 이 자리에 값만 추가하면 되고, 기존 값은 절대 재사용/변경하지 않는다.
+enum class SystemMessageCode : uint16_t
+{
+	// 인벤토리가 가득 차 아이템을 얻지 못함. param1=놓친 아이템의 ItemTableId,
+	// param2=놓친 수량.
+	InventoryFull,
+};
+
 enum class PacketType : uint16_t
 {
 	// Client → Server (REQ)
@@ -93,6 +105,8 @@ enum class PacketType : uint16_t
 	// Server → Client(s), INF (Server-only notifications)
 	USER_HEAL_INF,
 	USER_STAT_CHANGE_INF,
+	ITEM_ACQUIRE_INF,
+	SYSTEM_MESSAGE_INF,
 
 	// Chat
 	CS_CHAT,
@@ -345,6 +359,28 @@ struct USER_STAT_CHANGE_INF_PACKET
 	uint16_t hp;
 	uint16_t maxhp;
 	uint32_t exp;
+};
+
+// 몬스터 처치 등으로 아이템을 새로 얻거나 기존 스택 수량이 늘었을 때 그 슬롯
+// 하나의 최신 상태를 알린다. 한 번에 여러 슬롯이 바뀌면(스택이 여러 슬롯에
+// 걸쳐 나뉘어 채워지는 경우) 이 패킷을 슬롯 개수만큼 나눠 보낸다 — 그런
+// 경우가 실제로는 드물어서, 고정 배열을 항상 잡아두는 것보다 이 편이 낫다.
+struct ITEM_ACQUIRE_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	ITEM_SLOT_DATA slot;
+};
+
+// SystemMessageCode 기준의 공용 상황 알림. param1/param2의 의미는 code마다
+// 다르며, 각 code 정의 옆 주석에 명시한다.
+struct SYSTEM_MESSAGE_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       code;    // SystemMessageCode
+	int32_t        param1;
+	int32_t        param2;
 };
 
 struct PLAYER_ATTACK_NFY_PACKET

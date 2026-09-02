@@ -12,6 +12,7 @@
 #include "Collision.h"
 #include "CoreTLS.h"
 #include "Item/EquipmentItem.h"
+#include "Item/DropTable.h"
 
 namespace
 {
@@ -459,6 +460,45 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
+	void SendITEM_ACQUIRE_INF(Subject::SharedPtr sender, uint16_t slotIndex)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		auto user = static_pointer_cast<User>(sender);
+		if (user == nullptr)
+			return;
+
+		ITEM_ACQUIRE_INF_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_ACQUIRE_INF);
+
+		const auto& slots = user->GetInventory()->GetSlots();
+		const auto it = slots.find(slotIndex);
+		// TryAddItem이 돌려준 touchedSlots에 있던 인덱스로만 이 함수를 호출하므로,
+		// 호출 시점에 그 슬롯이 비어있는 건 있을 수 없다(같은 Zone 스레드 위에서
+		// 중간에 다른 mutate 없이 곧바로 호출됨 — 단일 스레드 소유 모델).
+		ASSERT_CRASH(it != slots.end());
+		FillItemSlotData(packet.slot, slotIndex, it->second);
+
+		session->PostSend(packet);
+	}
+
+	void SendSYSTEM_MESSAGE_INF(Subject::SharedPtr sender, SystemMessageCode code, int32_t param1, int32_t param2)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		SYSTEM_MESSAGE_INF_PACKET packet;
+		InitializePacket(packet, PacketType::SYSTEM_MESSAGE_INF);
+		packet.code   = static_cast<uint16_t>(code);
+		packet.param1 = param1;
+		packet.param2 = param2;
+
+		session->PostSend(packet);
+	}
+
 	bool SaveUserInfo(const ObjID& targetId)
 	{
 		const auto target = ::GetGameObject<User>(targetId);
@@ -480,6 +520,30 @@ namespace UserHelper
 
 		QueueUserSave(target, saveX, saveY);
 		return true;
+	}
+
+	// 몬스터 처치 시 드롭 테이블을 굴려 성공하면 인벤토리에 채워 넣고, 결과를
+	// 클라이언트에 알린다. AttackMonster가 이미 attacker를 소유한 Zone 스레드
+	// 위에서 실행 중이므로(패킷 핸들러 -> HandleAttack/SkillAttack -> 여기), 그
+	// 전제 위에서만 성립하는 Inventory::TryAddItem을 안전하게 바로 호출할 수 있다.
+	void HandleItemDrop(const shared_ptr<User>& attacker)
+	{
+		const DropTable::RollResult roll = DropTable::Roll();
+		if (!roll.hasItem)
+			return;
+
+		std::vector<uint16_t> touchedSlots;
+		if (attacker->GetInventory()->TryAddItem(roll.itemId, roll.count, &touchedSlots))
+		{
+			for (uint16_t slotIndex : touchedSlots)
+				SendITEM_ACQUIRE_INF(attacker, slotIndex);
+		}
+		else
+		{
+			// 인벤토리가 가득 차 드롭을 담지 못했다 — 그냥 버리지 않고 반드시 알린다.
+			SendSYSTEM_MESSAGE_INF(attacker, SystemMessageCode::InventoryFull,
+				static_cast<int32_t>(roll.itemId), static_cast<int32_t>(roll.count));
+		}
 	}
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage)
@@ -519,6 +583,7 @@ namespace UserHelper
 		const uint32_t expGain = (monster->GetType() == MONSTER_TYPE::PASSIVE) ? 3 : 5;
 		attacker->GetStat()->AddExp(expGain);
 		SendUSER_STAT_CHANGE_INF(attacker);
+		HandleItemDrop(attacker);
 
 		GTimerThread->ScheduleAfter(monsterId, 10s, TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN);
 	}

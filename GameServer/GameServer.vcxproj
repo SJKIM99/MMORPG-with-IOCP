@@ -170,6 +170,7 @@
     <ClCompile Include="GameObject\GameObject.cpp" />
     <ClCompile Include="GameObject\GameObjectManager.cpp" />
     <ClCompile Include="GameServer.cpp" />
+    <ClCompile Include="Item\DropTable.cpp" />
     <ClCompile Include="Item\Inventory.cpp" />
     <ClCompile Include="Item\Item.cpp" />
     <ClCompile Include="Item\ItemTable.cpp" />
@@ -217,6 +218,7 @@
     <ClInclude Include="GameObject\GameObjectManager.h" />
     <ClInclude Include="Item\ItemTableRow.h" />
     <ClInclude Include="Item\ItemTable.h" />
+    <ClInclude Include="Item\DropTable.h" />
     <ClInclude Include="Item\Item.h" />
     <ClInclude Include="Item\EquipmentItem.h" />
     <ClInclude Include="Item\ConsumableItem.h" />

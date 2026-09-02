@@ -118,6 +118,9 @@
     <ClCompile Include="Item\ItemTable.cpp">
       <Filter>Item</Filter>
     </ClCompile>
+    <ClCompile Include="Item\DropTable.cpp">
+      <Filter>Item</Filter>
+    </ClCompile>
     <ClCompile Include="Item\Inventory.cpp">
       <Filter>Item</Filter>
     </ClCompile>
@@ -232,6 +235,9 @@
       <Filter>Item</Filter>
     </ClInclude>
     <ClInclude Include="Item\ItemTable.h">
+      <Filter>Item</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\DropTable.h">
       <Filter>Item</Filter>
     </ClInclude>
     <ClInclude Include="Item\Item.h">

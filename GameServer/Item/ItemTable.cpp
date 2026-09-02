@@ -8,9 +8,13 @@ namespace
 	// 이미 등록된 항목의 id는 절대 바꾸거나 다른 아이템에 재사용하지 않는다.
 	constexpr ItemTableRow kRows[] =
 	{
-		// { id, type, maxStack, name }
-		{ 1, ItemType::eConsumable, 99, "Health Potion" },
-		{ 2, ItemType::eEquipment,   1, "Wooden Sword" },
+		// { id, type, maxStack, name, grade }
+		{ 1, ItemType::eConsumable, 99, "Health Potion", ItemGrade::eNone },
+		{ 2, ItemType::eEquipment,   1, "Wooden Sword",  ItemGrade::eNone },
+		{ 3, ItemType::eEquipment,   1, "Iron Sword",    ItemGrade::eRare },
+		{ 4, ItemType::eEquipment,   1, "Steel Sword",   ItemGrade::eEpic },
+		{ 5, ItemType::eEquipment,   1, "Flame Sword",   ItemGrade::eUnique },
+		{ 6, ItemType::eEquipment,   1, "Dragon Slayer", ItemGrade::eLegendary },
 	};
 
 	// id == 0(예약값) 또는 중복 id가 섞여 들어가면 Find()가 엉뚱한 행을
