@@ -127,6 +127,9 @@
     <ClCompile Include="Item\Item.cpp">
       <Filter>Item</Filter>
     </ClCompile>
+    <ClCompile Include="Item\ItemHelper.cpp">
+      <Filter>Item</Filter>
+    </ClCompile>
     <ClCompile Include="Monster\Monster.cpp">
       <Filter>Monster</Filter>
     </ClCompile>
@@ -247,6 +250,9 @@
       <Filter>Item</Filter>
     </ClInclude>
     <ClInclude Include="Item\ConsumableItem.h">
+      <Filter>Item</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\ItemHelper.h">
       <Filter>Item</Filter>
     </ClInclude>
     <ClInclude Include="Item\Inventory.h">

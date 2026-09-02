@@ -83,6 +83,8 @@ enum class PacketType : uint16_t
 	ITEM_EQUIP_REQ,
 	ITEM_UNEQUIP_REQ,
 	ITEM_SWAP_REQ,
+	ITEM_DISCARD_REQ,
+	ITEM_PICKUP_REQ,
 
 	// Server → Client, unicast ACK (response to requester only)
 	USER_LOGIN_ACK,
@@ -92,6 +94,8 @@ enum class PacketType : uint16_t
 	ITEM_EQUIP_ACK,
 	ITEM_UNEQUIP_ACK,
 	ITEM_SWAP_ACK,
+	ITEM_DISCARD_ACK,
+	ITEM_PICKUP_ACK,
 
 	// Server → Client(s), NFY (server-initiated notification / broadcast)
 	SUBJECT_ADD_NFY,
@@ -183,6 +187,23 @@ struct ITEM_SWAP_REQ_PACKET
 	uint16_t       slotIndexB;
 };
 
+struct ITEM_DISCARD_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       slotIndex;
+	uint16_t       count;
+};
+
+// 파라미터 없음 — 대상은 항상 "요청한 플레이어가 서버 기준으로 서 있는 칸"이다.
+// 클라이언트가 좌표나 대상 id를 보내지 않으므로, 위조된 좌표로 먼 곳의 아이템을
+// 원격으로 줍는 부정 사용 자체가 프로토콜 레벨에서 성립하지 않는다.
+struct ITEM_PICKUP_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+};
+
 constexpr size_t ProtocolConstMaxSize(size_t lhs, size_t rhs)
 {
 	return (lhs > rhs) ? lhs : rhs;
@@ -195,22 +216,26 @@ struct CS_CHAT_PACKET
 	char mess[CHAT_SIZE];
 };
 
-constexpr size_t MAX_CLIENT_PACKET_SIZE =
-	ProtocolConstMaxSize(
-		sizeof(USER_LOGIN_REQ_PACKET),
-		ProtocolConstMaxSize(
-			sizeof(USER_MOVE_REQ_PACKET),
-			ProtocolConstMaxSize(
-				sizeof(USER_ATTACK_REQ_PACKET),
-				ProtocolConstMaxSize(sizeof(USER_SKILL_REQ_PACKET),
-					ProtocolConstMaxSize(sizeof(USER_TELEPORT_REQ_PACKET),
-						ProtocolConstMaxSize(sizeof(USER_LOGOUT_REQ_PACKET),
-							ProtocolConstMaxSize(sizeof(CS_CHAT_PACKET),
-								ProtocolConstMaxSize(sizeof(ITEM_EQUIP_REQ_PACKET),
-									ProtocolConstMaxSize(sizeof(ITEM_UNEQUIP_REQ_PACKET), sizeof(ITEM_SWAP_REQ_PACKET)))))))
-			)
-		)
-	);
+// 패킷이 하나 늘 때마다 깊게 중첩된 ProtocolConstMaxSize(...) 트리를 손으로
+// 다시 짜는 대신, 누적 최댓값을 한 단계씩 이름 붙여 계산한다 — 각 줄은 항상
+// "지금까지의 최댓값 vs 새 패킷 하나"만 비교하므로 실수할 여지가 없고, 새
+// 패킷은 끝에 한 줄만 추가하면 된다.
+namespace ClientPacketSizeDetail
+{
+	constexpr size_t s01 = sizeof(USER_LOGIN_REQ_PACKET);
+	constexpr size_t s02 = ProtocolConstMaxSize(s01, sizeof(USER_MOVE_REQ_PACKET));
+	constexpr size_t s03 = ProtocolConstMaxSize(s02, sizeof(USER_ATTACK_REQ_PACKET));
+	constexpr size_t s04 = ProtocolConstMaxSize(s03, sizeof(USER_SKILL_REQ_PACKET));
+	constexpr size_t s05 = ProtocolConstMaxSize(s04, sizeof(USER_TELEPORT_REQ_PACKET));
+	constexpr size_t s06 = ProtocolConstMaxSize(s05, sizeof(USER_LOGOUT_REQ_PACKET));
+	constexpr size_t s07 = ProtocolConstMaxSize(s06, sizeof(CS_CHAT_PACKET));
+	constexpr size_t s08 = ProtocolConstMaxSize(s07, sizeof(ITEM_EQUIP_REQ_PACKET));
+	constexpr size_t s09 = ProtocolConstMaxSize(s08, sizeof(ITEM_UNEQUIP_REQ_PACKET));
+	constexpr size_t s10 = ProtocolConstMaxSize(s09, sizeof(ITEM_SWAP_REQ_PACKET));
+	constexpr size_t s11 = ProtocolConstMaxSize(s10, sizeof(ITEM_DISCARD_REQ_PACKET));
+	constexpr size_t s12 = ProtocolConstMaxSize(s11, sizeof(ITEM_PICKUP_REQ_PACKET));
+}
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetail::s12;
 
 struct USER_LOGIN_ACK_PACKET
 {
@@ -278,6 +303,26 @@ struct ITEM_SWAP_ACK_PACKET
 	uint8_t        success;
 	ITEM_SLOT_DATA slotA;
 	ITEM_SLOT_DATA slotB;
+};
+
+// success=0이어도 slot.slotIndex는 항상 요청받은 값 그대로다(EQUIP/UNEQUIP_ACK와
+// 같은 관례). 성공 시 슬롯이 완전히 비워졌으면 itemId=0, count=0으로 온다.
+struct ITEM_DISCARD_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        success;
+	ITEM_SLOT_DATA slot;
+};
+
+// 성공 시 실제로 채워진 슬롯 내용은 뒤이어 오는 ITEM_ACQUIRE_INF로 전달된다 —
+// 이 패킷은 "그 Z키 입력 자체가 뭔가를 주웠는지"만 알려준다. 인벤토리가 가득
+// 차서 실패한 경우는 뒤이어 SYSTEM_MESSAGE_INF(InventoryFull)도 함께 온다.
+struct ITEM_PICKUP_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        success;
 };
 
 struct SUBJECT_ADD_NFY_PACKET

@@ -45,11 +45,19 @@ void Inventory::SaveSlotToDB(uint16_t slotIndex) const
 
 void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 {
+	// Attach()가 InitInstance() 안에서 이미 호출된 뒤라 _owner는 항상 유효하다.
+	// (이 시점엔 아직 Zone에 등록 전이라 AssertOwnedByCurrentZone은 쓸 수 없지만,
+	// owner 자체의 생존은 별개 문제이므로 그냥 크래시로 불변조건을 지킨다.)
+	const auto owner = _owner.lock();
+	ASSERT_CRASH(owner != nullptr);
+
 	for (const auto& info : items)
 	{
 		Item::SharedPtr item = MakeNewItem(info._itemId, info._count);
 		if (item == nullptr)
 			continue;  // ItemTable에서 사라진 id — 게임 데이터가 DB보다 최신인 경우, 방어적으로 무시
+
+		item->SetOwnerID(owner->GetObjID());
 
 		if (info._equipped)
 		{
@@ -67,6 +75,11 @@ bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint1
 
 	if (count == 0)
 		return false;
+
+	// AssertOwnedByCurrentZone()이 이미 owner != nullptr을 보장했으므로 여기서
+	// 다시 null 체크할 필요는 없다 — 새로 만드는 Item에 OwnerID를 찍어주기 위해
+	// 필요한 값만 미리 꺼내둔다.
+	const auto owner = _owner.lock();
 
 	const ItemTableRow* row = ItemTable::Find(itemId);
 	if (row == nullptr)
@@ -127,6 +140,7 @@ bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint1
 		// (여기서 조용히 false를 반환하면 앞 슬롯들은 이미 채워진 채로 남아
 		// "일부만 반영된 실패"가 되어버리므로, 절대 그렇게 하지 않는다.)
 		ASSERT_CRASH(newItem != nullptr);
+		newItem->SetOwnerID(owner->GetObjID());
 		_slots.emplace(i, std::move(newItem));
 		touchedSlots.push_back(i);
 		remaining -= added;
@@ -158,6 +172,52 @@ bool Inventory::TryRemoveItem(uint16_t slotIndex, uint16_t count) noexcept
 
 	SaveSlotToDB(slotIndex);
 	return true;
+}
+
+Item::SharedPtr Inventory::TryExtractItem(uint16_t slotIndex, uint16_t count) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	if (count == 0)
+		return nullptr;
+
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end() || it->second->GetCount() < count)
+		return nullptr;
+
+	Item::SharedPtr extracted;
+	if (it->second->GetCount() == count)
+	{
+		// 슬롯 전량 추출 — 기존 Item 인스턴스를 그대로 꺼내 재사용한다(새로
+		// 만들 필요 없음). 장착 중이었다면 여기서 탈착한다 — 인벤토리 밖으로
+		// 나가는 순간 "장착 상태"는 의미가 없어진다.
+		extracted = std::move(it->second);
+		_slots.erase(it);
+
+		if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(extracted))
+			equipment->Unequip();
+	}
+	else
+	{
+		// 부분 추출 — 스택형 아이템에서만 일어난다(장비는 maxStack=1이라
+		// count == 전체 수량인 위 분기로만 들어옴). 남은 수량은 슬롯에 그대로
+		// 두고, 꺼내는 만큼만 새 Item으로 만든다.
+		it->second->RemoveCount(count);
+		extracted = MakeNewItem(it->second->GetItemTableId(), count);
+		// 이미 존재하는(같은 슬롯에 들어있던) itemId를 그대로 쓰므로 ItemTable
+		// 조회는 반드시 성공한다 — 실패한다면 그 자체가 불변조건 위반이다.
+		ASSERT_CRASH(extracted != nullptr);
+	}
+
+	// 지금부터 이 Item은 어떤 Inventory에도 속하지 않는다 — 호출자(ItemHelper)가
+	// 필드에 놓거나, 놓지 않고 버려서(참조 카운트가 0이 되어) 그대로 사라지게 한다.
+	extracted->SetOwnerID(ObjID::npos);
+
+	// 슬롯의 "남은" 상태를 그대로 반영한다 — 전량 추출이면 삭제, 부분 추출이면
+	// 갱신. SaveSlotToDB는 이미 그 두 경우를 모두 올바르게 처리한다.
+	SaveSlotToDB(slotIndex);
+
+	return extracted;
 }
 
 bool Inventory::TryEquip(uint16_t slotIndex) noexcept

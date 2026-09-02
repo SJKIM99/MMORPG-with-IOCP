@@ -55,6 +55,12 @@ public:
 	// slotIndex에 아이템이 없거나, count보다 적게 들어있으면 false.
 	[[nodiscard]] bool TryRemoveItem(uint16_t slotIndex, uint16_t count) noexcept;
 
+	// slotIndex에서 count만큼 꺼내 별도 Item으로 분리한다(필드에 버리는 용도).
+	// 실패(슬롯 없음/count 부족/count=0)하면 nullptr — 인벤토리는 전혀 바뀌지
+	// 않는다. 반환된 Item은 이제 어떤 Inventory에도 속하지 않는다(OwnerID가
+	// 비어 있음, Item::IsOnGround() 참고) — 호출자가 필드에 놓을지 결정한다.
+	[[nodiscard]] Item::SharedPtr TryExtractItem(uint16_t slotIndex, uint16_t count) noexcept;
+
 	// slotIndex가 비어있거나, 장비 아이템이 아니거나, 이미 장착 중이면 false.
 	[[nodiscard]] bool TryEquip(uint16_t slotIndex) noexcept;
 

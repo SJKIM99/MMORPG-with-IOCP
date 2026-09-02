@@ -27,6 +27,8 @@ namespace UserHelper
 	void SendITEM_SWAP_ACK(Subject::SharedPtr sender, uint16_t slotIndexA, uint16_t slotIndexB, bool success);
 	void SendITEM_ACQUIRE_INF(Subject::SharedPtr sender, uint16_t slotIndex);
 	void SendSYSTEM_MESSAGE_INF(Subject::SharedPtr sender, SystemMessageCode code, int32_t param1, int32_t param2);
+	void SendITEM_DISCARD_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success);
+	void SendITEM_PICKUP_ACK(Subject::SharedPtr sender, bool success);
 	[[nodiscard]] bool SaveUserInfo(const ObjID& targetId);
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage = PLAYER_OFFENSIVE);

@@ -3,12 +3,21 @@
 #include "Subject.h"
 #include "ItemTableRow.h"
 
-// 인벤토리 슬롯에 담기는 아이템 인스턴스.
+// 인벤토리 슬롯에 담기는 아이템 인스턴스. 필드(바닥)에 떨어진 아이템도 같은
+// Item 인스턴스가 그대로 옮겨가서 표현한다 — 별도의 "필드 아이템" 클래스는
+// 만들지 않는다(ItemHelper.cpp 참고).
 //
-// Subject를 상속해 이름/ObjID 등 기존 필드를 재사용하지만, GameObjectManager에는
-// 절대 등록하지 않는다 — Inventory가 shared_ptr로 직접 들고 있는 것 말고는
-// 어디서도 전역으로 조회되지 않는다. (픽업/소비/장착/교체마다 최대 4만 유저 x
-// 30슬롯 규모로 전역 맵 insert/erase 락을 타는 비용을 피하기 위한 의도적 선택.)
+// Subject를 상속해 이름/ObjID/위치 등 기존 필드를 재사용한다. 기본적으로는
+// GameObjectManager에 등록하지 않는다 — Inventory가 shared_ptr로 직접 들고
+// 있는 것 말고는 어디서도 전역으로 조회되지 않는다. (장착/탈착/교체/소비처럼
+// 인벤토리 안에서만 일어나는 동작은 최대 4만 유저 x 30슬롯 규모라 전역 맵
+// insert/erase 락을 타면 비용이 크다.)
+//
+// 예외: GetOwnerID()가 비어있으면(ObjID::npos) 그 아이템은 지금 어느
+// Inventory에도 속하지 않은 "필드에 떨어진 상태"다. 이 경우에 한해
+// ItemHelper::SpawnFieldItem이 GameObjectManager에 등록하고 Sector에 배치한다
+// — 필드 아이템은 동시에 존재하는 개수가 훨씬 적고(전체 인벤토리 아이템 수와
+// 무관), 다른 플레이어에게 "보여야" 하므로 전역 조회가 꼭 필요하다.
 //
 // InitInstance()는 Subject::InitInstance()를 그대로 쓰지 않고 GameObject의
 // 것만 호출한다 — Subject::InitInstance()는 호출될 때마다 Stat을 새로 힙
@@ -36,6 +45,10 @@ public:
 	// amount가 현재 수량보다 많으면 0으로 만든다 — 호출자(Inventory)가 이미
 	// 수량을 검증한 뒤에만 부르는 걸 전제하지만, 언더플로 자체는 여기서 막는다.
 	void RemoveCount(uint16_t amount) noexcept { m_count = (amount >= m_count) ? 0 : (m_count - amount); }
+
+	// GetOwnerID()가 비어있는지(=필드에 떨어진 상태인지)를 매번 ObjID::npos와
+	// 직접 비교하지 않도록 이름 붙인 것뿐 — 별도 필드를 두지 않는다.
+	[[nodiscard]] bool IsOnGround() const noexcept { return GetOwnerID() == ObjID::npos; }
 
 private:
 	ItemTableId m_itemTableId = ITEM_TABLE_ID_NONE;

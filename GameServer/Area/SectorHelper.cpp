@@ -182,6 +182,12 @@ namespace SectorHelper
 				// activate immediately for all monsters within VIEW_RANGE.
 				MonsterHelper::WakeUpMonster(monsterId, playerId, isRespawn);
 			}
+			else if (id.GetCategory<EnumCategory>() == EnumCategory::eItem)
+			{
+				// 필드에 떨어진 아이템 — 깨울 것도, 상대에게 나를 알릴 것도 없다.
+				// 로그인/리스폰한 플레이어에게만 "여기 아이템이 있다"고 알려주면 된다.
+				UserHelper::SendSUBJECT_ADD_NFY(player, object);
+			}
 		}
 	}
 

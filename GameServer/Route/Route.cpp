@@ -8,6 +8,7 @@
 #include "UserHelper.h"
 #include "Sector.h"
 #include "Zone/ZoneLayout.h"
+#include "Item/ItemHelper.h"
 
 namespace Route
 {
@@ -165,6 +166,37 @@ namespace Route
 			auto* p = reinterpret_cast<const ITEM_SWAP_REQ_PACKET*>(packet);
 			const bool success = client->GetInventory()->TrySwapSlots(p->slotIndexA, p->slotIndexB);
 			UserHelper::SendITEM_SWAP_ACK(client, p->slotIndexA, p->slotIndexB, success);
+			break;
+		}
+		case PacketType::ITEM_DISCARD_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			if (client->IsTransferring())  // Zone Transfer 완료 전 — 위치가 불안정한 동안 필드에 놓지 않는다
+				break;
+
+			auto* p = reinterpret_cast<const ITEM_DISCARD_REQ_PACKET*>(packet);
+			Item::SharedPtr extracted = client->GetInventory()->TryExtractItem(p->slotIndex, p->count);
+			if (extracted != nullptr)
+				ItemHelper::SpawnFieldItem(extracted, client->GetX(), client->GetY());
+
+			UserHelper::SendITEM_DISCARD_ACK(client, p->slotIndex, extracted != nullptr);
+			break;
+		}
+		case PacketType::ITEM_PICKUP_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			if (client->IsTransferring())
+				break;
+
+			ItemHelper::TryPickupAt(client);
 			break;
 		}
 		case PacketType::CS_CHAT:

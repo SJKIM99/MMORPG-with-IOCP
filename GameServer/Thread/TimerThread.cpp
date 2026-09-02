@@ -3,6 +3,7 @@
 #include "GameObjectManager.h"
 #include "MonsterHelper.h"
 #include "UserHelper.h"
+#include "Item/ItemHelper.h"
 #include "Zone/ZoneManager.h"
 
 bool TimerThread::TimerEventCompare::operator()(const TIMER_EVENT& lhs, const TIMER_EVENT& rhs) const noexcept
@@ -121,6 +122,13 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 		GZoneManager->EnqueueByObject(subjectId, [subjectId]()
 		{
 			UserHelper::HandleRespawn(subjectId);
+		});
+		break;
+
+	case TIMER_EVENT_TYPE::EV_ITEM_DESPAWN:
+		GZoneManager->EnqueueByObject(subjectId, [subjectId]()
+		{
+			ItemHelper::HandleDespawn(subjectId);
 		});
 		break;
 	}

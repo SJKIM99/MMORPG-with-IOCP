@@ -499,6 +499,46 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
+	void SendITEM_DISCARD_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		auto user = static_pointer_cast<User>(sender);
+		if (user == nullptr)
+			return;
+
+		ITEM_DISCARD_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_DISCARD_ACK);
+		packet.success = success ? 1 : 0;
+		packet.slot.slotIndex = slotIndex;
+
+		if (success)
+		{
+			const auto& slots = user->GetInventory()->GetSlots();
+			const auto it = slots.find(slotIndex);
+			// it가 end()인 경우(슬롯 전량을 버려서 비워짐)도 FillItemSlotData가
+			// nullptr을 받아 itemId=0, count=0으로 정상 처리한다.
+			FillItemSlotData(packet.slot, slotIndex, it != slots.end() ? it->second : nullptr);
+		}
+
+		session->PostSend(packet);
+	}
+
+	void SendITEM_PICKUP_ACK(Subject::SharedPtr sender, bool success)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		ITEM_PICKUP_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_PICKUP_ACK);
+		packet.success = success ? 1 : 0;
+
+		session->PostSend(packet);
+	}
+
 	bool SaveUserInfo(const ObjID& targetId)
 	{
 		const auto target = ::GetGameObject<User>(targetId);
