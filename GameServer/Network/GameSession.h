@@ -36,8 +36,9 @@ namespace ServerPacketSizeDetail
 	constexpr size_t s19 = ConstMaxSize(s18, sizeof(SYSTEM_MESSAGE_INF_PACKET));
 	constexpr size_t s20 = ConstMaxSize(s19, sizeof(ITEM_DISCARD_ACK_PACKET));
 	constexpr size_t s21 = ConstMaxSize(s20, sizeof(ITEM_PICKUP_ACK_PACKET));
+	constexpr size_t s22 = ConstMaxSize(s21, sizeof(SUBJECT_EQUIP_CHANGE_NFY_PACKET));
 }
-constexpr size_t MAX_SERVER_PACKET_SIZE = ServerPacketSizeDetail::s21;
+constexpr size_t MAX_SERVER_PACKET_SIZE = ServerPacketSizeDetail::s22;
 constexpr size_t SEND_BATCH_BUFFER_SIZE = 4096;
 static_assert(SEND_BATCH_BUFFER_SIZE >= MAX_SERVER_PACKET_SIZE, "Send batch buffer must fit one server packet.");
 

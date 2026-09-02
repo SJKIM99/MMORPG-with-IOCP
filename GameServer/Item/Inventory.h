@@ -74,6 +74,13 @@ public:
 	// 슬롯 인덱스 -> Item. 빈 슬롯은 키 자체가 존재하지 않는다(부재 = 빈 슬롯).
 	[[nodiscard]] const std::unordered_map<uint16_t, Item::SharedPtr>& GetSlots() const noexcept { return _slots; }
 
+	// 지금 장착 중인 장비의 ItemTableId(없으면 ITEM_TABLE_ID_NONE). 여러 개를
+	// 동시에 장착하는 규칙은 아직 없지만, 만약 그런 상태가 생기더라도 이 함수는
+	// 그중 하나만(순회 중 처음 발견한 것) 돌려준다 — 다른 플레이어에게 "지금 이
+	// 무기를 들고 있다"고 보여주는 화면 표시용이므로 여러 개를 동시에 표시할
+	// 필요가 없다.
+	[[nodiscard]] ItemTableId GetEquippedItemId() const noexcept;
+
 private:
 	// 소유자가 아직 살아있는지(Release 포함 항상 확인) + 지금 이 스레드가 그 소유자의
 	// Zone 스레드가 맞는지(Debug 한정)를 한 곳에서 검사한다. mutating 메서드마다

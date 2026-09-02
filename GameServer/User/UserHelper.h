@@ -2,6 +2,7 @@
 
 class Subject;
 class GameSession;
+class User;
 
 namespace UserHelper
 {
@@ -29,7 +30,14 @@ namespace UserHelper
 	void SendSYSTEM_MESSAGE_INF(Subject::SharedPtr sender, SystemMessageCode code, int32_t param1, int32_t param2);
 	void SendITEM_DISCARD_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success);
 	void SendITEM_PICKUP_ACK(Subject::SharedPtr sender, bool success);
+	void SendSUBJECT_EQUIP_CHANGE_NFY(Subject::SharedPtr sender, const ObjID& targetId, uint16_t itemId);
 	[[nodiscard]] bool SaveUserInfo(const ObjID& targetId);
+
+	// player의 현재 장착 상태(Inventory::GetEquippedItemId())를 다시 계산해서
+	// 주변에 이미 보이는 뷰어들에게 SUBJECT_EQUIP_CHANGE_NFY로 알린다. 장착/탈착/
+	// (장착 중이던 아이템을) 버리기 중 어느 것이든 성공한 뒤 호출하면 된다 —
+	// "무엇이 바뀌었는지"를 따지지 않고 항상 최종 상태를 그대로 알리므로 항상 정확하다.
+	void BroadcastEquipChange(const shared_ptr<User>& player);
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage = PLAYER_OFFENSIVE);
 	void SkillAttack(ObjID& playerId);

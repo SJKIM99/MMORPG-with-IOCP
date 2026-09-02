@@ -136,6 +136,8 @@ namespace Route
 			auto* p = reinterpret_cast<const ITEM_EQUIP_REQ_PACKET*>(packet);
 			const bool success = client->GetInventory()->TryEquip(p->slotIndex);
 			UserHelper::SendITEM_EQUIP_ACK(client, p->slotIndex, success);
+			if (success)
+				UserHelper::BroadcastEquipChange(client);
 			break;
 		}
 		case PacketType::ITEM_UNEQUIP_REQ:
@@ -151,6 +153,8 @@ namespace Route
 			auto* p = reinterpret_cast<const ITEM_UNEQUIP_REQ_PACKET*>(packet);
 			const bool success = client->GetInventory()->TryUnequip(p->slotIndex);
 			UserHelper::SendITEM_UNEQUIP_ACK(client, p->slotIndex, success);
+			if (success)
+				UserHelper::BroadcastEquipChange(client);
 			break;
 		}
 		case PacketType::ITEM_SWAP_REQ:
@@ -181,7 +185,12 @@ namespace Route
 			auto* p = reinterpret_cast<const ITEM_DISCARD_REQ_PACKET*>(packet);
 			Item::SharedPtr extracted = client->GetInventory()->TryExtractItem(p->slotIndex, p->count);
 			if (extracted != nullptr)
+			{
 				ItemHelper::SpawnFieldItem(extracted, client->GetX(), client->GetY());
+				// 방금 버린 게 장착 중이던 아이템이었을 수 있다(TryExtractItem이 이미
+				// 탈착까지 해뒀다) - 항상 현재 상태를 다시 계산해서 알린다.
+				UserHelper::BroadcastEquipChange(client);
+			}
 
 			UserHelper::SendITEM_DISCARD_ACK(client, p->slotIndex, extracted != nullptr);
 			break;

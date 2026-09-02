@@ -140,10 +140,23 @@ namespace UserHelper
 
 		SUBJECT_ADD_NFY_PACKET packet;
 		InitializePacket(packet, PacketType::SUBJECT_ADD_NFY);
-		if (target->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eMonster)
+		const EnumCategory category = target->GetObjID().GetCategory<EnumCategory>();
+		if (category == EnumCategory::eMonster)
 		{
 			const auto monster = static_pointer_cast<Monster>(target);
 			packet.monster_type = static_cast<char>(monster->GetType());
+		}
+		else if (category == EnumCategory::eUser)
+		{
+			// 지금 장착 중인 무기 — 새로 시야에 들어온 플레이어를 처음 그릴 때부터
+			// 바로 보이게 한다. 이후 장착/탈착이 바뀌면 SUBJECT_EQUIP_CHANGE_NFY로 갱신.
+			const auto user = static_pointer_cast<User>(target);
+			packet.itemId = static_cast<uint16_t>(user->GetInventory()->GetEquippedItemId());
+		}
+		else if (category == EnumCategory::eItem)
+		{
+			const auto item = static_pointer_cast<Item>(target);
+			packet.itemId = item->GetItemTableId();
 		}
 		packet.id = target->GetObjID();
 		packet.x = target->GetX();
@@ -151,6 +164,44 @@ namespace UserHelper
 		::strncpy_s(packet.name, NAME_SIZE, target->GetName().c_str(), _TRUNCATE);
 
 		session->PostSend(packet);
+	}
+
+	void SendSUBJECT_EQUIP_CHANGE_NFY(Subject::SharedPtr sender, const ObjID& targetId, uint16_t itemId)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		SUBJECT_EQUIP_CHANGE_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_EQUIP_CHANGE_NFY);
+		packet.id     = targetId;
+		packet.itemId = itemId;
+
+		session->PostSend(packet);
+	}
+
+	void BroadcastEquipChange(const shared_ptr<User>& player)
+	{
+		if (player == nullptr)
+			return;
+
+		const uint16_t itemId = static_cast<uint16_t>(player->GetInventory()->GetEquippedItemId());
+		const ObjID playerId = player->GetObjID();
+
+		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			if (object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
+				return;
+
+			auto viewer = static_pointer_cast<User>(object);
+			auto session = viewer->GetGameSession();
+			if (!session || session->m_state != SOCKET_STATE::ST_INGAME)
+				return;
+			if (!SubjectHelper::CanSee(object, player))
+				return;
+
+			SendSUBJECT_EQUIP_CHANGE_NFY(viewer, playerId, itemId);
+		});
 	}
 
 	void SendSUBJECT_REMOVE_NFY(Subject::SharedPtr sender, const ObjID& targetId)

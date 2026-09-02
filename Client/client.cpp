@@ -4,6 +4,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <array>
 #include <Windows.h>
 #include <chrono>
 #include <algorithm>
@@ -85,6 +86,46 @@ constexpr float WALK_FPS         = 10.f;
 
 enum class AnimState { IDLE, WALK, ATTACK, HURT, DEATH };
 
+// ─── Item resources ───────────────────────────────────────────────────────────
+// itemId -> (표시 이름, 아이콘 파일). GameServer/Item/ItemTable.cpp의 id와
+// 반드시 일치해야 한다 — 서버는 그림 데이터를 보내지 않고 itemId만 보내므로,
+// "그 id가 어떤 아이템인지"는 클라이언트가 이 표에서 직접 안다.
+struct ItemAssetInfo { const char* name; const char* iconFile; };
+const unordered_map<uint16_t, ItemAssetInfo> ITEM_ASSET_TABLE = {
+    { 1, { "Health Potion", "Item_HealthPotion.png" } },
+    { 2, { "Wooden Sword",  "Item_WoodenSword.png"  } },
+    { 3, { "Iron Sword",    "Item_IronSword.png"    } },
+    { 4, { "Steel Sword",   "Item_SteelSword.png"   } },
+    { 5, { "Flame Sword",   "Item_FlameSword.png"   } },
+    { 6, { "Dragon Slayer", "Item_DragonSlayer.png" } },
+};
+unordered_map<uint16_t, sf::Texture*> g_itemIconTex;  // client_initialize()에서 채움
+
+const char* GetItemDisplayName(uint16_t itemId)
+{
+    auto it = ITEM_ASSET_TABLE.find(itemId);
+    return (it != ITEM_ASSET_TABLE.end()) ? it->second.name : "Unknown Item";
+}
+
+sf::Texture* GetItemIconTexture(uint16_t itemId)
+{
+    auto it = g_itemIconTex.find(itemId);
+    return (it != g_itemIconTex.end()) ? it->second : nullptr;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Client-side inventory mirror ────────────────────────────────────────────
+// 서버가 보내는 슬롯 단위 알림(ITEM_LIST_ACK/ITEM_ACQUIRE_INF/장착/교체/버리기
+// ACK)을 그대로 반영한다. itemId == 0이면 빈 슬롯.
+array<ITEM_SLOT_DATA, MAX_INVENTORY_SLOTS> g_inventory{};
+
+void ApplyInventorySlot(const ITEM_SLOT_DATA& slot)
+{
+    if (slot.slotIndex < MAX_INVENTORY_SLOTS)
+        g_inventory[slot.slotIndex] = slot;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 class OBJECT {
 private:
     bool m_showing = false;
@@ -128,6 +169,10 @@ public:
     int level = 0, hp = 0, maxhp = 0, exp = 0;
     char name[20] = {};
     string name_str;
+    // eUser: 지금 장착 중인 무기의 ItemTableId(0=없음). SUBJECT_ADD_NFY로 처음
+    // 채워지고 SUBJECT_EQUIP_CHANGE_NFY로 갱신된다. eItem: 그 필드 아이템 자체의
+    // ItemTableId(어떤 아이콘을 그릴지 결정하는 데 쓰임).
+    uint16_t equippedItemId = 0;
 
     // Constructor for static (non-animated) objects: tiles, monsters, etc.
     OBJECT(sf::Texture& t, int x, int y, int w, int h) {
@@ -401,6 +446,24 @@ public:
             float cy = ry + TILE_WIDTH / 2.f;
             m_sprite.setPosition(cx, cy);
             g_window->draw(m_sprite);
+
+            // 장착 중인 무기 아이콘을 캐릭터 옆(바라보는 반대쪽 손 위치 근처)에
+            // 작게 겹쳐 그린다. 스프라이트 프레임을 직접 합성하는 대신 별도
+            // 아이콘을 붙이는 방식이라 애니메이션 프레임마다 그림을 새로 그릴
+            // 필요가 없다 — 간단하지만 "지금 이 장비를 들고 있다"는 정보 전달에는 충분하다.
+            if (equippedItemId != 0)
+            {
+                if (sf::Texture* iconTex = GetItemIconTexture(equippedItemId))
+                {
+                    constexpr float ICON_DISPLAY = 26.f;
+                    sf::Sprite iconSprite(*iconTex);
+                    const float scale = ICON_DISPLAY / (float)iconTex->getSize().x;
+                    iconSprite.setScale(scale, scale);
+                    const float ox = m_flip_x ? -TILE_WIDTH * 0.42f : TILE_WIDTH * 0.42f - ICON_DISPLAY;
+                    iconSprite.setPosition(cx + ox, cy - ICON_DISPLAY / 2.f);
+                    g_window->draw(iconSprite);
+                }
+            }
 
             float labelY = ry - 14.f;
             if (m_mess_end_time < chrono::system_clock::now()) {
@@ -768,6 +831,19 @@ void client_initialize()
         exit(-1);
     }
 
+    // Item icons — keyed by itemId, must match ITEM_ASSET_TABLE above.
+    for (const auto& [itemId, asset] : ITEM_ASSET_TABLE)
+    {
+        auto* tex = new sf::Texture();
+        if (!tex->loadFromFile(asset.iconFile))
+        {
+            cout << "Failed to load " << asset.iconFile << "\n";
+            delete tex;
+            continue;
+        }
+        g_itemIconTex[itemId] = tex;
+    }
+
     tile1    = OBJECT{ *board1, 0, 0, TILE_WIDTH, TILE_WIDTH };
     tile2    = OBJECT{ *board2, 0, 0, TILE_WIDTH, TILE_WIDTH };
     obstacle = OBJECT{ *wall,   0, 0, TILE_WIDTH, TILE_WIDTH };
@@ -814,6 +890,9 @@ void client_finish()
     delete orc_atk_tex;
     delete orc_hurt_tex;
     delete orc_death_tex;
+    for (auto& [itemId, tex] : g_itemIconTex)
+        delete tex;
+    g_itemIconTex.clear();
     delete g_font;
     exit(0);
     g_font = nullptr;
@@ -857,6 +936,7 @@ void ProcessPacket(char* ptr)
 
         if (id == g_myid) {
             avatar.move(my_packet->x, my_packet->y);
+            avatar.equippedItemId = my_packet->itemId;
             g_cam_x  = (float)(my_packet->x - SCREEN_WIDTH  / 2);
             g_cam_y  = (float)(my_packet->y - SCREEN_HEIGHT / 2);
             g_left_x = (int)g_cam_x;
@@ -870,7 +950,9 @@ void ProcessPacket(char* ptr)
         auto& dest = (g_zoneTransState == ZoneTransState::FADE_OUT)
             ? g_pendingObjects : players;
 
-        if (static_cast<EnumCategory>(id.GetCategory()) == EnumCategory::eUser) {
+        const EnumCategory addedCategory = static_cast<EnumCategory>(id.GetCategory());
+
+        if (addedCategory == EnumCategory::eUser) {
             dest[id] = OBJECT{};
             dest[id].SetAnimTextures(
                 soldier_idle_tex, SOLDIER_IDLE_FRAMES,
@@ -885,7 +967,20 @@ void ProcessPacket(char* ptr)
             dest[id].id = id;
             dest[id].move(my_packet->x, my_packet->y);
             dest[id].set_name(my_packet->name);
+            dest[id].equippedItemId = my_packet->itemId;
             dest[id].show();
+        }
+        else if (addedCategory == EnumCategory::eItem) {
+            // 필드에 떨어진 아이템 — 애니메이션 없는 정적 아이콘 스프라이트.
+            // itemId에 해당하는 아이콘이 아직 없으면(알 수 없는 아이템) 조용히 무시한다.
+            if (sf::Texture* iconTex = GetItemIconTexture(my_packet->itemId))
+            {
+                dest[id] = OBJECT{ *iconTex, 0, 0, (int)iconTex->getSize().x, (int)iconTex->getSize().y };
+                dest[id].id = id;
+                dest[id].move(my_packet->x, my_packet->y);
+                dest[id].set_name(my_packet->name);
+                dest[id].show();
+            }
         }
         else {
             if (my_packet->monster_type == MONSTER_TYPE::PASSIVE) {
@@ -1143,6 +1238,81 @@ void ProcessPacket(char* ptr)
             string label = npc.name_str.empty() ? "??" : npc.name_str;
             PushHistory(label + ": " + safe);
         }
+        break;
+    }
+
+    case static_cast<char>(PacketType::ITEM_LIST_ACK):
+    {
+        ITEM_LIST_ACK_PACKET* packet = reinterpret_cast<ITEM_LIST_ACK_PACKET*>(ptr);
+        g_inventory.fill(ITEM_SLOT_DATA{});
+        for (int i = 0; i < (int)packet->slotCount && i < MAX_INVENTORY_SLOTS; ++i)
+            ApplyInventorySlot(packet->items[i]);
+        break;
+    }
+
+    case static_cast<char>(PacketType::ITEM_EQUIP_ACK):
+    {
+        ITEM_EQUIP_ACK_PACKET* packet = reinterpret_cast<ITEM_EQUIP_ACK_PACKET*>(ptr);
+        if (packet->success) ApplyInventorySlot(packet->slot);
+        break;
+    }
+
+    case static_cast<char>(PacketType::ITEM_UNEQUIP_ACK):
+    {
+        ITEM_UNEQUIP_ACK_PACKET* packet = reinterpret_cast<ITEM_UNEQUIP_ACK_PACKET*>(ptr);
+        if (packet->success) ApplyInventorySlot(packet->slot);
+        break;
+    }
+
+    case static_cast<char>(PacketType::ITEM_SWAP_ACK):
+    {
+        ITEM_SWAP_ACK_PACKET* packet = reinterpret_cast<ITEM_SWAP_ACK_PACKET*>(ptr);
+        if (packet->success)
+        {
+            ApplyInventorySlot(packet->slotA);
+            ApplyInventorySlot(packet->slotB);
+        }
+        break;
+    }
+
+    case static_cast<char>(PacketType::ITEM_DISCARD_ACK):
+    {
+        ITEM_DISCARD_ACK_PACKET* packet = reinterpret_cast<ITEM_DISCARD_ACK_PACKET*>(ptr);
+        if (packet->success) ApplyInventorySlot(packet->slot);
+        break;
+    }
+
+    case static_cast<char>(PacketType::ITEM_PICKUP_ACK):
+        // 실제 슬롯 갱신은 뒤이어 오는 ITEM_ACQUIRE_INF로 처리된다 — 여기선 따로 할 일이 없다.
+        break;
+
+    case static_cast<char>(PacketType::ITEM_ACQUIRE_INF):
+    {
+        ITEM_ACQUIRE_INF_PACKET* packet = reinterpret_cast<ITEM_ACQUIRE_INF_PACKET*>(ptr);
+        ApplyInventorySlot(packet->slot);
+        break;
+    }
+
+    case static_cast<char>(PacketType::SYSTEM_MESSAGE_INF):
+    {
+        SYSTEM_MESSAGE_INF_PACKET* packet = reinterpret_cast<SYSTEM_MESSAGE_INF_PACKET*>(ptr);
+        if (static_cast<SystemMessageCode>(packet->code) == SystemMessageCode::InventoryFull)
+        {
+            char buf[160];
+            sprintf_s(buf, "Inventory full — lost %s x%d",
+                GetItemDisplayName((uint16_t)packet->param1), packet->param2);
+            PushHistory(buf);
+        }
+        break;
+    }
+
+    case static_cast<char>(PacketType::SUBJECT_EQUIP_CHANGE_NFY):
+    {
+        SUBJECT_EQUIP_CHANGE_NFY_PACKET* packet = reinterpret_cast<SUBJECT_EQUIP_CHANGE_NFY_PACKET*>(ptr);
+        if (packet->id == g_myid)
+            avatar.equippedItemId = packet->itemId;
+        else if (players.count(packet->id))
+            players[packet->id].equippedItemId = packet->itemId;
         break;
     }
 
@@ -1462,6 +1632,80 @@ void client_main()
         zoneLabel.setPosition(4.f, 44.f);
         g_window->draw(zoneLabel);
     }
+
+    // ── Inventory HUD (bottom-left grid, 10 columns) ────────────────────────
+    // 클릭식 UI는 아직 없다 — 숫자키 1~9,0으로 슬롯 0~9의 장착/탈착을 토글하고
+    // (client_main 키 입력 처리 참고), Z키로 서 있는 칸의 아이템을 줍는다.
+    {
+        constexpr int   COLS   = 10;
+        constexpr float CELL   = 32.f;
+        constexpr float GAP    = 3.f;
+        constexpr int   ROWS   = (MAX_INVENTORY_SLOTS + COLS - 1) / COLS;
+        const float gridW = COLS * (CELL + GAP) - GAP;
+        const float gridH = ROWS * (CELL + GAP) - GAP;
+        const float baseX = 8.f;
+        const float baseY = WINDOW_HEIGHT - gridH - 8.f;
+
+        for (int i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+        {
+            const int col = i % COLS;
+            const int row = i / COLS;
+            const float x = baseX + col * (CELL + GAP);
+            const float y = baseY + row * (CELL + GAP);
+            const ITEM_SLOT_DATA& slot = g_inventory[i];
+
+            sf::RectangleShape cell(sf::Vector2f(CELL, CELL));
+            cell.setPosition(x, y);
+            cell.setFillColor(sf::Color(20, 20, 28, 190));
+            cell.setOutlineThickness(slot.equipped ? 2.f : 1.f);
+            cell.setOutlineColor(slot.equipped ? sf::Color(255, 200, 60) : sf::Color(90, 90, 105));
+            g_window->draw(cell);
+
+            if (slot.itemId != 0)
+            {
+                if (sf::Texture* iconTex = GetItemIconTexture(slot.itemId))
+                {
+                    sf::Sprite iconSprite(*iconTex);
+                    const float scale = (CELL - 4.f) / (float)iconTex->getSize().x;
+                    iconSprite.setScale(scale, scale);
+                    iconSprite.setPosition(x + 2.f, y + 2.f);
+                    g_window->draw(iconSprite);
+                }
+
+                if (slot.count > 1)
+                {
+                    char cbuf[8];
+                    sprintf_s(cbuf, "%d", slot.count);
+                    sf::Text countText;
+                    countText.setFont(*g_font);
+                    countText.setCharacterSize(11);
+                    countText.setStyle(sf::Text::Bold);
+                    countText.setFillColor(sf::Color::White);
+                    countText.setOutlineColor(sf::Color::Black);
+                    countText.setOutlineThickness(1.f);
+                    countText.setString(cbuf);
+                    const auto cb = countText.getLocalBounds();
+                    countText.setPosition(x + CELL - cb.width - 3.f, y + CELL - cb.height - 6.f);
+                    g_window->draw(countText);
+                }
+            }
+
+            if (i < 10)
+            {
+                // 슬롯 0~8 -> 키 '1'~'9', 슬롯 9 -> 키 '0' (숫자키 배열과 동일한 관례)
+                const char keyChar = (i == 9) ? '0' : static_cast<char>('1' + i);
+                char kbuf[2] = { keyChar, '\0' };
+                sf::Text keyText;
+                keyText.setFont(*g_font);
+                keyText.setCharacterSize(9);
+                keyText.setFillColor(sf::Color(150, 150, 160));
+                keyText.setString(kbuf);
+                keyText.setPosition(x + 2.f, y + 1.f);
+                g_window->draw(keyText);
+            }
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Zone transition overlay — drawn last, covers all game elements
     if (g_zoneTransState != ZoneTransState::NONE)
@@ -1879,6 +2123,47 @@ int main()
                                 sp.size = sizeof(sp);
                                 sp.type = static_cast<char>(PacketType::USER_SKILL_REQ);
                                 send_packet(&sp);
+                            }
+                            break;
+                        }
+                        case sf::Keyboard::Z:
+                        {
+                            // 지금 서 있는 칸에 필드 아이템이 있으면 줍는다(없으면 서버가
+                            // ITEM_PICKUP_ACK{success=false}만 돌려주고 끝난다).
+                            ITEM_PICKUP_REQ_PACKET pp;
+                            pp.size = sizeof(pp);
+                            pp.type = static_cast<char>(PacketType::ITEM_PICKUP_REQ);
+                            send_packet(&pp);
+                            break;
+                        }
+                        case sf::Keyboard::Num1: case sf::Keyboard::Num2:
+                        case sf::Keyboard::Num3: case sf::Keyboard::Num4:
+                        case sf::Keyboard::Num5: case sf::Keyboard::Num6:
+                        case sf::Keyboard::Num7: case sf::Keyboard::Num8:
+                        case sf::Keyboard::Num9: case sf::Keyboard::Num0:
+                        {
+                            // 숫자 1~9,0을 인벤토리 슬롯 0~9에 대응시켜 장착/탈착을
+                            // 토글한다(간단한 데모용 조작 — 클릭식 인벤토리 UI는 아직 없음).
+                            int slot = (int)event.key.code - (int)sf::Keyboard::Num1;
+                            if (event.key.code == sf::Keyboard::Num0) slot = 9;
+                            if (slot >= 0 && slot < MAX_INVENTORY_SLOTS)
+                            {
+                                if (g_inventory[slot].equipped)
+                                {
+                                    ITEM_UNEQUIP_REQ_PACKET up;
+                                    up.size = sizeof(up);
+                                    up.type = static_cast<char>(PacketType::ITEM_UNEQUIP_REQ);
+                                    up.slotIndex = (uint16_t)slot;
+                                    send_packet(&up);
+                                }
+                                else
+                                {
+                                    ITEM_EQUIP_REQ_PACKET eq;
+                                    eq.size = sizeof(eq);
+                                    eq.type = static_cast<char>(PacketType::ITEM_EQUIP_REQ);
+                                    eq.slotIndex = (uint16_t)slot;
+                                    send_packet(&eq);
+                                }
                             }
                             break;
                         }

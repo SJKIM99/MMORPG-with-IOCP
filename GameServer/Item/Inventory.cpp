@@ -220,6 +220,16 @@ Item::SharedPtr Inventory::TryExtractItem(uint16_t slotIndex, uint16_t count) no
 	return extracted;
 }
 
+ItemTableId Inventory::GetEquippedItemId() const noexcept
+{
+	for (const auto& [slotIndex, item] : _slots)
+	{
+		if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item); equipment != nullptr && equipment->IsEquipped())
+			return item->GetItemTableId();
+	}
+	return ITEM_TABLE_ID_NONE;
+}
+
 bool Inventory::TryEquip(uint16_t slotIndex) noexcept
 {
 	AssertOwnedByCurrentZone();

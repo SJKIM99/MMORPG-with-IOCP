@@ -105,6 +105,7 @@ enum class PacketType : uint16_t
 	SUBJECT_RESPAWN_NFY,
 	SUBJECT_ATTACK_NFY,
 	PLAYER_ATTACK_NFY,
+	SUBJECT_EQUIP_CHANGE_NFY,
 
 	// Server → Client(s), INF (Server-only notifications)
 	USER_HEAL_INF,
@@ -325,6 +326,12 @@ struct ITEM_PICKUP_ACK_PACKET
 	uint8_t        success;
 };
 
+// itemId 필드는 카테고리에 따라 의미가 다르다(둘 다 아니면 0/무의미):
+//   eUser  : 지금 장착 중인 무기의 ItemTableId. 0이면 장착한 게 없음.
+//            (Inventory::GetEquippedItemId() 참고 — 아직 "한 번에 하나만
+//            장착" 규칙은 없지만, 화면 표시는 그중 하나만 보여준다.)
+//   eItem  : 그 필드 아이템 자체의 ItemTableId(클라이언트가 어떤 아이콘을
+//            그릴지 결정하는 데 쓴다).
 struct SUBJECT_ADD_NFY_PACKET
 {
 	unsigned short size;
@@ -333,6 +340,19 @@ struct SUBJECT_ADD_NFY_PACKET
 	ObjID	id;
 	short	x, y;
 	char	name[NAME_SIZE];
+	uint16_t itemId;
+};
+
+// 이미 화면에 보이는 플레이어의 장착 상태가 바뀌었을 때(장착/탈착/장착 중이던
+// 아이템을 버림) 주변 뷰어에게 알린다. itemId=0이면 "지금은 아무 것도 장착
+// 안 함" — SUBJECT_ADD_NFY의 itemId 필드와 동일한 의미다. 새로 시야에
+// 들어올 때는 이 패킷이 아니라 SUBJECT_ADD_NFY의 itemId로 이미 전달된다.
+struct SUBJECT_EQUIP_CHANGE_NFY_PACKET
+{
+	unsigned short size;
+	char     type;
+	ObjID    id;
+	uint16_t itemId;
 };
 
 struct SUBJECT_REMOVE_NFY_PACKET
