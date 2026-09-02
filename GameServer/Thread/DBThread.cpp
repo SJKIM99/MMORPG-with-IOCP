@@ -87,6 +87,16 @@ void DBThread::RequestDeleteItem(int playerId, uint16_t slotIndex)
 	Schedule(std::move(event));
 }
 
+void DBThread::RequestSaveTwoItems(int playerId, const DB_ITEM_SLOT_SAVE& a, const DB_ITEM_SLOT_SAVE& b)
+{
+	auto event        = std::make_shared<DB_ITEM_SAVE_TWO_EVENT>();
+	event->wakeupTime = Now();
+	event->playerId   = playerId;
+	event->a          = a;
+	event->b          = b;
+	Schedule(std::move(event));
+}
+
 void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 {
 	ScopedDBConnection scopedConnection(GDBConnectionPool);
@@ -151,6 +161,10 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 	else if (const auto e = std::dynamic_pointer_cast<DB_ITEM_DELETE_EVENT>(event))
 	{
 		connection->DeleteInventorySlot(e->playerId, e->slotIndex);
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_ITEM_SAVE_TWO_EVENT>(event))
+	{
+		connection->SaveTwoInventorySlots(e->playerId, e->a, e->b);
 	}
 }
 

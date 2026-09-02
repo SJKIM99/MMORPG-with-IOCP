@@ -13,6 +13,7 @@
 #include "CoreTLS.h"
 #include "Item/EquipmentItem.h"
 #include "Item/DropTable.h"
+#include "Item/ItemHelper.h"
 
 namespace
 {
@@ -613,28 +614,25 @@ namespace UserHelper
 		return true;
 	}
 
-	// 몬스터 처치 시 드롭 테이블을 굴려 성공하면 인벤토리에 채워 넣고, 결과를
-	// 클라이언트에 알린다. AttackMonster가 이미 attacker를 소유한 Zone 스레드
-	// 위에서 실행 중이므로(패킷 핸들러 -> HandleAttack/SkillAttack -> 여기), 그
-	// 전제 위에서만 성립하는 Inventory::TryAddItem을 안전하게 바로 호출할 수 있다.
-	void HandleItemDrop(const shared_ptr<User>& attacker)
+	// 몬스터 처치 시 드롭 테이블을 굴려 성공하면 몬스터가 죽은 자리에 필드
+	// 아이템으로 떨어뜨린다(더 이상 인벤토리에 즉시 들어가지 않는다) — 처치자가
+	// ItemHelper::kLootPriorityDuration(10초) 동안 독점적으로 주울 수 있고, 그 뒤
+	// 30초가 될 때까지는 누구나 주울 수 있다가 소멸한다. AttackMonster가 이미
+	// attacker를 소유한 Zone 스레드 위에서 실행 중이므로(패킷 핸들러 ->
+	// HandleAttack/SkillAttack -> 여기), 그 전제 위에서만 성립하는
+	// ItemHelper::SpawnFieldItem을 안전하게 바로 호출할 수 있다.
+	void HandleItemDrop(const shared_ptr<User>& attacker, short x, short y)
 	{
 		const DropTable::RollResult roll = DropTable::Roll();
 		if (!roll.hasItem)
 			return;
 
-		std::vector<uint16_t> touchedSlots;
-		if (attacker->GetInventory()->TryAddItem(roll.itemId, roll.count, &touchedSlots))
-		{
-			for (uint16_t slotIndex : touchedSlots)
-				SendITEM_ACQUIRE_INF(attacker, slotIndex);
-		}
-		else
-		{
-			// 인벤토리가 가득 차 드롭을 담지 못했다 — 그냥 버리지 않고 반드시 알린다.
-			SendSYSTEM_MESSAGE_INF(attacker, SystemMessageCode::InventoryFull,
-				static_cast<int32_t>(roll.itemId), static_cast<int32_t>(roll.count));
-		}
+		Item::SharedPtr item = MakeNewItem(roll.itemId, roll.count);
+		// DropTable은 시작 시점에 ItemTable과 대조 검증을 마쳤으므로(DropTable.cpp의
+		// ValidateDropTable) 여기서 실패할 수 없다 — 실패한다면 그 자체가 불변조건 위반이다.
+		ASSERT_CRASH(item != nullptr);
+
+		ItemHelper::SpawnFieldItem(item, x, y, attacker->GetObjID());
 	}
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage)
@@ -652,6 +650,11 @@ namespace UserHelper
 			SendUSER_ATTACK_ACK(attacker, monster, damage);
 			return;
 		}
+
+		// RemoveObject는 섹터 좌표만 지우고 월드 좌표(x,y)는 건드리지 않지만,
+		// "죽은 자리"라는 의도를 코드에서 바로 알아보도록 미리 값으로 떼어둔다.
+		const short deathX = monster->GetX();
+		const short deathY = monster->GetY();
 
 		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
@@ -674,7 +677,7 @@ namespace UserHelper
 		const uint32_t expGain = (monster->GetType() == MONSTER_TYPE::PASSIVE) ? 3 : 5;
 		attacker->GetStat()->AddExp(expGain);
 		SendUSER_STAT_CHANGE_INF(attacker);
-		HandleItemDrop(attacker);
+		HandleItemDrop(attacker, deathX, deathY);
 
 		GTimerThread->ScheduleAfter(monsterId, 10s, TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN);
 	}

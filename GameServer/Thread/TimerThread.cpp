@@ -131,6 +131,13 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 			ItemHelper::HandleDespawn(subjectId);
 		});
 		break;
+
+	case TIMER_EVENT_TYPE::EV_ITEM_LOOT_PRIORITY_EXPIRE:
+		GZoneManager->EnqueueByObject(subjectId, [subjectId]()
+		{
+			ItemHelper::HandleLootPriorityExpire(subjectId);
+		});
+		break;
 	}
 }
 

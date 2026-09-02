@@ -134,10 +134,19 @@ namespace Route
 				break;
 
 			auto* p = reinterpret_cast<const ITEM_EQUIP_REQ_PACKET*>(packet);
-			const bool success = client->GetInventory()->TryEquip(p->slotIndex);
+			// MAX_INVENTORY_SLOTS는 절대 유효한 슬롯 인덱스가 될 수 없으므로
+			// "이전에 장착 중이던 슬롯 없음"의 sentinel로 쓴다.
+			uint16_t previousSlot = MAX_INVENTORY_SLOTS;
+			const bool success = client->GetInventory()->TryEquip(p->slotIndex, &previousSlot);
 			UserHelper::SendITEM_EQUIP_ACK(client, p->slotIndex, success);
 			if (success)
+			{
 				UserHelper::BroadcastEquipChange(client);
+				// 이전에 장착 중이던 다른 장비가 자동으로 탈착됐다면, 그 슬롯도
+				// 바뀌었다고 알려야 클라이언트 인벤토리 UI의 장착 테두리가 갱신된다.
+				if (previousSlot < MAX_INVENTORY_SLOTS)
+					UserHelper::SendITEM_ACQUIRE_INF(client, previousSlot);
+			}
 			break;
 		}
 		case PacketType::ITEM_UNEQUIP_REQ:

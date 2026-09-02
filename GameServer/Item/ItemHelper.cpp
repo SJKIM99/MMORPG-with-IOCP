@@ -18,6 +18,11 @@ namespace
 	// 다른 아이템이 물려받아 헷갈리는" 일도 없다.
 	std::atomic<uint64_t> GNextFieldItemId{ 1 };
 
+	// 몬스터 처치 드롭에서 처치자가 독점적으로 주울 수 있는 시간. 전체 소멸
+	// 시간(30초)보다 짧게 잡아, 처치자가 안 줍고 자리를 뜨면 나머지 시간(20초)
+	// 동안은 다른 사람도 주울 기회가 남도록 한다.
+	constexpr auto kLootPriorityDuration = 10s;
+
 	// GameObjectManager/Sector/ZoneManager 등록을 지우고 주변에 사라졌다고
 	// 알린다 - 습득 성공 시와 자동 소멸 시 둘 다에서 쓰는 공통 정리 로직이다.
 	void RemoveFieldItem(const Item::SharedPtr& item)
@@ -47,13 +52,14 @@ namespace
 
 namespace ItemHelper
 {
-	void SpawnFieldItem(const Item::SharedPtr& item, short x, short y)
+	void SpawnFieldItem(const Item::SharedPtr& item, short x, short y, const ObjID& lootPriorityOwner)
 	{
 		ASSERT_CRASH(item != nullptr);
 		ASSERT_CRASH(item->IsOnGround());  // 호출 전에 Inventory에서 이미 빠져나와 있어야 한다
 
 		const uint64_t instanceId = GNextFieldItemId.fetch_add(1, std::memory_order_relaxed);
 		item->SetObjID(EnumCategory::eItem, instanceId);
+		item->SetLootPriorityOwner(lootPriorityOwner);
 
 		ASSERT_CRASH(GGameObjectManager->Insert(item->GetObjID(), item));
 
@@ -76,6 +82,9 @@ namespace ItemHelper
 		});
 
 		GTimerThread->ScheduleAfter(item->GetObjID(), 30s, TIMER_EVENT_TYPE::EV_ITEM_DESPAWN);
+
+		if (lootPriorityOwner != ObjID::npos)
+			GTimerThread->ScheduleAfter(item->GetObjID(), kLootPriorityDuration, TIMER_EVENT_TYPE::EV_ITEM_LOOT_PRIORITY_EXPIRE);
 	}
 
 	void TryPickupAt(const shared_ptr<User>& player)
@@ -93,7 +102,17 @@ namespace ItemHelper
 			if (object->GetX() != player->GetX() || object->GetY() != player->GetY())
 				return;
 
-			target = static_pointer_cast<Item>(object);
+			auto candidate = static_pointer_cast<Item>(object);
+
+			// 아직 루팅 우선권이 걸려 있고 내가 그 대상이 아니면 "여기 아무 것도
+			// 없다"와 똑같이 취급한다 — 남의 우선권인지 원래 빈 칸인지는 클라이언트가
+			// 구분할 필요가 없다고 보고 단순하게 갔다. (같은 칸에 우선권 없는 다른
+			// 아이템이 더 있다면 계속 찾도록 여기서 return만 하고 target은 안 채운다.)
+			const ObjID& priorityOwner = candidate->GetLootPriorityOwner();
+			if (priorityOwner != ObjID::npos && priorityOwner != player->GetObjID())
+				return;
+
+			target = std::move(candidate);
 		});
 
 		if (target == nullptr)
@@ -130,5 +149,16 @@ namespace ItemHelper
 			return;  // 이미 습득되었음 - 정상 경로, 아무 것도 하지 않는다
 
 		RemoveFieldItem(item);
+	}
+
+	void HandleLootPriorityExpire(const ObjID& itemId)
+	{
+		auto item = ::GetGameObject<Item>(itemId);
+		if (item == nullptr)
+			return;  // 이미 습득되었거나 소멸됨 - 정상 경로, 아무 것도 하지 않는다
+
+		// 클라이언트에 알릴 필요는 없다 — 루팅 우선권은 서버 내부 상태일 뿐,
+		// 필드에 보이는 아이템의 겉모습(SUBJECT_ADD_NFY)은 처음부터 바뀌지 않는다.
+		item->SetLootPriorityOwner(ObjID::npos);
 	}
 }

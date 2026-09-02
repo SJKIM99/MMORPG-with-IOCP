@@ -62,7 +62,15 @@ public:
 	[[nodiscard]] Item::SharedPtr TryExtractItem(uint16_t slotIndex, uint16_t count) noexcept;
 
 	// slotIndex가 비어있거나, 장비 아이템이 아니거나, 이미 장착 중이면 false.
-	[[nodiscard]] bool TryEquip(uint16_t slotIndex) noexcept;
+	// 이 인벤토리에 이미 장착 중이던 "다른" 장비가 있었다면, 그 장비를 탈착하는
+	// 것과 새 장비를 장착하는 것이 하나의 원자적 동작으로 함께 일어난다(둘 다
+	// 장착된 상태나 둘 다 미장착인 상태가 잠깐이라도 관측되지 않는다 — 메모리
+	// 상태는 이 함수 안에서 한 번에 바뀌고, DB 반영도 SaveTwoSlotsToDB로 한
+	// 트랜잭션에 묶는다). outPreviousSlot이 non-null이고 그런 이전 장비가
+	// 있었다면, 그 슬롯 인덱스를 채워준다(호출자가 클라이언트에 별도로 알릴 수
+	// 있도록) — 없었다면 건드리지 않으므로, 호출 전에 MAX_INVENTORY_SLOTS 같은
+	// "슬롯일 수 없는 값"으로 초기화해두고 바뀌었는지 확인해야 한다.
+	[[nodiscard]] bool TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot = nullptr) noexcept;
 
 	// slotIndex가 비어있거나, 장비 아이템이 아니거나, 장착 중이 아니면 false.
 	[[nodiscard]] bool TryUnequip(uint16_t slotIndex) noexcept;
@@ -74,11 +82,9 @@ public:
 	// 슬롯 인덱스 -> Item. 빈 슬롯은 키 자체가 존재하지 않는다(부재 = 빈 슬롯).
 	[[nodiscard]] const std::unordered_map<uint16_t, Item::SharedPtr>& GetSlots() const noexcept { return _slots; }
 
-	// 지금 장착 중인 장비의 ItemTableId(없으면 ITEM_TABLE_ID_NONE). 여러 개를
-	// 동시에 장착하는 규칙은 아직 없지만, 만약 그런 상태가 생기더라도 이 함수는
-	// 그중 하나만(순회 중 처음 발견한 것) 돌려준다 — 다른 플레이어에게 "지금 이
-	// 무기를 들고 있다"고 보여주는 화면 표시용이므로 여러 개를 동시에 표시할
-	// 필요가 없다.
+	// 지금 장착 중인 장비의 ItemTableId(없으면 ITEM_TABLE_ID_NONE). TryEquip이
+	// "새로 장착하면 이전 장비는 자동으로 탈착"을 원자적으로 보장하므로 실제로는
+	// 항상 0개 또는 1개만 장착 상태다 — 순회 중 처음 발견한 것을 돌려준다.
 	[[nodiscard]] ItemTableId GetEquippedItemId() const noexcept;
 
 private:
@@ -91,6 +97,11 @@ private:
 	// "무엇이 바뀌었는지"를 따로 추적하지 않고 최종 상태를 그대로 저장/삭제하므로,
 	// 호출 시점에 그 슬롯이 어떤 이유로 바뀌었는지는 몰라도 항상 정확하다.
 	void SaveSlotToDB(uint16_t slotIndex) const;
+
+	// 두 슬롯의 현재 상태를 하나의 DB 트랜잭션으로 함께 반영한다(SaveSlotToDB를
+	// 두 번 따로 부르면 그 사이에 서버가 죽었을 때 한쪽만 반영된 상태가 영구히
+	// 남을 수 있는 동작들 — 장착 시 이전 장비 자동 탈착, 슬롯 교체 — 에서 쓴다).
+	void SaveTwoSlotsToDB(uint16_t slotIndexA, uint16_t slotIndexB) const;
 
 private:
 	std::weak_ptr<User> _owner;

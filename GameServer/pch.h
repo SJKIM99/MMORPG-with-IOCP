@@ -87,6 +87,18 @@ struct DB_ITEM_INFO
 	bool     _equipped  = false;
 };
 
+// 슬롯 두 개를 한 SQL 트랜잭션으로 함께 반영하기 위한 단위 데이터(DBConnection::
+// SaveTwoInventorySlots가 파라미터로 받으므로 그 선언보다 먼저 와야 한다).
+// hasItem=false면 그 슬롯은 삭제 대상(itemId/count/equipped는 무시된다).
+struct DB_ITEM_SLOT_SAVE
+{
+	uint16_t slotIndex = 0;
+	bool     hasItem   = false;
+	uint16_t itemId    = 0;
+	uint16_t count     = 0;
+	bool     equipped  = false;
+};
+
 // ── Core headers still in use ─────────────────────────────────────────────────
 #include "Core\ThreadManager.h"
 #include "Core\DBConnectionPool.h"
@@ -144,6 +156,18 @@ struct DB_ITEM_DELETE_EVENT : DB_EVENT_BASE
 	uint16_t slotIndex = 0;
 };
 
+// 두 슬롯이 "동시에" 바뀌는 동작(장착 시 이전 장비 자동 탈착, 슬롯 교체)을 위한
+// 이벤트. 두 슬롯을 별도 이벤트 두 개로 나눠 보내면, DB 워커 스레드가 8개라
+// 어느 한쪽만 먼저 반영된 채로 서버가 죽는 순간 DB에는 "두 개 다 장착됨" 같은
+// 불변조건 위반 상태가 영구히 남을 수 있다 — 그래서 반드시 하나의 이벤트,
+// 하나의 트랜잭션으로 묶는다(DBConnection::SaveTwoInventorySlots 참고).
+struct DB_ITEM_SAVE_TWO_EVENT : DB_EVENT_BASE
+{
+	int               playerId = 0;
+	DB_ITEM_SLOT_SAVE a;
+	DB_ITEM_SLOT_SAVE b;
+};
+
 // ── Timer event types (previously in Core/GameServerCore.h) ──────────────────
 enum TIMER_EVENT_TYPE
 {
@@ -154,6 +178,7 @@ enum TIMER_EVENT_TYPE
 	EV_USER_RESPAWN,
 	EV_AGGRO_MOVE,
 	EV_ITEM_DESPAWN,
+	EV_ITEM_LOOT_PRIORITY_EXPIRE,
 };
 
 struct TIMER_EVENT

@@ -43,6 +43,36 @@ void Inventory::SaveSlotToDB(uint16_t slotIndex) const
 	GDBThread->RequestSaveItem(owner->GetPlayerId(), slotIndex, item->GetItemTableId(), item->GetCount(), equipped);
 }
 
+void Inventory::SaveTwoSlotsToDB(uint16_t slotIndexA, uint16_t slotIndexB) const
+{
+	auto owner = _owner.lock();
+	ASSERT_CRASH(owner != nullptr);
+
+	auto describe = [this](uint16_t slotIndex) -> DB_ITEM_SLOT_SAVE
+	{
+		DB_ITEM_SLOT_SAVE save{};
+		save.slotIndex = slotIndex;
+
+		const auto it = _slots.find(slotIndex);
+		if (it == _slots.end())
+		{
+			save.hasItem = false;
+			return save;
+		}
+
+		const Item::SharedPtr& item = it->second;
+		const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
+
+		save.hasItem  = true;
+		save.itemId   = item->GetItemTableId();
+		save.count    = item->GetCount();
+		save.equipped = (equipment != nullptr) && equipment->IsEquipped();
+		return save;
+	};
+
+	GDBThread->RequestSaveTwoItems(owner->GetPlayerId(), describe(slotIndexA), describe(slotIndexB));
+}
+
 void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 {
 	// Attach()가 InitInstance() 안에서 이미 호출된 뒤라 _owner는 항상 유효하다.
@@ -230,7 +260,7 @@ ItemTableId Inventory::GetEquippedItemId() const noexcept
 	return ITEM_TABLE_ID_NONE;
 }
 
-bool Inventory::TryEquip(uint16_t slotIndex) noexcept
+bool Inventory::TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot) noexcept
 {
 	AssertOwnedByCurrentZone();
 
@@ -242,8 +272,40 @@ bool Inventory::TryEquip(uint16_t slotIndex) noexcept
 	if (equipment == nullptr || equipment->IsEquipped())
 		return false;
 
+	// 이 시점 이후로는 실패할 수 없다(단순 플래그 플립 + 비동기 DB enqueue뿐) —
+	// 그래서 TryAddItem처럼 별도 드라이런 단계 없이도 "확인 -> 반영"이 이미 원자적이다.
+	uint16_t previousSlot = 0;
+	bool hadPrevious = false;
+	for (auto& [otherSlotIndex, otherItem] : _slots)
+	{
+		if (otherSlotIndex == slotIndex)
+			continue;
+
+		if (auto otherEquipment = std::dynamic_pointer_cast<EquipmentItem>(otherItem);
+			otherEquipment != nullptr && otherEquipment->IsEquipped())
+		{
+			// 불변조건상(TryEquip이 항상 이렇게 지켜왔으므로) 장착된 건 최대 하나뿐이다.
+			otherEquipment->Unequip();
+			previousSlot = otherSlotIndex;
+			hadPrevious = true;
+			break;
+		}
+	}
+
 	equipment->Equip();
-	SaveSlotToDB(slotIndex);
+
+	// 메모리 상태는 이미 위에서 원자적으로(한 번의 함수 호출 안에서, 다른 스레드가
+	// 끼어들 수 없이) 바뀌었다. DB 반영도 이전 장비가 있었다면 SaveTwoSlotsToDB로
+	// 한 트랜잭션에 묶어서, 서버가 두 저장 사이에 죽어도 "DB에 두 개 다 장착"
+	// 같은 불변조건 위반 상태가 남지 않게 한다.
+	if (hadPrevious)
+		SaveTwoSlotsToDB(previousSlot, slotIndex);
+	else
+		SaveSlotToDB(slotIndex);
+
+	if (hadPrevious && outPreviousSlot != nullptr)
+		*outPreviousSlot = previousSlot;
+
 	return true;
 }
 
@@ -291,7 +353,9 @@ bool Inventory::TrySwapSlots(uint16_t slotIndexA, uint16_t slotIndexB) noexcept
 	else
 		_slots.erase(slotIndexA);
 
-	SaveSlotToDB(slotIndexA);
-	SaveSlotToDB(slotIndexB);
+	// 두 슬롯을 한 트랜잭션으로 묶는다 — 따로 저장하면 그 사이에 서버가 죽었을
+	// 때 DB에 아이템이 두 슬롯 모두에 있거나(중복) 어디에도 없는(유실) 상태가
+	// 남을 수 있다.
+	SaveTwoSlotsToDB(slotIndexA, slotIndexB);
 	return true;
 }

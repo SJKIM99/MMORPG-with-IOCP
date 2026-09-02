@@ -22,6 +22,10 @@ public:
 	void RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped);
 	void RequestDeleteItem(int playerId, uint16_t slotIndex);
 
+	// 두 슬롯을 하나의 트랜잭션으로 함께 반영한다(장착 시 이전 장비 자동 탈착,
+	// 슬롯 교체처럼 "논리적으로 한 동작"인 경우 반드시 이걸 쓴다 — Inventory.cpp 참고).
+	void RequestSaveTwoItems(int playerId, const DB_ITEM_SLOT_SAVE& a, const DB_ITEM_SLOT_SAVE& b);
+
 	void Schedule(shared_ptr<DB_EVENT_BASE> event);
 
 	[[nodiscard]] static Clock::time_point Now() noexcept { return Clock::now(); }

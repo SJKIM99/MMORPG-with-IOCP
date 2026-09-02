@@ -379,3 +379,35 @@ bool DBConnection::DeleteInventorySlot(int playerId, uint16_t slotIndex)
 	if (!BindParam(2, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slot, nullptr)) return false;
 	return Execute(query.c_str());
 }
+
+bool DBConnection::SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& a, const DB_ITEM_SLOT_SAVE& b)
+{
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+
+	SQLINTEGER  pid    = playerId;
+	SQLSMALLINT slotA  = static_cast<SQLSMALLINT>(a.slotIndex);
+	SQLCHAR     hasA   = a.hasItem ? 1 : 0;
+	SQLSMALLINT itemA  = static_cast<SQLSMALLINT>(a.itemId);
+	SQLSMALLINT cntA   = static_cast<SQLSMALLINT>(a.count);
+	SQLCHAR     eqA    = a.equipped ? 1 : 0;
+	SQLSMALLINT slotB  = static_cast<SQLSMALLINT>(b.slotIndex);
+	SQLCHAR     hasB   = b.hasItem ? 1 : 0;
+	SQLSMALLINT itemB  = static_cast<SQLSMALLINT>(b.itemId);
+	SQLSMALLINT cntB   = static_cast<SQLSMALLINT>(b.count);
+	SQLCHAR     eqB    = b.equipped ? 1 : 0;
+
+	if (!BindParam(1,  SQL_C_LONG,  SQL_INTEGER,  0, (SQLPOINTER)&pid,   nullptr)) return false;
+	if (!BindParam(2,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slotA, nullptr)) return false;
+	if (!BindParam(3,  SQL_C_BIT,   SQL_BIT,      0, (SQLPOINTER)&hasA,  nullptr)) return false;
+	if (!BindParam(4,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&itemA, nullptr)) return false;
+	if (!BindParam(5,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&cntA,  nullptr)) return false;
+	if (!BindParam(6,  SQL_C_BIT,   SQL_BIT,      0, (SQLPOINTER)&eqA,   nullptr)) return false;
+	if (!BindParam(7,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slotB, nullptr)) return false;
+	if (!BindParam(8,  SQL_C_BIT,   SQL_BIT,      0, (SQLPOINTER)&hasB,  nullptr)) return false;
+	if (!BindParam(9,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&itemB, nullptr)) return false;
+	if (!BindParam(10, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&cntB,  nullptr)) return false;
+	if (!BindParam(11, SQL_C_BIT,   SQL_BIT,      0, (SQLPOINTER)&eqB,   nullptr)) return false;
+	return Execute(query.c_str());
+}

@@ -50,9 +50,19 @@ public:
 	// 직접 비교하지 않도록 이름 붙인 것뿐 — 별도 필드를 두지 않는다.
 	[[nodiscard]] bool IsOnGround() const noexcept { return GetOwnerID() == ObjID::npos; }
 
+	// 몬스터 처치 드롭 전용: 일정 시간 동안 처치자만 주울 수 있게 하는 "루팅
+	// 우선권" 보유자. GetOwnerID()(=인벤토리 소속 여부)와는 완전히 별개 개념이라
+	// 섞어 쓰지 않는다 — 필드에 떨어진 상태(OwnerID 비어있음)에서도 루팅 우선권은
+	// 따로 걸려 있을 수 있다. 비어있으면(ObjID::npos) 지금 누구나 주울 수 있는
+	// 상태 — 플레이어가 직접 버린 아이템은 처음부터 이 값이 비어있고, 몬스터
+	// 드롭만 ItemHelper::SpawnFieldItem이 잠시 채워뒀다가 타이머로 풀어준다.
+	[[nodiscard]] const ObjID& GetLootPriorityOwner() const noexcept { return m_lootPriorityOwner; }
+	void SetLootPriorityOwner(const ObjID& owner) noexcept { m_lootPriorityOwner = owner; }
+
 private:
 	ItemTableId m_itemTableId = ITEM_TABLE_ID_NONE;
 	uint16_t    m_count       = 0;
+	ObjID       m_lootPriorityOwner = ObjID::npos;
 };
 
 // itemId가 ItemTable에 없으면 nullptr. ItemTableRow::type을 보고 EquipmentItem/

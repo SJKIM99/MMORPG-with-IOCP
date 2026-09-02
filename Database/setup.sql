@@ -465,6 +465,78 @@ BEGIN
 END
 GO
 
+-- ----------------------------------------
+-- SaveTwoInventorySlots
+--   호출: EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+--   파라미터: @playerId,
+--             @slotIndexA, @hasA, @itemIdA, @countA, @equippedA,
+--             @slotIndexB, @hasB, @itemIdB, @countB, @equippedB
+--   반환: 없음
+--
+--   DBConnection::SaveTwoInventorySlots() 에서 호출
+--   두 슬롯이 "논리적으로 하나의 동작"인 경우(장착 시 이전 장비 자동 탈착,
+--   슬롯 교체) 전용. @hasA/@hasB=1이면 그 슬롯을 upsert, 0이면 삭제한다.
+--   SaveInventorySlot/DeleteInventorySlot을 두 번 따로 부르면 그 사이에 서버가
+--   죽었을 때 한쪽만 반영된 상태가 DB에 영구히 남을 수 있다 — 그래서 반드시
+--   하나의 트랜잭션으로 묶는다.
+-- ----------------------------------------
+IF OBJECT_ID(N'SaveTwoInventorySlots', N'P') IS NOT NULL
+    DROP PROCEDURE SaveTwoInventorySlots;
+GO
+
+CREATE PROCEDURE SaveTwoInventorySlots
+    @playerId   INT,
+    @slotIndexA SMALLINT,
+    @hasA       BIT,
+    @itemIdA    SMALLINT,
+    @countA     SMALLINT,
+    @equippedA  BIT,
+    @slotIndexB SMALLINT,
+    @hasB       BIT,
+    @itemIdB    SMALLINT,
+    @countB     SMALLINT,
+    @equippedB  BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRAN;
+
+    IF @hasA = 1
+    BEGIN
+        UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
+        SET itemId = @itemIdA, count = @countA, equipped = @equippedA
+        WHERE playerId = @playerId AND slotIndex = @slotIndexA;
+
+        IF @@ROWCOUNT = 0
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped)
+            VALUES (@playerId, @slotIndexA, @itemIdA, @countA, @equippedA);
+    END
+    ELSE
+    BEGIN
+        DELETE FROM Inventory WHERE playerId = @playerId AND slotIndex = @slotIndexA;
+    END
+
+    IF @hasB = 1
+    BEGIN
+        UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
+        SET itemId = @itemIdB, count = @countB, equipped = @equippedB
+        WHERE playerId = @playerId AND slotIndex = @slotIndexB;
+
+        IF @@ROWCOUNT = 0
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped)
+            VALUES (@playerId, @slotIndexB, @itemIdB, @countB, @equippedB);
+    END
+    ELSE
+    BEGIN
+        DELETE FROM Inventory WHERE playerId = @playerId AND slotIndex = @slotIndexB;
+    END
+
+    COMMIT TRAN;
+END
+GO
+
 -- ============================================================
 -- 5. ODBC System DSN 설정 안내 (64비트 빌드 기준)
 -- ============================================================
