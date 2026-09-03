@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "ConsumableItem.h"
 #include "EquipmentItem.h"
 #include "ItemTable.h"
 #include "Thread/DBThread.h"
@@ -73,6 +74,21 @@ void Inventory::SaveTwoSlotsToDB(uint16_t slotIndexA, uint16_t slotIndexB) const
 	GDBThread->RequestSaveTwoItems(owner->GetPlayerId(), describe(slotIndexA), describe(slotIndexB));
 }
 
+void Inventory::RecomputeOffensive() const
+{
+	auto owner = _owner.lock();
+	ASSERT_CRASH(owner != nullptr);
+
+	uint16_t attackBonus = 0;
+	if (const ItemTableId equippedId = GetEquippedItemId(); equippedId != ITEM_TABLE_ID_NONE)
+	{
+		if (const ItemTableRow* row = ItemTable::Find(equippedId); row != nullptr)
+			attackBonus = row->attackBonus;
+	}
+
+	owner->GetStat()->SetOffensive(PLAYER_OFFENSIVE + attackBonus);
+}
+
 void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 {
 	// Attach()가 InitInstance() 안에서 이미 호출된 뒤라 _owner는 항상 유효하다.
@@ -83,6 +99,12 @@ void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 
 	for (const auto& info : items)
 	{
+		// 범위 밖 슬롯이 DB에 남아있는 경우(과거 버전이 저장해둔 잘못된 행 등)도
+		// 방어적으로 무시한다 — 메모리에 올려봐야 클라이언트에 보이지도 않고
+		// 꺼낼 수도 없는 슬롯이라, 들고 있어봐야 혼란만 만든다.
+		if (!IsValidSlotIndex(info._slotIndex))
+			continue;
+
 		Item::SharedPtr item = MakeNewItem(info._itemId, info._count);
 		if (item == nullptr)
 			continue;  // ItemTable에서 사라진 id — 게임 데이터가 DB보다 최신인 경우, 방어적으로 무시
@@ -97,6 +119,10 @@ void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 
 		_slots[info._slotIndex] = std::move(item);
 	}
+
+	// 로그인 시 이미 장비를 장착한 채로 복원됐을 수 있으므로, User::InitInstance()가
+	// 세팅한 기본 공격력을 여기서 곧바로 실제 상태로 덮어쓴다.
+	RecomputeOffensive();
 }
 
 bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots) noexcept
@@ -189,7 +215,7 @@ bool Inventory::TryRemoveItem(uint16_t slotIndex, uint16_t count) noexcept
 {
 	AssertOwnedByCurrentZone();
 
-	if (count == 0)
+	if (count == 0 || !IsValidSlotIndex(slotIndex))
 		return false;
 
 	const auto it = _slots.find(slotIndex);
@@ -208,7 +234,7 @@ Item::SharedPtr Inventory::TryExtractItem(uint16_t slotIndex, uint16_t count) no
 {
 	AssertOwnedByCurrentZone();
 
-	if (count == 0)
+	if (count == 0 || !IsValidSlotIndex(slotIndex))
 		return nullptr;
 
 	const auto it = _slots.find(slotIndex);
@@ -225,7 +251,14 @@ Item::SharedPtr Inventory::TryExtractItem(uint16_t slotIndex, uint16_t count) no
 		_slots.erase(it);
 
 		if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(extracted))
+		{
+			const bool wasEquipped = equipment->IsEquipped();
 			equipment->Unequip();
+			// 장착 중이던 장비를 버린 경우에만 공격력을 다시 계산한다 — 아니면
+			// 불필요한 재계산(결과는 항상 같지만)을 매번 할 필요가 없다.
+			if (wasEquipped)
+				RecomputeOffensive();
+		}
 	}
 	else
 	{
@@ -264,6 +297,9 @@ bool Inventory::TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot) noexcept
 {
 	AssertOwnedByCurrentZone();
 
+	if (!IsValidSlotIndex(slotIndex))
+		return false;
+
 	const auto it = _slots.find(slotIndex);
 	if (it == _slots.end())
 		return false;
@@ -293,6 +329,7 @@ bool Inventory::TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot) noexcept
 	}
 
 	equipment->Equip();
+	RecomputeOffensive();
 
 	// 메모리 상태는 이미 위에서 원자적으로(한 번의 함수 호출 안에서, 다른 스레드가
 	// 끼어들 수 없이) 바뀌었다. DB 반영도 이전 장비가 있었다면 SaveTwoSlotsToDB로
@@ -313,6 +350,9 @@ bool Inventory::TryUnequip(uint16_t slotIndex) noexcept
 {
 	AssertOwnedByCurrentZone();
 
+	if (!IsValidSlotIndex(slotIndex))
+		return false;
+
 	const auto it = _slots.find(slotIndex);
 	if (it == _slots.end())
 		return false;
@@ -322,6 +362,39 @@ bool Inventory::TryUnequip(uint16_t slotIndex) noexcept
 		return false;
 
 	equipment->Unequip();
+	RecomputeOffensive();
+	SaveSlotToDB(slotIndex);
+	return true;
+}
+
+bool Inventory::TryUseItem(uint16_t slotIndex) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	if (!IsValidSlotIndex(slotIndex))
+		return false;
+
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+		return false;
+
+	const auto consumable = std::dynamic_pointer_cast<ConsumableItem>(it->second);
+	if (consumable == nullptr)
+		return false;
+
+	const ItemTableRow* row = ItemTable::Find(consumable->GetItemTableId());
+	// 슬롯에 실제로 들어있는 아이템이므로 ItemTable에 없을 수 없다 — 없다면
+	// 그 자체가 불변조건 위반이다.
+	ASSERT_CRASH(row != nullptr);
+
+	const auto owner = _owner.lock();
+	if (row->healAmount > 0)
+		owner->GetStat()->HealHp(row->healAmount, PLAYER_MAX_HP);
+
+	consumable->RemoveCount(1);
+	if (consumable->GetCount() == 0)
+		_slots.erase(it);
+
 	SaveSlotToDB(slotIndex);
 	return true;
 }
@@ -329,6 +402,12 @@ bool Inventory::TryUnequip(uint16_t slotIndex) noexcept
 bool Inventory::TrySwapSlots(uint16_t slotIndexA, uint16_t slotIndexB) noexcept
 {
 	AssertOwnedByCurrentZone();
+
+	// 아래에서 _slots[...]로 없던 키를 만들 수 있으므로, 두 인덱스 모두 반드시
+	// 먼저 검증한다 — 하나라도 범위 밖이면 아이템이 접근 불가능한 슬롯으로
+	// 넘어가 영구히 사라진다(Inventory.h의 TrySwapSlots 주석 참고).
+	if (!IsValidSlotIndex(slotIndexA) || !IsValidSlotIndex(slotIndexB))
+		return false;
 
 	if (slotIndexA == slotIndexB)
 		return false;

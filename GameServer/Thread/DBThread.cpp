@@ -33,14 +33,34 @@ bool DBThread::DBEventCompare::operator()(const shared_ptr<DB_EVENT_BASE>& lhs, 
 	return lhs->sequence > rhs->sequence;
 }
 
-void DBThread::Schedule(shared_ptr<DB_EVENT_BASE> event)
+int DBThread::LaneForPlayerId(int playerId) noexcept
 {
+	// playerId는 DB auto-increment라 순차 정수다 — 나머지 연산만으로 레인에
+	// 거의 정확히 균등하게 흩어진다(해시를 따로 돌릴 이유가 없다).
+	return static_cast<int>(static_cast<uint32_t>(playerId) % kLaneCount);
+}
+
+int DBThread::LaneForName(const std::string& name) noexcept
+{
+	return static_cast<int>(std::hash<std::string>{}(name) % kLaneCount);
+}
+
+int DBThread::NextRoundRobinLane() noexcept
+{
+	return static_cast<int>(_roundRobinCursor.fetch_add(1, std::memory_order_relaxed) % kLaneCount);
+}
+
+void DBThread::ScheduleOnLane(shared_ptr<DB_EVENT_BASE> event, int laneIndex)
+{
+	ASSERT_CRASH(laneIndex >= 0 && laneIndex < kLaneCount);
+	Lane& lane = _lanes[laneIndex];
+
 	{
-		std::scoped_lock lock(_lock);
-		event->sequence = _nextSequence++;
-		_events.push(std::move(event));
+		std::scoped_lock lock(lane.lock);
+		event->sequence = _nextSequence.fetch_add(1, std::memory_order_relaxed);
+		lane.events.push(std::move(event));
 	}
-	_cv.notify_one();
+	lane.cv.notify_one();
 }
 
 void DBThread::RequestLogin(const shared_ptr<GameSession>& session, const std::string& name, const std::string& password)
@@ -50,7 +70,9 @@ void DBThread::RequestLogin(const shared_ptr<GameSession>& session, const std::s
 	event->session  = session;
 	event->name     = name;
 	event->password = password;
-	Schedule(std::move(event));
+	// 로그인은 아직 playerId를 모르는 상태에서 하는 조회 작업이고, 순서를 맞춰야
+	// 할 다른 이벤트도 없다 — 부하만 고르게 흩어지도록 라운드로빈으로 보낸다.
+	ScheduleOnLane(std::move(event), NextRoundRobinLane());
 }
 
 void DBThread::RequestSaveUser(const ObjID& subjectId, const DB_USER_INFO& info)
@@ -63,7 +85,11 @@ void DBThread::RequestSaveUser(const ObjID& subjectId, const DB_USER_INFO& info)
 	event->y          = static_cast<short>(info._y);
 	event->level      = info._level;
 	event->exp        = info._exp;
-	Schedule(std::move(event));
+	// Players 테이블은 name이 키다 — 같은 유저의 저장이 순서대로 반영되도록
+	// name 기준으로 레인을 고정한다(인벤토리와 같은 레인일 필요는 없다. 서로
+	// 다른 테이블/행이라 순서를 맞출 대상 자체가 다르다).
+	const int laneIndex = LaneForName(event->name);
+	ScheduleOnLane(std::move(event), laneIndex);
 }
 
 void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped)
@@ -75,7 +101,7 @@ void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId
 	event->itemId     = itemId;
 	event->count      = count;
 	event->equipped   = equipped;
-	Schedule(std::move(event));
+	ScheduleOnLane(std::move(event), LaneForPlayerId(playerId));
 }
 
 void DBThread::RequestDeleteItem(int playerId, uint16_t slotIndex)
@@ -84,7 +110,7 @@ void DBThread::RequestDeleteItem(int playerId, uint16_t slotIndex)
 	event->wakeupTime = Now();
 	event->playerId   = playerId;
 	event->slotIndex  = slotIndex;
-	Schedule(std::move(event));
+	ScheduleOnLane(std::move(event), LaneForPlayerId(playerId));
 }
 
 void DBThread::RequestSaveTwoItems(int playerId, const DB_ITEM_SLOT_SAVE& a, const DB_ITEM_SLOT_SAVE& b)
@@ -94,7 +120,7 @@ void DBThread::RequestSaveTwoItems(int playerId, const DB_ITEM_SLOT_SAVE& a, con
 	event->playerId   = playerId;
 	event->a          = a;
 	event->b          = b;
-	Schedule(std::move(event));
+	ScheduleOnLane(std::move(event), LaneForPlayerId(playerId));
 }
 
 void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
@@ -168,30 +194,36 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 	}
 }
 
-void DBThread::DoDataBase()
+void DBThread::DoDataBase(int laneIndex)
 {
-	std::unique_lock lock(_lock);
+	ASSERT_CRASH(laneIndex >= 0 && laneIndex < kLaneCount);
+	Lane& lane = _lanes[laneIndex];
+
+	std::unique_lock lock(lane.lock);
 
 	while (true) {
-		_cv.wait(lock, [this]() { return !_events.empty(); });
+		lane.cv.wait(lock, [&lane]() { return !lane.events.empty(); });
 
-		while (!_events.empty()) {
-			const auto nextWakeup = _events.top()->wakeupTime;
-			const bool rescheduledEarlierEvent = _cv.wait_until(lock, nextWakeup, [this, nextWakeup]()
+		while (!lane.events.empty()) {
+			const auto nextWakeup = lane.events.top()->wakeupTime;
+			const bool rescheduledEarlierEvent = lane.cv.wait_until(lock, nextWakeup, [&lane, nextWakeup]()
 			{
-				return _events.empty() || _events.top()->wakeupTime < nextWakeup;
+				return lane.events.empty() || lane.events.top()->wakeupTime < nextWakeup;
 			});
 
-			if (_events.empty())
+			if (lane.events.empty())
 				break;
 			if (rescheduledEarlierEvent)
 				continue;
-			if (_events.top()->wakeupTime > Now())
+			if (lane.events.top()->wakeupTime > Now())
 				continue;
 
-			auto event = _events.top();
-			_events.pop();
+			auto event = lane.events.top();
+			lane.events.pop();
 
+			// 이 레인은 스레드 하나가 전담하므로, 여기서 락을 놓고 ODBC 왕복을
+			// 하는 동안 같은 레인의 다음 이벤트를 다른 스레드가 먼저 처리해버리는
+			// 일이 없다 — 그래서 같은 플레이어의 저장이 항상 넣은 순서대로 커밋된다.
 			lock.unlock();
 			ProcessEvent(event);
 			lock.lock();

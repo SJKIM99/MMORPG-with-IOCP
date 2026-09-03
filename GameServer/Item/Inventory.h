@@ -75,8 +75,21 @@ public:
 	// slotIndex가 비어있거나, 장비 아이템이 아니거나, 장착 중이 아니면 false.
 	[[nodiscard]] bool TryUnequip(uint16_t slotIndex) noexcept;
 
+	// slotIndex가 비어있거나 소비 아이템(ConsumableItem)이 아니면 false. 성공하면
+	// 1개를 소모하고(마지막 1개였다면 슬롯이 비워짐) ItemTableRow::healAmount만큼
+	// 소유자 HP를 회복시킨다(HealHp가 PLAYER_MAX_HP로 알아서 clamp함). 쿨타임
+	// 검사는 여기서 하지 않는다 — 다른 액션들(공격/스킬)과 같은 이유로 Route.cpp가
+	// User::m_lastPotionUseTime을 보고 이미 걸러낸 뒤에만 이 함수를 부른다.
+	[[nodiscard]] bool TryUseItem(uint16_t slotIndex) noexcept;
+
 	// 두 슬롯의 내용을 맞바꾼다(한쪽이 비어있으면 이동). 둘 다 비어있거나
 	// 같은 인덱스면 false.
+	//
+	// 다른 메서드들은 "없는 슬롯을 가리키면 조회에 실패해서 알아서 false"가 되지만,
+	// 이 메서드만은 _slots[slotIndexB] 형태로 없던 키를 새로 만들 수 있다 —
+	// 그래서 범위 밖 인덱스를 그대로 받으면 아이템이 MAX_INVENTORY_SLOTS 밖의
+	// "화면에도 안 보이고 다시 꺼낼 수도 없는" 슬롯으로 사라진다(DB에도 그대로
+	// 저장되어 재접속해도 복구되지 않는다). IsValidSlotIndex()로 반드시 막는다.
 	[[nodiscard]] bool TrySwapSlots(uint16_t slotIndexA, uint16_t slotIndexB) noexcept;
 
 	// 슬롯 인덱스 -> Item. 빈 슬롯은 키 자체가 존재하지 않는다(부재 = 빈 슬롯).
@@ -88,6 +101,15 @@ public:
 	[[nodiscard]] ItemTableId GetEquippedItemId() const noexcept;
 
 private:
+	// 슬롯 인덱스는 전부 클라이언트 패킷에서 그대로 넘어온 값이므로 절대 신뢰하지
+	// 않는다. 검증을 Route.cpp가 아니라 여기 두는 이유: Route에 두면 핸들러마다
+	// 같은 검사를 반복해야 하고 하나만 빠뜨려도 그대로 구멍이 되지만, Inventory는
+	// 모든 경로가 반드시 지나가는 길목이라 여기서 한 번 막으면 전부 덮인다.
+	[[nodiscard]] static constexpr bool IsValidSlotIndex(uint16_t slotIndex) noexcept
+	{
+		return slotIndex < MAX_INVENTORY_SLOTS;
+	}
+
 	// 소유자가 아직 살아있는지(Release 포함 항상 확인) + 지금 이 스레드가 그 소유자의
 	// Zone 스레드가 맞는지(Debug 한정)를 한 곳에서 검사한다. mutating 메서드마다
 	// 이 두 조건을 따로 챙기다 실수로 하나를 빠뜨리는 일이 없도록 한 곳에 모았다.
@@ -102,6 +124,13 @@ private:
 	// 두 번 따로 부르면 그 사이에 서버가 죽었을 때 한쪽만 반영된 상태가 영구히
 	// 남을 수 있는 동작들 — 장착 시 이전 장비 자동 탈착, 슬롯 교체 — 에서 쓴다).
 	void SaveTwoSlotsToDB(uint16_t slotIndexA, uint16_t slotIndexB) const;
+
+	// 소유자의 Stat::SetOffensive()를 "기본 공격력 + 지금 장착 중인 장비의
+	// attackBonus"로 다시 계산해 반영한다. 장착 상태가 바뀔 수 있는 모든
+	// 경로(TryEquip/TryUnequip/TryExtractItem으로 장착 아이템을 버릴 때/
+	// LoadFromDB로 로그인 직후 복원할 때) 끝에서 호출한다 — "언제 호출을
+	// 빠뜨렸는지" 따지는 대신, 항상 최종 상태를 그대로 다시 계산하므로 항상 정확하다.
+	void RecomputeOffensive() const;
 
 private:
 	std::weak_ptr<User> _owner;

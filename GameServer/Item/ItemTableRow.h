@@ -48,4 +48,11 @@ struct ItemTableRow
 	uint16_t       maxStack             = 1;   // 1 = 스택 불가
 	char           name[ITEM_NAME_SIZE] = {};
 	ItemGrade      grade                = ItemGrade::eNone;  // 장비가 아니면 항상 eNone
+	// 장착 중일 때 Stat::GetOffensive()에 더해지는 공격력 보너스. 장비가 아니면
+	// 항상 0(의미 없음). 지금 등록된 장비가 전부 무기(검)라 공격력만 두고,
+	// 방어구가 생기면 그때 defenseBonus 같은 필드를 같은 방식으로 추가하면 된다.
+	uint16_t       attackBonus          = 0;
+	// ConsumableItem 사용(ITEM_USE_REQ) 시 회복되는 HP. 소비 아이템이 아니면
+	// 항상 0(의미 없음) — 장비 쪽 attackBonus와 같은 자리(무기가 아니면 0)를 따랐다.
+	uint16_t       healAmount           = 0;
 };

@@ -10,7 +10,7 @@
 #pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "glu32.lib")
 
-#include "Protocol.h"
+#include "C:\Repository\MMORPG-with-IOCP\MMORPG-with-IOCP\GameServer\Protocol.h"
 #include "NetworkModule.h"
 
 // ---------------------------------------------------------------------------

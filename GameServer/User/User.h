@@ -10,9 +10,10 @@ public:
 	using WeakPtr = weak_ptr<User>;
 
 public:
-	uint32_t m_lastMoveTime   = 0;
-	uint32_t m_lastAttackTime = 0;
-	uint32_t m_lastSkillTime  = 0;
+	uint32_t m_lastMoveTime      = 0;
+	uint32_t m_lastAttackTime    = 0;
+	uint32_t m_lastSkillTime     = 0;
+	uint32_t m_lastPotionUseTime = 0;
 
 private:
 	shared_ptr<GameSession> m_session;

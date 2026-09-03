@@ -8,13 +8,19 @@ namespace
 	// 이미 등록된 항목의 id는 절대 바꾸거나 다른 아이템에 재사용하지 않는다.
 	constexpr ItemTableRow kRows[] =
 	{
-		// { id, type, maxStack, name, grade }
-		{ 1, ItemType::eConsumable, 99, "Health Potion", ItemGrade::eNone },
-		{ 2, ItemType::eEquipment,   1, "Wooden Sword",  ItemGrade::eNone },
-		{ 3, ItemType::eEquipment,   1, "Iron Sword",    ItemGrade::eRare },
-		{ 4, ItemType::eEquipment,   1, "Steel Sword",   ItemGrade::eEpic },
-		{ 5, ItemType::eEquipment,   1, "Flame Sword",   ItemGrade::eUnique },
-		{ 6, ItemType::eEquipment,   1, "Dragon Slayer", ItemGrade::eLegendary },
+		// { id, type, maxStack, name, grade, attackBonus, healAmount }
+		// attackBonus는 PLAYER_OFFENSIVE(기본 공격력=10)에 더해진다 — 등급별 드롭
+		// 확률(DropTable.cpp)이 크게 벌어지는 것과 같은 취지로, 공격력 보너스도
+		// 등급이 오를수록 큰 폭으로 뛰게 잡았다. MONSTER_MAX_HP(60) 기준으로
+		// 총 공격력(기본+보너스) 13/16/22/32/50이 각각 약 5/4/3/2/2회 평타로
+		// 몬스터를 잡도록 잡은 값 — Dragon Slayer의 총합(50)은 스킬 고정 데미지
+		// (SKILL_DAMAGE)와 같은 값이 되도록 의도했다.
+		{ 1, ItemType::eConsumable, 99, "Health Potion", ItemGrade::eNone,      0,  30 },
+		{ 2, ItemType::eEquipment,   1, "Wooden Sword",  ItemGrade::eNone,      3,   0 },
+		{ 3, ItemType::eEquipment,   1, "Iron Sword",    ItemGrade::eRare,      6,   0 },
+		{ 4, ItemType::eEquipment,   1, "Steel Sword",   ItemGrade::eEpic,     12,   0 },
+		{ 5, ItemType::eEquipment,   1, "Flame Sword",   ItemGrade::eUnique,   22,   0 },
+		{ 6, ItemType::eEquipment,   1, "Dragon Slayer", ItemGrade::eLegendary, 40,  0 },
 	};
 
 	// id == 0(예약값) 또는 중복 id가 섞여 들어가면 Find()가 엉뚱한 행을

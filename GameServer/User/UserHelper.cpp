@@ -578,6 +578,33 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
+	void SendITEM_USE_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success)
+	{
+		auto session = GetSession(sender);
+		if (!session)
+			return;
+
+		auto user = static_pointer_cast<User>(sender);
+		if (user == nullptr)
+			return;
+
+		ITEM_USE_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_USE_ACK);
+		packet.success = success ? 1 : 0;
+		packet.slot.slotIndex = slotIndex;
+
+		if (success)
+		{
+			const auto& slots = user->GetInventory()->GetSlots();
+			const auto it = slots.find(slotIndex);
+			// it가 end()인 경우(마지막 1개를 소비해 슬롯이 비워짐)도 FillItemSlotData가
+			// nullptr을 받아 itemId=0, count=0으로 정상 처리한다(ITEM_DISCARD_ACK와 같은 관례).
+			FillItemSlotData(packet.slot, slotIndex, it != slots.end() ? it->second : nullptr);
+		}
+
+		session->PostSend(packet);
+	}
+
 	void SendITEM_PICKUP_ACK(Subject::SharedPtr sender, bool success)
 	{
 		auto session = GetSession(sender);
@@ -737,8 +764,11 @@ namespace UserHelper
 			}
 		});
 
+		// 장비 보너스가 반영된 현재 공격력을 그대로 데미지로 쓴다(Inventory::
+		// RecomputeOffensive가 장착/탈착 때마다 이미 최신 상태로 유지해둔다).
+		const int damage = attacker->GetStat()->GetOffensive();
 		for (ObjID& monsterId : monsterTargets)
-			AttackMonster(monsterId, attackerId);
+			AttackMonster(monsterId, attackerId, damage);
 	}
 
 	void BroadcastChat(Subject::SharedPtr sender, const char mess[])

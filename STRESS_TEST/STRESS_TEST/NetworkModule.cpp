@@ -30,7 +30,11 @@ const static int MAX_BUFF_SIZE   = 255;
 
 #pragma comment(lib, "ws2_32.lib")
 
-#include "Protocol.h"
+// 서버/클라이언트/스트레스테스트가 각자 프로토콜을 손으로 복제해서 들고
+// 있으면 하나가 바뀔 때 나머지가 조용히 어긋난다(실제로 이 파일도 PacketType
+// 순서와 SUBJECT_ATTACK_NFY_PACKET 필드가 실제 서버와 어긋나 있었다) — Client와
+// 동일하게 GameServer의 Protocol.h를 절대경로로 직접 참조해 단일 소스로 통일한다.
+#include "C:\Repository\MMORPG-with-IOCP\MMORPG-with-IOCP\GameServer\Protocol.h"
 #include "NetworkModule.h"
 
 HANDLE g_hiocp = INVALID_HANDLE_VALUE;
@@ -677,7 +681,6 @@ void SendAttackPacket(int clientIndex)
     USER_ATTACK_REQ_PACKET pkt{};
     pkt.size        = sizeof(pkt);
     pkt.type        = static_cast<char>(PacketType::USER_ATTACK_REQ);
-    pkt.attack_time = static_cast<uint32_t>(NowMilliseconds());
     pkt.facing      = client.facing_left ? 1 : 0;
     SendPacket(clientIndex, &pkt);
     client.next_attack_time = high_resolution_clock::now() + milliseconds(RandomRange(400, 600));

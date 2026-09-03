@@ -30,6 +30,7 @@ namespace UserHelper
 	void SendSYSTEM_MESSAGE_INF(Subject::SharedPtr sender, SystemMessageCode code, int32_t param1, int32_t param2);
 	void SendITEM_DISCARD_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success);
 	void SendITEM_PICKUP_ACK(Subject::SharedPtr sender, bool success);
+	void SendITEM_USE_ACK(Subject::SharedPtr sender, uint16_t slotIndex, bool success);
 	void SendSUBJECT_EQUIP_CHANGE_NFY(Subject::SharedPtr sender, const ObjID& targetId, uint16_t itemId);
 	[[nodiscard]] bool SaveUserInfo(const ObjID& targetId);
 
@@ -39,7 +40,10 @@ namespace UserHelper
 	// "무엇이 바뀌었는지"를 따지지 않고 항상 최종 상태를 그대로 알리므로 항상 정확하다.
 	void BroadcastEquipChange(const shared_ptr<User>& player);
 
-	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage = PLAYER_OFFENSIVE);
+	// damage는 항상 호출자가 명시한다(기본값 없음) — 평타는 attacker->GetStat()->
+	// GetOffensive()(장비 보너스가 이미 반영된 값)를, 스킬은 SKILL_DAMAGE를 넘긴다.
+	// 과거처럼 기본 인자에 기대면 장비 보너스를 깜빡 빠뜨리기 쉬워서 일부러 없앴다.
+	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage);
 	void SkillAttack(ObjID& playerId);
 	void HandleAttack(Subject::SharedPtr attacker, uint8_t facing);
 	void BroadcastChat(Subject::SharedPtr sender, const char mess[]);

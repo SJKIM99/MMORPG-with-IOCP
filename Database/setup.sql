@@ -479,6 +479,14 @@ GO
 --   SaveInventorySlot/DeleteInventorySlot을 두 번 따로 부르면 그 사이에 서버가
 --   죽었을 때 한쪽만 반영된 상태가 DB에 영구히 남을 수 있다 — 그래서 반드시
 --   하나의 트랜잭션으로 묶는다.
+--
+--   [락 순서 고정] 이 프로시저는 한 트랜잭션 안에서 행 두 개를 잠근다. 호출자가
+--   넘긴 A/B 순서 그대로 잠그면, 같은 두 슬롯을 반대 방향으로 다루는 두 호출
+--   (예: 슬롯 5<->8 교체와 8<->5 교체)이 겹칠 때 서로가 상대의 행을 기다리는
+--   전형적인 락 순서 데드락이 생긴다. 그래서 맨 앞에서 항상 "슬롯 번호가 작은
+--   쪽"이 A가 되도록 정렬한 뒤 진행한다 — 어떤 호출이든 잠그는 순서가 언제나
+--   같아지므로 서로 엇갈려 물릴 수가 없다. (두 블록은 순서와 무관하게 각자
+--   자기 슬롯만 건드리므로, 순서를 바꿔도 결과는 완전히 동일하다.)
 -- ----------------------------------------
 IF OBJECT_ID(N'SaveTwoInventorySlots', N'P') IS NOT NULL
     DROP PROCEDURE SaveTwoInventorySlots;
@@ -500,6 +508,32 @@ AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
+
+    -- 항상 슬롯 번호가 작은 쪽을 A로 만들어, 어떤 호출이든 잠그는 순서를 동일하게
+    -- 맞춘다(위 주석의 [락 순서 고정] 참고). 두 슬롯이 통째로 맞바뀌므로
+    -- has/itemId/count/equipped도 짝을 맞춰 함께 바꿔야 한다.
+    IF @slotIndexA > @slotIndexB
+    BEGIN
+        DECLARE @tmpSlot SMALLINT, @tmpHas BIT, @tmpItemId SMALLINT, @tmpCount SMALLINT, @tmpEquipped BIT;
+
+        SELECT @tmpSlot     = @slotIndexA,
+               @tmpHas      = @hasA,
+               @tmpItemId   = @itemIdA,
+               @tmpCount    = @countA,
+               @tmpEquipped = @equippedA;
+
+        SELECT @slotIndexA = @slotIndexB,
+               @hasA       = @hasB,
+               @itemIdA    = @itemIdB,
+               @countA     = @countB,
+               @equippedA  = @equippedB;
+
+        SELECT @slotIndexB = @tmpSlot,
+               @hasB       = @tmpHas,
+               @itemIdB    = @tmpItemId,
+               @countB     = @tmpCount,
+               @equippedB  = @tmpEquipped;
+    END
 
     BEGIN TRAN;
 

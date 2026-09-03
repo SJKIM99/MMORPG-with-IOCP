@@ -77,7 +77,7 @@ namespace Route
 			const uint32_t now = GetNowTime();
 			if (now > client->m_lastAttackTime + 500)
 			{
-				client->m_lastAttackTime = p->attack_time;
+				client->m_lastAttackTime = now;
 
 				// Sync facing from client so CanAttack uses the correct direction
 				client->SetFacingLeft(p->facing == 1);
@@ -215,6 +215,30 @@ namespace Route
 				break;
 
 			ItemHelper::TryPickupAt(client);
+			break;
+		}
+		case PacketType::ITEM_USE_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr || client->GetStat()->IsDead())
+				break;
+			if (client->IsTransferring())
+				break;
+
+			auto* p = reinterpret_cast<const ITEM_USE_REQ_PACKET*>(packet);
+			const uint32_t now = GetNowTime();
+			if (now > client->m_lastPotionUseTime + 5000)
+			{
+				client->m_lastPotionUseTime = now;
+
+				const bool success = client->GetInventory()->TryUseItem(p->slotIndex);
+				if (success)
+					UserHelper::SendUSER_HEAL_INF(client);
+
+				UserHelper::SendITEM_USE_ACK(client, p->slotIndex, success);
+			}
 			break;
 		}
 		case PacketType::CS_CHAT:

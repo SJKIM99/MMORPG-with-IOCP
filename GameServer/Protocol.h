@@ -45,7 +45,7 @@ constexpr int WAKE_RANGE            = 3;   // aggro monster wakes up when player
 constexpr int ZONE_BOUNDARY_MARGIN  = 3;   // aggro monster turns back when within this many tiles of zone boundary
 
 constexpr int PLAYER_MAX_HP  = 100;
-constexpr int MONSTER_MAX_HP = 50;
+constexpr int MONSTER_MAX_HP = 60;
 
 constexpr int PLAYER_OFFENSIVE  = 10;
 constexpr int SKILL_DAMAGE      = 50;
@@ -85,6 +85,7 @@ enum class PacketType : uint16_t
 	ITEM_SWAP_REQ,
 	ITEM_DISCARD_REQ,
 	ITEM_PICKUP_REQ,
+	ITEM_USE_REQ,
 
 	// Server → Client, unicast ACK (response to requester only)
 	USER_LOGIN_ACK,
@@ -96,6 +97,7 @@ enum class PacketType : uint16_t
 	ITEM_SWAP_ACK,
 	ITEM_DISCARD_ACK,
 	ITEM_PICKUP_ACK,
+	ITEM_USE_ACK,
 
 	// Server → Client(s), NFY (server-initiated notification / broadcast)
 	SUBJECT_ADD_NFY,
@@ -135,11 +137,16 @@ struct USER_MOVE_REQ_PACKET
 	uint32_t		move_time;
 };
 
+// 쿨타임 판정에 필요한 시간은 서버가 직접(GetNowTime()) 재므로, 클라이언트가
+// 시간값을 보낼 필요도, 서버가 그 값을 믿을 이유도 없다 — 과거엔 attack_time을
+// 클라이언트에서 받아 그대로 m_lastAttackTime에 저장했는데, 조작된 클라이언트가
+// 항상 작은 값(0 등)을 보내면 "now > lastAttackTime + 500" 검사가 항상 참이 되어
+// 공격 쿨타임이 사실상 무력화되는 문제가 있었다. USER_MOVE_REQ/USER_SKILL_REQ/
+// ITEM_USE_REQ처럼 서버 자신의 GetNowTime()만 신뢰하도록 통일한다.
 struct USER_ATTACK_REQ_PACKET
 {
 	unsigned short	size;
 	char			type;
-	uint32_t		attack_time;
 	uint8_t			facing;   // 0 = right, 1 = left
 };
 
@@ -205,6 +212,15 @@ struct ITEM_PICKUP_REQ_PACKET
 	char           type;
 };
 
+// 소비 아이템 사용(포션 등). slotIndex가 장비/빈 슬롯을 가리키면 서버는
+// Inventory::TryUseItem에서 그냥 실패로 처리한다(ITEM_EQUIP_REQ와 같은 관례).
+struct ITEM_USE_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       slotIndex;
+};
+
 constexpr size_t ProtocolConstMaxSize(size_t lhs, size_t rhs)
 {
 	return (lhs > rhs) ? lhs : rhs;
@@ -235,8 +251,9 @@ namespace ClientPacketSizeDetail
 	constexpr size_t s10 = ProtocolConstMaxSize(s09, sizeof(ITEM_SWAP_REQ_PACKET));
 	constexpr size_t s11 = ProtocolConstMaxSize(s10, sizeof(ITEM_DISCARD_REQ_PACKET));
 	constexpr size_t s12 = ProtocolConstMaxSize(s11, sizeof(ITEM_PICKUP_REQ_PACKET));
+	constexpr size_t s13 = ProtocolConstMaxSize(s12, sizeof(ITEM_USE_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetail::s12;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetail::s13;
 
 struct USER_LOGIN_ACK_PACKET
 {
@@ -324,6 +341,19 @@ struct ITEM_PICKUP_ACK_PACKET
 	unsigned short size;
 	char           type;
 	uint8_t        success;
+};
+
+// success=0이어도 slot.slotIndex는 항상 요청받은 값 그대로다(다른 ACK와 같은
+// 관례). 성공 시 마지막 1개를 소비해 슬롯이 완전히 비워졌으면 itemId=0,
+// count=0으로 온다. 실제로 회복된 HP는 이 패킷이 아니라 뒤이어 오는
+// USER_HEAL_INF로 전달된다 — "이 요청이 뭘 했는지"(슬롯 변화)와 "이 플레이어의
+// HP가 바뀌었다"(이미 있던 공용 알림)를 굳이 한 패킷에 합치지 않는다.
+struct ITEM_USE_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        success;
+	ITEM_SLOT_DATA slot;
 };
 
 // itemId 필드는 카테고리에 따라 의미가 다르다(둘 다 아니면 0/무의미):

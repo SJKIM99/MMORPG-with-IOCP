@@ -90,14 +90,16 @@ enum class AnimState { IDLE, WALK, ATTACK, HURT, DEATH };
 // itemId -> (표시 이름, 아이콘 파일). GameServer/Item/ItemTable.cpp의 id와
 // 반드시 일치해야 한다 — 서버는 그림 데이터를 보내지 않고 itemId만 보내므로,
 // "그 id가 어떤 아이템인지"는 클라이언트가 이 표에서 직접 안다.
-struct ItemAssetInfo { const char* name; const char* iconFile; };
+// consumable: true면 숫자키/클릭 시 장착 토글 대신 ITEM_USE_REQ를 보낸다
+// (GameServer/Item/ItemTable.cpp의 ItemType::eConsumable과 반드시 일치해야 함).
+struct ItemAssetInfo { const char* name; const char* iconFile; bool consumable; };
 const unordered_map<uint16_t, ItemAssetInfo> ITEM_ASSET_TABLE = {
-    { 1, { "Health Potion", "Item_HealthPotion.png" } },
-    { 2, { "Wooden Sword",  "Item_WoodenSword.png"  } },
-    { 3, { "Iron Sword",    "Item_IronSword.png"    } },
-    { 4, { "Steel Sword",   "Item_SteelSword.png"   } },
-    { 5, { "Flame Sword",   "Item_FlameSword.png"   } },
-    { 6, { "Dragon Slayer", "Item_DragonSlayer.png" } },
+    { 1, { "Health Potion", "Item_HealthPotion.png", true  } },
+    { 2, { "Wooden Sword",  "Item_WoodenSword.png",  false } },
+    { 3, { "Iron Sword",    "Item_IronSword.png",    false } },
+    { 4, { "Steel Sword",   "Item_SteelSword.png",   false } },
+    { 5, { "Flame Sword",   "Item_FlameSword.png",   false } },
+    { 6, { "Dragon Slayer", "Item_DragonSlayer.png", false } },
 };
 unordered_map<uint16_t, sf::Texture*> g_itemIconTex;  // client_initialize()에서 채움
 
@@ -112,6 +114,12 @@ sf::Texture* GetItemIconTexture(uint16_t itemId)
     auto it = g_itemIconTex.find(itemId);
     return (it != g_itemIconTex.end()) ? it->second : nullptr;
 }
+
+bool IsConsumableItem(uint16_t itemId)
+{
+    auto it = ITEM_ASSET_TABLE.find(itemId);
+    return (it != ITEM_ASSET_TABLE.end()) && it->second.consumable;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Client-side inventory mirror ────────────────────────────────────────────
@@ -123,6 +131,76 @@ void ApplyInventorySlot(const ITEM_SLOT_DATA& slot)
 {
     if (slot.slotIndex < MAX_INVENTORY_SLOTS)
         g_inventory[slot.slotIndex] = slot;
+}
+
+void send_packet(void* packet);  // 정의는 아래(client_main 근처)에 있다
+
+// 숫자키 입력과 인벤토리 HUD 클릭이 공유하는 슬롯 활성화 로직 — 빈 슬롯은
+// 무시하고, 소비 아이템이면 사용(ITEM_USE_REQ), 아니면 장착/탈착을 토글한다.
+void ActivateInventorySlot(int slot)
+{
+    if (slot < 0 || slot >= MAX_INVENTORY_SLOTS)
+        return;
+
+    const ITEM_SLOT_DATA& data = g_inventory[slot];
+    if (data.itemId == 0)
+        return;
+
+    if (IsConsumableItem(data.itemId))
+    {
+        ITEM_USE_REQ_PACKET up;
+        up.size = sizeof(up);
+        up.type = static_cast<char>(PacketType::ITEM_USE_REQ);
+        up.slotIndex = (uint16_t)slot;
+        send_packet(&up);
+    }
+    else if (data.equipped)
+    {
+        ITEM_UNEQUIP_REQ_PACKET up;
+        up.size = sizeof(up);
+        up.type = static_cast<char>(PacketType::ITEM_UNEQUIP_REQ);
+        up.slotIndex = (uint16_t)slot;
+        send_packet(&up);
+    }
+    else
+    {
+        ITEM_EQUIP_REQ_PACKET eq;
+        eq.size = sizeof(eq);
+        eq.type = static_cast<char>(PacketType::ITEM_EQUIP_REQ);
+        eq.slotIndex = (uint16_t)slot;
+        send_packet(&eq);
+    }
+}
+
+// 인벤토리 HUD 그리드(client_main의 렌더 블록)와 반드시 같은 좌표 상수를 써야
+// 한다 — 그리기 쪽 값이 바뀌면 이 히트테스트도 같이 맞춰야 한다.
+int HitTestInventorySlot(float mx, float my)
+{
+    constexpr int   COLS = 10;
+    constexpr float CELL = 32.f;
+    constexpr float GAP  = 3.f;
+    constexpr int   ROWS = (MAX_INVENTORY_SLOTS + COLS - 1) / COLS;
+    const float gridH = ROWS * (CELL + GAP) - GAP;
+    const float baseX = 8.f;
+    const float baseY = WINDOW_HEIGHT - gridH - 8.f;
+
+    if (mx < baseX || my < baseY)
+        return -1;
+
+    const int col = (int)((mx - baseX) / (CELL + GAP));
+    const int row = (int)((my - baseY) / (CELL + GAP));
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS)
+        return -1;
+
+    // GAP 간격(셀 사이 여백)을 클릭한 경우까지 셀 안으로 잘못 인식하지 않도록,
+    // 셀 영역 내부인지 다시 한번 확인한다.
+    const float cellLocalX = mx - (baseX + col * (CELL + GAP));
+    const float cellLocalY = my - (baseY + row * (CELL + GAP));
+    if (cellLocalX > CELL || cellLocalY > CELL)
+        return -1;
+
+    const int slot = row * COLS + col;
+    return (slot < MAX_INVENTORY_SLOTS) ? slot : -1;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1286,6 +1364,14 @@ void ProcessPacket(char* ptr)
         // 실제 슬롯 갱신은 뒤이어 오는 ITEM_ACQUIRE_INF로 처리된다 — 여기선 따로 할 일이 없다.
         break;
 
+    case static_cast<char>(PacketType::ITEM_USE_ACK):
+    {
+        ITEM_USE_ACK_PACKET* packet = reinterpret_cast<ITEM_USE_ACK_PACKET*>(ptr);
+        if (packet->success) ApplyInventorySlot(packet->slot);
+        // 회복된 HP 자체는 뒤이어 오는 USER_HEAL_INF로 avatar.hp에 반영된다.
+        break;
+    }
+
     case static_cast<char>(PacketType::ITEM_ACQUIRE_INF):
     {
         ITEM_ACQUIRE_INF_PACKET* packet = reinterpret_cast<ITEM_ACQUIRE_INF_PACKET*>(ptr);
@@ -2085,6 +2171,12 @@ int main()
                         const float my = (float)event.mouseButton.y;
                         if (mx >= EBX && mx <= EBX+EBW && my >= EBY && my <= EBY+EBH)
                             window.close();
+
+                        // Inventory HUD click — 숫자키와 같은 동작(사용/장착 토글)을
+                        // 마우스로도 할 수 있게 한다.
+                        const int clickedSlot = HitTestInventorySlot(mx, my);
+                        if (clickedSlot >= 0)
+                            ActivateInventorySlot(clickedSlot);
                     }
                     if (event.type == sf::Event::KeyPressed)
                     {
@@ -2105,9 +2197,6 @@ int main()
                                 USER_ATTACK_REQ_PACKET ap;
                                 ap.size        = sizeof(ap);
                                 ap.type        = static_cast<char>(PacketType::USER_ATTACK_REQ);
-                                ap.attack_time = static_cast<unsigned>(
-                                    chrono::duration_cast<chrono::milliseconds>(
-                                        chrono::steady_clock::now().time_since_epoch()).count());
                                 ap.facing      = avatar.IsFacingLeft() ? 1u : 0u;
                                 send_packet(&ap);
                             }
@@ -2142,29 +2231,11 @@ int main()
                         case sf::Keyboard::Num7: case sf::Keyboard::Num8:
                         case sf::Keyboard::Num9: case sf::Keyboard::Num0:
                         {
-                            // 숫자 1~9,0을 인벤토리 슬롯 0~9에 대응시켜 장착/탈착을
-                            // 토글한다(간단한 데모용 조작 — 클릭식 인벤토리 UI는 아직 없음).
+                            // 숫자 1~9,0을 인벤토리 슬롯 0~9에 대응시킨다 — 소비 아이템이면
+                            // 사용, 장비면 장착/탈착 토글(마우스 클릭과 동일한 로직 공유).
                             int slot = (int)event.key.code - (int)sf::Keyboard::Num1;
                             if (event.key.code == sf::Keyboard::Num0) slot = 9;
-                            if (slot >= 0 && slot < MAX_INVENTORY_SLOTS)
-                            {
-                                if (g_inventory[slot].equipped)
-                                {
-                                    ITEM_UNEQUIP_REQ_PACKET up;
-                                    up.size = sizeof(up);
-                                    up.type = static_cast<char>(PacketType::ITEM_UNEQUIP_REQ);
-                                    up.slotIndex = (uint16_t)slot;
-                                    send_packet(&up);
-                                }
-                                else
-                                {
-                                    ITEM_EQUIP_REQ_PACKET eq;
-                                    eq.size = sizeof(eq);
-                                    eq.type = static_cast<char>(PacketType::ITEM_EQUIP_REQ);
-                                    eq.slotIndex = (uint16_t)slot;
-                                    send_packet(&eq);
-                                }
-                            }
+                            ActivateInventorySlot(slot);
                             break;
                         }
                         default: break;
