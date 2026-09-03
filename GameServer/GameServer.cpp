@@ -107,8 +107,8 @@ int main()
 	// 몬스터 초기화는 각 Zone 스레드의 Zone::Run() 안에서 GSector 설정 후 수행된다.
 	// (메인 스레드에서 호출하면 GSector=nullptr로 크래시 발생)
 
-	//DB풀 초기화 — DB 레인(스레드) 하나가 동시에 커넥션 하나를 쓰므로 같은 수로 맞춘다.
-	GDBConnectionPool->Connect(DBThread::kLaneCount);
+	//DB풀 초기화 — DB 샤드(스레드) 하나가 동시에 커넥션 하나를 쓰므로 같은 수로 맞춘다.
+	GDBConnectionPool->Connect(DBThread::kShardCount);
 	//Sector 생성
 	
 	//작업자 스레드 생성
@@ -145,14 +145,14 @@ int main()
 		});
 	}
 
-	//DB스레드 생성 — 스레드 하나가 레인 하나를 전담한다(DBThread.h 참고).
-	// 레인마다 담당 스레드가 정확히 하나씩 있어야 하므로 kLaneCount를 그대로 쓴다.
-	for (int laneIndex = 0; laneIndex < DBThread::kLaneCount; ++laneIndex)
+	//DB스레드 생성 — 스레드 하나가 샤드 하나를 전담한다(DBThread.h 참고).
+	// 샤드마다 담당 스레드가 정확히 하나씩 있어야 하므로 kShardCount를 그대로 쓴다.
+	for (int shardIndex = 0; shardIndex < DBThread::kShardCount; ++shardIndex)
 	{
-		GThreadManager->Launch([laneIndex]()
+		GThreadManager->Launch([shardIndex]()
 		{
 			GThreadManager->InitTLS();
-			GDBThread->DoDataBase(laneIndex);
+			GDBThread->DoDataBase(shardIndex);
 			GThreadManager->DestroyTLS();
 		});
 	}
