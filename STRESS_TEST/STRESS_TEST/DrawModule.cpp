@@ -218,6 +218,9 @@ static int DrawGLScene()
     const TestPhase phase   = current_phase.load();
     const float avgMonsters = g_avg_visible_monsters.load();
     const float avgPlayers  = g_avg_visible_players.load();
+    const float avgItems    = g_avg_visible_items.load();
+    const int   itemsPicked = g_items_picked.load(std::memory_order_relaxed);
+    const int   potionsUsed = g_potions_used.load(std::memory_order_relaxed);
 
     int zoneCounts[ZONE_COUNT];
     for (int z = 0; z < ZONE_COUNT; ++z)
@@ -329,6 +332,15 @@ static int DrawGLScene()
     DrawText2D(LX, sy, "Known   : %d", monsterKnown);  sy -= LH;
     glColor3f(1.0f, 0.38f, 0.38f);
     DrawText2D(LX, sy, "Dead    : %d", monsterDead);   sy -= LH * 1.8f;
+
+    // -- ITEMS --
+    SectionHeader("[ ITEMS ]");
+    glColor3f(1.0f, 0.85f, 0.35f);
+    DrawText2D(LX, sy, "OnField : %.2f", avgItems);    sy -= LH;
+    glColor3f(0.2f, 1.0f, 0.45f);
+    DrawText2D(LX, sy, "Picked  : %d", itemsPicked);   sy -= LH;
+    glColor3f(1.0f, 0.55f, 0.75f);
+    DrawText2D(LX, sy, "Potions : %d", potionsUsed);   sy -= LH * 1.8f;
 
     // -- ZONES (4x4 player count grid) --
     SectionHeader("[ ZONES ]");

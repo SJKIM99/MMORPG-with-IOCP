@@ -24,6 +24,11 @@ extern int   g_history_index;
 
 extern std::atomic<float> g_avg_visible_monsters;
 extern std::atomic<float> g_avg_visible_players;
+extern std::atomic<float> g_avg_visible_items;
+
+// Inventory activity (bots pick up drops, drink potions, equip weapons)
+extern std::atomic_int g_items_picked;
+extern std::atomic_int g_potions_used;
 
 // Zone player counts (index = zone_id 0..15, 4x4 grid)
 extern std::atomic<int> g_zone_player_count[ZONE_COUNT];
