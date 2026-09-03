@@ -72,3 +72,6 @@ Desktop.ini
 # [ Claude Code ]
 # 개인용 로컬 설정(권한 등) - 커밋 대상 아님
 .claude/settings.local.json
+# 크래시 덤프/로그 — 실행 중 생성되는 디버그 산출물
+crash.dmp
+crash.log

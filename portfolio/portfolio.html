@@ -210,7 +210,7 @@
   <div class="meta">
     <div><b>개발 기간</b>3개월 · 1인 개발</div>
     <div><b>언어 / 환경</b>C++20 · Windows · MSSQL</div>
-    <div><b>동시 접속</b>16,000 (자체 부하 테스트)</div>
+    <div><b>동시 접속</b>22,000 (자체 부하 테스트)</div>
     <div><b>Repository</b>github.com/SJKIM99/MMORPG-with-IOCP</div>
   </div>
 </div>
@@ -224,19 +224,21 @@
       <div class="row"><span class="n">01</span><span class="t">프로젝트 개요</span><span class="g">성과</span></div>
       <div class="row"><span class="n">02</span><span class="t">전체 아키텍처</span><span class="g">구조</span></div>
       <div class="row"><span class="n">03</span><span class="t">IOCP 네트워크 계층</span><span class="g">구조</span></div>
-      <div class="row"><span class="n">04</span><span class="t">Zone 분산 — 처리량 4배</span><span class="g">성능</span></div>
+      <div class="row"><span class="n">04</span><span class="t">Zone 분산 — 처리량 7배</span><span class="g">성능</span></div>
       <div class="row"><span class="n">05</span><span class="t">Sector 시야 관리</span><span class="g">성능</span></div>
       <div class="row"><span class="n">06</span><span class="t">Lock-free 메모리 풀</span><span class="g">성능</span></div>
       <div class="row"><span class="n">07</span><span class="t">부하 테스트</span><span class="g">검증</span></div>
+      <div class="row hi"><span class="n">08</span><span class="t">인벤토리 — 설계 원칙</span><span class="g">신규</span></div>
     </div>
     <div>
-      <div class="row hi"><span class="n">08</span><span class="t">인벤토리 — 설계 원칙</span><span class="g">신규</span></div>
       <div class="row hi"><span class="n">09</span><span class="t">인벤토리 — 원자성 보장</span><span class="g">신규</span></div>
       <div class="row hi"><span class="n">10</span><span class="t">DB 쓰기 순서 — 레인 샤딩</span><span class="g">신규 · 핵심</span></div>
       <div class="row hi"><span class="n">11</span><span class="t">필드 드롭과 루팅 우선권</span><span class="g">신규</span></div>
       <div class="row hi"><span class="n">12</span><span class="t">코드 리뷰로 찾아낸 결함</span><span class="g">신규</span></div>
       <div class="row hi"><span class="n">13</span><span class="t">검증 방식 — Negative Control</span><span class="g">신규</span></div>
-      <div class="row"><span class="n">14</span><span class="t">코드 구조 · 회고</span><span class="g">정리</span></div>
+      <div class="row"><span class="n">14</span><span class="t">코드 구조</span><span class="g">정리</span></div>
+      <div class="row"><span class="n">15</span><span class="t">시연 영상</span><span class="g">데모</span></div>
+      <div class="row"><span class="n">16</span><span class="t">회고</span><span class="g">정리</span></div>
     </div>
   </div>
   <div class="foot"><span>MMORPG-with-IOCP</span><span>02</span></div>
@@ -253,8 +255,8 @@
   </p>
 
   <div class="grid g3" style="margin-bottom:26px">
-    <div class="stat"><div class="v">16,000</div><div class="l">동시 접속 (자체 부하 테스트)</div></div>
-    <div class="stat"><div class="v">4<small>배</small></div><div class="l">Zone 분산 적용 후 처리량</div></div>
+    <div class="stat"><div class="v">22,000</div><div class="l">동시 접속 (자체 부하 테스트)</div></div>
+    <div class="stat"><div class="v">16</div><div class="l">병렬 처리되는 Zone 스레드</div></div>
     <div class="stat"><div class="v">0</div><div class="l">게임 로직의 락 (설계상 제거)</div></div>
   </div>
 
@@ -371,7 +373,7 @@
 
 <!-- ══════════════ 6. ZONE ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">04</span><h2>Zone 분산 — 처리량 4배</h2></div>
+  <div class="ph"><span class="num">04</span><h2>Zone 분산 — 처리량 7배</h2></div>
   <div class="rule"></div>
   <p class="lede">
     네트워크는 병렬인데 <b>게임 로직이 스레드 하나에 묶여 있어</b> 4,000명에서 한계에 부딪혔습니다.
@@ -393,7 +395,7 @@
       <p style="font-size:15px;line-height:1.68;color:var(--body)">
         <b style="color:var(--ink)">월드를 16 Zone으로 분할</b>, Zone마다 전용 스레드<br>
         → 서로 다른 Zone은 완전히 병렬<br>
-        → <span class="grn">16,000명까지 안정적으로 처리</span>
+        → <span class="grn">30,000명까지 안정적으로 처리</span>
       </p>
     </div>
   </div>
@@ -516,7 +518,7 @@
         <div class="lbl">단일 로직 스레드</div>
       </div>
       <div class="bar">
-        <div class="cap">16,000</div>
+        <div class="cap">30,000</div>
         <div class="fill" style="height:232px;background:linear-gradient(180deg,#3b82f6,#1d4ed8)"></div>
         <div class="lbl">Zone 16개 분산</div>
       </div>
@@ -533,10 +535,15 @@
       </div>
       <div class="card soft">
         <h3>측정 방식</h3>
-        <p>
+        <p style="margin-bottom:11px">
           이동 요청부터 서버 반영 통지까지의 왕복 지연을 상시 측정합니다.
           지연이 기준을 넘으면 접속을 줄이고, 회복되면 다시 늘려
           <b>안정적으로 유지되는 최대 접속 수</b>를 찾습니다.
+        </p>
+        <p style="padding-top:11px;border-top:1px solid #dfe5ed">
+          위 <b>30,000</b>은 Zone 분산까지 적용한 시점의 수치이고,
+          이후 <b>인벤토리 기능을 얹고 다시 측정한 값은 22,000</b>입니다.
+          아이템 획득·사용마다 DB 쓰기가 추가된 만큼의 대가입니다.
         </p>
       </div>
     </div>
@@ -560,7 +567,7 @@
   <div class="ph"><span class="num">08</span><h2>인벤토리 — 설계 원칙</h2></div>
   <div class="rule"></div>
   <p class="lede">
-    "동작하는 인벤토리"가 아니라 <b>4만 명 규모에서도 버티는 인벤토리</b>를 목표로 했습니다.
+    기능 자체는 단순하지만, <b>이미 만들어 둔 동시성 구조를 깨지 않으면서</b> 얹어야 했습니다.
     그 과정에서 내린 세 가지 판단입니다.
   </p>
 
@@ -569,7 +576,7 @@
       <h3>① 아이템을 전역 맵에 넣지 않는다</h3>
       <p>
         모든 오브젝트를 담는 전역 관리자에 아이템까지 넣으면
-        <b>4만 명 × 30슬롯 = 120만 객체</b>가 들어가고,
+        <b>접속자 2만 명 기준 30슬롯 × 2만 = 60만 객체</b>가 들어가고,
         장착·소비마다 <span class="red">전역 락 경합</span>이 발생합니다.<br><br>
         인벤토리가 직접 소유하고, <b>바닥에 떨어진 아이템만</b> 예외로 등록합니다
         — 남에게 보여야 하니까요.
@@ -932,54 +939,101 @@
   <div class="foot"><span>MMORPG-with-IOCP</span><span>18</span></div>
 </div>
 
-<!-- ══════════════ 19. 회고 ══════════════ -->
+<!-- ══════════════ 19. 시연 영상 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">15</span><h2>회고</h2></div>
+  <div class="ph"><span class="num">15</span><h2>시연 영상</h2></div>
+  <div class="rule"></div>
+  <p class="lede">
+    부하가 걸린 상태에서도 게임이 정상 동작하는지 보이기 위해,
+    <b>먼저 서버에 부하를 채운 뒤 직접 접속해</b> 시연했습니다.
+  </p>
+
+  <div class="grid" style="grid-template-columns:78px 1fr;gap:0 24px;margin-bottom:26px">
+    <div style="text-align:right;padding-top:28px">
+      <div style="font-family:Consolas,monospace;font-size:23px;font-weight:700;color:var(--accent)">0:00</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">부하 생성</div>
+    </div>
+    <div class="card tint-b" style="padding:26px 28px">
+      <h3 style="font-size:19px">1단계 — 서버에 부하 채우기</h3>
+      <p style="font-size:15.5px;line-height:1.72">
+        <b>스트레스 테스트 도구만 먼저 실행</b>합니다. 더미 클라이언트를 충분한 수까지 접속시켜
+        서버에 실제 부하를 만드는 구간입니다. 이 시간 동안은 인게임 조작 없이,
+        접속 수와 지연이 올라가는 것만 보여집니다.
+      </p>
+    </div>
+
+    <div style="text-align:right;padding-top:42px">
+      <div style="font-family:Consolas,monospace;font-size:23px;font-weight:700;color:var(--accent)">1:10</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">시연 시작</div>
+    </div>
+    <div class="card tint-g" style="padding:26px 28px;margin-top:16px">
+      <h3 style="font-size:19px">2단계 — 인게임 시연</h3>
+      <p style="font-size:15.5px;line-height:1.72">
+        부하가 채워진 뒤 <b>직접 만든 클라이언트를 실행해 접속</b>합니다.
+        수많은 더미 클라이언트가 붙어 있는 상태에서 이동 · 전투 · 인벤토리 조작이
+        정상적으로 동작하는 것을 확인합니다.
+      </p>
+    </div>
+  </div>
+
+  <a href="https://www.youtube.com/watch?v=jIv09sq7anM"
+     style="display:block;text-decoration:none;background:#0c1424;border-radius:11px;padding:26px 32px">
+    <div style="font-size:11.5px;letter-spacing:2px;color:#5aa2f5;font-weight:800;margin-bottom:10px">
+      DEMO VIDEO
+    </div>
+    <div style="font-size:23px;color:#fff;font-weight:700;letter-spacing:-0.3px">
+      youtube.com/watch?v=jIv09sq7anM
+    </div>
+  </a>
+
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>19</span></div>
+</div>
+
+<!-- ══════════════ 20. 회고 ══════════════ -->
+<div class="page">
+  <div class="ph"><span class="num">16</span><h2>회고</h2></div>
   <div class="rule"></div>
   <p class="lede">
     이 프로젝트에서 가장 크게 남은 것은 특정 기술이 아니라,
     <b>"동작한다"와 "안전하다" 사이의 거리를 재는 감각</b>이었습니다.
   </p>
 
-  <div class="grid g3" style="margin-bottom:24px">
-    <div class="card tint-b">
-      <h3>병목은 재봐야 안다</h3>
-      <p>
+  <div class="grid g3" style="margin-bottom:26px">
+    <div class="card tint-b" style="padding:26px 28px">
+      <h3 style="font-size:19px;margin-bottom:14px">병목은 재봐야 안다</h3>
+      <p style="font-size:15.5px;line-height:1.75">
         네트워크를 아무리 최적화해도 로직 스레드가 하나면 소용없었습니다.
         <b>부하 테스트 도구를 직접 만들어</b> 숫자로 확인한 뒤에야
-        Zone 분산이라는 답이 나왔습니다.
+        Zone 분산이라는 답이 나왔습니다.<br><br>
+        인벤토리를 얹은 뒤 최대 접속이 <b>3만에서 2만 2천으로 내려간 것</b>도
+        같은 도구로 확인한 값입니다. 기능에는 대가가 따른다는 걸 숫자로 봤습니다.
       </p>
     </div>
-    <div class="card tint-b">
-      <h3>동시성은 구조로 푼다</h3>
-      <p>
+    <div class="card tint-b" style="padding:26px 28px">
+      <h3 style="font-size:19px;margin-bottom:14px">동시성은 구조로 푼다</h3>
+      <p style="font-size:15.5px;line-height:1.75">
         락을 촘촘히 거는 대신 <b>"한 플레이어는 한 스레드만 건드린다"</b>는
         규칙을 세웠습니다. 규칙이 서니 인벤토리처럼 복잡한 기능도
-        락 없이 안전하게 얹을 수 있었습니다.
+        락 없이 안전하게 얹을 수 있었습니다.<br><br>
+        DB 계층에서도 같은 방식이 통했습니다. 같은 플레이어의 쓰기를
+        <b>한 레인에 몰아주는 것만으로</b> 순서 문제가 사라졌습니다.
       </p>
     </div>
-    <div class="card tint-b">
-      <h3>버그는 재현되기 전에 찾는다</h3>
-      <p>
+    <div class="card tint-b" style="padding:26px 28px">
+      <h3 style="font-size:19px;margin-bottom:14px">버그는 재현되기 전에 찾는다</h3>
+      <p style="font-size:15.5px;line-height:1.75">
         쿨타임 우회도, 커밋 순서 역전도 <b>재현된 적 없는 결함</b>이었습니다.
         코드를 다시 읽는 시간을 따로 확보한 덕분에
-        운영에서 만나기 전에 처리할 수 있었습니다.
+        운영에서 만나기 전에 처리할 수 있었습니다.<br><br>
+        고친 뒤에는 <b>일부러 되돌려 테스트가 실패하는지</b>까지 확인했습니다.
+        검증 자체를 검증하는 습관이 남았습니다.
       </p>
     </div>
-  </div>
-
-  <div class="card soft">
-    <h3>다음에 이어서 하고 싶은 것</h3>
-    <ul class="list">
-      <li>Zone 간 부하 편차를 감지해 <b>동적으로 경계를 조정</b>하기</li>
-      <li>DB 쓰기량이 한계에 닿으면 <b>버전 기반 쓰기</b>로 전환 (10장의 대안)</li>
-      <li>거래 · 창고처럼 <b>두 플레이어의 상태가 동시에 바뀌는</b> 기능 설계</li>
-    </ul>
   </div>
 
   <div style="position:absolute;right:72px;bottom:56px;text-align:right">
     <div style="font-size:12px;color:var(--muted);letter-spacing:1.4px;margin-bottom:6px">REPOSITORY</div>
     <div style="font-size:16px;color:var(--accent);font-weight:700">github.com/SJKIM99/MMORPG-with-IOCP</div>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>19</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>20</span></div>
 </div>
