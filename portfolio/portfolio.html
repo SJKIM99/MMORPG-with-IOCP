@@ -227,18 +227,20 @@
       <div class="row"><span class="n">04</span><span class="t">Zone 분산 — 처리량 5.5배</span><span class="g">성능</span></div>
       <div class="row"><span class="n">05</span><span class="t">Sector 시야 관리</span><span class="g">성능</span></div>
       <div class="row"><span class="n">06</span><span class="t">Lock-free 메모리 풀</span><span class="g">성능</span></div>
-      <div class="row"><span class="n">07</span><span class="t">부하 테스트</span><span class="g">검증</span></div>
-      <div class="row hi"><span class="n">08</span><span class="t">인벤토리 — 설계 원칙</span><span class="g">신규</span></div>
+      <div class="row"><span class="n">07</span><span class="t">송신 배칭 — Send Queue</span><span class="g">성능</span></div>
+      <div class="row"><span class="n">08</span><span class="t">예약 작업 처리 — Timer Thread</span><span class="g">성능</span></div>
+      <div class="row"><span class="n">09</span><span class="t">부하 테스트</span><span class="g">검증</span></div>
     </div>
     <div>
-      <div class="row hi"><span class="n">09</span><span class="t">인벤토리 — 원자성 보장</span><span class="g">신규</span></div>
-      <div class="row hi"><span class="n">10</span><span class="t">DB 쓰기 순서 — 레인 샤딩</span><span class="g">신규 · 핵심</span></div>
-      <div class="row hi"><span class="n">11</span><span class="t">필드 드롭과 루팅 우선권</span><span class="g">신규</span></div>
-      <div class="row hi"><span class="n">12</span><span class="t">코드 리뷰로 찾아낸 결함</span><span class="g">신규</span></div>
-      <div class="row hi"><span class="n">13</span><span class="t">검증 방식 — Negative Control</span><span class="g">신규</span></div>
-      <div class="row"><span class="n">14</span><span class="t">코드 구조</span><span class="g">정리</span></div>
-      <div class="row"><span class="n">15</span><span class="t">시연 영상</span><span class="g">데모</span></div>
-      <div class="row"><span class="n">16</span><span class="t">회고</span><span class="g">정리</span></div>
+      <div class="row hi"><span class="n">10</span><span class="t">인벤토리 — 설계 원칙</span><span class="g">신규</span></div>
+      <div class="row hi"><span class="n">11</span><span class="t">인벤토리 — 원자성 보장</span><span class="g">신규</span></div>
+      <div class="row hi"><span class="n">12</span><span class="t">DB 쓰기 순서 — 레인 샤딩</span><span class="g">신규 · 핵심</span></div>
+      <div class="row hi"><span class="n">13</span><span class="t">필드 드롭과 루팅 우선권</span><span class="g">신규</span></div>
+      <div class="row hi"><span class="n">14</span><span class="t">코드 리뷰로 찾아낸 결함</span><span class="g">신규</span></div>
+      <div class="row hi"><span class="n">15</span><span class="t">검증 방식 — Negative Control</span><span class="g">신규</span></div>
+      <div class="row"><span class="n">16</span><span class="t">코드 구조</span><span class="g">정리</span></div>
+      <div class="row"><span class="n">17</span><span class="t">시연 영상</span><span class="g">데모</span></div>
+      <div class="row"><span class="n">18</span><span class="t">회고</span><span class="g">정리</span></div>
     </div>
   </div>
   <div class="foot"><span>MMORPG-with-IOCP</span><span>02</span></div>
@@ -316,7 +318,7 @@
   <div class="grid g3">
     <div class="card"><h3>Timer Thread</h3><p>회복 · 리스폰 · 아이템 소멸 등 예약 작업을 소유 Zone 스레드로 던져 실행합니다.</p></div>
     <div class="card"><h3>Zone Manager</h3><p>좌표로 담당 Zone을 찾아 작업을 넘깁니다. Zone 경계를 넘을 때만 스레드 간 이관이 일어납니다.</p></div>
-    <div class="card"><h3>DB Thread Pool</h3><p>게임 스레드를 막지 않는 비동기 저장. 같은 플레이어의 쓰기는 순서가 보장됩니다 (10장).</p></div>
+    <div class="card"><h3>DB Thread Pool</h3><p>게임 스레드를 막지 않는 비동기 저장. 같은 플레이어의 쓰기는 순서가 보장됩니다 (12장).</p></div>
   </div>
   <div class="foot"><span>MMORPG-with-IOCP</span><span>04</span></div>
 </div>
@@ -501,9 +503,126 @@
   <div class="foot"><span>MMORPG-with-IOCP</span><span>08</span></div>
 </div>
 
-<!-- ══════════════ 9. 부하 테스트 ══════════════ -->
+<!-- ══════════════ 9. 송신 배칭 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">07</span><h2>부하 테스트</h2></div>
+  <div class="ph"><span class="num">07</span><h2>송신 배칭 — Send Queue</h2></div>
+  <div class="rule"></div>
+  <p class="lede">
+    MMORPG는 <b>한 사람의 행동이 주변 모두에게 알림으로 퍼집니다.</b>
+    그래서 한 세션에 짧은 패킷이 몰리는데, 패킷마다 전송을 요청하면
+    그 횟수만큼 시스템 콜과 완료 통지가 따라붙습니다.
+  </p>
+
+  <div class="grid g2" style="margin-bottom:14px">
+    <div class="card tint-r" style="padding:18px 22px">
+      <h3 style="margin-bottom:9px">그냥 보내면</h3>
+      <p style="font-size:14px">
+        내 시야에 20명이 있으면, 그들이 각자 움직이고 공격할 때마다
+        <span class="red">내 소켓으로 짧은 패킷 수십 개가 따로따로</span> 나갑니다.
+      </p>
+    </div>
+    <div class="card tint-g" style="padding:18px 22px">
+      <h3 style="margin-bottom:9px">모아서 보내면</h3>
+      <p style="font-size:14px">
+        전송 중이면 큐에만 쌓아두고, 끝나는 순간 <b>쌓인 패킷을 버퍼 하나에 이어 붙여</b>
+        <span class="grn">전송 요청 한 번</span>으로 내보냅니다.
+      </p>
+    </div>
+  </div>
+
+  <div class="card soft" style="margin-bottom:14px;padding:16px 20px">
+    <div class="flow">
+      <div class="fbox"><div class="t">알림 여러 건</div><div class="d">같은 틱에 발생</div></div>
+      <div class="arrow">▶</div>
+      <div class="fbox on"><div class="t">송신 큐에 적재</div><div class="d">전송 중이면 대기</div></div>
+      <div class="arrow">▶</div>
+      <div class="fbox on"><div class="t">한 버퍼로 병합</div><div class="d">들어가는 만큼</div></div>
+      <div class="arrow">▶</div>
+      <div class="fbox"><div class="t">전송 1회</div><div class="d">남은 건 다시 배치</div></div>
+    </div>
+  </div>
+
+  <div class="grid g3">
+    <div class="card" style="padding:18px 20px">
+      <h3 style="margin-bottom:9px">세션당 전송은 항상 하나만</h3>
+      <p style="font-size:14px">
+        같은 소켓에 전송을 겹쳐 걸면 <b>도착 순서가 뒤섞일 수 있습니다.</b>
+        진행 중일 때는 큐에만 넣습니다.
+      </p>
+    </div>
+    <div class="card" style="padding:18px 20px">
+      <h3 style="margin-bottom:9px">부분 전송을 흘리지 않는다</h3>
+      <p style="font-size:14px">
+        TCP는 요청한 양보다 <b>적게 보낼 수 있습니다.</b>
+        나간 만큼만 큐에서 덜어내고, 남은 조각은
+        <span class="grn">다음 배치 앞에</span> 이어집니다.
+      </p>
+    </div>
+    <div class="card" style="padding:18px 20px">
+      <h3 style="margin-bottom:9px">큰 패킷이 막히지 않게</h3>
+      <p style="font-size:14px">
+        배치 버퍼가 가장 큰 서버 패킷보다 작으면 그 패킷은 <b>영원히 못 나갑니다.</b>
+        <code>static_assert</code>로 <span class="grn">빌드 타임에</span> 못 박았습니다.
+      </p>
+    </div>
+  </div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>09</span></div>
+</div>
+
+<!-- ══════════════ 10. 타이머 ══════════════ -->
+<div class="page">
+  <div class="ph"><span class="num">08</span><h2>예약 작업 처리 — Timer Thread</h2></div>
+  <div class="rule"></div>
+  <p class="lede">
+    체력 회복, 몬스터 이동과 리스폰, 아이템 소멸처럼 <b>"나중에 일어나야 하는 일"</b>을
+    한 스레드가 모아서 관리합니다. 몬스터가 20만 마리인 만큼, 이 스레드가 새는 비용은 그대로 전체 비용이 됩니다.
+  </p>
+
+  <div class="grid g3" style="margin-bottom:18px">
+    <div class="card tint-b">
+      <h3>① 준비된 일은 한 번에 꺼낸다</h3>
+      <p>
+        시간이 된 이벤트를 <b>하나씩</b> 꺼내 처리하면 이벤트마다 락을 잡았다 놓습니다.
+        같은 시각에 몰린 것을 <span class="grn">한 번에 모두 꺼낸 뒤</span>
+        락을 풀고 처리합니다 — 몇 만 건이 동시에 깨어나도 락은 한 번입니다.
+      </p>
+    </div>
+    <div class="card tint-b">
+      <h3>② 필요할 때만 깨운다</h3>
+      <p>
+        새 예약이 들어올 때마다 타이머 스레드를 깨우면, 20만 마리가 쉼 없이 예약을 넣는
+        상황에서 <span class="red">깨우는 일 자체가 부하</span>가 됩니다.
+        <b>지금 가장 이른 예약보다 빠른 것이 들어왔을 때만</b> 깨웁니다.
+        그보다 늦은 예약은 어차피 자고 일어난 뒤에 처리해도 늦지 않습니다.
+      </p>
+    </div>
+    <div class="card tint-b">
+      <h3>③ 타이머는 실행하지 않는다</h3>
+      <p>
+        시간이 됐다고 타이머 스레드가 게임 상태를 직접 건드리면
+        <b>"한 오브젝트는 한 스레드"</b> 규칙이 깨집니다.
+        타이머는 <span class="grn">해당 오브젝트를 소유한 Zone 스레드로 넘기기만</span> 하고,
+        실행은 그쪽에서 일어납니다.
+      </p>
+    </div>
+  </div>
+
+  <div class="card soft">
+    <h3>DB 저장도 같은 형태</h3>
+    <p>
+      DB 스레드 역시 <b>시각 기준 우선순위 큐</b>를 쓰는 같은 구조입니다.
+      게임 스레드는 저장 요청을 큐에 넣기만 하고 <span class="grn">응답을 기다리지 않으므로</span>,
+      DB 왕복이 게임 로직을 멈추게 하지 않습니다.
+      다만 "누가 먼저 처리하느냐"가 인벤토리에서는 정확성 문제로 이어졌고,
+      그 부분은 <em>12장</em>에서 따로 다룹니다.
+    </p>
+  </div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>10</span></div>
+</div>
+
+<!-- ══════════════ 11. 부하 테스트 ══════════════ -->
+<div class="page">
+  <div class="ph"><span class="num">09</span><h2>부하 테스트</h2></div>
   <div class="rule"></div>
   <p class="lede">
     <b>"몇 명까지 되는가"를 추측하지 않기 위해</b> 부하 테스트 도구를 직접 만들었습니다.
@@ -549,7 +668,7 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>09</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>11</span></div>
 </div>
 
 <!-- ══════════════ 10. DIVIDER — 인벤토리 ══════════════ -->
@@ -565,7 +684,7 @@
 
 <!-- ══════════════ 11. 인벤토리 설계 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">08</span><h2>인벤토리 — 설계 원칙</h2></div>
+  <div class="ph"><span class="num">10</span><h2>인벤토리 — 설계 원칙</h2></div>
   <div class="rule"></div>
   <p class="lede">
     기능 자체는 단순하지만, <b>이미 만들어 둔 동시성 구조를 깨지 않으면서</b> 얹어야 했습니다.
@@ -589,7 +708,7 @@
         30칸을 통째로 잡는 대신 <code>슬롯번호 → 아이템</code> 맵을 씁니다.
         <b>빈 슬롯은 키 자체가 없으므로</b> 메모리도, 순회 비용도 실제 보유량만큼만 듭니다.<br><br>
         대신 "없는 키를 만들 수 있다"는 위험이 생겼고,
-        이것이 실제 결함으로 이어졌습니다 <em>(12장)</em>.
+        이것이 실제 결함으로 이어졌습니다 <em>(14장)</em>.
       </p>
     </div>
     <div class="card tint-b">
@@ -612,12 +731,12 @@
       다음 장부터는 그 대가를 어떻게 갚았는지 다룹니다.
     </p>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>11</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>13</span></div>
 </div>
 
 <!-- ══════════════ 12. 원자성 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">09</span><h2>인벤토리 — 원자성 보장</h2></div>
+  <div class="ph"><span class="num">11</span><h2>인벤토리 — 원자성 보장</h2></div>
   <div class="rule"></div>
   <p class="lede">
     검을 장착한 상태에서 <b>다른 검을 장착하면</b> ①기존 해제 ②신규 장착, 두 가지가 함께 일어나야 합니다.
@@ -654,12 +773,12 @@
       <em>기존에 이미 만들어 둔 기능이라도, 같은 종류의 결함이 있는지 함께 점검하고 고쳤습니다.</em>
     </p>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>12</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>14</span></div>
 </div>
 
 <!-- ══════════════ 13. DB 레인 (핵심) ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">10</span><h2>DB 쓰기 순서 — 레인 샤딩</h2></div>
+  <div class="ph"><span class="num">12</span><h2>DB 쓰기 순서 — 레인 샤딩</h2></div>
   <div class="rule"></div>
   <p class="lede">
     <b>트랜잭션을 걸었는데도 DB가 옛날 상태로 남는</b> 경우가 있었습니다.
@@ -716,12 +835,12 @@
       </ul>
     </div>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>13</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>15</span></div>
 </div>
 
 <!-- ══════════════ 14. 필드 드롭 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">11</span><h2>필드 드롭과 루팅 우선권</h2></div>
+  <div class="ph"><span class="num">13</span><h2>필드 드롭과 루팅 우선권</h2></div>
   <div class="rule"></div>
   <p class="lede">
     처음엔 몬스터를 잡으면 아이템이 <b>인벤토리에 바로 꽂혔습니다.</b>
@@ -771,10 +890,10 @@
       인벤토리 속 아이템은 주인만 알면 되지만, <b>바닥의 아이템은 남에게 보여야</b> 합니다.
       그래서 아이템 클래스는 그대로 두고, <em>주인이 없는 상태일 때만</em> 전역 관리자와 시야 격자에 등록합니다.
       필드 아이템은 동시에 존재하는 수가 인벤토리 아이템과 비교할 수 없이 적어,
-      8장에서 피하려던 <b>전역 락 경합 문제가 생기지 않습니다.</b>
+      10장에서 피하려던 <b>전역 락 경합 문제가 생기지 않습니다.</b>
     </p>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>14</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>16</span></div>
 </div>
 
 <!-- ══════════════ 15. DIVIDER — 개선 ══════════════ -->
@@ -789,7 +908,7 @@
 
 <!-- ══════════════ 16. 결함 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">12</span><h2>코드 리뷰로 찾아낸 결함</h2></div>
+  <div class="ph"><span class="num">14</span><h2>코드 리뷰로 찾아낸 결함</h2></div>
   <div class="rule"></div>
   <p class="lede">
     인벤토리를 완성한 뒤, <b>"내가 짠 코드를 처음 보는 사람처럼"</b> 다시 읽었습니다.
@@ -815,7 +934,7 @@
       <p>
         <b>발견</b> — 워커 8개가 공용 큐를 나눠 가지면서
         같은 플레이어의 쓰기 순서가 <span class="red">뒤바뀔 수 있었습니다.</span><br><br>
-        <b>수정</b> — 플레이어별 레인 고정 <em>(10장)</em>.<br><br>
+        <b>수정</b> — 플레이어별 레인 고정 <em>(12장)</em>.<br><br>
         함께 발견한 <b>교착 상태</b>도 처리했습니다. 같은 두 슬롯을 반대 방향으로 교체하면
         서로의 행을 기다릴 수 있어, <span class="grn">항상 작은 슬롯 번호부터 잠그도록</span> 순서를 고정했습니다.
       </p>
@@ -834,12 +953,12 @@
       </p>
     </div>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>16</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>18</span></div>
 </div>
 
 <!-- ══════════════ 17. 검증 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">13</span><h2>검증 방식 — Negative Control</h2></div>
+  <div class="ph"><span class="num">15</span><h2>검증 방식 — Negative Control</h2></div>
   <div class="rule"></div>
   <p class="lede">
     수정한 뒤 테스트가 통과하면 끝일까요? <b>"통과했다"보다 "실패할 수는 있는가"를 먼저 확인</b>했습니다.
@@ -891,12 +1010,12 @@
       </p>
     </div>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>17</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>19</span></div>
 </div>
 
 <!-- ══════════════ 18. 코드 구조 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">14</span><h2>코드 구조</h2></div>
+  <div class="ph"><span class="num">16</span><h2>코드 구조</h2></div>
   <div class="rule"></div>
   <p class="lede">
     역할이 다른 코드는 폴더부터 분리했습니다. <b>새 기능을 넣을 때 어디를 열어야 하는지</b>가
@@ -937,12 +1056,12 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>18</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>20</span></div>
 </div>
 
 <!-- ══════════════ 19. 시연 영상 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">15</span><h2>시연 영상</h2></div>
+  <div class="ph"><span class="num">17</span><h2>시연 영상</h2></div>
   <div class="rule"></div>
   <p class="lede">
     부하가 걸린 상태에서도 게임이 정상 동작하는지 보이기 위해,
@@ -988,12 +1107,12 @@
     </div>
   </a>
 
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>19</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>21</span></div>
 </div>
 
 <!-- ══════════════ 20. 회고 ══════════════ -->
 <div class="page">
-  <div class="ph"><span class="num">16</span><h2>회고</h2></div>
+  <div class="ph"><span class="num">18</span><h2>회고</h2></div>
   <div class="rule"></div>
   <p class="lede">
     이 프로젝트에서 가장 크게 남은 것은 특정 기술이 아니라,
@@ -1037,5 +1156,5 @@
     <div style="font-size:12px;color:var(--muted);letter-spacing:1.4px;margin-bottom:6px">REPOSITORY</div>
     <div style="font-size:16px;color:var(--accent);font-weight:700">github.com/SJKIM99/MMORPG-with-IOCP</div>
   </div>
-  <div class="foot"><span>MMORPG-with-IOCP</span><span>20</span></div>
+  <div class="foot"><span>MMORPG-with-IOCP</span><span>22</span></div>
 </div>
