@@ -210,7 +210,7 @@
   <div class="meta">
     <div><b>개발 기간</b>3개월 · 1인 개발</div>
     <div><b>언어 / 환경</b>C++20 · Windows · MSSQL</div>
-    <div><b>동시 접속</b>22,000 (자체 부하 테스트)</div>
+    <div><b>동시 접속</b>16,000 (자체 부하 테스트)</div>
     <div><b>Repository</b>github.com/SJKIM99/MMORPG-with-IOCP</div>
   </div>
 </div>
@@ -255,7 +255,7 @@
   </p>
 
   <div class="grid g3" style="margin-bottom:26px">
-    <div class="stat"><div class="v">22,000</div><div class="l">동시 접속 (자체 부하 테스트)</div></div>
+    <div class="stat"><div class="v">16,000</div><div class="l">동시 접속 (자체 부하 테스트)</div></div>
     <div class="stat"><div class="v">16</div><div class="l">병렬 처리되는 Zone 스레드</div></div>
     <div class="stat"><div class="v">0</div><div class="l">게임 로직의 락 (설계상 제거)</div></div>
   </div>
@@ -395,7 +395,7 @@
       <p style="font-size:15px;line-height:1.68;color:var(--body)">
         <b style="color:var(--ink)">월드를 16 Zone으로 분할</b>, Zone마다 전용 스레드<br>
         → 서로 다른 Zone은 완전히 병렬<br>
-        → <span class="grn">30,000명까지 안정적으로 처리</span>
+        → <span class="grn">22,000명까지 안정적으로 처리</span>
       </p>
     </div>
   </div>
@@ -518,9 +518,9 @@
         <div class="lbl">단일 로직 스레드</div>
       </div>
       <div class="bar">
-        <div class="cap">30,000</div>
+        <div class="cap">16,000</div>
         <div class="fill" style="height:232px;background:linear-gradient(180deg,#3b82f6,#1d4ed8)"></div>
-        <div class="lbl">Zone 16개 분산</div>
+        <div class="lbl">Zone 분산 + 인벤토리<br>(현재)</div>
       </div>
     </div>
     <div>
@@ -541,8 +541,9 @@
           <b>안정적으로 유지되는 최대 접속 수</b>를 찾습니다.
         </p>
         <p style="padding-top:11px;border-top:1px solid #dfe5ed">
-          위 <b>30,000</b>은 Zone 분산까지 적용한 시점의 수치이고,
-          이후 <b>인벤토리 기능을 얹고 다시 측정한 값은 22,000</b>입니다.
+          Zone 분산까지 적용한 시점의 수치는 <b>22,000</b>이었고,
+          <b>인벤토리 기능을 얹은 뒤 다시 측정한 값이 16,000</b>입니다.
+          약 <b>16,200</b>에서 더 이상 늘지 않고 그 인원이 유지되는 것을 확인했습니다.
           아이템 획득·사용마다 DB 쓰기가 추가된 만큼의 대가입니다.
         </p>
       </div>
@@ -576,7 +577,7 @@
       <h3>① 아이템을 전역 맵에 넣지 않는다</h3>
       <p>
         모든 오브젝트를 담는 전역 관리자에 아이템까지 넣으면
-        <b>접속자 2만 명 기준 30슬롯 × 2만 = 60만 객체</b>가 들어가고,
+        <b>접속자 16,000명 기준 30슬롯 × 16,000 = 48만 객체</b>가 들어가고,
         장착·소비마다 <span class="red">전역 락 경합</span>이 발생합니다.<br><br>
         인벤토리가 직접 소유하고, <b>바닥에 떨어진 아이템만</b> 예외로 등록합니다
         — 남에게 보여야 하니까요.
@@ -956,33 +957,34 @@
     <div class="card tint-b" style="padding:26px 28px">
       <h3 style="font-size:19px">1단계 — 서버에 부하 채우기</h3>
       <p style="font-size:15.5px;line-height:1.72">
-        <b>스트레스 테스트 도구만 먼저 실행</b>합니다. 더미 클라이언트를 충분한 수까지 접속시켜
+        <b>스트레스 테스트 도구만 먼저 실행</b>합니다. 더미 봇이 계속 접속하면서
         서버에 실제 부하를 만드는 구간입니다. 이 시간 동안은 인게임 조작 없이,
         접속 수와 지연이 올라가는 것만 보여집니다.
       </p>
     </div>
 
     <div style="text-align:right;padding-top:42px">
-      <div style="font-family:Consolas,monospace;font-size:23px;font-weight:700;color:var(--accent)">1:10</div>
+      <div style="font-family:Consolas,monospace;font-size:23px;font-weight:700;color:var(--accent)">1:30</div>
       <div style="font-size:12px;color:var(--muted);margin-top:4px">시연 시작</div>
     </div>
     <div class="card tint-g" style="padding:26px 28px;margin-top:16px">
       <h3 style="font-size:19px">2단계 — 인게임 시연</h3>
       <p style="font-size:15.5px;line-height:1.72">
-        부하가 채워진 뒤 <b>직접 만든 클라이언트를 실행해 접속</b>합니다.
-        수많은 더미 클라이언트가 붙어 있는 상태에서 이동 · 전투 · 인벤토리 조작이
-        정상적으로 동작하는 것을 확인합니다.
+        접속 수가 <b>16,000 언저리에서 더 이상 늘지 않고 유지되는 것</b>을 확인한 뒤,
+        <b>직접 만든 클라이언트를 실행해 접속</b>합니다.
+        더미 봇 1만 6천 개가 붙어 있는 상태에서 이동 · 전투 · 인벤토리 조작이
+        정상적으로 동작하는 것을 보여줍니다.
       </p>
     </div>
   </div>
 
-  <a href="https://www.youtube.com/watch?v=jIv09sq7anM"
+  <a href="https://www.youtube.com/watch?v=BjdfZrlOad4"
      style="display:block;text-decoration:none;background:#0c1424;border-radius:11px;padding:26px 32px">
     <div style="font-size:11.5px;letter-spacing:2px;color:#5aa2f5;font-weight:800;margin-bottom:10px">
       DEMO VIDEO
     </div>
     <div style="font-size:23px;color:#fff;font-weight:700;letter-spacing:-0.3px">
-      youtube.com/watch?v=jIv09sq7anM
+      youtube.com/watch?v=BjdfZrlOad4
     </div>
   </a>
 
@@ -1005,7 +1007,7 @@
         네트워크를 아무리 최적화해도 로직 스레드가 하나면 소용없었습니다.
         <b>부하 테스트 도구를 직접 만들어</b> 숫자로 확인한 뒤에야
         Zone 분산이라는 답이 나왔습니다.<br><br>
-        인벤토리를 얹은 뒤 최대 접속이 <b>3만에서 2만 2천으로 내려간 것</b>도
+        인벤토리를 얹은 뒤 최대 접속이 <b>2만 2천에서 1만 6천으로 내려간 것</b>도
         같은 도구로 확인한 값입니다. 기능에는 대가가 따른다는 걸 숫자로 봤습니다.
       </p>
     </div>
