@@ -541,8 +541,9 @@
   <div class="ph"><span class="num">07</span><h2>Lock-free 메모리 풀</h2></div>
   <div class="rule"></div>
   <p class="lede">
-    패킷 처리 컨텍스트를 매번 <code>new/delete</code> 하면, 수천 스레드가 힙 하나를 두고 경합합니다.
-    미리 만들어 둔 객체를 <b>돌려쓰는 풀</b>로 바꿨습니다.
+    패킷 처리 컨텍스트를 매번 <code>new/delete</code> 하면, <b>수십 개의 스레드가 힙 하나를 두고</b> 경합합니다
+    — 워커만 코어 수의 두 배고, 여기에 Zone 16개와 DB 8개가 더 붙습니다.
+    <b>필요할 때 만들어 붙이고, 반납받아 돌려쓰는 풀</b>로 바꿨습니다.
   </p>
 
   <div class="grid g2" style="margin-bottom:22px">
@@ -550,8 +551,10 @@
       <h3>문제 — ABA</h3>
       <p>
         직접 lock-free 스택을 짜면 <b>ABA 문제</b>를 만납니다.
-        A를 꺼내려는 순간 다른 스레드가 A를 꺼내 쓰고 되돌려 놓으면,
-        포인터 값은 같지만 내용은 달라져 <span class="red">엉뚱한 메모리를 반환</span>합니다.
+        "머리는 <code>A</code>, 그 다음은 <code>B</code>"까지 읽은 순간 밀려나고, 그사이 다른 스레드가
+        <b>A와 B를 모두 꺼내 쓴 뒤 A만 되돌려</b> 놓으면 — 머리가 여전히 A라 <b>비교 교환이 성공합니다.</b>
+        들고 있던 "다음은 B"가 낡은 값이라
+        <span class="red">남이 쓰고 있는 B를 빈 자리로 넘겨줍니다.</span>
       </p>
     </div>
     <div class="card tint-g">
