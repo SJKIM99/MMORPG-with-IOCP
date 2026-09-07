@@ -168,7 +168,7 @@ struct DB_ITEM_SAVE_TWO_EVENT : DB_EVENT_BASE
 	DB_ITEM_SLOT_SAVE b;
 };
 
-// ── Timer event types (previously in Core/GameServerCore.h) ──────────────────
+// ── Timer event types ────────────────────────────────────────────────────────
 enum TIMER_EVENT_TYPE
 {
 	EV_RANOM_MOVE,
@@ -188,6 +188,10 @@ struct TIMER_EVENT
 	TIMER_EVENT_TYPE event;
 	ObjID targetId;
 	uint64_t sequence = 0;
+	// 예약을 건 시점에 찍어두는 목적지 Zone. TimerThread::Dispatch가 이 값으로
+	// 곧장 큐에 넣어, 전역 조회표(ZoneManager::_objectZones)를 뒤지지 않는다.
+	// 자세한 조건은 TimerThread::Schedule / Dispatch의 주석 참고.
+	ZoneId zoneId = InvalidZoneId;
 };
 
 [[nodiscard]] inline uint32_t GetNowTime()
