@@ -177,9 +177,6 @@
     <ClInclude Include="Core\DBConnectionPool.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Core\GameServerCore.h">
-      <Filter>Core</Filter>
-    </ClInclude>
     <ClInclude Include="Core\ThreadManager.h">
       <Filter>Core</Filter>
     </ClInclude>

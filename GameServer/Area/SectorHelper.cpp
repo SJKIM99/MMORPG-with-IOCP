@@ -19,7 +19,9 @@ namespace SectorHelper
 		if (object == nullptr)
 			return;
 
-		// 섹터 그리드 이동과 좌표 갱신을 같은 unique_lock 아래 원자적으로 처리 (soft race 제거)
+		// 섹터 칸 이동과 좌표 갱신을 한 번에 처리해 둘이 어긋난 상태가 남지 않게 한다.
+		// Sector 격자는 Zone마다 하나씩이고 thread_local GSector로만 닿으므로,
+		// 이 Zone 스레드 외에는 건드리는 쪽이 없어 락이 필요 없다.
 		const bool valid = GSector->UpdateObjectSectorAndPosition(
 			subjectId,
 			nextX, nextY,

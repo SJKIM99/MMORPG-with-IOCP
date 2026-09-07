@@ -216,7 +216,6 @@
     <ClInclude Include="Core\CoreTLS.h" />
     <ClInclude Include="Core\DBConnection.h" />
     <ClInclude Include="Core\DBConnectionPool.h" />
-    <ClInclude Include="Core\GameServerCore.h" />
     <ClInclude Include="Core\ThreadManager.h" />
     <ClInclude Include="EnumCategory.h" />
     <ClInclude Include="GameObject\GameObject.h" />
