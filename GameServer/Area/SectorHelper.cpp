@@ -30,14 +30,34 @@ namespace SectorHelper
 			return;
 
 		const ZoneId zoneId = ZoneLayout::GetZoneIdByWorld(nextX, nextY);
-		object->SetZoneId(zoneId);
-		GZoneManager->UpdateObjectZone(subjectId, zoneId);
 
+		// 좌표가 바뀌어도 Zone은 대부분 그대로다. 몬스터는 아예 Zone을 벗어날 수
+		// 없고(RandomMove가 존 밖 걸음을 거부하고, 어그로 추격은 ZONE_BOUNDARY_MARGIN
+		// 안에서 되돌아간다), 플레이어도 500x500칸짜리 Zone을 넘는 일은 드물다.
+		// 그런데 UpdateObjectZone은 전역 뮤텍스를 잡으므로, 같은 값을 다시 쓰는
+		// 호출 때문에 Zone 스레드 16개가 이동 한 번마다 이 락 하나에서 다시 만난다.
+		// 실제로 Zone이 바뀐 경우에만 갱신한다.
+		//
+		// m_zoneId를 "맵에 이미 반영된 값"으로 믿어도 되는 이유 — 아래 두 줄을 항상
+		// 함께 실행하므로 m_zoneId는 곧 이 오브젝트에 대해 마지막으로 맵에 쓴 값이다.
+		// 맵에서 빠지는 경로(접속 종료, 필드 아이템 습득/소멸)는 GameObjectManager에서도
+		// 함께 지우므로 위 GetGameObject가 nullptr을 반환해 여기까지 오지 못하고,
+		// 맵에 새로 들어오는 객체(로그인 User, InitForZone의 Monster, MakeNewItem으로
+		// 만든 Item)는 전부 새로 할당되어 m_zoneId가 InvalidZoneId다. 따라서
+		// "맵에는 없는데 m_zoneId만 우연히 맞아 갱신을 건너뛰는" 상태가 생기지 않는다.
+		if (object->GetZoneId() != zoneId)
+		{
+			object->SetZoneId(zoneId);
+			GZoneManager->UpdateObjectZone(subjectId, zoneId);
+		}
+
+		// 세션 쪽은 원자적 저장이라 락이 없다. IOCP 워커가 EnqueueBySession으로
+		// 읽는 값이므로 조건을 걸지 않고 항상 최신으로 맞춰둔다.
 		if (subjectId.GetCategory<EnumCategory>() == EnumCategory::eUser)
 		{
 			const auto user = static_pointer_cast<User>(object);
 			if (const auto session = user->GetGameSession(); session != nullptr)
-				session->SetZoneId(zoneId);
+				session->SetRoutingZoneId(zoneId);
 		}
 	}
 
@@ -230,7 +250,7 @@ namespace SectorHelper
 		player->SetZoneId(newZoneId);
 		GZoneManager->UpdateObjectZone(playerId, newZoneId);
 		if (const auto session = player->GetGameSession())
-			session->SetZoneId(newZoneId);
+			session->SetRoutingZoneId(newZoneId);
 
 		// 7. Zone B에 입장 처리 위임 (비동기 메시지 패싱)
 		//    Zone B 큐는 FIFO이므로 HandleEnterZone이 새 패킷보다 반드시 먼저 처리된다
