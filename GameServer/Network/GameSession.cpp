@@ -67,7 +67,7 @@ void GameSession::ResetNetworkState()
 {
 	m_socket = INVALID_SOCKET;
 	m_pendingRecvBytes = 0;
-	SetZoneId(InvalidZoneId);
+	SetRoutingZoneId(InvalidZoneId);
 	m_sendQueue.clear();
 	m_sendContext.ResetPayload();
 	m_sendInFlight = false;

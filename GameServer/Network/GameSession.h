@@ -204,7 +204,14 @@ public:
 	SOCKET_STATE m_state = SOCKET_STATE::ST_FREE;
 	uint32_t m_pendingRecvBytes = 0;
 	uint32_t m_objectId = 0;
-	atomic<ZoneId> m_zoneId{ InvalidZoneId };
+	// 이 세션의 인바운드 패킷을 어느 Zone 큐에 넣을지 정하는 "라우팅 키 캐시"다.
+	// 값 자체는 소유 오브젝트의 Transform::m_zoneId와 같지만 역할이 다르다 —
+	// 이쪽은 IOCP 워커 스레드가 패킷마다 읽는다(ZoneManager::EnqueueBySession).
+	// 워커가 Transform 쪽을 직접 보려면 GetOwner()로 weak_ptr을 잠가 User를 얻어야
+	// 하는데, 그 비용을 패킷마다 내는 대신 소유 Zone 스레드가 이동할 때 여기에
+	// 한 번 찍어두는 쪽을 택했다. 로그인 전(User가 아직 없는 구간)에는 이 캐시가
+	// 유일한 라우팅 근거이기도 하다.
+	atomic<ZoneId> m_routingZoneId{ InvalidZoneId };
 	mutex m_sessionLock;
 	weak_ptr<User> m_owner;
 
@@ -220,8 +227,8 @@ public:
 
 	void BindOwner(const shared_ptr<User>& owner);
 	[[nodiscard]] shared_ptr<User> GetOwner() const;
-	[[nodiscard]] ZoneId GetZoneId() const noexcept { return m_zoneId.load(memory_order_relaxed); }
-	void SetZoneId(ZoneId zoneId) noexcept { m_zoneId.store(zoneId, memory_order_relaxed); }
+	[[nodiscard]] ZoneId GetRoutingZoneId() const noexcept { return m_routingZoneId.load(memory_order_relaxed); }
+	void SetRoutingZoneId(ZoneId zoneId) noexcept { m_routingZoneId.store(zoneId, memory_order_relaxed); }
 	bool AttachSocket(SOCKET socket);
 	void CloseSocket();
 	void CloseSession();

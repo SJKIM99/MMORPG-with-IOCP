@@ -44,7 +44,7 @@ void ZoneManager::EnqueueByObject(const ObjID& objectId, Task task)
 
 void ZoneManager::EnqueueBySession(const shared_ptr<GameSession>& session, Task task)
 {
-	const ZoneId zoneId = session != nullptr ? session->GetZoneId() : InvalidZoneId;
+	const ZoneId zoneId = session != nullptr ? session->GetRoutingZoneId() : InvalidZoneId;
 	EnqueueByZone(zoneId, std::move(task));
 }
 
