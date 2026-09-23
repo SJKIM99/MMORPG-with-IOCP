@@ -64,7 +64,7 @@ struct MonsterTableRow
 	MonsterVariant   variant      = MonsterVariant::eNormal;
 	uint32_t         color1       = 0xFFFFFF;  // 0xRRGGBB
 	uint32_t         color2       = 0x000000;
-	uint8_t          scale        = 100;       // 100 = 1.0배
+	uint16_t         scale        = 100;       // 100 = 1.0배
 };
 
 namespace MonsterTable

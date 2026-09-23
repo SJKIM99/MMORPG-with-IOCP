@@ -43,8 +43,17 @@ HANDLE g_hiocp = INVALID_HANDLE_VALUE;
 // 아이템 id는 서버의 GameServer/Item/ItemTable.cpp가 원본이다 — Protocol.h에는
 // 없는 값이라 여기 옮겨 적는다(클라이언트의 ITEM_ASSET_TABLE도 같은 방식).
 constexpr uint16_t INVALID_SLOT        = 0xFFFF;
-constexpr uint16_t HEALTH_POTION_ID    = 1;  // 유일한 소비 아이템
-constexpr uint16_t FIRST_EQUIPMENT_ID  = 2;  // 2번부터는 전부 장비(검)
+constexpr uint16_t HEALTH_POTION_ID    = 1;  // 봇이 쓰는 회복 물약(빨간 물약)
+
+// 장비(무기) 아이템 id. 예전에는 "2번부터 전부 장비"였지만, 리니지풍 확장으로 7번 이후에
+// 아데나/물약/주문서가 추가되면서 더 이상 성립하지 않는다(봇이 주운 주문서를 장착하려 들면
+// 서버는 실패만 돌려주지만, 봇이 진짜 무기 슬롯을 잃어버려 부하 패턴이 바뀐다).
+// GameServer/Item/ItemTableData.h의 eEquipment 행(2~6, 15~18)과 같아야 한다 — 이 프로젝트는
+// Protocol.h만 절대경로로 참조해서 아이템 표 헤더를 직접 include하지 않는다.
+[[nodiscard]] constexpr bool IsEquipmentItemId(uint16_t itemId) noexcept
+{
+    return (itemId >= 2 && itemId <= 6) || (itemId >= 15 && itemId <= 18);
+}
 
 // ConsumeReceivedBytes()는 MAX_PACKET_SIZE를 넘는 패킷을 받으면 그 클라이언트를
 // 그냥 끊어버린다. 서버는 로그인 직후 모든 접속에 ITEM_LIST_ACK(인벤토리 30칸
@@ -305,7 +314,7 @@ namespace
             client.potion_count = 0;
         }
 
-        if (slot.itemId >= FIRST_EQUIPMENT_ID)
+        if (IsEquipmentItemId(slot.itemId))
         {
             client.equip_slot = slot.slotIndex;
             client.equipped   = (slot.equipped != 0);
