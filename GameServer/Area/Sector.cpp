@@ -1,8 +1,8 @@
 #include "pch.h"
 #include "Sector.h"
 
-Sector::Sector(short offsetX, short offsetZ)
-	: _offsetX(offsetX), _offsetZ(offsetZ)
+Sector::Sector(RegionIndex region, short offsetX, short offsetZ)
+	: _region(region), _offsetX(offsetX), _offsetZ(offsetZ)
 {
 }
 
@@ -19,14 +19,13 @@ bool Sector::IsValidSector(const SectorCoord& sector) const noexcept
 
 SectorCoord Sector::GetSectorCoord(float worldX, float worldZ) const noexcept
 {
-	if (worldX < 0.0f || worldX >= static_cast<float>(W_WIDTH)
-		|| worldZ < 0.0f || worldZ >= static_cast<float>(W_HEIGHT))
+	// 월드 상수(W_WIDTH)가 아니라 **이 Sector 가 속한 리전의 크기**로 판정한다.
+	// 리전이 여럿이라 전역 월드 경계라는 것이 더 이상 없다.
+	const ZoneGrid& grid = GWorld->Grid(_region);
+	if (!grid.Contains(worldX, worldZ))
 		return {};
 
-	return SectorCoord{
-		static_cast<short>(worldX / static_cast<float>(SECTOR_RANGE)),
-		static_cast<short>(worldZ / static_cast<float>(SECTOR_RANGE))
-	};
+	return SectorCoord{ grid.SectorX(worldX), grid.SectorZ(worldZ) };
 }
 
 const Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorZ) const

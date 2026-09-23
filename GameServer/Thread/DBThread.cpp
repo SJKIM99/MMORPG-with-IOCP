@@ -141,7 +141,10 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 			// DB 는 아직 2D 정수 좌표(_x, _y)를 들고 있다. 여기서 미터로 올린다 —
 			// _y 는 높이가 아니라 지면의 두 번째 축이므로 z 로 간다.
 			// DB 스키마를 Vec3 로 바꾸는 것은 Week 1 의 6번 단계에 묶어 처리한다.
-			GZoneManager->EnqueueByWorld(static_cast<float>(userInfo._x), static_cast<float>(userInfo._y),
+			// 저장된 좌표는 2D 시절(2000x2000) 값이라 새 리전에 넣을 수 없다.
+			// UserHelper 가 범위를 확인해 벗어나면 마을 스폰 지점으로 보낸다.
+			GZoneManager->EnqueueByWorld(GWorld->DefaultRegion(),
+				static_cast<float>(userInfo._x), static_cast<float>(userInfo._y),
 				[session = e->session, userInfo, items]()
 			{
 				UserHelper::HandleGetUserInfo(session, userInfo, items);
@@ -166,9 +169,13 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 			// New users have no saved position — assign a zone via round-robin for
 			// even load distribution. GetRandomPosition places the player within
 			// that zone's bounds; UpdatePosition then registers the correct zone ID.
+			// 기본 리전의 Zone 에 라운드로빈으로 나눠 넣는다. 리전이 여럿이라
+			// 전역 Zone 수로 나누면 필드 Zone 에 신규 플레이어가 떨어진다.
 			static std::atomic<uint32_t> s_counter{ 0 };
-			const ZoneId zoneId = static_cast<ZoneId>(
-				s_counter.fetch_add(1, std::memory_order_relaxed) % ZoneLayout::ZoneCount);
+			const RegionIndex spawnRegion = GWorld->DefaultRegion();
+			const short zonesHere = GWorld->Grid(spawnRegion).ZoneCount();
+			const ZoneId zoneId = MakeZoneId(spawnRegion, static_cast<ZoneId>(
+				s_counter.fetch_add(1, std::memory_order_relaxed) % zonesHere));
 
 			DB_USER_INFO info;
 			info._playerId = playerId;

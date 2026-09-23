@@ -7,7 +7,7 @@
 #include "SectorHelper.h"
 #include "UserHelper.h"
 #include "Sector.h"
-#include "Zone/ZoneLayout.h"
+#include "World/WorldRegistry.h"
 #include "Item/ItemHelper.h"
 
 namespace
@@ -92,7 +92,8 @@ namespace Route
 
 				float x = client->GetX();
 				float z = client->GetZ();
-				SubjectHelper::MovePositionByDirection(x, z, p->direction);
+				SubjectHelper::MovePositionByDirection(
+					RegionOfZone(client->GetZoneId()), x, z, p->direction);
 
 				// Update horizontal facing: left-component dirs=2,4,6 → left; right=3,5,7 → right
 				const int dir = p->direction;
@@ -149,7 +150,9 @@ namespace Route
 			if (client == nullptr || client->GetStat()->IsDead())
 				break;
 			auto* p = reinterpret_cast<const USER_TELEPORT_REQ_PACKET*>(packet);
-			if (!ZoneLayout::IsValidWorldPosition(p->x, p->y))
+			// 좌표만으로는 판정할 수 없다 — 지금 이 플레이어가 있는 리전 안인지 본다.
+			if (!GWorld->Grid(RegionOfZone(client->GetZoneId()))
+					.Contains(static_cast<float>(p->x), static_cast<float>(p->y)))
 				break;
 
 			SectorHelper::HandlePlayerMove(client, p->x, p->y);

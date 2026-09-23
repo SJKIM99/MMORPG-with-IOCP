@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "World/WorldRegistry.h"
 #include "UserHelper.h"
 #include "GameObjectManager.h"
 #include "Subject.h"
@@ -33,27 +34,24 @@ namespace
 		return user->GetGameSession();
 	}
 
-	bool IsValidWorldPosition(int x, int y)
+	// 좌표가 **그 리전 안**인지 본다. 월드 상수(2000x2000)로 판정하면
+	// DB 에 남아 있는 2D 시절 좌표(예: 1500, 1200)가 256m 짜리 마을에서도
+	// "유효" 로 통과해 Sector 등록이 조용히 실패한다.
+	bool IsValidRegionPosition(RegionIndex region, float x, float z)
 	{
-		if (x < 0 || x >= W_WIDTH || y < 0 || y >= W_HEIGHT)
+		if (GWorld == nullptr || !GWorld->Grid(region).Contains(x, z))
 			return false;
 
-		return !isCollision(static_cast<short>(x), static_cast<short>(y));
+		return !isCollision(ToLegacyTile(x), ToLegacyTile(z));
 	}
 
-	pair<short, short> FindRandomValidPosition()
+	// 되돌아갈 자리는 리전이 정해 준다 — 리전 데이터의 spawn_point 다.
+	// 무작위로 뽑던 것을 그만둔 이유: 마을은 256m 라 무작위로 떨어지면 성벽
+	// 밖이나 물 속일 수 있고, 무엇보다 배치 데이터가 이미 "여기서 시작한다" 를
+	// 알고 있다(5장 — 월드 배치는 데이터다).
+	Vec3 RegionSpawnPoint(RegionIndex region)
 	{
-		std::uniform_int_distribution<short> distX(0, W_WIDTH - 1);
-		std::uniform_int_distribution<short> distY(0, W_HEIGHT - 1);
-		while (true)
-		{
-			const short x = distX(LRng);
-			const short y = distY(LRng);
-			if (isCollision(x, y))
-				continue;
-
-			return { x, y };
-		}
+		return GWorld->Region(region).SpawnPoint();
 	}
 
 	// ITEM_SLOT_DATA를 채우는 로직은 ITEM_LIST_ACK/ITEM_EQUIP_ACK/ITEM_UNEQUIP_ACK/
@@ -626,9 +624,12 @@ namespace UserHelper
 
 		short saveX = ToLegacyTile(target->GetX());
 		short saveY = ToLegacyTile(target->GetZ());
-		if (!IsValidWorldPosition(saveX, saveY))
+		const RegionIndex saveRegion = RegionOfZone(target->GetZoneId());
+		if (!IsValidRegionPosition(saveRegion, static_cast<float>(saveX), static_cast<float>(saveY)))
 		{
-			const auto [fallbackX, fallbackY] = FindRandomValidPosition();
+			const Vec3 fallback = RegionSpawnPoint(saveRegion);
+			const short fallbackX = ToLegacyTile(fallback.x);
+			const short fallbackY = ToLegacyTile(fallback.z);
 			saveX = fallbackX;
 			saveY = fallbackY;
 
@@ -861,15 +862,21 @@ namespace UserHelper
 		session->m_state = SOCKET_STATE::ST_INGAME;
 
 		ObjID objId = player->GetObjID();
-		if (IsValidWorldPosition(userInfo._x, userInfo._y))
+		// 로그인은 기본 리전(마을)으로 들어온다. 저장된 좌표는 2D 시절 값이라
+		// 대부분 리전 밖이고, 그러면 리전의 spawn_point 로 보낸다.
+		const RegionIndex loginRegion = GWorld->DefaultRegion();
+		if (IsValidRegionPosition(loginRegion,
+			static_cast<float>(userInfo._x), static_cast<float>(userInfo._y)))
 		{
 			// DB 의 _y 는 높이가 아니라 지면의 두 번째 축이다 -> z 로 넣는다.
 			SectorHelper::UpdatePosition(objId, static_cast<float>(userInfo._x), static_cast<float>(userInfo._y));
 		}
 		else
 		{
-			const auto [fallbackX, fallbackY] = FindRandomValidPosition();
-			SectorHelper::UpdatePosition(objId, fallbackX, fallbackY);
+			const Vec3 spawn = RegionSpawnPoint(loginRegion);
+			const short fallbackX = ToLegacyTile(spawn.x);
+			const short fallbackY = ToLegacyTile(spawn.z);
+			SectorHelper::UpdatePosition(objId, spawn.x, spawn.z);
 			QueueUserSave(player, fallbackX, fallbackY);
 
 			cout << "Recovered invalid login position for [" << player->GetName()

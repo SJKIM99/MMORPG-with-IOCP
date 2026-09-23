@@ -1,13 +1,20 @@
 #include "pch.h"
 #include "SubjectHelper.h"
 #include "Collision.h"
+#include "World/WorldRegistry.h"
 
 namespace SubjectHelper
 {
 	// 한 번에 한 타일씩 옮긴다. 좌표는 float 이지만 **값은 여전히 정수 타일**이다 —
 	// 연속 이동(서버 고정 틱 적분)은 Week 1 의 6번 단계에서 이 함수를 대체한다.
-	void MovePositionByDirection(float& fx, float& fz, char direction)
+	void MovePositionByDirection(RegionIndex region, float& fx, float& fz, char direction)
 	{
+		// **리전 크기로 자른다.** 월드 상수(2000)로 자르면 256m 짜리 마을에서
+		// 밖으로 걸어 나가고, 그러면 Sector 등록이 실패해 이동이 조용히 씹힌다.
+		const ZoneGrid& grid = GWorld->Grid(region);
+		const short maxX = static_cast<short>(grid.sizeX) - 1;
+		const short maxZ = static_cast<short>(grid.sizeZ) - 1;
+
 		short x = ToLegacyTile(fx);
 		short y = ToLegacyTile(fz);
 
@@ -17,24 +24,24 @@ namespace SubjectHelper
 		switch (direction)
 		{
 		case 0: if (y > 0)            { --y; if (isCollision(x, y)) ++y; } break;
-		case 1: if (y < W_HEIGHT - 1) { ++y; if (isCollision(x, y)) --y; } break;
+		case 1: if (y < maxZ) { ++y; if (isCollision(x, y)) --y; } break;
 		case 2: if (x > 0)            { --x; if (isCollision(x, y)) ++x; } break;
-		case 3: if (x < W_WIDTH - 1)  { ++x; if (isCollision(x, y)) --x; } break;
+		case 3: if (x < maxX)  { ++x; if (isCollision(x, y)) --x; } break;
 		case 4: // UP-LEFT
 			if (y > 0)           { --y; if (isCollision(x, y)) ++y; }
 			if (x > 0)           { --x; if (isCollision(x, y)) ++x; }
 			break;
 		case 5: // UP-RIGHT
 			if (y > 0)           { --y; if (isCollision(x, y)) ++y; }
-			if (x < W_WIDTH - 1) { ++x; if (isCollision(x, y)) --x; }
+			if (x < maxX) { ++x; if (isCollision(x, y)) --x; }
 			break;
 		case 6: // DOWN-LEFT
-			if (y < W_HEIGHT - 1){ ++y; if (isCollision(x, y)) --y; }
+			if (y < maxZ){ ++y; if (isCollision(x, y)) --y; }
 			if (x > 0)           { --x; if (isCollision(x, y)) ++x; }
 			break;
 		case 7: // DOWN-RIGHT
-			if (y < W_HEIGHT - 1){ ++y; if (isCollision(x, y)) --y; }
-			if (x < W_WIDTH - 1) { ++x; if (isCollision(x, y)) --x; }
+			if (y < maxZ){ ++y; if (isCollision(x, y)) --y; }
+			if (x < maxX) { ++x; if (isCollision(x, y)) --x; }
 			break;
 		}
 

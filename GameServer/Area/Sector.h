@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GameObjectManager.h"
-#include "Zone/ZoneLayout.h"
+#include "World/WorldRegistry.h"
 
 // Sector 격자 인덱스. XZ 평면만 나눈다 — Y(높이)는 나누지 않는다(CLAUDE.md 3장).
 struct SectorCoord
@@ -24,15 +24,20 @@ public:
 	using NeighborSnapshot = std::vector<shared_ptr<Subject>>;
 
 	// 이 Zone이 담당하는 섹터 범위: [offsetX .. offsetX+kLocalWidth) x [offsetZ .. offsetZ+kLocalDepth)
-	// 좌표계는 전역 섹터 좌표 (0 ~ kTotalSectorCount-1) 를 그대로 사용한다.
-	static constexpr short kLocalWidth  = ZoneLayout::SectorsPerZoneX;
-	static constexpr short kLocalDepth = ZoneLayout::SectorsPerZoneZ;
+	// 좌표계는 **리전 안의** 섹터 좌표 (0 ~ sectorCount-1) 다.
+	// 리전마다 크기가 다르므로 전역 좌표라는 개념이 더 이상 없다.
+	static constexpr short kLocalWidth = ZoneGrid::kSectorsPerZone;
+	static constexpr short kLocalDepth = ZoneGrid::kSectorsPerZone;
 
 public:
-	explicit Sector(short offsetX, short offsetZ);
+	// region 은 이 Sector 가 속한 리전. 경계 판정에 그 리전의 크기를 쓴다 —
+	// 마을(256m)과 필드(512m)가 같은 프로세스에 있으므로 월드 상수를 쓸 수 없다.
+	Sector(RegionIndex region, short offsetX, short offsetZ);
+
+	[[nodiscard]] RegionIndex GetRegion() const noexcept { return _region; }
 
 	[[nodiscard]] short GetOffsetX() const noexcept { return _offsetX; }
-	[[nodiscard]] short GetOffsetY() const noexcept { return _offsetZ; }
+	[[nodiscard]] short GetOffsetZ() const noexcept { return _offsetZ; }
 
 	[[nodiscard]] bool IsValidSector(short sectorX, short sectorZ) const noexcept;
 	[[nodiscard]] bool IsValidSector(const SectorCoord& sector) const noexcept;
@@ -84,6 +89,7 @@ private:
 	[[nodiscard]] SectorObjects& GetObjects(short sectorX, short sectorZ);
 
 private:
+	RegionIndex _region;
 	short _offsetX;
 	short _offsetZ;
 	SectorGrid _sectors;

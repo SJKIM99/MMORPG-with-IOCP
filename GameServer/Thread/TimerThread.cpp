@@ -112,7 +112,7 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 
 	auto enqueue = [&](ZoneManager::Task task)
 	{
-		if (!ZoneLayout::IsValidZoneId(hintedZone))
+		if (GWorld == nullptr || !GWorld->IsValidZoneId(hintedZone))
 		{
 			GZoneManager->EnqueueByObject(subjectId, std::move(task));
 			return;

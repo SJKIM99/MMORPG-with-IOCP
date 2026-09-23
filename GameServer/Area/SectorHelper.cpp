@@ -6,7 +6,7 @@
 #include "UserHelper.h"
 #include "MonsterHelper.h"
 #include "Sector.h"
-#include "Zone/ZoneLayout.h"
+#include "World/WorldRegistry.h"
 #include "Zone/ZoneManager.h"
 #include "Collision.h"
 #include "CoreTLS.h"
@@ -31,7 +31,20 @@ namespace SectorHelper
 		if (!valid)
 			return;
 
-		const ZoneId zoneId = ZoneLayout::GetZoneIdByWorld(nextX, nextZ);
+		// 리전은 **지금 등록한 GSector** 에서 얻는다. 좌표만으로는 알 수 없고
+		// (마을 (100,100) 과 필드 (100,100) 은 다른 Zone 이다), 객체의 ZoneId 에서
+		// 꺼내서도 안 된다.
+		//
+		// 객체의 ZoneId 를 쓰면 **닭과 달걀**이 된다. 갓 만들어진 몬스터와 방금
+		// 로그인한 플레이어는 ZoneId 가 InvalidZoneId 라, 거기서 리전을 꺼내면
+		// 0xFF 가 나오고 ZoneAt 이 InvalidZoneId 를 돌려준다. 그러면 객체가
+		// 영원히 Zone 없이 남아 나중에 단언에서 죽는다 — 실제로 필드 Zone 이
+		// 몬스터를 초기화하다 그렇게 죽었다.
+		//
+		// GSector 는 이 Zone 스레드 소유이고 방금 이 객체를 그 격자에 넣었으므로
+		// 리전은 정의상 GSector 의 것이다.
+		const RegionIndex region = GSector->GetRegion();
+		const ZoneId zoneId = GWorld->ZoneAt(region, nextX, nextZ);
 
 		// 좌표가 바뀌어도 Zone은 대부분 그대로다. 몬스터는 아예 Zone을 벗어날 수
 		// 없고(RandomMove가 존 밖 걸음을 거부하고, 어그로 추격은 ZONE_BOUNDARY_MARGIN
@@ -67,25 +80,40 @@ namespace SectorHelper
 	{
 		ASSERT_CRASH(GSector != nullptr);
 
-		// 현재 Zone의 섹터 오프셋에서 월드 좌표 범위를 계산하여
-		// 이 Zone 소속 Sector 범위 안에서만 랜덤 배치한다.
-		const short minX = static_cast<short>(GSector->GetOffsetX() * SECTOR_RANGE);
-		const short maxX = static_cast<short>((GSector->GetOffsetX() + Sector::kLocalWidth)  * SECTOR_RANGE - 1);
-		const short minY = static_cast<short>(GSector->GetOffsetY() * SECTOR_RANGE);
-		const short maxY = static_cast<short>((GSector->GetOffsetY() + Sector::kLocalDepth) * SECTOR_RANGE - 1);
+		// 현재 Zone 이 소유한 Sector 범위를 **미터**로 환산해 그 안에서만 뽑는다.
+		//
+		// 옛 코드는 SECTOR_RANGE(=10, 2D 타일 시절 값)를 곱했다. 이제 Sector 는
+		// 리전 데이터가 정하는 32m 라, 10 을 곱하면 이 Zone 이 소유하지 않은
+		// 섹터를 가리킨다. 그러면 UpdateObjectSectorAndPosition 이 실패해
+		// 섹터가 (-1,-1) 로 남고, 나중에 Sector::GetObjects 의 단언에서 죽는다.
+		// 실제로 그 단언(STATUS_BREAKPOINT)으로 서버가 올라오지 못했다.
+		const ZoneGrid& grid = GWorld->Grid(GSector->GetRegion());
+		const float cell = grid.sectorSize;
 
-		std::uniform_int_distribution<short> distX(minX, maxX);
-		std::uniform_int_distribution<short> distY(minY, maxY);
-		while (true)
+		const float minX = GSector->GetOffsetX() * cell;
+		const float minZ = GSector->GetOffsetZ() * cell;
+		// 리전 가장자리 Zone 은 소유 Sector 가 모자랄 수 있으므로 리전 크기로 자른다.
+		const float maxX = std::min<float>(
+			grid.sizeX, (GSector->GetOffsetX() + Sector::kLocalWidth) * cell) - 1.0f;
+		const float maxZ = std::min<float>(
+			grid.sizeZ, (GSector->GetOffsetZ() + Sector::kLocalDepth) * cell) - 1.0f;
+
+		std::uniform_real_distribution<float> distX(minX, maxX);
+		std::uniform_real_distribution<float> distZ(minZ, maxZ);
+		for (int attempt = 0; attempt < 64; ++attempt)
 		{
-			const short x = distX(LRng);
-			const short y = distY(LRng);
-			if (isCollision(x, y))
+			const float x = distX(LRng);
+			const float z = distZ(LRng);
+			if (isCollision(ToLegacyTile(x), ToLegacyTile(z)))
 				continue;
 
-			UpdatePosition(subjectId, x, y);
+			UpdatePosition(subjectId, x, z);
 			return;
 		}
+
+		// 64번 실패하면 막힌 곳뿐이라는 뜻이다. 무한 루프로 스레드를 잡아먹느니
+		// 구석에라도 놓는다 — Recast 가 들어오면(4번 단계) 이 판정 자체가 사라진다.
+		UpdatePosition(subjectId, minX, minZ);
 	}
 
 	std::vector<ObjID> CollectUsers(ObjID& monsterId)
@@ -272,9 +300,12 @@ namespace SectorHelper
 			return;
 
 		// Zone 경계 이동 감지 → Actor 모델 비동기 전달
-		const ZoneId newZoneId = ZoneLayout::GetZoneIdByWorld(nextX, nextZ);
+		// 같은 리전 안에서의 이동이다. 리전을 넘는 이동(포탈)은 Week 2 에서
+		// 목적 리전을 함께 받는 경로로 들어온다 — ZoneId 에 리전이 박혀 있어
+		// 이관 코드 자체는 그대로 쓸 수 있다.
 		const ZoneId curZoneId = player->GetZoneId();
-		if (newZoneId != curZoneId && ZoneLayout::IsValidZoneId(newZoneId))
+		const ZoneId newZoneId = GWorld->ZoneAt(RegionOfZone(curZoneId), nextX, nextZ);
+		if (newZoneId != curZoneId && GWorld->IsValidZoneId(newZoneId))
 		{
 			HandleZoneTransfer(player, nextX, nextZ, newZoneId);
 			return;

@@ -13,7 +13,7 @@
 #include "SubjectHelper.h"
 #include "MonsterHelper.h"
 #include "Route.h"
-#include "Zone/ZoneLayout.h"
+#include "World/WorldRegistry.h"
 #include "Zone/ZoneManager.h"
 #include <malloc.h>
 
@@ -134,7 +134,7 @@ void WorkerThread::Disconnect(ObjID clientId)
 	if (user->IsTransferring())
 	{
 		const ZoneId targetZone = user->GetZoneId();
-		if (ZoneLayout::IsValidZoneId(targetZone))
+		if (GWorld != nullptr && GWorld->IsValidZoneId(targetZone))
 		{
 			GZoneManager->EnqueueByZone(targetZone, [clientId]()
 			{

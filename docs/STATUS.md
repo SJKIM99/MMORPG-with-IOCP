@@ -1013,6 +1013,89 @@ C# 클라이언트   town 66e9411e   field_01 032127a1
 
 배치·NPC·콜라이더 수가 JSON 시절과 **한 개도 다르지 않다.**
 
+### 3번 완료 — Sector/Zone 을 리전 기반 XZ 격자로 (2026-09-23)
+
+2000x2000 짜리 단일 월드가 죽고, **마을과 필드가 같은 프로세스에 나란히** 올라간다.
+
+```
+[world] region 0 town      256x256m  sector 32m -> 8x8   zone 2x2 (4)   zoneId 0..3
+[world] region 1 field_01  512x512m  sector 32m -> 16x16 zone 4x4 (16)  zoneId 256..271
+[world] 리전 2개, Zone 합계 20개
+```
+
+#### ZoneId 에 리전을 박았다
+
+```
+ZoneId = (리전 인덱스 << 8) | 리전 안에서의 Zone 번호
+```
+
+이렇게 두면 기존 Zone 이관 경로(`Transform::m_transferring`, Zone 큐 전달)를
+고치지 않고 **리전을 넘는 이동까지 같은 길로 흘려보낼 수 있다.** 포탈은 Week 2
+지만 그때 이관 코드를 다시 건드리지 않으려고 지금 이 모양으로 해 뒀다.
+
+#### ZoneLayout.h 를 **지웠다**
+
+`constexpr` + `static_assert` 로 월드가 하나라고 못 박혀 있던 파일이다. 남겨
+두면 `Route`/`MonsterHelper`/`SectorHelper` 가 계속 옛 2000x2000 을 쓰면서도
+컴파일된다 — 1번에서 `GetY()` 를 지운 것과 같은 이유로 파일째 지워 전부
+컴파일 에러로 드러나게 했다. 컴파일 타임에 지키던 것은
+`ZoneGrid::Build()` 의 런타임 검사로 옮겼다.
+
+#### 검증 — 봇 대신 전수 검사
+
+STRESS_TEST 3D 전환을 미뤘으므로(사용자 결정) `WorldSelfTest` 로 대신한다.
+**이 쪽이 강하다** — 봇은 지나간 자리만 보지만 격자를 전수로 훑는다.
+
+```
+[worldtest] town      Sector 8x8   Zone 4   표본  256곳 검사
+[worldtest] field_01  Sector 16x16 Zone 16  표본 1024곳 검사
+[worldtest] OK   Zone 합계 20개, 실패 0건
+```
+
+검사 항목: Sector 왕복, Zone 빈칸 없음, 경계(0 은 안 / size 는 밖 / 음수 거절),
+좌표 경로와 Sector 경로 일치, 리전 밖 거절, ZoneId 포장/해체 왕복,
+리전 간 ZoneId 중복 없음.
+
+축이 바뀌거나 경계가 한 칸 어긋나도 월드가 정사각형이면 **크래시 없이 조용히**
+틀린다. 그걸 잡으려고 만든 검사다.
+
+#### 기동 결과
+
+```
+[Zone 0~3]     평화지역 - 몬스터 없음        (마을 flags.spawn = false, 9장)
+[Zone 256~271] Monster Init Success (12500 monsters)  x16 = 200,000
+서버 30초 무사고, 메모리 267MB, 스레드 70
+```
+
+#### 잡은 버그 넷 — 전부 "조용히 틀리는" 유형이었다
+
+| 증상 | 원인 |
+|---|---|
+| main 진입 **전** 크래시 | `GServerGlobal` 정적 초기화가 `ZoneManager` 를 만드는데 Zone 은 리전 데이터가 있어야 만들어진다. 생성과 `BuildZones()` 를 분리 |
+| 필드 Zone 만 죽음 (0x80000003) | `RunZone` 이 `_zones[zoneId]` 로 직접 인덱싱. 필드 zoneId 는 256인데 `_zones` 는 20개 -> **벡터 범위 밖** -> 디버그 STL 의 `__debugbreak`. 마을(0~3)만 살아남아 "필드만 죽는다"처럼 보였다 |
+| 몬스터 ObjID 중복 | `i = zoneId; i += stride` 로 ID 를 나눴는데 리전이 상위 바이트에 박혀 마을 Zone 0 의 수열(0,4,...,256)과 필드 Zone 256 의 수열(256,272,...)이 부딪힘. **스폰 가능 Zone 안에서의 순번**으로 바꿈 |
+| 객체가 Zone 을 못 받음 | 리전을 객체의 ZoneId 에서 꺼내려 해 **닭과 달걀**이 됨 — 갓 만든 몬스터와 방금 로그인한 플레이어는 ZoneId 가 무효다. 리전은 지금 등록 중인 `GSector` 에서 가져오는 것이 맞다 |
+
+그리고 진단을 한참 헤매게 만든 것 하나: `Monster Init Success` 가 `endl` 이
+아니라 `"
+"` 이라 **버퍼에 남아 있다가 강제 종료 때 버려졌다.** 다 만들고
+있었는데 "필드 Zone 이 몬스터를 안 만든다"고 오진했다. 메모리 267MB 와
+CPU 20초(첫 3초에 소비)를 보고서야 알았다.
+
+#### 리전 경계로 바뀐 것들
+
+`GetRandomPosition` 이 옛 `SECTOR_RANGE`(=10)를 곱하고 있어 그 Zone 이 소유하지
+않은 Sector 를 가리켰다. 리전의 `sectorSize`(32m)로 바꿨다.
+`MovePositionByDirection` 의 월드 경계, 로그인 위치 검증, 되돌아갈 자리
+(무작위 -> **리전 데이터의 spawn_point**)도 전부 리전 기준으로 옮겼다.
+
+#### 남은 것
+
+- **STRESS_TEST 가 깨져 있다.** 봇이 2000x2000 좌표로 걷는다. 미루기로 했고
+  (프로토콜만 맞추면 되는 작업), 그동안의 회귀 검증은 `WorldSelfTest` 가 맡는다.
+- `Collision` / `AStar` 는 아직 2000x2000 타일 격자다. 4번(Recast)이 걷어낸다.
+- 리전 간 포탈은 구조만 열어 뒀고 기능은 Week 2.
+
 ### 이번 주에 하지 않는 것
 
 Recast/내비메시, 몬스터 FSM, 인던, 리전 간 포탈(구조만 열어 두고 기능은 Week 2),

@@ -19,9 +19,11 @@
 #include "DBThread.h"
 #include "TimerThread.h"
 #include "Collision.h"
-#include "Zone/ZoneLayout.h"
+#include "World/WorldRegistry.h"
 #include "Zone/ZoneManager.h"
 #include "World/RegionData.h"
+#include "World/WorldRegistry.h"
+#include "World/WorldSelfTest.h"
 
 static void WriteCrashLog(const char* tag, DWORD exCode, void* exAddr, EXCEPTION_POINTERS* ep = nullptr)
 {
@@ -105,31 +107,34 @@ int main()
 
 	InitCollisionTile();
 
-	// --- 리전 데이터 ------------------------------------------------------------
+	// --- 월드(리전 동시 상주) ------------------------------------------------
 	//
-	// Week 1 의 2번 단계. 아직 **읽고 검증만** 한다 — Sector/Zone 을 이 값으로
-	// 재편하는 것은 3번, 내비메시는 4번이다. 여기서 먼저 읽어 두는 이유는
-	// 그 둘이 전부 이 데이터를 필요로 하는데, 지금은 아무도 안 쓰므로 무엇도
-	// 깨뜨릴 수 없는 가장 안전한 자리이기 때문이다.
-	for (const char* regionId : { "town", "field_01" })
+	// Week 1 의 3번 단계. 마을과 필드를 **같은 프로세스에** 올린다.
+	// 좌표만으로는 Zone 이 정해지지 않으므로 ZoneId 에 리전을 박았다
+	// (World/WorldRegistry.h 참고).
+	static WorldRegistry world;
 	{
-		const std::string path = RegionData::FindRegionFile(regionId);
-		if (path.empty())
+		std::string error;
+		if (!world.Load({ "town", "field_01" }, error))
 		{
-			cout << "[region] " << regionId
-				<< " .bin 을 찾지 못했다 — tools/build_region.py 를 먼저 돌려라" << endl;
-			continue;
+			cout << "[world] 리전 로드 실패: " << error << endl;
+			return -1;
+		}
+		GWorld = &world;
+		world.PrintSummary();
+
+		// Sector/Zone 수학 전수 검사. 여기서 실패하면 그 위에 얹는 이동·시야가
+		// 전부 조용히 틀리므로 아예 올리지 않는다.
+		if (WorldSelfTest::Run(world) != 0)
+		{
+			cout << "[world] 자가검사 실패 — 서버를 올리지 않는다" << endl;
+			return -1;
 		}
 
-		std::string error;
-		if (const auto region = RegionData::Load(path, error))
-			region->PrintSummary();
-		else
-			cout << "[region] " << regionId << " 로드 실패: " << error << endl;
+		// 리전을 읽고 검사한 **뒤에** Zone 을 만든다. Zone 은 리전 크기를
+		// 알아야 자기 Sector 격자를 잡을 수 있다.
+		GZoneManager->BuildZones();
 	}
-
-	// 몬스터 초기화는 각 Zone 스레드의 Zone::Run() 안에서 GSector 설정 후 수행된다.
-	// (메인 스레드에서 호출하면 GSector=nullptr로 크래시 발생)
 
 	//DB풀 초기화 — DB 샤드(스레드) 하나가 동시에 커넥션 하나를 쓰므로 같은 수로 맞춘다.
 	GDBConnectionPool->Connect(DBThread::kShardCount);
@@ -159,7 +164,7 @@ int main()
 	});
 
 	// Zone 전용 로직 스레드 시작 (Zone당 독립 GameLogicThread)
-	for (ZoneId zoneId = 0; zoneId < static_cast<ZoneId>(ZoneLayout::ZoneCount); ++zoneId)
+	for (const ZoneId zoneId : GWorld->AllZoneIds())
 	{
 		GThreadManager->Launch([zoneId]()
 		{

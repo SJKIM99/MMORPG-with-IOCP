@@ -1,13 +1,31 @@
 #include "pch.h"
 #include "Zone.h"
+#include "World/WorldRegistry.h"
 #include "ServerGlobal.h"
 #include "Monster/MonsterHelper.h"
 
+namespace
+{
+	// 전역 ZoneId -> 그 Zone 이 맡는 섹터 시작 좌표.
+	// ZoneId 상위 바이트가 리전, 하위 바이트가 리전 안의 Zone 번호다.
+	short ZoneOffsetX(ZoneId id)
+	{
+		const ZoneGrid& grid = GWorld->Grid(RegionOfZone(id));
+		const ZoneId local = LocalZoneOf(id);
+		return static_cast<short>((local % grid.zoneCountX) * ZoneGrid::kSectorsPerZone);
+	}
+
+	short ZoneOffsetZ(ZoneId id)
+	{
+		const ZoneGrid& grid = GWorld->Grid(RegionOfZone(id));
+		const ZoneId local = LocalZoneOf(id);
+		return static_cast<short>((local / grid.zoneCountX) * ZoneGrid::kSectorsPerZone);
+	}
+}
+
 Zone::Zone(ZoneId id)
 	: _id(id)
-	, _sector(
-		static_cast<short>(ZoneLayout::GetZoneCoordById(id).x * ZoneLayout::SectorsPerZoneX),
-		static_cast<short>(ZoneLayout::GetZoneCoordById(id).z * ZoneLayout::SectorsPerZoneZ))
+	, _sector(RegionOfZone(id), ZoneOffsetX(id), ZoneOffsetZ(id))
 {
 }
 

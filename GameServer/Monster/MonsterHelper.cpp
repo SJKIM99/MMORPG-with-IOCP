@@ -5,7 +5,7 @@
 #include "SubjectHelper.h"
 #include "SectorHelper.h"
 #include "Sector.h"
-#include "Zone/ZoneLayout.h"
+#include "World/WorldRegistry.h"
 #include "Zone/ZoneManager.h"
 #include "TimerThread.h"
 #include "AStar.h"
@@ -17,21 +17,23 @@ namespace
 {
 	// 존 경계는 축 정렬(axis-aligned)이므로 4방향 극단 좌표만 검사한다.
 	// 어느 한 방향이라도 ZONE_BOUNDARY_MARGIN 이내에 다른 존이 있으면 경계 근처로 판정.
-	bool IsNearZoneBoundary(short x, short y)
+	bool IsNearZoneBoundary(RegionIndex region, float x, float z)
 	{
-		const ZoneId curZone = ZoneLayout::GetZoneIdByWorld(x, y);
+		const ZoneGrid& grid = GWorld->Grid(region);
+		const ZoneId curZone = grid.LocalZoneAt(x, z);
 		if (curZone == InvalidZoneId)
 			return false;
 
-		const short x1 = static_cast<short>(std::max<int>(0, x - ZONE_BOUNDARY_MARGIN));
-		const short x2 = static_cast<short>(std::min<int>(W_WIDTH  - 1, x + ZONE_BOUNDARY_MARGIN));
-		const short y1 = static_cast<short>(std::max<int>(0, y - ZONE_BOUNDARY_MARGIN));
-		const short y2 = static_cast<short>(std::min<int>(W_HEIGHT - 1, y + ZONE_BOUNDARY_MARGIN));
+		// 리전마다 크기가 다르므로 월드 상수가 아니라 그 리전의 크기로 자른다.
+		const float x1 = std::max<float>(0.0f, x - ZONE_BOUNDARY_MARGIN);
+		const float x2 = std::min<float>(grid.sizeX - 1.0f, x + ZONE_BOUNDARY_MARGIN);
+		const float z1 = std::max<float>(0.0f, z - ZONE_BOUNDARY_MARGIN);
+		const float z2 = std::min<float>(grid.sizeZ - 1.0f, z + ZONE_BOUNDARY_MARGIN);
 
-		return ZoneLayout::GetZoneIdByWorld(x1, y) != curZone
-			|| ZoneLayout::GetZoneIdByWorld(x2, y) != curZone
-			|| ZoneLayout::GetZoneIdByWorld(x,  y1) != curZone
-			|| ZoneLayout::GetZoneIdByWorld(x,  y2) != curZone;
+		return grid.LocalZoneAt(x1, z) != curZone
+			|| grid.LocalZoneAt(x2, z) != curZone
+			|| grid.LocalZoneAt(x,  z1) != curZone
+			|| grid.LocalZoneAt(x,  z2) != curZone;
 	}
 
 	int ManhattanDistance(short x1, short y1, short x2, short y2)
@@ -172,14 +174,16 @@ namespace MonsterHelper
 		float z = monster->GetZ();
 		const float prevX = x;
 
-		SubjectHelper::MovePositionByDirection(x, z, static_cast<char>(LRng() % 4));
+		SubjectHelper::MovePositionByDirection(
+			RegionOfZone(monster->GetZoneId()), x, z, static_cast<char>(LRng() % 4));
 
 		// Guard: new position must stay inside this zone and within world bounds.
 		// Without this check a monster near z=499 can randomly step to z=500
 		// (a different zone), causing UpdateObjectSectorAndPosition to return false
 		// and ASSERT_CRASH to fire.
-		if (!ZoneLayout::IsValidWorldPosition(x, z) ||
-		    ZoneLayout::GetZoneIdByWorld(x, z) != monster->GetZoneId())
+		const RegionIndex region = RegionOfZone(monster->GetZoneId());
+		if (!GWorld->Grid(region).Contains(x, z) ||
+		    GWorld->ZoneAt(region, x, z) != monster->GetZoneId())
 		{
 			return;
 		}
@@ -349,7 +353,7 @@ namespace MonsterHelper
 		// ── Zone boundary guard ───────────────────────────────────────────────
 		// 존 경계 ZONE_BOUNDARY_MARGIN 칸 이내에 도달하면 추적을 중단하고 스폰으로 복귀.
 		// 몬스터가 Zone을 넘지 않으므로 Zone Transfer 로직이 불필요해진다.
-		if (IsNearZoneBoundary(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ())))
+		if (IsNearZoneBoundary(RegionOfZone(monster->GetZoneId()), monster->GetX(), monster->GetZ()))
 		{
 			monster->SetAttack(false);
 
@@ -357,7 +361,8 @@ namespace MonsterHelper
 			const short spawnZ = monster->GetSpawnZ();
 
 			// 스폰 위치도 경계 근처이면(배치 오류 등) 즉시 비활성화
-			if (IsNearZoneBoundary(spawnX, spawnZ))
+			if (IsNearZoneBoundary(RegionOfZone(monster->GetZoneId()),
+			                       static_cast<float>(spawnX), static_cast<float>(spawnZ)))
 			{
 				monster->ClearPath();
 				monster->SetActive(false);
@@ -494,8 +499,21 @@ namespace MonsterHelper
 		// stride 분배: zoneId, zoneId+ZoneCount, zoneId+2*ZoneCount, ...
 		// → 각 존이 전체 ID 범위에서 균등한 간격으로 몬스터를 가져가므로
 		//   AGGRO(앞 25%)와 PASSIVE(나머지 75%)가 모든 존에 고르게 분포된다.
-		const int stride = static_cast<int>(ZoneLayout::ZoneCount);
-		for (int32_t i = zoneId; i < MAX_MONSTER; i += stride)
+		// **몬스터가 생길 수 있는 Zone 들 안에서의 순번**으로 나눈다.
+		//
+		// ZoneId 를 그대로 시작값으로 쓰면 안 된다. 리전이 상위 바이트에 박혀
+		// 있어(마을 0~3, 필드 256~271) 마을 Zone 0 의 수열 0,4,8,...,256 과
+		// 필드 Zone 256 의 수열 256,272,... 가 부딪힌다 — 같은 ObjID 를 두 번
+		// 넣으려다 ASSERT_CRASH 로 서버가 죽었다.
+		const int slot = GWorld->SpawnSlotOf(zoneId);
+		if (slot < 0)
+		{
+			// 평화지역(마을)이다. 리전 데이터의 flags.spawn 이 false 다 (9장).
+			cout << "[Zone " << zoneId << "] 평화지역 - 몬스터 없음" << endl;
+			return;
+		}
+		const int stride = static_cast<int>(GWorld->SpawnableZoneIds().size());
+		for (int32_t i = slot; i < MAX_MONSTER; i += stride)
 		{
 			ObjID monsterId(EnumCategory::eMonster, MONSTER_ID_START + static_cast<uint64_t>(i));
 			auto newMonster = MakeNewSubject(monsterId, ObjID::npos);
@@ -504,9 +522,13 @@ namespace MonsterHelper
 
 			auto monster = ::GetGameObject<Monster>(monsterId);
 			if (monster) monster->SetSpawn(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ()));
+
 		}
 
+		// endl 로 반드시 flush 한다. 개행 문자만 넣으면 버퍼에 남아 있다가
+		// 프로세스를 강제 종료할 때 통째로 버려진다. 실제로 그것 때문에
+		// 필드 Zone 이 몬스터를 만들지 않는다고 오진했다 — 다 만들고 있었다.
 		cout << "[Zone " << zoneId << "] Monster Init Success ("
-		     << (MAX_MONSTER / stride) << " monsters)\n";
+		     << (MAX_MONSTER / stride) << " monsters)" << endl;
 	}
 }
