@@ -105,6 +105,30 @@ namespace Route
 			}
 			break;
 		}
+		case PacketType::USER_INPUT_REQ:
+		{
+			// Week 1 의 5번 단계 — **스텁이다.** 레이아웃만 굳히고 받아만 둔다.
+			// 고정 틱 적분과 속도/내비메시 검증은 6번에서 여기에 붙는다.
+			if (session->m_state != SOCKET_STATE::ST_INGAME)
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr || client->GetStat()->IsDead())
+				break;
+
+			auto* p = reinterpret_cast<const USER_INPUT_REQ_PACKET*>(packet);
+
+			// 크기가 1 을 넘으면 조작된 클라다. 지금은 버리기만 하고, 6번에서
+			// 정규화 + 속도 상수 곱으로 바꾼다 — 클라가 큰 값을 보내도
+			// 빨라지지 않게 하는 것이 요점이다 (9장).
+			const float lengthSq = p->move_x * p->move_x + p->move_z * p->move_z;
+			if (lengthSq > 1.01f || !std::isfinite(lengthSq))
+				break;
+
+			// yaw 는 판정에 쓰지 않으므로 그대로 받는다 (시선은 클라 전용).
+			client->SetYaw(p->yaw);
+			client->m_lastInputSeq = p->seq;
+			break;
+		}
 		case PacketType::USER_ATTACK_REQ:
 		{
 			if (session->m_state != SOCKET_STATE::ST_INGAME)

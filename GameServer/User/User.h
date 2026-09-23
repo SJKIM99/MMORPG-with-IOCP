@@ -11,6 +11,9 @@ public:
 
 public:
 	uint32_t m_lastMoveTime      = 0;
+	// 클라가 마지막으로 보낸 입력 시퀀스. 보정 패킷에 실어 "몇 번까지 반영한
+	// 결과인지" 알려 준다 — 없으면 클라가 이미 지나간 보정을 최신으로 착각한다.
+	uint32_t m_lastInputSeq      = 0;
 	uint32_t m_lastAttackTime    = 0;
 	uint32_t m_lastSkillTime     = 0;
 	uint32_t m_lastPotionUseTime = 0;

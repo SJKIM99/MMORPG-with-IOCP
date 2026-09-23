@@ -118,7 +118,44 @@ enum class PacketType : uint16_t
 	// Chat
 	CS_CHAT,
 	SC_CHAT,
+
+	// ── 3D 이동 (Week 1 의 5번 단계) ─────────────────────────────────────────
+	//
+	// 기존 패킷은 **그대로 둔다** (2장 — 신규 패킷만 추가). USER_MOVE_REQ 와
+	// SUBJECT_MOVE_NFY 는 2D short 좌표를 쓰고 STRESS_TEST 가 아직 그것으로
+	// 돈다. 3D 는 아래 패킷으로 따로 다니다가, 봇까지 넘어오면 옛 것을 지운다.
+	//
+	// **값을 중간에 끼워 넣지 말 것.** enum 값이 곧 와이어 포맷이라
+	// 하나만 밀려도 모든 패킷이 다른 핸들러로 간다.
+	USER_INPUT_REQ,              // C->S 입력만 보낸다 (9장)
+	USER_ENTER_WORLD_ACK,        // S->C 내 캐릭터의 3D 시작 상태
+	SUBJECT_SPAWN_NFY,           // S->C 시야에 들어온 개체 (3D)
+	SUBJECT_TRANSFORM_NFY,       // S->C 위치/방향 갱신 (3D)
+	USER_MOVE_CORRECTION_NFY,    // S->C 서버가 판정한 위치로 되돌림
 };
+
+// 이동 상태. 클라이언트 애니메이션 선택에만 쓴다 — 판정은 서버가 이미 끝냈다.
+enum class MoveState : uint8_t
+{
+	Idle = 0,
+	Walk = 1,
+	Run  = 2,
+	Jump = 3,
+	Fall = 4,
+};
+
+// 서버가 위치를 되돌린 이유. 로그와 지표(9장의 "보정 횟수")에 쓴다.
+enum class CorrectionReason : uint8_t
+{
+	None        = 0,
+	TooFast     = 1,   // 최대 속도 초과
+	OffNavMesh  = 2,   // 내비메시 폴리곤 밖 (9장)
+	OutOfRegion = 3,   // 리전 경계 밖
+};
+
+// USER_INPUT_REQ_PACKET::flags 비트
+inline constexpr uint8_t INPUT_FLAG_SPRINT = 1 << 0;
+inline constexpr uint8_t INPUT_FLAG_JUMP   = 1 << 1;
 
 #pragma pack (push, 1)
 struct USER_LOGIN_REQ_PACKET
@@ -237,6 +274,110 @@ struct CS_CHAT_PACKET
 // 다시 짜는 대신, 누적 최댓값을 한 단계씩 이름 붙여 계산한다 — 각 줄은 항상
 // "지금까지의 최댓값 vs 새 패킷 하나"만 비교하므로 실수할 여지가 없고, 새
 // 패킷은 끝에 한 줄만 추가하면 된다.
+// ── 3D 이동 패킷 (Week 1 의 5번 단계) ────────────────────────────────────────
+//
+// 좌표는 전부 **미터 단위 float** 이고 지면은 XZ, 높이는 Y 다 (3장).
+// short 로 보내던 옛 패킷과 섞이지 않게 이름부터 다르게 뒀다.
+//
+// 핸들러는 이 단계에서 스텁이다 — 받아서 로그만 찍는다. 실제 적분과 검증은
+// 6번 단계에서 붙인다. 레이아웃을 먼저 굳히는 이유는 클라 코덱(7번)과
+// 봇(9번)이 이걸 직렬화하기 때문이다. 나중에 바꾸면 세 군데를 고쳐야 한다.
+
+// C->S. **클라이언트가 보내는 것은 입력뿐이다** (9장).
+// 결과 좌표를 보내지 않는다 — 보내 봐야 서버가 믿지 않는다.
+struct USER_INPUT_REQ_PACKET
+{
+	unsigned short size;
+	char     type;
+	uint8_t  flags;      // INPUT_FLAG_*
+	// 클라 입력 시퀀스. 보정 패킷이 "몇 번 입력까지 반영한 결과인지" 알려줄 때
+	// 쓴다. 이게 없으면 클라가 이미 지나간 보정을 최신으로 착각한다.
+	uint32_t seq;
+	// 지면 이동 입력. 길이 1 이하로 정규화된 방향이다. 서버는 크기를 clamp 하고
+	// 자기 속도 상수를 곱한다 — 클라가 큰 값을 보내도 빨라지지 않는다.
+	float    move_x;
+	float    move_z;
+	// 바라보는 방향. 게임플레이 판정에 쓰지 않으므로 검증 없이 그대로 퍼뜨린다
+	// (이펙트·시선이 클라 전용인 것과 같은 이유).
+	float    yaw;
+};
+
+// S->C. 로그인 직후 내 캐릭터의 3D 시작 상태. 옛 USER_LOGIN_ACK 는 2D 라
+// 그대로 두고, 3D 클라이언트는 이걸 기다린다.
+struct USER_ENTER_WORLD_ACK_PACKET
+{
+	unsigned short size;
+	char     type;
+	uint8_t  region;      // 리전 인덱스 (WorldRegistry 순서)
+	ObjID    id;
+	float    x, y, z;
+	float    yaw;
+	uint16_t maxhp;
+	uint16_t hp;
+	uint8_t  level;
+	uint32_t exp;
+};
+
+// S->C. 시야에 들어온 개체. SUBJECT_ADD_NFY 의 3D 판이다.
+struct SUBJECT_SPAWN_NFY_PACKET
+{
+	unsigned short size;
+	char     type;
+	uint8_t  subject_kind;   // EnumCategory 와 같은 값
+	ObjID    id;
+	float    x, y, z;
+	float    yaw;
+	char     name[NAME_SIZE];
+	uint16_t itemId;         // 장착 중인 아이템. 0 이면 없음
+	uint8_t  monster_type;
+	uint8_t  state;          // MoveState
+};
+
+// S->C. 위치/방향 갱신. 시야 안 개체 전부에 대해 주기적으로 나간다.
+struct SUBJECT_TRANSFORM_NFY_PACKET
+{
+	unsigned short size;
+	char     type;
+	uint8_t  state;          // MoveState — 클라 애니메이션 선택용
+	ObjID    id;
+	float    x, y, z;
+	float    yaw;
+	// 서버 기준 시각(ms). 클라가 원격 개체를 보간할 때 기준으로 쓴다.
+	uint32_t server_time;
+};
+
+// S->C. 서버가 클라 위치를 되돌린다 (9장 — "최대 속도 초과 시 서버 좌표로
+// 보정 패킷 전송. 내비메시 폴리곤 밖이면 거부").
+//
+// 본인에게만 간다. 남들은 SUBJECT_TRANSFORM_NFY 로 이미 서버 좌표를 받는다.
+struct USER_MOVE_CORRECTION_NFY_PACKET
+{
+	unsigned short size;
+	char     type;
+	uint8_t  reason;         // CorrectionReason
+	// 이 시퀀스 번호까지 반영한 결과다. 클라는 자기가 보낸 seq 와 비교해
+	// 이미 지나간 보정인지 판단한다.
+	uint32_t seq;
+	float    x, y, z;
+	float    yaw;
+};
+
+// 와이어 레이아웃을 컴파일 타임에 못 박는다.
+//
+// 이 크기는 **클라이언트(C#)와 봇이 같은 바이트 수로 읽는다는 약속**이다.
+// 필드를 하나 끼워 넣으면 여기서 먼저 걸리고, 그러면 세 곳을 같이 고쳐야
+// 한다는 것을 잊지 않게 된다. #pragma pack(1) 이 풀리는 사고도 잡는다.
+static_assert(sizeof(USER_INPUT_REQ_PACKET) == 2 + 1 + 1 + 4 + 4 + 4 + 4,
+	"USER_INPUT_REQ 레이아웃이 바뀌었다 - 클라 코덱과 봇도 같이 고칠 것");
+static_assert(sizeof(SUBJECT_TRANSFORM_NFY_PACKET)
+	== 2 + 1 + 1 + sizeof(ObjID) + 4 * 4 + 4,
+	"SUBJECT_TRANSFORM_NFY 레이아웃이 바뀌었다");
+static_assert(sizeof(USER_MOVE_CORRECTION_NFY_PACKET) == 2 + 1 + 1 + 4 + 4 * 4,
+	"USER_MOVE_CORRECTION_NFY 레이아웃이 바뀌었다");
+static_assert(sizeof(USER_ENTER_WORLD_ACK_PACKET)
+	== 2 + 1 + 1 + sizeof(ObjID) + 4 * 4 + 2 + 2 + 1 + 4,
+	"USER_ENTER_WORLD_ACK 레이아웃이 바뀌었다");
+
 namespace ClientPacketSizeDetail
 {
 	constexpr size_t s01 = sizeof(USER_LOGIN_REQ_PACKET);
@@ -252,8 +393,9 @@ namespace ClientPacketSizeDetail
 	constexpr size_t s11 = ProtocolConstMaxSize(s10, sizeof(ITEM_DISCARD_REQ_PACKET));
 	constexpr size_t s12 = ProtocolConstMaxSize(s11, sizeof(ITEM_PICKUP_REQ_PACKET));
 	constexpr size_t s13 = ProtocolConstMaxSize(s12, sizeof(ITEM_USE_REQ_PACKET));
+	constexpr size_t s14 = ProtocolConstMaxSize(s13, sizeof(USER_INPUT_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetail::s13;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetail::s14;
 
 struct USER_LOGIN_ACK_PACKET
 {

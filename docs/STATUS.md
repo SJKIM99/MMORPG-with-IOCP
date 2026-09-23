@@ -1194,6 +1194,59 @@ agentMaxSlope 52도 = Godot 의 FloorMaxAngle
   가장 가까운 통행 가능 면까지의 거리라 이상하지는 않지만, 이동 검증에서
   허용 반경을 정할 때 이 값을 근거로 삼아야 한다.
 
+### 5번 완료 — 3D 이동 프로토콜 정의 (2026-09-23)
+
+핸들러는 **스텁이다.** 레이아웃만 굳히고 받아만 둔다 — 적분과 검증은 6번.
+먼저 굳히는 이유는 클라 코덱(7번)과 봇(9번)이 이걸 직렬화하기 때문이다.
+나중에 바꾸면 세 군데를 고쳐야 한다.
+
+#### 기존 패킷은 건드리지 않았다 (2장)
+
+`USER_MOVE_REQ` / `SUBJECT_MOVE_NFY` 는 2D short 좌표를 쓰고 STRESS_TEST 가
+아직 그것으로 돈다. 3D 는 새 패킷으로 따로 다니다가, 봇까지 넘어오면 옛 것을
+지운다. 실제로 **STRESS_TEST 가 소스 무수정으로 0 오류 빌드**된다.
+
+#### 레이아웃 — 서버가 직접 찍는다
+
+```
+GameServer.exe --protocol
+
+packet                       type  size  fields(offset:size)
+  USER_INPUT_REQ                35    20  flags:3 seq:4 move_x:8 move_z:12 yaw:16
+  USER_ENTER_WORLD_ACK          36    45  region:3 id:4 x:20 yaw:32 hp:38
+  SUBJECT_SPAWN_NFY             37    60  kind:3 id:4 x:20 name:36 itemId:56
+  SUBJECT_TRANSFORM_NFY         38    40  state:3 id:4 x:20 yaw:32 time:36
+  USER_MOVE_CORRECTION_NFY      39    24  reason:3 seq:4 x:8 yaw:20
+
+  ObjID 16바이트, NAME_SIZE 20, MAX_CLIENT_PACKET_SIZE 131
+```
+
+C# 코덱과 봇이 같은 바이트 수로 읽어야 하므로 **서버가 찍는 값을 유일한 근거**로
+삼는다. 지형 해시를 세 구현이 대조하는 것과 같은 발상이다 — 손으로 센 오프셋은
+반드시 한 번은 틀린다. `static_assert` 로도 못 박아서, 필드를 끼워 넣으면
+컴파일이 먼저 막고 "세 곳을 같이 고쳐야 한다"를 상기시킨다.
+
+#### 설계 요점
+
+**클라이언트가 보내는 것은 입력뿐이다** (9장). `USER_INPUT_REQ` 에 결과 좌표가
+없다 — 보내 봐야 서버가 믿지 않으므로 아예 자리를 만들지 않았다.
+`move_x/move_z` 는 길이 1 이하로 정규화된 방향이고, 서버가 크기를 clamp 한 뒤
+자기 속도 상수를 곱한다. 클라가 큰 값을 보내도 빨라지지 않는다.
+
+`seq` 를 넣은 이유: 보정 패킷이 "몇 번 입력까지 반영한 결과인지" 알려 주지
+않으면 클라가 이미 지나간 보정을 최신으로 착각한다.
+
+`yaw` 는 검증하지 않는다. 게임플레이 판정에 쓰지 않으므로 그대로 퍼뜨린다 —
+이펙트와 시선이 클라 전용인 것과 같은 이유다.
+
+`CorrectionReason` 을 enum 으로 둔 것은 9장의 "보정 횟수" 를 이유별로 셀 수
+있게 하려는 것이다. Week 2 의 A/B/C 측정에서 카운터로 쓴다.
+
+#### 지금 스텁이 하는 일
+
+입력 크기가 1 을 넘으면(조작된 클라) 버리고, yaw 와 seq 만 기록한다.
+크래시 없이 받는 것까지가 이 단계의 DoD 다.
+
 ### 이번 주에 하지 않는 것
 
 Recast/내비메시, 몬스터 FSM, 인던, 리전 간 포탈(구조만 열어 두고 기능은 Week 2),

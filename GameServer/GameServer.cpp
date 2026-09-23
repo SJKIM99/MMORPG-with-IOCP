@@ -8,6 +8,7 @@
 #include <dbghelp.h>
 #include <future>
 #include <filesystem>
+#include <iomanip>
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "dbghelp.lib")
 #include "ThreadManager.h"
@@ -99,6 +100,71 @@ int main(int argc, char** argv)
 		WriteCrashLog("CRASH", code, addr, ep);
 		return EXCEPTION_CONTINUE_SEARCH;
 	});
+
+	// --- 프로토콜 레이아웃 출력 -------------------------------------------------
+	//
+	// GameServer.exe --protocol
+	//
+	// 클라이언트(C#)와 봇이 **같은 바이트 수로** 읽어야 하므로, 서버가 직접
+	// 찍어 주는 값을 유일한 근거로 삼는다. 지형 해시를 세 구현이 대조하는 것과
+	// 같은 발상이다 — 사람이 손으로 센 오프셋은 반드시 한 번은 틀린다.
+	for (int i = 1; i < argc; ++i)
+	{
+		if (::strcmp(argv[i], "--protocol") != 0)
+			continue;
+
+		cout << "packet                       type  size  fields(offset:size)" << endl;
+
+		const auto line = [](const char* name, int type, size_t size)
+		{
+			cout << "  " << std::left << std::setw(27) << name << std::right
+				<< std::setw(5) << type << std::setw(6) << size;
+		};
+
+		line("USER_INPUT_REQ", static_cast<int>(PacketType::USER_INPUT_REQ),
+			sizeof(USER_INPUT_REQ_PACKET));
+		cout << "  flags:" << offsetof(USER_INPUT_REQ_PACKET, flags)
+			<< " seq:" << offsetof(USER_INPUT_REQ_PACKET, seq)
+			<< " move_x:" << offsetof(USER_INPUT_REQ_PACKET, move_x)
+			<< " move_z:" << offsetof(USER_INPUT_REQ_PACKET, move_z)
+			<< " yaw:" << offsetof(USER_INPUT_REQ_PACKET, yaw) << endl;
+
+		line("USER_ENTER_WORLD_ACK", static_cast<int>(PacketType::USER_ENTER_WORLD_ACK),
+			sizeof(USER_ENTER_WORLD_ACK_PACKET));
+		cout << "  region:" << offsetof(USER_ENTER_WORLD_ACK_PACKET, region)
+			<< " id:" << offsetof(USER_ENTER_WORLD_ACK_PACKET, id)
+			<< " x:" << offsetof(USER_ENTER_WORLD_ACK_PACKET, x)
+			<< " yaw:" << offsetof(USER_ENTER_WORLD_ACK_PACKET, yaw)
+			<< " hp:" << offsetof(USER_ENTER_WORLD_ACK_PACKET, hp) << endl;
+
+		line("SUBJECT_SPAWN_NFY", static_cast<int>(PacketType::SUBJECT_SPAWN_NFY),
+			sizeof(SUBJECT_SPAWN_NFY_PACKET));
+		cout << "  kind:" << offsetof(SUBJECT_SPAWN_NFY_PACKET, subject_kind)
+			<< " id:" << offsetof(SUBJECT_SPAWN_NFY_PACKET, id)
+			<< " x:" << offsetof(SUBJECT_SPAWN_NFY_PACKET, x)
+			<< " name:" << offsetof(SUBJECT_SPAWN_NFY_PACKET, name)
+			<< " itemId:" << offsetof(SUBJECT_SPAWN_NFY_PACKET, itemId) << endl;
+
+		line("SUBJECT_TRANSFORM_NFY", static_cast<int>(PacketType::SUBJECT_TRANSFORM_NFY),
+			sizeof(SUBJECT_TRANSFORM_NFY_PACKET));
+		cout << "  state:" << offsetof(SUBJECT_TRANSFORM_NFY_PACKET, state)
+			<< " id:" << offsetof(SUBJECT_TRANSFORM_NFY_PACKET, id)
+			<< " x:" << offsetof(SUBJECT_TRANSFORM_NFY_PACKET, x)
+			<< " yaw:" << offsetof(SUBJECT_TRANSFORM_NFY_PACKET, yaw)
+			<< " time:" << offsetof(SUBJECT_TRANSFORM_NFY_PACKET, server_time) << endl;
+
+		line("USER_MOVE_CORRECTION_NFY", static_cast<int>(PacketType::USER_MOVE_CORRECTION_NFY),
+			sizeof(USER_MOVE_CORRECTION_NFY_PACKET));
+		cout << "  reason:" << offsetof(USER_MOVE_CORRECTION_NFY_PACKET, reason)
+			<< " seq:" << offsetof(USER_MOVE_CORRECTION_NFY_PACKET, seq)
+			<< " x:" << offsetof(USER_MOVE_CORRECTION_NFY_PACKET, x)
+			<< " yaw:" << offsetof(USER_MOVE_CORRECTION_NFY_PACKET, yaw) << endl;
+
+		cout << endl
+			<< "  ObjID " << sizeof(ObjID) << "바이트, NAME_SIZE " << NAME_SIZE
+			<< ", MAX_CLIENT_PACKET_SIZE " << MAX_CLIENT_PACKET_SIZE << endl;
+		return 0;
+	}
 
 	// --- 내비메시 오프라인 빌드 모드 -------------------------------------------
 	//
