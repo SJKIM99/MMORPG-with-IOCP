@@ -9,7 +9,9 @@
 #include "ItemTable.h"
 #include "Thread/DBThread.h"
 #include "User.h"
+#include "UserHelper.h"
 #include "Zone/ZoneManager.h"
+#include "Data/LevelTable.h"
 
 void Inventory::Attach(const std::shared_ptr<User>& owner) noexcept
 {
@@ -34,14 +36,40 @@ void Inventory::SaveSlotToDB(uint16_t slotIndex) const
 	if (it == _slots.end())
 	{
 		GDBThread->RequestDeleteItem(owner->GetPlayerId(), slotIndex);
+		NotifySlotChanged(slotIndex);
 		return;
 	}
 
 	const Item::SharedPtr& item = it->second;
 	const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
 	const bool equipped = (equipment != nullptr) && equipment->IsEquipped();
+	const uint8_t enchant = (equipment != nullptr) ? equipment->GetEnchant() : 0;
 
-	GDBThread->RequestSaveItem(owner->GetPlayerId(), slotIndex, item->GetItemTableId(), item->GetCount(), equipped);
+	GDBThread->RequestSaveItem(owner->GetPlayerId(), slotIndex, item->GetItemTableId(), item->GetCount(), equipped, enchant);
+	NotifySlotChanged(slotIndex);
+}
+
+DB_ITEM_SLOT_SAVE Inventory::DescribeSlot(uint16_t slotIndex) const
+{
+	DB_ITEM_SLOT_SAVE save{};
+	save.slotIndex = slotIndex;
+
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+	{
+		save.hasItem = false;
+		return save;
+	}
+
+	const Item::SharedPtr& item = it->second;
+	const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
+
+	save.hasItem  = true;
+	save.itemId   = item->GetItemTableId();
+	save.count    = item->GetCount();
+	save.equipped = (equipment != nullptr) && equipment->IsEquipped();
+	save.enchant  = (equipment != nullptr) ? equipment->GetEnchant() : 0;
+	return save;
 }
 
 void Inventory::SaveTwoSlotsToDB(uint16_t slotIndexA, uint16_t slotIndexB) const
@@ -49,29 +77,33 @@ void Inventory::SaveTwoSlotsToDB(uint16_t slotIndexA, uint16_t slotIndexB) const
 	auto owner = _owner.lock();
 	ASSERT_CRASH(owner != nullptr);
 
-	auto describe = [this](uint16_t slotIndex) -> DB_ITEM_SLOT_SAVE
-	{
-		DB_ITEM_SLOT_SAVE save{};
-		save.slotIndex = slotIndex;
+	GDBThread->RequestSaveTwoItems(owner->GetPlayerId(), DescribeSlot(slotIndexA), DescribeSlot(slotIndexB));
+	NotifySlotChanged(slotIndexA);
+	NotifySlotChanged(slotIndexB);
+}
 
-		const auto it = _slots.find(slotIndex);
-		if (it == _slots.end())
-		{
-			save.hasItem = false;
-			return save;
-		}
+void Inventory::NotifySlotChanged(uint16_t slotIndex) const
+{
+	auto owner = _owner.lock();
+	if (owner == nullptr || !owner->IsExtended())
+		return;
+	UserHelper::SendITEM_SLOT_EX_INF(owner, slotIndex);
+}
 
-		const Item::SharedPtr& item = it->second;
-		const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
+void Inventory::FillSlotEx(uint16_t slotIndex, ITEM_SLOT_EX_DATA& out) const noexcept
+{
+	out = {};
+	out.slotIndex = slotIndex;
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+		return;
 
-		save.hasItem  = true;
-		save.itemId   = item->GetItemTableId();
-		save.count    = item->GetCount();
-		save.equipped = (equipment != nullptr) && equipment->IsEquipped();
-		return save;
-	};
-
-	GDBThread->RequestSaveTwoItems(owner->GetPlayerId(), describe(slotIndexA), describe(slotIndexB));
+	const Item::SharedPtr& item = it->second;
+	const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
+	out.itemId   = item->GetItemTableId();
+	out.count    = item->GetCount();
+	out.equipped = (equipment != nullptr && equipment->IsEquipped()) ? 1 : 0;
+	out.enchant  = (equipment != nullptr) ? equipment->GetEnchant() : 0;
 }
 
 void Inventory::RecomputeOffensive() const
@@ -84,9 +116,11 @@ void Inventory::RecomputeOffensive() const
 	{
 		if (const ItemTableRow* row = ItemTable::Find(equippedId); row != nullptr)
 			attackBonus = row->attackBonus;
+		attackBonus = static_cast<uint16_t>(attackBonus + EnchantRule::AttackBonus(GetEquippedEnchant()));
 	}
 
-	owner->GetStat()->SetOffensive(PLAYER_OFFENSIVE + attackBonus);
+	// 기본 공격력은 레벨에 따라 오른다(1레벨 = 기존 PLAYER_OFFENSIVE 10과 같다).
+	owner->GetStat()->SetOffensive(static_cast<uint16_t>(LevelTable::BaseAttack(owner->GetStat()->GetLevel()) + attackBonus));
 }
 
 void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
@@ -111,10 +145,12 @@ void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 
 		item->SetOwnerID(owner->GetObjID());
 
-		if (info._equipped)
+		if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item))
 		{
-			if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item))
+			if (info._equipped)
 				equipment->Equip();
+			// 테이블 상한보다 큰 값이 DB에 있어도(수동 수정 등) 방어적으로 잘라낸다.
+			equipment->SetEnchant(std::min<uint8_t>(info._enchant, EnchantRule::kMaxLevel));
 		}
 
 		_slots[info._slotIndex] = std::move(item);
@@ -125,7 +161,7 @@ void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 	RecomputeOffensive();
 }
 
-bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots) noexcept
+bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots, uint8_t enchant) noexcept
 {
 	AssertOwnedByCurrentZone();
 
@@ -139,6 +175,9 @@ bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint1
 
 	const ItemTableRow* row = ItemTable::Find(itemId);
 	if (row == nullptr)
+		return false;
+	// 아데나는 슬롯이 아니라 지갑으로 간다(AddAdena) — 여기로 오면 호출자 실수다.
+	if (row->type == ItemType::eCurrency)
 		return false;
 
 	// 1단계(드라이런): 맵을 하나도 건드리지 않고, count 전부를 수용할 수 있는지만
@@ -197,6 +236,8 @@ bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint1
 		// "일부만 반영된 실패"가 되어버리므로, 절대 그렇게 하지 않는다.)
 		ASSERT_CRASH(newItem != nullptr);
 		newItem->SetOwnerID(owner->GetObjID());
+		if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(newItem))
+			equipment->SetEnchant(std::min<uint8_t>(enchant, EnchantRule::kMaxLevel));
 		_slots.emplace(i, std::move(newItem));
 		touchedSlots.push_back(i);
 		remaining -= added;
@@ -293,6 +334,16 @@ ItemTableId Inventory::GetEquippedItemId() const noexcept
 	return ITEM_TABLE_ID_NONE;
 }
 
+uint8_t Inventory::GetEquippedEnchant() const noexcept
+{
+	for (const auto& [slotIndex, item] : _slots)
+	{
+		if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item); equipment != nullptr && equipment->IsEquipped())
+			return equipment->GetEnchant();
+	}
+	return 0;
+}
+
 bool Inventory::TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot) noexcept
 {
 	AssertOwnedByCurrentZone();
@@ -387,9 +438,15 @@ bool Inventory::TryUseItem(uint16_t slotIndex) noexcept
 	// 그 자체가 불변조건 위반이다.
 	ASSERT_CRASH(row != nullptr);
 
+	// 이 경로는 회복 물약 전용이다. 주문서/초록 물약처럼 효과가 인벤토리 밖에서
+	// 일어나는 아이템은 TryConsumeOne + UserHelper 쪽 효과 처리로 간다 — 여기서
+	// 받아버리면 효과 없이 소모만 되는 버그가 된다.
+	if (row->effect != ItemEffect::eHeal || row->healAmount == 0)
+		return false;
+
 	const auto owner = _owner.lock();
-	if (row->healAmount > 0)
-		owner->GetStat()->HealHp(row->healAmount, PLAYER_MAX_HP);
+	// 레벨업으로 최대 HP가 오르므로 상한은 고정 상수(PLAYER_MAX_HP)가 아니라 현재 최대 HP다.
+	owner->GetStat()->HealHp(row->healAmount, owner->GetStat()->GetMaxHp());
 
 	consumable->RemoveCount(1);
 	if (consumable->GetCount() == 0)
@@ -437,4 +494,281 @@ bool Inventory::TrySwapSlots(uint16_t slotIndexA, uint16_t slotIndexB) noexcept
 	// 남을 수 있다.
 	SaveTwoSlotsToDB(slotIndexA, slotIndexB);
 	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 리니지풍 컨텐츠 확장
+// ─────────────────────────────────────────────────────────────────────────────
+
+uint32_t Inventory::AddAdena(uint32_t amount, AdenaReason reason) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	// DB 컬럼이 INT(부호 있음)라 그 범위를 넘지 않게 자른다.
+	constexpr uint32_t kMaxAdena = 2'000'000'000u;
+	const uint32_t room  = (_adena < kMaxAdena) ? (kMaxAdena - _adena) : 0;
+	const uint32_t added = std::min(amount, room);
+	if (added == 0)
+		return 0;
+
+	_adena += added;
+
+	auto owner = _owner.lock();
+	GDBThread->RequestSaveAdena(owner->GetPlayerId(), _adena);
+	if (owner->IsExtended())
+		UserHelper::SendADENA_INF(owner, static_cast<int32_t>(added), reason);
+	return added;
+}
+
+bool Inventory::TrySpendAdena(uint32_t amount, AdenaReason reason) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	if (_adena < amount)
+		return false;
+	if (amount == 0)
+		return true;
+
+	_adena -= amount;
+
+	auto owner = _owner.lock();
+	GDBThread->RequestSaveAdena(owner->GetPlayerId(), _adena);
+	if (owner->IsExtended())
+		UserHelper::SendADENA_INF(owner, -static_cast<int32_t>(amount), reason);
+	return true;
+}
+
+bool Inventory::TryConsumeOne(uint16_t slotIndex, ItemEffect expected, ItemTableId* outItemId) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	if (!IsValidSlotIndex(slotIndex))
+		return false;
+
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+		return false;
+
+	const auto consumable = std::dynamic_pointer_cast<ConsumableItem>(it->second);
+	if (consumable == nullptr)
+		return false;
+
+	const ItemTableRow* row = ItemTable::Find(consumable->GetItemTableId());
+	ASSERT_CRASH(row != nullptr);
+	if (row->effect != expected)
+		return false;
+
+	if (outItemId != nullptr)
+		*outItemId = row->id;
+
+	consumable->RemoveCount(1);
+	if (consumable->GetCount() == 0)
+		_slots.erase(it);
+
+	SaveSlotToDB(slotIndex);
+	return true;
+}
+
+Inventory::EnchantOutcome Inventory::TryEnchant(uint16_t scrollSlot, uint16_t targetSlot, uint32_t roll100, uint32_t bonusRoll) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	EnchantOutcome outcome{};
+	if (!IsValidSlotIndex(scrollSlot) || !IsValidSlotIndex(targetSlot) || scrollSlot == targetSlot)
+		return outcome;
+
+	const auto scrollIt = _slots.find(scrollSlot);
+	const auto targetIt = _slots.find(targetSlot);
+	if (scrollIt == _slots.end() || targetIt == _slots.end())
+		return outcome;
+
+	const ItemTableRow* scrollRow = ItemTable::Find(scrollIt->second->GetItemTableId());
+	ASSERT_CRASH(scrollRow != nullptr);
+	if (scrollRow->effect != ItemEffect::eEnchantWeapon)
+		return outcome;
+
+	const auto weapon = std::dynamic_pointer_cast<EquipmentItem>(targetIt->second);
+	if (weapon == nullptr)
+		return outcome;
+
+	const uint8_t before = weapon->GetEnchant();
+	if (before >= EnchantRule::kMaxLevel)
+		return outcome;  // 최대 강화 — 주문서를 소모하지 않는다
+
+	// ── 여기부터는 실패할 수 없다: 판정 → 메모리 반영 → DB 한 트랜잭션 ──
+	outcome.itemId      = weapon->GetItemTableId();
+	outcome.before      = before;
+	outcome.wasEquipped = weapon->IsEquipped();
+
+	const bool blessed = scrollRow->effectValue != 0;
+	const bool success = roll100 < EnchantRule::SuccessPercent(before);
+
+	// 주문서 1장 소모
+	scrollIt->second->RemoveCount(1);
+	if (scrollIt->second->GetCount() == 0)
+		_slots.erase(scrollIt);
+
+	if (success)
+	{
+		// 축복받은 주문서: 안전 구간에서는 +1~3, 안전 구간을 넘는 단계는 +1만(리니지와 같음)
+		uint8_t step = 1;
+		if (blessed && before < EnchantRule::kSafeLevel)
+			step = static_cast<uint8_t>(1 + bonusRoll % 3);
+		uint8_t after = static_cast<uint8_t>(before + step);
+		if (before < EnchantRule::kSafeLevel && after > EnchantRule::kSafeLevel)
+			after = EnchantRule::kSafeLevel;  // 축복으로 안전 구간을 뛰어넘지는 않는다
+		after = std::min<uint8_t>(after, EnchantRule::kMaxLevel);
+
+		weapon->SetEnchant(after);
+		outcome.result = EnchantResult::Success;
+		outcome.after  = after;
+	}
+	else
+	{
+		// 실패 = 증발. 장착 중이었다면 인벤토리 밖으로 사라지는 순간 장착도 풀린다.
+		weapon->Unequip();
+		_slots.erase(targetIt);
+		outcome.result = EnchantResult::Evaporated;
+		outcome.after  = 0;
+	}
+
+	if (outcome.wasEquipped)
+		RecomputeOffensive();
+
+	// 주문서 슬롯과 무기 슬롯을 한 트랜잭션으로 저장한다.
+	SaveTwoSlotsToDB(scrollSlot, targetSlot);
+	return outcome;
+}
+
+uint16_t Inventory::FindSingleSlotFor(const ItemTableRow& row, uint16_t count) const noexcept
+{
+	if (count == 0 || count > row.maxStack)
+		return MAX_INVENTORY_SLOTS;
+
+	// 같은 아이템 스택에 통째로 들어갈 자리가 있으면 거기 합친다(장비는 maxStack=1이라 해당 없음).
+	if (row.maxStack > 1)
+	{
+		for (const auto& [slotIndex, item] : _slots)
+		{
+			if (item->GetItemTableId() == row.id && item->GetCount() + count <= row.maxStack)
+				return slotIndex;
+		}
+	}
+
+	for (uint16_t i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+	{
+		if (_slots.find(i) == _slots.end())
+			return i;
+	}
+	return MAX_INVENTORY_SLOTS;
+}
+
+ShopResult Inventory::TryBuy(ItemTableId itemId, uint16_t count, uint32_t totalPrice, uint16_t* outSlot) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	const ItemTableRow* row = ItemTable::Find(itemId);
+	if (row == nullptr || row->type == ItemType::eCurrency)
+		return ShopResult::InvalidItem;
+	if (count == 0 || count > row->maxStack)
+		return ShopResult::InvalidCount;
+	if (_adena < totalPrice)
+		return ShopResult::NotEnoughAdena;
+
+	const uint16_t slotIndex = FindSingleSlotFor(*row, count);
+	if (slotIndex >= MAX_INVENTORY_SLOTS)
+		return ShopResult::InventoryFull;
+
+	// ── 확인이 전부 끝났다. 여기부터 실패할 수 없다(메모리 반영 → DB 한 트랜잭션). ──
+	const auto owner = _owner.lock();
+	const auto it = _slots.find(slotIndex);
+	if (it != _slots.end())
+	{
+		it->second->AddCount(count);
+	}
+	else
+	{
+		Item::SharedPtr newItem = MakeNewItem(itemId, count);
+		ASSERT_CRASH(newItem != nullptr);
+		newItem->SetOwnerID(owner->GetObjID());
+		_slots.emplace(slotIndex, std::move(newItem));
+	}
+	_adena -= totalPrice;
+
+	GDBThread->RequestShopTransaction(owner->GetPlayerId(), _adena, DescribeSlot(slotIndex));
+	NotifySlotChanged(slotIndex);
+	if (owner->IsExtended())
+		UserHelper::SendADENA_INF(owner, -static_cast<int32_t>(totalPrice), AdenaReason::ShopBuy);
+
+	if (outSlot != nullptr)
+		*outSlot = slotIndex;
+	return ShopResult::Success;
+}
+
+ShopResult Inventory::TrySell(uint16_t slotIndex, uint16_t count, uint32_t* outGain) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	if (!IsValidSlotIndex(slotIndex))
+		return ShopResult::InvalidItem;
+
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+		return ShopResult::InvalidItem;
+
+	const ItemTableRow* row = ItemTable::Find(it->second->GetItemTableId());
+	ASSERT_CRASH(row != nullptr);
+	if (row->sellPrice == 0)
+		return ShopResult::InvalidItem;
+	if (count == 0 || count > it->second->GetCount())
+		return ShopResult::InvalidCount;
+
+	if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(it->second); equipment != nullptr && equipment->IsEquipped())
+		return ShopResult::EquippedItem;
+
+	// 강화된 무기는 조금 더 받는다(+1당 10%) — 표시는 클라이언트가 같은 식으로 계산한다.
+	uint64_t unit = row->sellPrice;
+	if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(it->second))
+		unit = unit * (10 + equipment->GetEnchant()) / 10;
+	const uint64_t gain64 = unit * count;
+	constexpr uint32_t kMaxAdena = 2'000'000'000u;
+	if (gain64 > kMaxAdena - std::min(_adena, kMaxAdena))
+		return ShopResult::InvalidCount;  // 지갑 상한 초과 — 거래를 거절한다(버리지 않는다)
+	const uint32_t gain = static_cast<uint32_t>(gain64);
+
+	// ── 여기부터 실패할 수 없다 ──
+	it->second->RemoveCount(count);
+	if (it->second->GetCount() == 0)
+		_slots.erase(it);
+	_adena += gain;
+
+	const auto owner = _owner.lock();
+	GDBThread->RequestShopTransaction(owner->GetPlayerId(), _adena, DescribeSlot(slotIndex));
+	NotifySlotChanged(slotIndex);
+	if (owner->IsExtended())
+		UserHelper::SendADENA_INF(owner, static_cast<int32_t>(gain), AdenaReason::ShopSell);
+
+	if (outGain != nullptr)
+		*outGain = gain;
+	return ShopResult::Success;
+}
+
+Item::SharedPtr Inventory::TryTakeRandomItem(uint32_t roll) noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	if (_slots.empty())
+		return nullptr;
+
+	// unordered_map 순회 순서는 의미가 없으므로 슬롯 번호로 정렬된 후보에서 고른다.
+	std::vector<uint16_t> candidates;
+	candidates.reserve(_slots.size());
+	for (const auto& [slotIndex, item] : _slots)
+		candidates.push_back(slotIndex);
+	std::sort(candidates.begin(), candidates.end());
+
+	const uint16_t slotIndex = candidates[roll % candidates.size()];
+	const uint16_t count = _slots[slotIndex]->GetCount();
+	// TryExtractItem이 장착 해제/공격력 재계산/DB 저장/알림을 전부 처리한다.
+	return TryExtractItem(slotIndex, count);
 }

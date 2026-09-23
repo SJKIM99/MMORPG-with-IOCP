@@ -207,6 +207,7 @@
     <ClCompile Include="Area\SectorHelper.cpp" />
     <ClCompile Include="Zone\Zone.cpp" />
     <ClCompile Include="Zone\ZoneManager.cpp" />
+    <ClCompile Include="Content\ContentHelper.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Area\AStar.h" />
@@ -254,6 +255,11 @@
     <ClInclude Include="Zone\ZoneLayout.h" />
     <ClInclude Include="Zone\ZoneManager.h" />
     <ClInclude Include="Zone\ZoneTypes.h" />
+    <ClInclude Include="Content\ContentHelper.h" />
+    <ClInclude Include="Data\LevelTable.h" />
+    <ClInclude Include="Data\MonsterTable.h" />
+    <ClInclude Include="Data\WorldData.h" />
+    <ClInclude Include="Item\ItemTableData.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

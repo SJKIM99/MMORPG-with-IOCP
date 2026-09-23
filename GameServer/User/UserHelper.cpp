@@ -14,6 +14,14 @@
 #include "Item/EquipmentItem.h"
 #include "Item/DropTable.h"
 #include "Item/ItemHelper.h"
+#include "Item/ItemTableData.h"
+#include "Data/LevelTable.h"
+#include "Data/MonsterTable.h"
+#include "Data/WorldData.h"
+#include "Content/ContentHelper.h"
+#include "MonsterHelper.h"
+#include "GameSessionManager.h"
+#include "Zone/ZoneLayout.h"
 
 namespace
 {
@@ -74,6 +82,54 @@ namespace
 		data.itemId   = item->GetItemTableId();
 		data.count    = item->GetCount();
 		data.equipped = (equipment != nullptr && equipment->IsEquipped()) ? 1 : 0;
+	}
+
+	// 확장 프로토콜 세션이면서 게임 안에 있는 유저인가(Subject가 User일 때만 true)
+	bool IsExtendedViewer(const Subject::SharedPtr& subject)
+	{
+		if (subject == nullptr || subject->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
+			return false;
+		const auto session = static_pointer_cast<User>(subject)->GetGameSession();
+		return session != nullptr && session->m_state == SOCKET_STATE::ST_INGAME && session->IsExtended();
+	}
+
+	uint8_t BuildSubjectExFlags(const shared_ptr<User>& user)
+	{
+		const uint32_t now = GetNowTime();
+		uint8_t flags = 0;
+		if (user->IsPurple(now))                   flags |= SUBJECT_EX_PURPLE;
+		if (user->IsHasted(now))                   flags |= SUBJECT_EX_HASTE;
+		if (user->GetStat()->IsDead())             flags |= SUBJECT_EX_DEAD;
+		if (WorldData::IsSafeZone(user->GetX(), user->GetY())) flags |= SUBJECT_EX_SAFE;
+		return flags;
+	}
+
+	// 몬스터 처치 드롭을 놓을 칸 — 죽은 칸부터 시작해 주변으로 퍼뜨린다(한 칸에 여러 개가
+	// 겹치면 줍기 대상이 가려지므로). 같은 Zone, 막히지 않은 칸, 안전지대 밖만 쓴다.
+	bool PickDropTile(short originX, short originY, int index, short& outX, short& outY)
+	{
+		static constexpr int kOffsets[][2] = {
+			{ 0, 0 }, { 1, 0 }, { 0, 1 }, { -1, 0 }, { 0, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 },
+			{ 2, 0 }, { 0, 2 }, { -2, 0 }, { 0, -2 }, { 2, 1 }, { 1, 2 }, { -2, -1 }, { -1, -2 },
+		};
+		const ZoneId originZone = ZoneLayout::GetZoneIdByWorld(originX, originY);
+		int found = 0;
+		for (const auto& off : kOffsets)
+		{
+			const int x = originX + off[0];
+			const int y = originY + off[1];
+			if (!ZoneLayout::IsValidWorldPosition(x, y) || isCollision(static_cast<short>(x), static_cast<short>(y)))
+				continue;
+			if (ZoneLayout::GetZoneIdByWorld(x, y) != originZone || WorldData::IsSafeZone(x, y))
+				continue;
+			if (found++ == index)
+			{
+				outX = static_cast<short>(x);
+				outY = static_cast<short>(y);
+				return true;
+			}
+		}
+		return false;
 	}
 
 	void QueueUserSave(const shared_ptr<User>& user, short saveX, short saveY)
@@ -165,6 +221,26 @@ namespace UserHelper
 		::strncpy_s(packet.name, NAME_SIZE, target->GetName().c_str(), _TRUNCATE);
 
 		session->PostSend(packet);
+
+		// 확장 세션에는 레벨/성향치/강화 수치 같은 추가 정보를 바로 이어서 보낸다.
+		// (몬스터는 종족이 ObjID KIND에 실려 있어 추가 정보가 필요 없다 — 다만 이미
+		//  깎인 HP로 시야에 들어오면 HP 바를 맞추기 위해 보낸다.)
+		if (session->IsExtended())
+		{
+			if (category == EnumCategory::eUser)
+				SendSUBJECT_INFO_EX_NFY(sender, target);
+			else if (category == EnumCategory::eItem)
+			{
+				const auto equipment = dynamic_pointer_cast<EquipmentItem>(target);
+				if (equipment != nullptr && equipment->GetEnchant() > 0)
+					SendSUBJECT_INFO_EX_NFY(sender, target);
+			}
+			else if (category == EnumCategory::eMonster)
+			{
+				if (target->GetStat()->GetHp() < target->GetStat()->GetMaxHp())
+					SendSUBJECT_INFO_EX_NFY(sender, target);
+			}
+		}
 	}
 
 	void SendSUBJECT_EQUIP_CHANGE_NFY(Subject::SharedPtr sender, const ObjID& targetId, uint16_t itemId)
@@ -325,6 +401,9 @@ namespace UserHelper
 		::strncpy_s(packet.name, NAME_SIZE, target->GetName().c_str(), _TRUNCATE);
 
 		session->PostSend(packet);
+
+		if (session->IsExtended() && target->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eUser)
+			SendSUBJECT_INFO_EX_NFY(sender, target);
 	}
 
 	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr viewer, const ObjID& victimId, const ObjID& attackerId, int32_t victimHp)
@@ -638,31 +717,93 @@ namespace UserHelper
 		}
 
 		QueueUserSave(target, saveX, saveY);
+		ContentHelper::SaveAlignment(target, true);
 		return true;
 	}
 
-	// 몬스터 처치 시 드롭 테이블을 굴려 성공하면 몬스터가 죽은 자리에 필드
-	// 아이템으로 떨어뜨린다(더 이상 인벤토리에 즉시 들어가지 않는다) — 처치자가
+	// 몬스터 처치 시 드롭을 굴려 몬스터가 죽은 자리 주변에 필드 아이템으로
+	// 떨어뜨린다(인벤토리에 즉시 들어가지 않는다) — 처치자가
 	// ItemHelper::kLootPriorityDuration(10초) 동안 독점적으로 주울 수 있고, 그 뒤
 	// 30초가 될 때까지는 누구나 주울 수 있다가 소멸한다. AttackMonster가 이미
 	// attacker를 소유한 Zone 스레드 위에서 실행 중이므로(패킷 핸들러 ->
 	// HandleAttack/SkillAttack -> 여기), 그 전제 위에서만 성립하는
 	// ItemHelper::SpawnFieldItem을 안전하게 바로 호출할 수 있다.
-	void HandleItemDrop(const shared_ptr<User>& attacker, short x, short y)
+	//
+	// 확장: 종족별 드롭 테이블(DropTable 번호)과 굴림 횟수(보스는 여러 번), 아데나 드롭.
+	void HandleItemDrop(const shared_ptr<User>& attacker, const MonsterTableRow* species, short x, short y)
 	{
-		const DropTable::RollResult roll = DropTable::Roll();
-		if (!roll.hasItem)
-			return;
+		int tileIndex = 0;
+		auto spawnAtNextTile = [&](const Item::SharedPtr& item)
+		{
+			short dropX = x, dropY = y;
+			if (!PickDropTile(x, y, tileIndex++, dropX, dropY))
+			{
+				dropX = x;
+				dropY = y;
+			}
+			ItemHelper::SpawnFieldItem(item, dropX, dropY, attacker->GetObjID());
+		};
 
-		Item::SharedPtr item = MakeNewItem(roll.itemId, roll.count);
-		// DropTable은 시작 시점에 ItemTable과 대조 검증을 마쳤으므로(DropTable.cpp의
-		// ValidateDropTable) 여기서 실패할 수 없다 — 실패한다면 그 자체가 불변조건 위반이다.
-		ASSERT_CRASH(item != nullptr);
+		// 아데나 — 리니지처럼 바닥에 떨어진 "물건"이고, 주우면 지갑으로 들어간다.
+		if (species != nullptr && species->adenaMax > 0 && (LRng() % 100) < species->adenaChance)
+		{
+			std::uniform_int_distribution<uint32_t> amountRoll(species->adenaMin, species->adenaMax);
+			const uint16_t amount = static_cast<uint16_t>(std::min<uint32_t>(amountRoll(LRng), 65535));
+			if (amount > 0)
+			{
+				Item::SharedPtr adena = MakeNewItem(ItemTableData::Id::Adena, amount);
+				ASSERT_CRASH(adena != nullptr);
+				spawnAtNextTile(adena);
+			}
+		}
 
-		ItemHelper::SpawnFieldItem(item, x, y, attacker->GetObjID());
+		const uint8_t tableId = species != nullptr ? species->dropTable : 1;
+		const uint8_t rolls   = species != nullptr ? species->dropRolls : 1;
+		for (uint8_t i = 0; i < rolls; ++i)
+		{
+			const DropTable::RollResult roll = DropTable::Roll(tableId);
+			if (!roll.hasItem)
+				continue;
+
+			Item::SharedPtr item = MakeNewItem(roll.itemId, roll.count);
+			// DropTable은 시작 시점에 ItemTable과 대조 검증을 마쳤으므로(DropTable.cpp의
+			// ValidateDropTable) 여기서 실패할 수 없다 — 실패한다면 그 자체가 불변조건 위반이다.
+			ASSERT_CRASH(item != nullptr);
+			spawnAtNextTile(item);
+		}
 	}
 
-	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage)
+	void GainExp(const shared_ptr<User>& player, uint32_t amount)
+	{
+		if (player == nullptr)
+			return;
+
+		const uint8_t gained = player->GetStat()->AddExp(amount);
+		if (gained > 0)
+		{
+			// 레벨업: 최대 HP/기본 공격력 재계산 + HP 가득(연출상 "레벨업 = 부활의 순간")
+			player->ApplyLevelStats(true);
+		}
+
+		// 레거시 알림은 예전과 같은 조건(경험치가 바뀔 때마다)으로 보낸다.
+		SendUSER_STAT_CHANGE_INF(player);
+
+		if (player->IsExtended())
+		{
+			SendUSER_INFO_EX_INF(player);
+			if (gained > 0)
+			{
+				SendSystemEx(player, SystemMessageCode::LevelUp, player->GetStat()->GetLevel());
+				BroadcastEffect(player, player->GetObjID(), EffectId::LevelUp, player->GetX(), player->GetY(), player->GetStat()->GetLevel());
+			}
+		}
+
+		// 주변 확장 세션에는 레벨/HP가 바뀐 모습을 다시 알린다(레벨업 때만).
+		if (gained > 0)
+			BroadcastInfoEx(player);
+	}
+
+	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage, uint8_t damageFlags)
 	{
 		auto monster = ::GetGameObject<Monster>(monsterId);
 		auto attacker = ::GetGameObject<User>(playerId);
@@ -671,10 +812,14 @@ namespace UserHelper
 		if (monster->GetStat()->IsDead())
 			return;
 
-		const uint16_t remaining = monster->GetStat()->TakeDamage(static_cast<uint16_t>(damage));
+		const uint16_t clamped = static_cast<uint16_t>(std::clamp(damage, 1, 65535));
+		const uint16_t remaining = monster->GetStat()->TakeDamage(clamped);
 		if (remaining > 0)
 		{
-			SendUSER_ATTACK_ACK(attacker, monster, damage);
+			SendUSER_ATTACK_ACK(attacker, monster, clamped);
+			BroadcastDamage(monster, playerId, clamped, damageFlags);
+			// 리니지처럼 맞으면 반격한다(선공 몬스터가 아니어도 때린 사람을 쫓는다).
+			MonsterHelper::Provoke(monster, attacker);
 			return;
 		}
 
@@ -682,6 +827,8 @@ namespace UserHelper
 		// "죽은 자리"라는 의도를 코드에서 바로 알아보도록 미리 값으로 떼어둔다.
 		const short deathX = monster->GetX();
 		const short deathY = monster->GetY();
+
+		BroadcastDamage(monster, playerId, clamped, static_cast<uint8_t>(damageFlags | DAMAGE_KILLED));
 
 		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
@@ -699,14 +846,19 @@ namespace UserHelper
 		GSector->RemoveObject(monsterId, monster->RefSectorX(), monster->RefSectorY());
 		monster->SetActive(false);
 		monster->SetAttack(false);
+		monster->ClearProvoke();
 		monster->ClearViewList(); // 다음 리스폰 시 oldList가 빈 상태로 시작하도록 초기화
 
-		const uint32_t expGain = (monster->GetType() == MONSTER_TYPE::PASSIVE) ? 3 : 5;
-		attacker->GetStat()->AddExp(expGain);
-		SendUSER_STAT_CHANGE_INF(attacker);
-		HandleItemDrop(attacker, deathX, deathY);
+		const MonsterTableRow* species = monster->GetSpecies();
+		const uint32_t expGain = (species != nullptr) ? species->exp
+			: ((monster->GetType() == MONSTER_TYPE::PASSIVE) ? 3 : 5);
+		GainExp(attacker, expGain);
+		ContentHelper::OnMonsterKilled(attacker, monster);
+		HandleItemDrop(attacker, species, deathX, deathY);
 
-		GTimerThread->ScheduleAfter(monsterId, 10s, TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN);
+		const bool isBoss = species != nullptr && species->boss;
+		GTimerThread->ScheduleAfter(monsterId, isBoss ? std::chrono::seconds(WorldData::kBossRespawnSeconds) : std::chrono::seconds(10),
+			TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN);
 	}
 
 	void SkillAttack(ObjID& playerId)
@@ -714,9 +866,18 @@ namespace UserHelper
 		auto player = ::GetGameObject<User>(playerId);
 		if (player == nullptr || player->GetStat()->IsDead())
 			return;
+		// 안전지대(마을)에서는 전투 행동을 하지 않는다.
+		if (WorldData::IsSafeZone(player->GetX(), player->GetY()))
+		{
+			SendSystemEx(player, SystemMessageCode::SafeZoneNoCombat);
+			return;
+		}
 
 		const int px = player->GetX();
 		const int py = player->GetY();
+
+		// 확장 세션에는 시전 이펙트를 먼저 알린다(맞은 몬스터가 없어도 기술은 보인다).
+		BroadcastEffect(player, playerId, EffectId::SkillCross, static_cast<short>(px), static_cast<short>(py), 0);
 
 		// Collect IDs of monsters on the 4 adjacent cardinal tiles first,
 		// then attack them — avoids mutating the sector while iterating.
@@ -732,8 +893,9 @@ namespace UserHelper
 				targets.push_back(object->GetObjID());
 		});
 
+		const int damage = static_cast<int>(CombatRule::SkillDamage(player->GetStat()->GetOffensive()));
 		for (ObjID& monsterId : targets)
-			AttackMonster(monsterId, playerId, SKILL_DAMAGE);
+			AttackMonster(monsterId, playerId, damage, DAMAGE_SKILL);
 	}
 
 	void HandleAttack(Subject::SharedPtr attacker, uint8_t facing)
@@ -764,15 +926,31 @@ namespace UserHelper
 			}
 		});
 
-		// 장비 보너스가 반영된 현재 공격력을 그대로 데미지로 쓴다(Inventory::
-		// RecomputeOffensive가 장착/탈착 때마다 이미 최신 상태로 유지해둔다).
-		const int damage = attacker->GetStat()->GetOffensive();
+		// 마을 안에서는 휘두르기만 보이고 피해는 없다.
+		if (WorldData::IsSafeZone(attacker->GetX(), attacker->GetY()))
+			return;
+
+		// 장비·강화 보너스가 반영된 현재 공격력(Inventory::RecomputeOffensive가 항상 최신으로
+		// 유지)에 ±15% 편차와 치명타를 대상마다 따로 굴린다.
+		const uint32_t attack = attacker->GetStat()->GetOffensive();
 		for (ObjID& monsterId : monsterTargets)
-			AttackMonster(monsterId, attackerId, damage);
+		{
+			bool crit = false;
+			const uint32_t damage = CombatRule::RollDamage(attack, LRng() % 1001, LRng() % 100, crit);
+			AttackMonster(monsterId, attackerId, static_cast<int>(damage), crit ? DAMAGE_CRIT : 0);
+		}
 	}
 
 	void BroadcastChat(Subject::SharedPtr sender, const char mess[])
 	{
+		// '&'로 시작하는 채팅은 전체 채팅(확장 세션 전용 기능)
+		const auto senderUser = static_pointer_cast<User>(sender);
+		if (mess[0] == '&' && senderUser != nullptr && senderUser->IsExtended())
+		{
+			BroadcastWorldChat(senderUser, mess + 1);
+			return;
+		}
+
 		const ObjID senderId = sender->GetObjID();
 		SendSC_CHAT(sender, senderId, mess);
 
@@ -805,20 +983,38 @@ namespace UserHelper
 		if (player->GetStat()->IsDead())
 			return;
 
-		player->GetStat()->HealHp(HEAL_SIZE, PLAYER_MAX_HP);
-		SendUSER_HEAL_INF(player);
+		// 레벨이 오를수록 회복량이 늘고, 마을(안전지대)에서는 두 배로 회복한다.
+		const bool inSafeZone = WorldData::IsSafeZone(player->GetX(), player->GetY());
+		const uint16_t before = player->GetStat()->GetHp();
+		player->GetStat()->HealHp(LevelTable::RegenPerTick(player->GetStat()->GetLevel(), inSafeZone), player->GetStat()->GetMaxHp());
+		if (player->GetStat()->GetHp() != before || !player->IsExtended())
+			SendUSER_HEAL_INF(player);  // 확장 세션에는 실제로 바뀌었을 때만(가득 찬 상태면 생략)
 		GTimerThread->ScheduleAfter(playerId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 	}
 
-	void HandleRespawn(const ObjID& playerId)
+	void HandleRespawn(const ObjID& playerId, uint32_t deathSeq)
 	{
 		auto player = ::GetGameObject<User>(playerId);
 		if (player == nullptr)
 			return;
+		// 그 사이에 이미 리스타트했거나(살아 있음), 다시 죽어서 새 타이머가 걸렸다면 무시한다.
+		if (!player->GetStat()->IsDead() || player->m_deathSeq != deathSeq)
+			return;
 
+		// 확장 세션(새 클라이언트)은 리니지처럼 마을에서 부활한다. 보통은 사망 창의
+		// "마을에서 다시 시작" 버튼(USER_RESTART_REQ)이 먼저 오고, 이 타이머는 그걸
+		// 누르지 않았을 때의 안전장치다.
+		if (player->IsExtended())
+		{
+			ContentHelper::RestartInTown(player);
+			return;
+		}
+
+		// 레거시(봇) 세션은 예전 동작 그대로 — 같은 Zone 안의 무작위 위치에서 부활.
+		// 봇이 전부 마을 Zone으로 모이면 기존 부하 분산 조건이 깨지기 때문이다.
 		SectorHelper::GetRandomPosition(const_cast<ObjID&>(playerId));
 		player->GetStat()->SetDead(false);
-		player->GetStat()->SetHp(PLAYER_MAX_HP);
+		player->GetStat()->SetHp(player->GetStat()->GetMaxHp());
 
 		// Tell the respawning player their own new position/HP
 		SendSUBJECT_RESPAWN_NFY(player, player);
@@ -847,10 +1043,16 @@ namespace UserHelper
 		player->InitInstance();
 		player->SetName(userInfo._name);
 		player->SetPlayerId(userInfo._playerId);
-		player->GetStat()->SetLevel(userInfo._level);
+		player->GetStat()->SetLevel(std::clamp<uint8_t>(userInfo._level, 1, LevelTable::kMaxLevel));
 		player->GetStat()->SetExp(userInfo._exp);
+		player->SetAlignment(userInfo._alignment);
+		player->m_savedAlignment = userInfo._alignment;
+		player->SetPkCount(userInfo._pkCount);
 		// GameObjectManager에 공개되기 전(아직 이 스레드만 접근 가능한 시점)에 복원한다.
 		player->GetInventory()->LoadFromDB(items);
+		player->GetInventory()->LoadAdena(userInfo._adena);
+		// 레벨에 맞는 최대 HP/공격력으로 맞추고 HP를 채운다(LoadFromDB가 장착 무기까지 복원한 뒤).
+		player->ApplyLevelStats(true);
 
 		if (!GGameObjectManager->Insert(player->GetObjID(), player))
 			return;
@@ -877,6 +1079,12 @@ namespace UserHelper
 
 		SendUSER_LOGIN_ACK(player);
 		SendITEM_LIST_ACK(player);
+		if (player->IsExtended())
+		{
+			SendITEM_LIST_EX_ACK(player);
+			SendUSER_INFO_EX_INF(player);
+			SendADENA_INF(player, 0, AdenaReason::Init);
+		}
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
 	}
@@ -893,6 +1101,7 @@ namespace UserHelper
 		// 계정 INSERT는 이미 DB 스레드에서 동기적으로 끝난 뒤(playerId 확보 후)
 		// 이 함수가 호출된다 — 여기서 다시 저장을 요청할 필요가 없다.
 		player->SetPlayerId(userInfo._playerId);
+		player->ApplyLevelStats(true);
 
 		if (!GGameObjectManager->Insert(player->GetObjID(), player))
 			return;
@@ -902,11 +1111,324 @@ namespace UserHelper
 		session->m_state = SOCKET_STATE::ST_INGAME;
 
 		ObjID objId = player->GetObjID();
-		SectorHelper::GetRandomPosition(objId);
+		const bool extended = player->IsExtended();
+		if (extended && LCurrentZoneId == static_cast<ZoneId>(WorldData::kTownZoneId))
+		{
+			// 새 클라이언트의 신규 캐릭터는 마을 광장에서 시작한다(DBThread가 이미
+			// 마을 Zone 스레드로 보냈다).
+			const auto& spawn = WorldData::kTownSpawnPoints[LRng() % WorldData::kTownSpawnPointCount];
+			SectorHelper::UpdatePosition(objId, spawn.x, spawn.y);
+		}
+		else
+		{
+			SectorHelper::GetRandomPosition(objId);
+		}
 
 		SendUSER_LOGIN_ACK(player);
+		if (extended)
+		{
+			SendITEM_LIST_EX_ACK(player);
+			// 리니지의 "초보자 지원" — 물약/주문서/무기/아데나를 쥐여 준다.
+			ContentHelper::GiveStarterKit(player);
+			SendUSER_INFO_EX_INF(player);
+		}
 
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// 확장 프로토콜 송신
+	// ─────────────────────────────────────────────────────────────────────────
+	void SendUSER_INFO_EX_INF(const shared_ptr<User>& user)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+
+		const uint32_t now = GetNowTime();
+		USER_INFO_EX_INF_PACKET packet;
+		InitializePacket(packet, PacketType::USER_INFO_EX_INF);
+		packet.level     = user->GetStat()->GetLevel();
+		packet.exp       = user->GetStat()->GetExp();
+		packet.expToNext = LevelTable::ExpToNext(packet.level);
+		packet.hp        = user->GetStat()->GetHp();
+		packet.maxhp     = user->GetStat()->GetMaxHp();
+		packet.attack    = user->GetStat()->GetOffensive();
+		packet.adena     = user->GetInventory()->GetAdena();
+		packet.alignment = user->GetAlignment();
+		packet.pkCount   = user->GetPkCount();
+		packet.flags     = BuildSubjectExFlags(user);
+		packet.hasteRemainMs = user->IsHasted(now) ? (user->m_hasteUntil - now) : 0;
+
+		session->PostSend(packet);
+	}
+
+	void SendSUBJECT_INFO_EX_NFY(Subject::SharedPtr viewer, Subject::SharedPtr target)
+	{
+		if (target == nullptr || !IsExtendedViewer(viewer))
+			return;
+		auto session = GetSession(viewer);
+		if (!session)
+			return;
+
+		SUBJECT_INFO_EX_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_INFO_EX_NFY);
+		packet.id = target->GetObjID();
+
+		const EnumCategory category = target->GetObjID().GetCategory<EnumCategory>();
+		if (category == EnumCategory::eUser)
+		{
+			const auto user = static_pointer_cast<User>(target);
+			packet.level     = user->GetStat()->GetLevel();
+			packet.alignment = user->GetAlignment();
+			packet.flags     = BuildSubjectExFlags(user);
+			packet.enchant   = user->GetInventory()->GetEquippedEnchant();
+			packet.hp        = user->GetStat()->GetHp();
+			packet.maxhp     = user->GetStat()->GetMaxHp();
+		}
+		else if (category == EnumCategory::eMonster)
+		{
+			// Item에는 Stat이 없으므로(Item.h 주석) 몬스터/유저일 때만 GetStat()을 부른다.
+			packet.level = target->GetStat()->GetLevel();
+			packet.hp    = target->GetStat()->GetHp();
+			packet.maxhp = target->GetStat()->GetMaxHp();
+		}
+		else if (category == EnumCategory::eItem)
+		{
+			if (const auto equipment = dynamic_pointer_cast<EquipmentItem>(target))
+				packet.enchant = equipment->GetEnchant();
+		}
+
+		session->PostSend(packet);
+	}
+
+	void BroadcastInfoEx(const shared_ptr<User>& player)
+	{
+		if (player == nullptr)
+			return;
+
+		if (player->IsExtended())
+			SendSUBJECT_INFO_EX_NFY(player, player);
+
+		// 죽어 있으면 섹터에 없으므로(Sector에서 제거됨) 주변 뷰어도 없다.
+		if (player->GetSectorX() < 0)
+			return;
+
+		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			if (object->GetObjID() == player->GetObjID())
+				return;
+			if (!IsExtendedViewer(object) || !SubjectHelper::CanSee(object, player))
+				return;
+			SendSUBJECT_INFO_EX_NFY(object, player);
+		});
+	}
+
+	void SendITEM_LIST_EX_ACK(const shared_ptr<User>& user)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+
+		ITEM_LIST_EX_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_LIST_EX_ACK);
+
+		uint8_t slotCount = 0;
+		for (const auto& [slotIndex, item] : user->GetInventory()->GetSlots())
+		{
+			if (slotCount >= MAX_INVENTORY_SLOTS)
+				break;
+			user->GetInventory()->FillSlotEx(slotIndex, packet.items[slotCount]);
+			++slotCount;
+		}
+		packet.slotCount = slotCount;
+
+		session->PostSend(packet);
+	}
+
+	void SendITEM_SLOT_EX_INF(const shared_ptr<User>& user, uint16_t slotIndex)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+
+		ITEM_SLOT_EX_INF_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_SLOT_EX_INF);
+		user->GetInventory()->FillSlotEx(slotIndex, packet.slot);
+
+		session->PostSend(packet);
+	}
+
+	void SendADENA_INF(const shared_ptr<User>& user, int32_t delta, AdenaReason reason)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+
+		ADENA_INF_PACKET packet;
+		InitializePacket(packet, PacketType::ADENA_INF);
+		packet.adena  = user->GetInventory()->GetAdena();
+		packet.delta  = delta;
+		packet.reason = static_cast<uint8_t>(reason);
+
+		session->PostSend(packet);
+	}
+
+	void SendENCHANT_RESULT_ACK(const shared_ptr<User>& user, EnchantResult result, uint16_t targetSlot, uint16_t itemId, uint8_t before, uint8_t after)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+
+		ENCHANT_RESULT_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::ENCHANT_RESULT_ACK);
+		packet.result        = static_cast<uint8_t>(result);
+		packet.targetSlot    = targetSlot;
+		packet.itemId        = itemId;
+		packet.enchantBefore = before;
+		packet.enchantAfter  = after;
+
+		session->PostSend(packet);
+	}
+
+	void SendSHOP_RESULT_ACK(const shared_ptr<User>& user, ShopKind kind, ShopResult result, uint32_t seq, uint16_t itemId, uint16_t count, int32_t adenaDelta)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+
+		SHOP_RESULT_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::SHOP_RESULT_ACK);
+		packet.kind       = static_cast<uint8_t>(kind);
+		packet.result     = static_cast<uint8_t>(result);
+		packet.seq        = seq;
+		packet.itemId     = itemId;
+		packet.count      = count;
+		packet.adenaDelta = adenaDelta;
+
+		session->PostSend(packet);
+	}
+
+	void SendSystemEx(const shared_ptr<User>& user, SystemMessageCode code, int32_t param1, int32_t param2)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		SendSYSTEM_MESSAGE_INF(user, code, param1, param2);
+	}
+
+	void BroadcastDamage(const Subject::SharedPtr& victim, const ObjID& attackerId, int32_t damage, uint8_t flags)
+	{
+		if (victim == nullptr || victim->GetSectorX() < 0)
+			return;
+
+		SUBJECT_DAMAGE_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::SUBJECT_DAMAGE_NFY);
+		packet.victimId   = victim->GetObjID();
+		packet.attackerId = attackerId;
+		packet.hp         = victim->GetStat()->GetHp();
+		packet.maxhp      = victim->GetStat()->GetMaxHp();
+		packet.damage     = damage;
+		packet.flags      = flags;
+
+		GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			if (!IsExtendedViewer(object) || !SubjectHelper::CanSee(object, victim))
+				return;
+			if (auto session = GetSession(object))
+				session->PostSend(packet);
+		});
+	}
+
+	void BroadcastEffect(const Subject::SharedPtr& center, const ObjID& subjectId, EffectId effect, short x, short y, int32_t param)
+	{
+		if (center == nullptr)
+			return;
+
+		EFFECT_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::EFFECT_NFY);
+		packet.subjectId = subjectId;
+		packet.effectId  = static_cast<uint16_t>(effect);
+		packet.x         = x;
+		packet.y         = y;
+		packet.param     = param;
+
+		// 섹터에서 빠져 있는(죽은/이동 중) 대상이면 자기 자신에게만 보낸다.
+		if (center->GetSectorX() < 0)
+		{
+			if (IsExtendedViewer(center))
+				if (auto session = GetSession(center))
+					session->PostSend(packet);
+			return;
+		}
+
+		const short sectorX = static_cast<short>(x / SECTOR_RANGE);
+		const short sectorY = static_cast<short>(y / SECTOR_RANGE);
+		const bool inThisZone = GSector->IsValidSector(sectorX, sectorY);
+		GSector->ForEachNeighborObject(inThisZone ? sectorX : center->GetSectorX(), inThisZone ? sectorY : center->GetSectorY(),
+			[&](const shared_ptr<Subject>& object)
+		{
+			if (!IsExtendedViewer(object))
+				return;
+			if (abs(object->GetX() - x) > VIEW_RANGE || abs(object->GetY() - y) > VIEW_RANGE)
+				return;
+			if (auto session = GetSession(object))
+				session->PostSend(packet);
+		});
+	}
+
+	void BroadcastWorldNotice(WorldNoticeCode code, int32_t param1, int32_t param2, const std::string& name)
+	{
+		WORLD_NOTICE_INF_PACKET packet;
+		InitializePacket(packet, PacketType::WORLD_NOTICE_INF);
+		packet.code   = static_cast<uint16_t>(code);
+		packet.param1 = param1;
+		packet.param2 = param2;
+		::strncpy_s(packet.name, NAME_SIZE, name.c_str(), _TRUNCATE);
+
+		for (const auto& session : GSessionManager->SnapshotSessions())
+		{
+			if (session == nullptr || session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				continue;
+			session->PostSend(packet);
+		}
+	}
+
+	void BroadcastWorldChat(const shared_ptr<User>& sender, const char mess[])
+	{
+		// 도배 방지: 전체 채팅은 3초에 한 번
+		const uint32_t now = GetNowTime();
+		if (sender->m_lastWorldChatTime != 0 && now < sender->m_lastWorldChatTime + 3000)
+		{
+			SendSystemEx(sender, SystemMessageCode::ItemCooldown, static_cast<int32_t>(sender->m_lastWorldChatTime + 3000 - now));
+			return;
+		}
+		sender->m_lastWorldChatTime = now;
+
+		SC_CHAT_EX_PACKET packet;
+		InitializePacket(packet, PacketType::SC_CHAT_EX);
+		packet.channel  = static_cast<uint8_t>(ChatChannel::World);
+		packet.senderId = sender->GetObjID();
+		::strncpy_s(packet.senderName, NAME_SIZE, sender->GetName().c_str(), _TRUNCATE);
+		::strncpy_s(packet.mess, CHAT_SIZE, mess, _TRUNCATE);
+
+		for (const auto& session : GSessionManager->SnapshotSessions())
+		{
+			if (session == nullptr || session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				continue;
+			session->PostSend(packet);
+		}
 	}
 }

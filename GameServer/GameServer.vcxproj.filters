@@ -46,6 +46,12 @@
     <Filter Include="Item">
       <UniqueIdentifier>{9ff642b7-4b8e-4bc7-bdb3-48e68fff3b28}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Content">
+      <UniqueIdentifier>{3c1f7a52-8e4d-4b6a-9f21-5d7c2e8a4b10}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Data">
+      <UniqueIdentifier>{6e2b9d41-0a7c-4f3e-8b55-1c9d4e7f2a63}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\CoreGlobal.cpp">
@@ -299,6 +305,28 @@
     </ClInclude>
     <ClInclude Include="Zone\Zone.h">
       <Filter>Zone</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Content\ContentHelper.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Content\ContentHelper.h">
+      <Filter>Content</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\LevelTable.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\MonsterTable.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\WorldData.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Item\ItemTableData.h">
+      <Filter>Item</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

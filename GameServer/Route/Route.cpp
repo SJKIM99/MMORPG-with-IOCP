@@ -9,6 +9,9 @@
 #include "Sector.h"
 #include "Zone/ZoneLayout.h"
 #include "Item/ItemHelper.h"
+#include "Item/ItemTable.h"
+#include "Content/ContentHelper.h"
+#include "Data/LevelTable.h"
 
 namespace Route
 {
@@ -30,6 +33,23 @@ namespace Route
 			GDBThread->RequestLogin(session, name, password);
 			break;
 		}
+		case PacketType::USER_LOGIN_EX_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_ALLOC)
+				break;
+
+			// 확장 로그인 — 이후 이 세션에만 리니지풍 컨텐츠 패킷을 보낸다.
+			// 로그인 처리(DB 조회 → Zone 입장) 경로는 레거시 로그인과 완전히 같다.
+			auto* p = reinterpret_cast<const USER_LOGIN_EX_REQ_PACKET*>(packet);
+			char name[NAME_SIZE + 1]{};
+			char password[PASSWORD_SIZE + 1]{};
+			::strncpy_s(name, p->name, NAME_SIZE);
+			::strncpy_s(password, p->password, PASSWORD_SIZE);
+
+			session->SetExtended(true);
+			GDBThread->RequestLogin(session, name, password);
+			break;
+		}
 		case PacketType::USER_MOVE_REQ:
 		{
 			if (session->m_state != SOCKET_STATE::ST_INGAME)
@@ -44,8 +64,9 @@ namespace Route
 			if (p->direction > 7)
 				break;
 
+			// 이동 쿨타임: 기본 500ms, 초록 물약(가속) 중에는 더 짧다.
 			const uint32_t now = GetNowTime();
-			if (now > client->m_lastMoveTime + 500)
+			if (now > client->m_lastMoveTime + client->GetMoveCooldown(now))
 			{
 				client->m_lastMoveTime = now;
 
@@ -229,16 +250,138 @@ namespace Route
 
 			auto* p = reinterpret_cast<const ITEM_USE_REQ_PACKET*>(packet);
 			const uint32_t now = GetNowTime();
-			if (now > client->m_lastPotionUseTime + 5000)
+
+			// 회복 물약이 아닌 소비 아이템(주문서/초록 물약)은 효과가 인벤토리 밖에서
+			// 일어나므로 별도 경로로 보낸다. 쿨타임도 물약(5초)과 따로 잰다.
+			ItemEffect effect = ItemEffect::eNone;
+			{
+				const auto& slots = client->GetInventory()->GetSlots();
+				if (const auto it = slots.find(p->slotIndex); it != slots.end())
+					if (const ItemTableRow* row = ItemTable::Find(it->second->GetItemTableId()))
+						effect = row->effect;
+			}
+			if (effect == ItemEffect::eReturnTown || effect == ItemEffect::eTeleportRandom || effect == ItemEffect::eHaste)
+			{
+				if (now > client->m_lastScrollUseTime + CombatRule::kScrollCooldownMs)
+				{
+					client->m_lastScrollUseTime = now;
+					ContentHelper::UseEffectItem(client, p->slotIndex);
+				}
+				else
+				{
+					UserHelper::SendSystemEx(client, SystemMessageCode::ItemCooldown,
+						static_cast<int32_t>(client->m_lastScrollUseTime + CombatRule::kScrollCooldownMs - now));
+				}
+				break;
+			}
+
+			// 회복 물약이 아니면(빈 슬롯/장비/강화 주문서 등) 쿨타임을 소모하지 않고 바로 실패
+			if (effect != ItemEffect::eHeal)
+			{
+				UserHelper::SendITEM_USE_ACK(client, p->slotIndex, false);
+				break;
+			}
+
+			if (now > client->m_lastPotionUseTime + CombatRule::kPotionCooldownMs)
 			{
 				client->m_lastPotionUseTime = now;
 
+				const uint16_t before = client->GetStat()->GetHp();
 				const bool success = client->GetInventory()->TryUseItem(p->slotIndex);
 				if (success)
+				{
 					UserHelper::SendUSER_HEAL_INF(client);
+					UserHelper::BroadcastEffect(client, client->GetObjID(), EffectId::PotionHeal, client->GetX(), client->GetY(),
+						static_cast<int32_t>(client->GetStat()->GetHp() - before));
+				}
 
 				UserHelper::SendITEM_USE_ACK(client, p->slotIndex, success);
 			}
+			else
+			{
+				UserHelper::SendSystemEx(client, SystemMessageCode::ItemCooldown,
+					static_cast<int32_t>(client->m_lastPotionUseTime + CombatRule::kPotionCooldownMs - now));
+			}
+			break;
+		}
+		// ── 확장 프로토콜 요청(USER_LOGIN_EX_REQ로 로그인한 세션만) ─────────────────
+		case PacketType::USER_TARGET_ATTACK_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr || client->GetStat()->IsDead() || client->IsTransferring())
+				break;
+
+			// 쿨타임은 레거시 평타와 같은 값/같은 타임스탬프를 공유한다(둘을 섞어 써서
+			// 공격 속도를 두 배로 만드는 것을 막는다).
+			auto* p = reinterpret_cast<const USER_TARGET_ATTACK_REQ_PACKET*>(packet);
+			const uint32_t now = GetNowTime();
+			if (now > client->m_lastAttackTime + CombatRule::kAttackCooldownMs)
+			{
+				client->m_lastAttackTime = now;
+				ContentHelper::HandleTargetAttack(client, p->targetId);
+			}
+			break;
+		}
+		case PacketType::USER_RESTART_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr || client->IsTransferring())
+				break;
+			ContentHelper::HandleRestartRequest(client);
+			break;
+		}
+		case PacketType::ITEM_ENCHANT_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr || client->GetStat()->IsDead() || client->IsTransferring())
+				break;
+
+			auto* p = reinterpret_cast<const ITEM_ENCHANT_REQ_PACKET*>(packet);
+			const uint32_t now = GetNowTime();
+			if (now > client->m_lastScrollUseTime + CombatRule::kScrollCooldownMs)
+			{
+				client->m_lastScrollUseTime = now;
+				ContentHelper::HandleEnchant(client, p->scrollSlot, p->targetSlot);
+			}
+			break;
+		}
+		case PacketType::SHOP_BUY_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			auto* p = reinterpret_cast<const SHOP_BUY_REQ_PACKET*>(packet);
+			ContentHelper::HandleShopBuy(client, p->npcId, p->itemId, p->count, p->seq);
+			break;
+		}
+		case PacketType::SHOP_SELL_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			auto* p = reinterpret_cast<const SHOP_SELL_REQ_PACKET*>(packet);
+			ContentHelper::HandleShopSell(client, p->npcId, p->slotIndex, p->count, p->seq);
+			break;
+		}
+		case PacketType::NPC_TELEPORT_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			auto* p = reinterpret_cast<const NPC_TELEPORT_REQ_PACKET*>(packet);
+			ContentHelper::HandleNpcTeleport(client, p->npcId, p->destIndex, p->seq);
 			break;
 		}
 		case PacketType::CS_CHAT:

@@ -10,6 +10,7 @@
 #include "Zone/ZoneManager.h"
 #include "Collision.h"
 #include "CoreTLS.h"
+#include "Data/WorldData.h"
 
 namespace SectorHelper
 {
@@ -74,6 +75,9 @@ namespace SectorHelper
 		const short minY = static_cast<short>(GSector->GetOffsetY() * SECTOR_RANGE);
 		const short maxY = static_cast<short>((GSector->GetOffsetY() + Sector::kLocalHeight) * SECTOR_RANGE - 1);
 
+		// 몬스터는 마을(안전지대)에 배치하지 않는다.
+		const bool isMonster = subjectId.GetCategory<EnumCategory>() == EnumCategory::eMonster;
+
 		std::uniform_int_distribution<short> distX(minX, maxX);
 		std::uniform_int_distribution<short> distY(minY, maxY);
 		while (true)
@@ -81,6 +85,8 @@ namespace SectorHelper
 			const short x = distX(LRng);
 			const short y = distY(LRng);
 			if (isCollision(x, y))
+				continue;
+			if (isMonster && WorldData::IsSafeZone(x, y))
 				continue;
 
 			UpdatePosition(subjectId, x, y);

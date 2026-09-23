@@ -72,6 +72,10 @@ struct DB_USER_INFO
 	int      _y     = 0;
 	uint8_t  _level = 1;
 	uint32_t _exp   = 0;
+	// 리니지풍 컨텐츠 확장 컬럼(Players.adena/alignment/pkCount)
+	uint32_t _adena     = 0;
+	int16_t  _alignment = 0;
+	uint16_t _pkCount   = 0;
 };
 using DB_PLAYER_INFO = DB_USER_INFO;
 
@@ -85,6 +89,7 @@ struct DB_ITEM_INFO
 	uint16_t _itemId    = 0;
 	uint16_t _count     = 0;
 	bool     _equipped  = false;
+	uint8_t  _enchant   = 0;   // Inventory.enchant (무기 강화 수치)
 };
 
 // 슬롯 두 개를 한 SQL 트랜잭션으로 함께 반영하기 위한 단위 데이터(DBConnection::
@@ -97,6 +102,7 @@ struct DB_ITEM_SLOT_SAVE
 	uint16_t itemId    = 0;
 	uint16_t count     = 0;
 	bool     equipped  = false;
+	uint8_t  enchant   = 0;
 };
 
 // ── Core headers still in use ─────────────────────────────────────────────────
@@ -148,6 +154,7 @@ struct DB_ITEM_SAVE_EVENT : DB_EVENT_BASE
 	uint16_t itemId    = 0;
 	uint16_t count     = 0;
 	bool     equipped  = false;
+	uint8_t  enchant   = 0;
 };
 
 struct DB_ITEM_DELETE_EVENT : DB_EVENT_BASE
@@ -168,6 +175,36 @@ struct DB_ITEM_SAVE_TWO_EVENT : DB_EVENT_BASE
 	DB_ITEM_SLOT_SAVE b;
 };
 
+// ── 리니지풍 컨텐츠 확장 DB 이벤트 ─────────────────────────────────────────────
+// 전부 playerId 기준 샤드로 보낸다 — 인벤토리 슬롯 저장과 같은 샤드라서, 한
+// 플레이어의 "아데나 변경"과 "슬롯 변경"이 넣은 순서 그대로 커밋된다.
+// 값은 항상 델타가 아니라 절대값(메모리의 최신 상태)을 싣는다: 메모리가 권위이고
+// DB는 그 저널이므로, 마지막으로 커밋된 이벤트가 곧 최신 상태가 된다.
+
+// 아데나 획득(줍기) 등, 슬롯 변화 없이 지갑만 바뀐 경우.
+struct DB_ADENA_SAVE_EVENT : DB_EVENT_BASE
+{
+	int      playerId = 0;
+	uint32_t adena    = 0;
+};
+
+// 상점 구매/판매: 아데나와 슬롯 하나를 "하나의 SQL 트랜잭션"으로 반영한다.
+// 따로 저장하면 그 사이에 서버가 죽었을 때 "돈은 나갔는데 물건이 없음" 또는
+// "물건은 들어왔는데 돈이 그대로"(=복사) 상태가 DB에 영구히 남는다.
+struct DB_SHOP_TX_EVENT : DB_EVENT_BASE
+{
+	int               playerId = 0;
+	uint32_t          adena    = 0;
+	DB_ITEM_SLOT_SAVE slot;
+};
+
+struct DB_ALIGNMENT_SAVE_EVENT : DB_EVENT_BASE
+{
+	int      playerId  = 0;
+	int16_t  alignment = 0;
+	uint16_t pkCount   = 0;
+};
+
 // ── Timer event types ────────────────────────────────────────────────────────
 enum TIMER_EVENT_TYPE
 {
@@ -179,6 +216,11 @@ enum TIMER_EVENT_TYPE
 	EV_AGGRO_MOVE,
 	EV_ITEM_DESPAWN,
 	EV_ITEM_LOOT_PRIORITY_EXPIRE,
+	// 리니지풍 컨텐츠 확장
+	EV_BOSS_SKILL_CAST,       // 보스 광역기 예고
+	EV_BOSS_SKILL_IMPACT,     // 보스 광역기 적중(예고 1.2초 뒤)
+	EV_PURPLE_EXPIRE,         // 보라돌이 해제 확인
+	EV_HASTE_EXPIRE,          // 가속 해제 확인
 };
 
 struct TIMER_EVENT

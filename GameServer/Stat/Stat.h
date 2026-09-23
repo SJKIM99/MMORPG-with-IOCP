@@ -1,5 +1,6 @@
 #pragma once
 #include "GameObject.h"
+#include "Data/LevelTable.h"
 
 class Stat : public GameObject
 {
@@ -7,8 +8,10 @@ public:
 	using SharedPtr = shared_ptr<Stat>;
 	using WeakPtr = weak_ptr<Stat>;
 
-	static constexpr uint32_t EXP_TABLE[4] = { 30, 50, 70, 90 };
-	static constexpr uint8_t  MAX_LEVEL    = 5;
+	// 레벨 규칙은 Data/LevelTable.h(서버/클라 공용)로 옮겼다. 예전 상수
+	// (EXP_TABLE[4] = {30,50,70,90}, MAX_LEVEL = 5)는 LevelTable::ExpToNext(1) == 30에서
+	// 시작하도록 맞춰 두었다.
+	static constexpr uint8_t MAX_LEVEL = LevelTable::kMaxLevel;
 
 private:
 	uint16_t         m_maxHp     = 0;
@@ -51,8 +54,14 @@ public:
 	// HP 회복. maxCap을 초과하지 않도록 제한
 	void HealHp(uint16_t amount, uint16_t maxCap) noexcept;
 
-	// 경험치 추가. 레벨업 시 true 반환
-	bool AddExp(uint32_t amount) noexcept;
+	// 경험치 추가. 이번 호출로 오른 레벨 수를 반환한다(0 = 레벨업 없음).
+	// 보스처럼 큰 경험치를 한 번에 주면 여러 레벨이 한꺼번에 오를 수 있어서
+	// 예전처럼 bool이 아니라 횟수를 돌려준다.
+	uint8_t AddExp(uint32_t amount) noexcept;
+
+	// 경험치 차감(사망 페널티). 현재 레벨의 누적 경험치 안에서만 깎고 레벨은 내리지
+	// 않는다. 실제로 깎인 양을 반환한다.
+	uint32_t LoseExp(uint32_t amount) noexcept;
 
 	// 모든 수치를 초기값으로 되돌림
 	void Reset() noexcept;

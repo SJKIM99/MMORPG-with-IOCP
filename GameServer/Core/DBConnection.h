@@ -34,8 +34,15 @@ public:
 	// playerId는 로그인/계정생성 시 확보해 User에 캐싱해둔 정수 PK를 그대로 쓴다 —
 	// name(NVARCHAR) 기반 조회/조인이 DB 쪽에서 완전히 사라진다.
 	vector<DB_ITEM_INFO> ExtractInventory(int playerId);
-	bool			SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped);
+	bool			SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant);
 	bool			DeleteInventorySlot(int playerId, uint16_t slotIndex);
+
+	// ── 리니지풍 컨텐츠 확장 ──
+	// 아데나/성향치는 name이 아니라 playerId 기준(인벤토리와 같은 샤드)으로 저장한다.
+	bool			SavePlayerAdena(int playerId, uint32_t adena);
+	bool			SavePlayerAlignment(int playerId, int16_t alignment, uint16_t pkCount);
+	// 상점 거래: 아데나 + 슬롯 하나를 하나의 SQL 트랜잭션으로 반영한다(ShopTransaction 프로시저).
+	bool			ShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot);
 
 	// a/b 두 슬롯을 하나의 SQL 트랜잭션으로 함께 반영한다(각 슬롯은 독립적으로
 	// upsert 또는 삭제될 수 있다 — DB_ITEM_SLOT_SAVE::hasItem 참고). 장착 시 이전

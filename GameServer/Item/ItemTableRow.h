@@ -12,6 +12,22 @@ enum ItemType : uint8_t
 	eEquipment  = 1,  // 장착형. 기본적으로 스택 불가(maxStack = 1)
 	eMaterial   = 2,  // 제작 재료 등, 사용 로직 없음
 	eEtc        = 3,  // 분류 미정
+	// 아데나. 필드에 떨어진 상태로만 존재하고, 주우면 인벤토리 슬롯이 아니라
+	// 지갑(Inventory::GetAdena)으로 들어간다 — 슬롯을 차지하지 않는다.
+	eCurrency   = 4,
+};
+
+// 소비 아이템을 "사용"했을 때 일어나는 일. ItemType과 같은 이유로 이미 배정된 값은
+// 절대 바꾸지 않는다. 회복 물약은 기존 경로(healAmount)를 그대로 쓰고, 나머지
+// 효과는 인벤토리 밖의 시스템(텔레포트/버프/강화)이 필요해서 UserHelper가 처리한다.
+enum class ItemEffect : uint8_t
+{
+	eNone           = 0,
+	eHeal           = 1,  // healAmount만큼 HP 회복
+	eReturnTown     = 2,  // 마을 귀환 주문서
+	eTeleportRandom = 3,  // 순간이동 주문서 — 현재 지역 안의 무작위 위치
+	eHaste          = 4,  // 초록 물약 — effectValue초 동안 이동 가속
+	eEnchantWeapon  = 5,  // 무기 강화 주문서 — ITEM_ENCHANT_REQ로만 사용(effectValue: 0 일반 / 1 축복)
 };
 
 // 장비 등급. eNone은 "등급이 없는 장비"(예: 시작 무기)와 "장비가 아니라서 등급
@@ -55,4 +71,16 @@ struct ItemTableRow
 	// ConsumableItem 사용(ITEM_USE_REQ) 시 회복되는 HP. 소비 아이템이 아니면
 	// 항상 0(의미 없음) — 장비 쪽 attackBonus와 같은 자리(무기가 아니면 0)를 따랐다.
 	uint16_t       healAmount           = 0;
+
+	// ── 아래는 리니지풍 컨텐츠 확장으로 추가된 필드 ─────────────────────────────
+	// 기존 행 초기화 구문({ id, type, ..., healAmount })이 그대로 컴파일되도록 전부
+	// 끝에 붙이고 기본값을 둔다.
+	ItemEffect     effect               = ItemEffect::eNone;
+	uint16_t       effectValue          = 0;   // 효과별 수치(가속 지속 초, 축복 여부 등)
+	uint32_t       buyPrice             = 0;   // 상점 판매가(플레이어가 살 때). 0 = 상점에서 팔지 않음
+	uint32_t       sellPrice            = 0;   // 상점 매입가(플레이어가 팔 때). 0 = 팔 수 없음
+	// 클라이언트 표시 전용 한글 이름(UTF-8). 서버 로직/패킷은 name(ASCII)만 쓴다 —
+	// name[ITEM_NAME_SIZE]에 한글을 넣으면 20바이트 제한에 걸리는 이름이 많아서다.
+	const char*    displayName          = "";
+	uint8_t        iconId               = 0;   // 클라이언트 아이콘 모양 번호
 };

@@ -50,7 +50,8 @@ public:
 	// 슬롯 인덱스들을 담아준다(스택이 여러 슬롯에 걸쳐 나뉘어 채워지면 2개 이상일
 	// 수 있다) — 호출자가 어떤 슬롯이 바뀌었는지 알아야(예: 클라이언트에 알림)
 	// 할 때 GetSlots() 전체를 다시 비교하지 않도록 하기 위함.
-	[[nodiscard]] bool TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots = nullptr) noexcept;
+	// enchant는 장비에만 의미가 있다(강화된 무기를 바닥에서 다시 주울 때 수치 유지).
+	[[nodiscard]] bool TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots = nullptr, uint8_t enchant = 0) noexcept;
 
 	// slotIndex에 아이템이 없거나, count보다 적게 들어있으면 false.
 	[[nodiscard]] bool TryRemoveItem(uint16_t slotIndex, uint16_t count) noexcept;
@@ -99,6 +100,63 @@ public:
 	// "새로 장착하면 이전 장비는 자동으로 탈착"을 원자적으로 보장하므로 실제로는
 	// 항상 0개 또는 1개만 장착 상태다 — 순회 중 처음 발견한 것을 돌려준다.
 	[[nodiscard]] ItemTableId GetEquippedItemId() const noexcept;
+	// 장착 중인 무기의 강화 수치(장착한 게 없으면 0)
+	[[nodiscard]] uint8_t GetEquippedEnchant() const noexcept;
+
+	// 소유자의 Stat::SetOffensive()를 "레벨 기본 공격력 + 장착 무기의 attackBonus +
+	// 강화 보너스"로 다시 계산해 반영한다. 장착 상태/강화 수치/레벨이 바뀌는 모든
+	// 경로 끝에서 호출한다 — "언제 호출을 빠뜨렸는지" 따지는 대신, 항상 최종 상태를
+	// 그대로 다시 계산하므로 항상 정확하다. (레벨업 경로에서도 불러야 해서 public)
+	void RecomputeOffensive() const;
+
+	// ── 리니지풍 컨텐츠 확장 ────────────────────────────────────────────────
+	// 지갑(아데나). 리니지에서는 아데나도 인벤토리 안의 물건이라, 슬롯과 같은 곳에서
+	// 관리해야 "아데나 차감 + 슬롯 지급"을 한 번의 원자적 동작으로 묶을 수 있다.
+	[[nodiscard]] uint32_t GetAdena() const noexcept { return _adena; }
+
+	// 로그인 시 DB 값 복원(LoadFromDB와 같은 전제 — 아직 공개 전이라 검증/저장 없음).
+	void LoadAdena(uint32_t adena) noexcept { _adena = adena; }
+
+	// 줍기 등으로 아데나 증가. 상한(DB INT 범위)을 넘는 만큼은 버려진다.
+	// 실제로 늘어난 양을 반환하고, 즉시 DB 저장 + 확장 세션에 ADENA_INF를 보낸다.
+	uint32_t AddAdena(uint32_t amount, AdenaReason reason) noexcept;
+
+	// 아데나를 쓴다(텔레포트 요금 등 물건을 받지 않는 지출). 모자라면 false — 아무것도 바뀌지 않는다.
+	[[nodiscard]] bool TrySpendAdena(uint32_t amount, AdenaReason reason) noexcept;
+
+	// 소비 아이템 하나를 소모한다(주문서/초록 물약처럼 효과가 인벤토리 밖에서
+	// 일어나는 아이템용). slotIndex가 비었거나, 소비 아이템이 아니거나, 효과가
+	// expected와 다르면 false — 아무것도 바뀌지 않는다.
+	[[nodiscard]] bool TryConsumeOne(uint16_t slotIndex, ItemEffect expected, ItemTableId* outItemId = nullptr) noexcept;
+
+	struct EnchantOutcome
+	{
+		EnchantResult result        = EnchantResult::Invalid;
+		ItemTableId   itemId        = ITEM_TABLE_ID_NONE;
+		uint8_t       before        = 0;
+		uint8_t       after         = 0;
+		bool          wasEquipped   = false;  // 증발/변화한 무기가 장착 중이었나(외형 브로드캐스트 필요)
+	};
+
+	// 무기 강화. 주문서 1장 소모 + 무기 수치 변경(또는 증발)을 한 번에 처리하고,
+	// DB에도 SaveTwoSlotsToDB로 한 트랜잭션에 묶는다(주문서만 사라지고 무기는 그대로,
+	// 또는 그 반대인 상태가 남지 않게). 난수는 호출자가 넘긴다(roll100: 0~99, bonusRoll: 0~2).
+	[[nodiscard]] EnchantOutcome TryEnchant(uint16_t scrollSlot, uint16_t targetSlot, uint32_t roll100, uint32_t bonusRoll) noexcept;
+
+	// 상점 구매: 아데나 차감 + 슬롯 하나에 지급. 수량 전체가 "한 슬롯"에 들어갈 때만
+	// 성공한다(기존 스택에 합치거나 빈 슬롯 하나) — 그래야 DB 반영이 "아데나 + 슬롯 1개"
+	// 한 트랜잭션(ShopTransaction 프로시저)으로 끝난다. outSlot에 지급된 슬롯을 담아준다.
+	[[nodiscard]] ShopResult TryBuy(ItemTableId itemId, uint16_t count, uint32_t totalPrice, uint16_t* outSlot) noexcept;
+
+	// 상점 판매: 슬롯에서 count만큼 빼고 아데나를 준다. 장착 중인 장비는 팔 수 없다.
+	[[nodiscard]] ShopResult TrySell(uint16_t slotIndex, uint16_t count, uint32_t* outGain) noexcept;
+
+	// 카오틱 사망 시 떨어뜨릴 아이템을 하나 골라 꺼낸다(roll은 호출자가 넘기는 난수).
+	// 비어 있으면 nullptr. 꺼낸 아이템은 어느 인벤토리에도 속하지 않는다(TryExtractItem과 같음).
+	[[nodiscard]] Item::SharedPtr TryTakeRandomItem(uint32_t roll) noexcept;
+
+	// slotIndex의 현재 상태를 확장 슬롯 포맷으로 채운다(빈 슬롯이면 itemId=0).
+	void FillSlotEx(uint16_t slotIndex, ITEM_SLOT_EX_DATA& out) const noexcept;
 
 private:
 	// 슬롯 인덱스는 전부 클라이언트 패킷에서 그대로 넘어온 값이므로 절대 신뢰하지
@@ -125,14 +183,20 @@ private:
 	// 남을 수 있는 동작들 — 장착 시 이전 장비 자동 탈착, 슬롯 교체 — 에서 쓴다).
 	void SaveTwoSlotsToDB(uint16_t slotIndexA, uint16_t slotIndexB) const;
 
-	// 소유자의 Stat::SetOffensive()를 "기본 공격력 + 지금 장착 중인 장비의
-	// attackBonus"로 다시 계산해 반영한다. 장착 상태가 바뀔 수 있는 모든
-	// 경로(TryEquip/TryUnequip/TryExtractItem으로 장착 아이템을 버릴 때/
-	// LoadFromDB로 로그인 직후 복원할 때) 끝에서 호출한다 — "언제 호출을
-	// 빠뜨렸는지" 따지는 대신, 항상 최종 상태를 그대로 다시 계산하므로 항상 정확하다.
-	void RecomputeOffensive() const;
+	// 슬롯의 현재 상태를 DB 저장 단위로 바꾼다(SaveTwoSlotsToDB/상점 거래 공용).
+	[[nodiscard]] DB_ITEM_SLOT_SAVE DescribeSlot(uint16_t slotIndex) const;
+
+	// 슬롯이 바뀌었다고 소유자(확장 세션)에게 ITEM_SLOT_EX_INF로 알린다. 모든 변경
+	// 경로가 이미 SaveSlotToDB/SaveTwoSlotsToDB를 거치므로 그 두 곳에서 함께 부른다 —
+	// "저장한 것 = 알린 것"이 항상 같아진다.
+	void NotifySlotChanged(uint16_t slotIndex) const;
+
+	// itemId/count를 "한 슬롯"에 넣을 수 있는 자리(기존 스택 우선, 없으면 빈 슬롯).
+	// 없으면 MAX_INVENTORY_SLOTS. 맵은 건드리지 않는다.
+	[[nodiscard]] uint16_t FindSingleSlotFor(const ItemTableRow& row, uint16_t count) const noexcept;
 
 private:
 	std::weak_ptr<User> _owner;
 	std::unordered_map<uint16_t, Item::SharedPtr> _slots;
+	uint32_t _adena = 0;
 };

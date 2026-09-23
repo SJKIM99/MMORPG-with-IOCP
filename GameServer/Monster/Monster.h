@@ -2,6 +2,7 @@
 
 #include "AStar.h"
 #include "Subject.h"
+#include "Data/MonsterTable.h"
 
 class Monster : public Subject
 {
@@ -19,6 +20,18 @@ class Monster : public Subject
 	// 다음 이동 시 oldList로 재사용해 CollectUsers 호출을 절반으로 줄인다.
 	// GameLogicThread 단일 소비자이므로 동기화 불필요.
 	vector<ObjID> m_viewList;
+
+	// ── 리니지풍 컨텐츠 확장 ──
+	// 종족 정보(Data/MonsterTable.h). ObjID의 KIND에 실린 종족 id로 InitInstance에서
+	// 한 번 찾아 둔다 — 테이블은 불변 constexpr 데이터라 포인터를 들고 있어도 안전하다.
+	const MonsterTableRow* m_species = nullptr;
+	// 선공하지 않는 몬스터도 맞으면 때린 사람을 쫓는다(리니지의 반격). 쫓을 대상.
+	ObjID m_provokedBy = ObjID::npos;
+	bool  m_provoked   = false;
+	// 보스 광역기 루프가 돌고 있는가(중복 예약 방지 — TryActivate와 같은 패턴)
+	std::atomic<bool> m_bossSkillLoop{ false };
+	short m_skillX = 0;
+	short m_skillY = 0;
 
 public:
 	using SharedPtr = shared_ptr<Monster>;
@@ -55,5 +68,25 @@ public:
 	void  SetSpawn(short x, short y) { m_spawnX = x; m_spawnY = y; }
 	short GetSpawnX() const { return m_spawnX; }
 	short GetSpawnY() const { return m_spawnY; }
+
+	[[nodiscard]] const MonsterTableRow* GetSpecies() const noexcept { return m_species; }
+	[[nodiscard]] bool IsBoss() const noexcept { return m_species != nullptr && m_species->boss; }
+	[[nodiscard]] uint16_t GetMoveIntervalMs() const noexcept { return m_species != nullptr ? m_species->moveIntervalMs : 500; }
+	[[nodiscard]] uint16_t GetAttackIntervalMs() const noexcept { return m_species != nullptr ? m_species->attackIntervalMs : 1000; }
+	[[nodiscard]] int GetLeash() const noexcept { return m_species != nullptr ? m_species->leash : 7; }
+
+	[[nodiscard]] bool IsProvoked() const noexcept { return m_provoked; }
+	[[nodiscard]] const ObjID& GetProvokedBy() const noexcept { return m_provokedBy; }
+	void SetProvoked(const ObjID& attackerId) noexcept { m_provoked = true; m_provokedBy = attackerId; }
+	void ClearProvoke() noexcept { m_provoked = false; m_provokedBy = ObjID::npos; }
+
+	// 보스 광역기 중심(예고 시점의 위치 — 적중 판정은 이 좌표 기준이라 피할 수 있다)
+	void SetSkillCenter(short x, short y) noexcept { m_skillX = x; m_skillY = y; }
+	[[nodiscard]] short GetSkillX() const noexcept { return m_skillX; }
+	[[nodiscard]] short GetSkillY() const noexcept { return m_skillY; }
+
+	// 보스 광역기 루프 시작 권한(처음 한 번만 true)
+	bool TryStartBossSkillLoop() { return !m_bossSkillLoop.exchange(true); }
+	void StopBossSkillLoop() { m_bossSkillLoop.store(false); }
 
 };

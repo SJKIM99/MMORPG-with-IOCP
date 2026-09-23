@@ -27,3 +27,13 @@ bool GameSessionManager::ReleaseSession(GameSession* key)
 	unique_lock lock(_lock);
 	return _sessions.erase(key) > 0;
 }
+
+vector<shared_ptr<GameSession>> GameSessionManager::SnapshotSessions() const
+{
+	vector<shared_ptr<GameSession>> sessions;
+	shared_lock lock(_lock);
+	sessions.reserve(_sessions.size());
+	for (const auto& [key, session] : _sessions)
+		sessions.push_back(session);
+	return sessions;
+}

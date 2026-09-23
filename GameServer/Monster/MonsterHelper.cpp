@@ -12,6 +12,9 @@
 #include "Collision.h"
 #include "Transform.h"
 #include "CoreTLS.h"
+#include "Data/WorldData.h"
+#include "Data/LevelTable.h"
+#include "Content/ContentHelper.h"
 
 namespace
 {
@@ -39,12 +42,18 @@ namespace
 		return abs(x1 - x2) + abs(y1 - y2);
 	}
 
+	// 몬스터가 밟을 수 없는 칸: 장애물 + 마을(안전지대). 마을 규칙은 서버가 판정한다.
+	bool IsMonsterBlocked(short x, short y)
+	{
+		return isCollision(x, y) || WorldData::IsSafeZone(x, y);
+	}
+
 	bool IsWalkableStep(short currentX, short currentY, short nextX, short nextY)
 	{
 		if (abs(nextX - currentX) + abs(nextY - currentY) != 1)
 			return false;
 
-		return isCollision(nextX, nextY) == false;
+		return IsMonsterBlocked(nextX, nextY) == false;
 	}
 
 	void MoveMonsterStep(const shared_ptr<Monster>& monster, const ObjID& monsterId, short nextX, short nextY)
@@ -98,7 +107,7 @@ namespace
 		{
 			const short nextX = static_cast<short>(currentX + dx);
 			const short nextY = static_cast<short>(currentY + dy);
-			if (isCollision(nextX, nextY))
+			if (IsMonsterBlocked(nextX, nextY))
 				continue;
 
 			const int nextDistance = ManhattanDistance(nextX, nextY, goalX, goalY);
@@ -155,6 +164,77 @@ namespace
 
 		return TryMoveUsingFreshPath(monster, monsterId, goalX, goalY);
 	}
+
+	// 추격을 멈추고 잠든 상태로 되돌린다. 보스는 스폰 지점에서 쉬면 체력을 회복한다
+	// (멀리 끌고 가서 조금씩 깎는 "리쉬 악용"을 막는 리니지식 처리).
+	void Deactivate(const shared_ptr<Monster>& monster)
+	{
+		monster->ClearPath();
+		monster->SetActive(false);
+		monster->SetAttack(false);
+		monster->ClearProvoke();
+		if (monster->IsBoss())
+		{
+			monster->StopBossSkillLoop();
+			if (monster->GetX() == monster->GetSpawnX() && monster->GetY() == monster->GetSpawnY())
+				monster->GetStat()->SetHp(monster->GetStat()->GetMaxHp());
+		}
+	}
+
+	std::chrono::milliseconds MoveDelay(const shared_ptr<Monster>& monster)
+	{
+		return std::chrono::milliseconds(monster->GetMoveIntervalMs());
+	}
+
+	void StartBossSkillLoopIfNeeded(const shared_ptr<Monster>& monster)
+	{
+		if (monster->IsBoss() && monster->TryStartBossSkillLoop())
+			GTimerThread->ScheduleAfter(monster->GetObjID(), 2500ms, TIMER_EVENT_TYPE::EV_BOSS_SKILL_CAST);
+	}
+
+	// 지역 스폰 가중치로 종족을 하나 고른다.
+	uint16_t PickSpecies(const WorldData::RegionRow& region)
+	{
+		int total = 0;
+		for (const auto& spawn : region.spawns)
+			total += spawn.weight;
+		if (total <= 0)
+			return 0;
+
+		int roll = static_cast<int>(LRng() % static_cast<uint32_t>(total));
+		for (const auto& spawn : region.spawns)
+		{
+			if (roll < spawn.weight)
+				return spawn.species;
+			roll -= spawn.weight;
+		}
+		return region.spawns[0].species;
+	}
+
+	// 피해 편차(±15%) — 몬스터는 치명타가 없다.
+	uint16_t RollMonsterDamage(const shared_ptr<Monster>& monster)
+	{
+		bool crit = false;
+		const uint32_t damage = CombatRule::RollDamage(monster->GetStat()->GetOffensive(), LRng() % 1001, 100, crit);
+		return static_cast<uint16_t>(std::min<uint32_t>(damage, 65535));
+	}
+
+	void NotifyPlayerHitByMonster(const shared_ptr<User>& victim, const ObjID& monsterId, uint16_t damage, uint8_t damageFlags)
+	{
+		const ObjID  victimId = victim->GetObjID();
+		const int32_t victimHp = static_cast<int32_t>(victim->GetStat()->GetHp());
+		GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			ObjID id = object->GetObjID();
+			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
+			if (!SubjectHelper::CanSee(victim, object)) return;
+			auto viewer = static_pointer_cast<User>(object);
+			auto session = viewer->GetGameSession();
+			if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
+			UserHelper::SendSUBJECT_ATTACK_NFY(viewer, victimId, monsterId, victimHp);
+		});
+		UserHelper::BroadcastDamage(victim, monsterId, damage, damageFlags);
+	}
 }
 
 namespace MonsterHelper
@@ -178,8 +258,10 @@ namespace MonsterHelper
 		// Without this check a monster near y=499 can randomly step to y=500
 		// (a different zone), causing UpdateObjectSectorAndPosition to return false
 		// and ASSERT_CRASH to fire.
+		// 마을(안전지대)에는 몬스터가 들어가지 않는다.
 		if (!ZoneLayout::IsValidWorldPosition(x, y) ||
-		    ZoneLayout::GetZoneIdByWorld(x, y) != monster->GetZoneId())
+		    ZoneLayout::GetZoneIdByWorld(x, y) != monster->GetZoneId() ||
+		    WorldData::IsSafeZone(x, y))
 		{
 			return;
 		}
@@ -224,19 +306,46 @@ namespace MonsterHelper
 			if (abs(monster->GetY() - waker->GetY()) > WAKE_RANGE) return;
 		}
 
+		// 마을 안의 플레이어는 선공 대상이 아니다.
+		if (monster->GetType() == MONSTER_TYPE::AGGRO && WorldData::IsSafeZone(waker->GetX(), waker->GetY()))
+			return;
+
 		// atomic exchange: 이미 활성화된 경우 중복 스케줄링 방지
 		if (!monster->TryActivate()) return;
 
 		switch (monster->GetType())
 		{
 		case MONSTER_TYPE::PASSIVE:
-			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
+			GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_RANOM_MOVE);
 			return;
 
 		case MONSTER_TYPE::AGGRO:
-			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, wakerId);
+			GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, wakerId);
+			StartBossSkillLoopIfNeeded(monster);
 			return;
 		}
+	}
+
+	void Provoke(const shared_ptr<Monster>& monster, const shared_ptr<User>& attacker)
+	{
+		if (monster == nullptr || attacker == nullptr || monster->GetStat()->IsDead())
+			return;
+
+		// 이미 누군가를 쫓고 있으면(선공 몬스터의 추격 / 이미 도발됨) 대상을 바꾸지 않는다.
+		if (monster->IsProvoked())
+			return;
+		if (monster->GetType() == MONSTER_TYPE::AGGRO && monster->IsActive())
+			return;
+
+		monster->SetProvoked(attacker->GetObjID());
+
+		// 잠들어 있었다면 곧장 추격 루프를 시작한다. 이미 배회 루프(EV_RANOM_MOVE)가
+		// 돌고 있다면 HandleRandomMove가 다음 틱에 추격 루프로 갈아탄다 — 루프가
+		// 두 개 동시에 돌지 않도록 여기서 새로 예약하지 않는다.
+		if (monster->TryActivate())
+			GTimerThread->ScheduleAfter(monster->GetObjID(), MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, attacker->GetObjID());
+
+		StartBossSkillLoopIfNeeded(monster);
 	}
 
 	void HandleRandomMove(const ObjID& monsterId)
@@ -244,6 +353,13 @@ namespace MonsterHelper
 		auto monster = ::GetGameObject<Monster>(monsterId);
 		if (monster == nullptr || monster->GetStat()->IsDead())
 			return;
+
+		// 맞아서 화가 난 상태면 배회 루프를 추격 루프로 갈아탄다.
+		if (monster->IsProvoked())
+		{
+			GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, monster->GetProvokedBy());
+			return;
+		}
 
 		bool hasNearbyPlayer  = false;
 		ObjID attackTargetId;
@@ -258,7 +374,7 @@ namespace MonsterHelper
 			if (!SubjectHelper::CanSee(monster, user)) return;
 
 			hasNearbyPlayer = true;
-			if (SubjectHelper::CanAttack(monster, user))
+			if (SubjectHelper::CanAttack(monster, user) && !WorldData::IsSafeZone(user->GetX(), user->GetY()))
 				attackTargetId = id;
 		});
 
@@ -270,12 +386,11 @@ namespace MonsterHelper
 		{
 			ObjID mutableId = monsterId;
 			RandomMove(mutableId);
-			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_RANOM_MOVE);
+			GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_RANOM_MOVE);
 		}
 		else
 		{
-			monster->ClearPath();
-			monster->SetActive(false);
+			Deactivate(monster);
 		}
 	}
 
@@ -289,15 +404,25 @@ namespace MonsterHelper
 		auto monster = ::GetGameObject<Monster>(monsterId);
 		if (monster == nullptr) return;
 
-		monster->GetStat()->SetHp(MONSTER_MAX_HP);
+		monster->GetStat()->SetHp(monster->GetStat()->GetMaxHp());
 		monster->GetStat()->SetDead(false);
 		monster->SetActive(false);
 		monster->SetAttack(false);
 		monster->ClearPath();
+		monster->ClearProvoke();
+		monster->StopBossSkillLoop();
 
 		ObjID mutableId = monsterId;
-		SectorHelper::GetRandomPosition(mutableId);
-		monster->SetSpawn(monster->GetX(), monster->GetY());
+		if (monster->IsBoss())
+		{
+			// 보스는 정해진 자리에 다시 나타난다(스폰 지점 = 레이드 장소).
+			SectorHelper::UpdatePosition(mutableId, monster->GetSpawnX(), monster->GetSpawnY());
+		}
+		else
+		{
+			SectorHelper::GetRandomPosition(mutableId);
+			monster->SetSpawn(monster->GetX(), monster->GetY());
+		}
 
 		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
@@ -311,6 +436,12 @@ namespace MonsterHelper
 
 			UserHelper::SendSUBJECT_RESPAWN_NFY(user, monster);
 		});
+
+		if (monster->IsBoss())
+		{
+			UserHelper::BroadcastEffect(monster, monsterId, EffectId::BossSpawn, monster->GetX(), monster->GetY(), 0);
+			UserHelper::BroadcastWorldNotice(WorldNoticeCode::BossSpawned, monster->GetSpecies()->id, monster->GetZoneId(), "");
+		}
 	}
 
 	void HandleAggroMove(const ObjID& monsterId, const ObjID& targetId)
@@ -323,76 +454,72 @@ namespace MonsterHelper
 		auto target = ::GetGameObject<User>(targetId);
 		if (!target)
 		{
-			monster->ClearPath();
-			monster->SetActive(false);
-			monster->SetAttack(false);
+			Deactivate(monster);
 			return;
 		}
 		auto targetSession = target->GetGameSession();
 		if (!targetSession || targetSession->m_state != SOCKET_STATE::ST_INGAME)
 		{
-			monster->ClearPath();
-			monster->SetActive(false);
-			monster->SetAttack(false);
+			Deactivate(monster);
 			return;
 		}
 		// Player left zone — deactivate immediately (no cross-zone chasing)
 		if (target->GetZoneId() != monster->GetZoneId())
 		{
-			monster->ClearPath();
-			monster->SetActive(false);
-			monster->SetAttack(false);
+			Deactivate(monster);
 			return;
 		}
 		// ─────────────────────────────────────────────────────────────────────
+
+		const auto returnToSpawn = [&]()
+		{
+			monster->SetAttack(false);
+			monster->ClearProvoke();
+			if (TryAdvanceTowardGoal(monster, monsterId, monster->GetSpawnX(), monster->GetSpawnY()))
+				GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			else
+				Deactivate(monster);
+		};
 
 		// ── Zone boundary guard ───────────────────────────────────────────────
 		// 존 경계 ZONE_BOUNDARY_MARGIN 칸 이내에 도달하면 추적을 중단하고 스폰으로 복귀.
 		// 몬스터가 Zone을 넘지 않으므로 Zone Transfer 로직이 불필요해진다.
 		if (IsNearZoneBoundary(monster->GetX(), monster->GetY()))
 		{
-			monster->SetAttack(false);
-
-			const short spawnX = monster->GetSpawnX();
-			const short spawnY = monster->GetSpawnY();
-
 			// 스폰 위치도 경계 근처이면(배치 오류 등) 즉시 비활성화
-			if (IsNearZoneBoundary(spawnX, spawnY))
+			if (IsNearZoneBoundary(monster->GetSpawnX(), monster->GetSpawnY()))
 			{
-				monster->ClearPath();
-				monster->SetActive(false);
+				Deactivate(monster);
 				return;
 			}
-
-			if (TryAdvanceTowardGoal(monster, monsterId, spawnX, spawnY))
-				GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
-			else
-			{
-				monster->ClearPath();
-				monster->SetActive(false);
-			}
+			returnToSpawn();
 			return;
 		}
 		// ─────────────────────────────────────────────────────────────────────
 
-		// ── Leash check: stop chasing if > 7 tiles from spawn in any axis ──
-		if (abs(monster->GetX() - monster->GetSpawnX()) > 7 ||
-		    abs(monster->GetY() - monster->GetSpawnY()) > 7)
+		// ── 대상이 죽었거나 마을(안전지대)로 들어갔으면 추격 포기 ─────────────────
+		// (마을 칸은 몬스터에게 막힌 칸이라, 그대로 A*를 돌리면 도달 불가능한 목표를
+		//  찾느라 Zone 전체를 탐색하게 된다 — 경로 탐색 전에 먼저 걸러낸다.)
+		if (target->GetStat()->IsDead() || WorldData::IsSafeZone(target->GetX(), target->GetY()))
 		{
-			monster->SetAttack(false);
+			returnToSpawn();
+			return;
+		}
 
-			if (TryAdvanceTowardGoal(monster, monsterId, monster->GetSpawnX(), monster->GetSpawnY()))
-			{
-				GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
-			}
-			else
-			{
-				monster->ClearPath();
-				monster->SetActive(false);
-			}
+		// ── Leash check: 스폰에서 종족별 한계(기본 7칸, 보스 12칸)를 넘으면 귀환 ──
+		const int leash = monster->GetLeash();
+		if (abs(monster->GetX() - monster->GetSpawnX()) > leash ||
+		    abs(monster->GetY() - monster->GetSpawnY()) > leash)
+		{
+			returnToSpawn();
 			return;
 		}
 		// ─────────────────────────────────────────────────────────────────────
+
+		// 붙어 있는데 반대쪽을 보고 있으면 돌아서기만 한다(예전에는 등을 돌린 채로
+		// 대상 칸으로 경로를 다시 찾다가 대상과 같은 칸에 올라서는 일이 있었다).
+		if (SubjectHelper::IsAdjacent(monster, target))
+			monster->UpdateFacing(target->GetX() - monster->GetX());
 
 		// ── Within attack range: stop pathfinding, attack only ────────────────
 		if (SubjectHelper::CanAttack(monster, target))
@@ -400,7 +527,7 @@ namespace MonsterHelper
 			if (!monster->IsAttacking())
 				GTimerThread->ScheduleNow(monsterId, TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, targetId);
 
-			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
 			return;
 		}
 		// ─────────────────────────────────────────────────────────────────────
@@ -411,12 +538,11 @@ namespace MonsterHelper
 		if (SubjectHelper::CanSee(monster, target))
 		{
 			monster->SetActive(true);
-			GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
 		}
 		else
 		{
-			monster->ClearPath();
-			monster->SetActive(false);
+			Deactivate(monster);
 		}
 		// ─────────────────────────────────────────────────────────────────────
 	}
@@ -434,32 +560,24 @@ namespace MonsterHelper
 		if (!victimSession || victimSession->m_state != SOCKET_STATE::ST_INGAME
 			|| victim->GetStat()->IsDead()
 			|| !SubjectHelper::IsAdjacent(monster, victim)
-			|| monster->GetStat()->IsDead())
+			|| monster->GetStat()->IsDead()
+			|| victim->GetZoneId() != monster->GetZoneId()
+			|| WorldData::IsSafeZone(victim->GetX(), victim->GetY()))
 		{
 			monster->ClearPath();
 			monster->SetAttack(false);
 			return;
 		}
 
-		const uint16_t remaining = victim->GetStat()->TakeDamage(MONSTER_OFFENSIVE);
+		const uint16_t damage = RollMonsterDamage(monster);
+		const uint16_t remaining = victim->GetStat()->TakeDamage(damage);
 
 		if (!victim->GetStat()->IsDead())
 		{
-			const ObjID  victimId = victim->GetObjID();
-			const int32_t victimHp = static_cast<int32_t>(victim->GetStat()->GetHp());
-			GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
-			{
-				ObjID id = object->GetObjID();
-				if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
-				if (!SubjectHelper::CanSee(victim, object)) return;
-				auto viewer = static_pointer_cast<User>(object);
-				auto session = viewer->GetGameSession();
-				if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
-				UserHelper::SendSUBJECT_ATTACK_NFY(viewer, victimId, monsterId, victimHp);
-			});
+			NotifyPlayerHitByMonster(victim, monsterId, damage, 0);
 
 			if (SubjectHelper::CanAttack(monster, victim))
-				GTimerThread->ScheduleAfter(monsterId, 1s, TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, playerId);
+				GTimerThread->ScheduleAfter(monsterId, std::chrono::milliseconds(monster->GetAttackIntervalMs()), TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, playerId);
 			else
 			{
 				monster->ClearPath();
@@ -468,36 +586,112 @@ namespace MonsterHelper
 			return;
 		}
 
-		// 플레이어 사망 처리
-		GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
-		{
-			ObjID id = object->GetObjID();
-			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
-			if (!SubjectHelper::CanSee(victim, object)) return;
-			auto viewer = static_pointer_cast<User>(object);
-			auto session = viewer->GetGameSession();
-			if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
-			UserHelper::SendSUBJECT_DIE_NFY(viewer, victim);
-		});
-
+		// 플레이어 사망 처리 — 사망 알림/섹터 제거/부활 예약/경험치 페널티는 몬스터·PK
+		// 공통 경로(ContentHelper::HandlePlayerDeath)에서 한 번에 처리한다.
+		UserHelper::BroadcastDamage(victim, monsterId, damage, DAMAGE_KILLED);
 		monster->SetAttack(false);
-		monster->SetActive(false);
-		monster->ClearPath();
-		GSector->RemoveObject(const_cast<ObjID&>(playerId), victim->RefSectorX(), victim->RefSectorY());
-		GTimerThread->ScheduleAfter(playerId, 30s, TIMER_EVENT_TYPE::EV_USER_RESPAWN);
+		Deactivate(monster);
+		ContentHelper::HandlePlayerDeath(victim, monsterId, false);
 
 		(void)remaining;
 	}
 
+	void HandleBossSkillCast(const ObjID& bossId)
+	{
+		auto boss = ::GetGameObject<Monster>(bossId);
+		if (boss == nullptr || boss->GetStat()->IsDead() || !boss->IsActive() || boss->GetSectorX() < 0)
+		{
+			if (boss) boss->StopBossSkillLoop();
+			return;
+		}
+
+		// 3칸 안에 (마을 밖의) 살아 있는 플레이어가 있을 때만 시전한다.
+		bool hasTarget = false;
+		GSector->ForEachNeighborObject(boss->GetSectorX(), boss->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			if (hasTarget || object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
+				return;
+			if (object->GetStat()->IsDead() || WorldData::IsSafeZone(object->GetX(), object->GetY()))
+				return;
+			if (abs(object->GetX() - boss->GetX()) <= 3 && abs(object->GetY() - boss->GetY()) <= 3)
+				hasTarget = true;
+		});
+
+		if (!hasTarget)
+		{
+			GTimerThread->ScheduleAfter(bossId, 2s, TIMER_EVENT_TYPE::EV_BOSS_SKILL_CAST);
+			return;
+		}
+
+		// 시전 위치를 고정해 둔다 — 예고 원 밖으로 피하면 맞지 않는다(피할 수 있는 광역기).
+		boss->SetSkillCenter(boss->GetX(), boss->GetY());
+		UserHelper::BroadcastEffect(boss, bossId, EffectId::BossSlamCast, boss->GetSkillX(), boss->GetSkillY(), 2);
+		GTimerThread->ScheduleAfter(bossId, 1200ms, TIMER_EVENT_TYPE::EV_BOSS_SKILL_IMPACT);
+	}
+
+	void HandleBossSkillImpact(const ObjID& bossId)
+	{
+		auto boss = ::GetGameObject<Monster>(bossId);
+		if (boss == nullptr || boss->GetStat()->IsDead() || boss->GetSectorX() < 0)
+		{
+			if (boss) boss->StopBossSkillLoop();
+			return;
+		}
+
+		constexpr int kRadius = 2;
+		const short cx = boss->GetSkillX();
+		const short cy = boss->GetSkillY();
+		UserHelper::BroadcastEffect(boss, bossId, EffectId::BossSlamImpact, cx, cy, kRadius);
+
+		std::vector<shared_ptr<User>> victims;
+		GSector->ForEachNeighborObject(boss->GetSectorX(), boss->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			if (object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
+				return;
+			if (abs(object->GetX() - cx) > kRadius || abs(object->GetY() - cy) > kRadius)
+				return;
+			auto user = static_pointer_cast<User>(object);
+			if (user->GetStat()->IsDead() || WorldData::IsSafeZone(user->GetX(), user->GetY()))
+				return;
+			victims.push_back(std::move(user));
+		});
+
+		for (const auto& victim : victims)
+		{
+			// 광역기는 평타의 2배
+			bool crit = false;
+			const uint32_t damage32 = CombatRule::RollDamage(boss->GetStat()->GetOffensive() * 2u, LRng() % 1001, 100, crit);
+			const uint16_t damage = static_cast<uint16_t>(std::min<uint32_t>(damage32, 65535));
+			victim->GetStat()->TakeDamage(damage);
+			if (!victim->GetStat()->IsDead())
+			{
+				NotifyPlayerHitByMonster(victim, bossId, damage, DAMAGE_BOSS_SKILL);
+				continue;
+			}
+			UserHelper::BroadcastDamage(victim, bossId, damage, static_cast<uint8_t>(DAMAGE_BOSS_SKILL | DAMAGE_KILLED));
+			ContentHelper::HandlePlayerDeath(victim, bossId, false);
+		}
+
+		if (boss->IsActive())
+			GTimerThread->ScheduleAfter(bossId, 6s, TIMER_EVENT_TYPE::EV_BOSS_SKILL_CAST);
+		else
+			boss->StopBossSkillLoop();
+	}
+
 	void InitForZone(ZoneId zoneId)
 	{
+		const WorldData::RegionRow* region = WorldData::FindRegion(zoneId);
+
 		// stride 분배: zoneId, zoneId+ZoneCount, zoneId+2*ZoneCount, ...
-		// → 각 존이 전체 ID 범위에서 균등한 간격으로 몬스터를 가져가므로
-		//   AGGRO(앞 25%)와 PASSIVE(나머지 75%)가 모든 존에 고르게 분포된다.
+		// 각 존이 전체 ID 범위에서 균등한 간격으로 몬스터를 가져간다. 종족은 지역의 스폰
+		// 가중치로 정하고, ObjID의 KIND에 실어 둔다 — 클라이언트는 KIND만 보고도 무엇을
+		// 그릴지 안다(기존 패킷 구조 변경 없음).
 		const int stride = static_cast<int>(ZoneLayout::ZoneCount);
 		for (int32_t i = zoneId; i < MAX_MONSTER; i += stride)
 		{
 			ObjID monsterId(EnumCategory::eMonster, MONSTER_ID_START + static_cast<uint64_t>(i));
+			if (region != nullptr)
+				monsterId.SetKIND(PickSpecies(*region));
 			auto newMonster = MakeNewSubject(monsterId, ObjID::npos);
 			ASSERT_CRASH(GGameObjectManager->Insert(monsterId, newMonster));
 			SectorHelper::GetRandomPosition(monsterId);  // GSector는 호출 전에 Zone::Run()이 설정
@@ -506,7 +700,20 @@ namespace MonsterHelper
 			if (monster) monster->SetSpawn(monster->GetX(), monster->GetY());
 		}
 
+		// 필드 보스 — 일반 몬스터 ID 구간 뒤쪽(MONSTER_ID_START + MAX_MONSTER + zoneId)을 쓴다.
+		if (region != nullptr && region->bossSpecies != 0)
+		{
+			ObjID bossId(EnumCategory::eMonster, MONSTER_ID_START + static_cast<uint64_t>(MAX_MONSTER) + zoneId);
+			bossId.SetKIND(region->bossSpecies);
+			auto newBoss = MakeNewSubject(bossId, ObjID::npos);
+			ASSERT_CRASH(GGameObjectManager->Insert(bossId, newBoss));
+			SectorHelper::UpdatePosition(bossId, region->bossX, region->bossY);
+			if (auto boss = ::GetGameObject<Monster>(bossId))
+				boss->SetSpawn(region->bossX, region->bossY);
+		}
+
 		cout << "[Zone " << zoneId << "] Monster Init Success ("
-		     << (MAX_MONSTER / stride) << " monsters)\n";
+		     << (MAX_MONSTER / stride) << " monsters"
+		     << ((region != nullptr && region->bossSpecies != 0) ? " + boss" : "") << ")\n";
 	}
 }

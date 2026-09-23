@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "AStar.h"
 #include "Collision.h"
+#include "Data/WorldData.h"
 
 vector<NODE> FindPath(short startX, short startY, short goalX, short goalY) 
 {
@@ -49,6 +50,8 @@ vector<NODE> FindPath(short startX, short startY, short goalX, short goalY)
 
             if (nextX < 0 || nextX >= W_WIDTH || nextY < 0 || nextY >= W_HEIGHT) continue;
             if (isCollision(nextX, nextY)) continue;
+            // A*는 몬스터 전용이다 — 마을(안전지대)은 몬스터에게 막힌 칸으로 본다.
+            if (WorldData::IsSafeZone(nextX, nextY)) continue;
 
             int newCost = gScores[{current._x, current._y}] + 1;
             if (!gScores.count({ nextX, nextY }) || newCost < gScores[{nextX, nextY}]) {

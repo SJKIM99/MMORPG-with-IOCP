@@ -44,12 +44,19 @@ public:
 	// 막지 않는 비동기 enqueue — 실제 ODBC 호출은 DB 워커 스레드가 처리한다.
 	// playerId는 로그인 시 User에 캐싱해둔 정수 PK를 그대로 넘긴다(name 조회 없음).
 	// 같은 playerId의 요청은 항상 같은 샤드로 가므로 넣은 순서대로 반영된다.
-	void RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped);
+	void RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant);
 	void RequestDeleteItem(int playerId, uint16_t slotIndex);
 
 	// 두 슬롯을 하나의 트랜잭션으로 함께 반영한다(장착 시 이전 장비 자동 탈착,
 	// 슬롯 교체처럼 "논리적으로 한 동작"인 경우 반드시 이걸 쓴다 — Inventory.cpp 참고).
 	void RequestSaveTwoItems(int playerId, const DB_ITEM_SLOT_SAVE& a, const DB_ITEM_SLOT_SAVE& b);
+
+	// ── 리니지풍 컨텐츠 확장 ──
+	// 셋 다 playerId 샤드로 간다(인벤토리 슬롯 저장과 같은 샤드) — 한 플레이어의
+	// 아데나/슬롯/성향치 변경이 넣은 순서 그대로 커밋된다. 값은 절대값(최신 상태)이다.
+	void RequestSaveAdena(int playerId, uint32_t adena);
+	void RequestShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot);
+	void RequestSaveAlignment(int playerId, int16_t alignment, uint16_t pkCount);
 
 	[[nodiscard]] static Clock::time_point Now() noexcept { return Clock::now(); }
 

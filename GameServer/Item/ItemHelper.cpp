@@ -9,6 +9,8 @@
 #include "User.h"
 #include "UserHelper.h"
 #include "Zone/ZoneManager.h"
+#include "ItemTable.h"
+#include "EquipmentItem.h"
 
 namespace
 {
@@ -121,13 +123,26 @@ namespace ItemHelper
 			return;
 		}
 
+		// 아데나는 슬롯이 아니라 지갑으로 간다. 지갑은 가득 찰 일이 사실상 없으므로
+		// (상한 20억) 실패 경로 없이 필드에서 지우고 끝낸다.
+		if (const ItemTableRow* row = ItemTable::Find(target->GetItemTableId()); row != nullptr && row->type == ItemType::eCurrency)
+		{
+			player->GetInventory()->AddAdena(target->GetCount(), AdenaReason::Pickup);
+			RemoveFieldItem(target);
+			UserHelper::SendITEM_PICKUP_ACK(player, true);
+			return;
+		}
+
 		// 여기서 target은 아직 필드에 그대로 남아있는 상태다 - TryAddItem이
 		// 실패해도(인벤토리가 꽉 참) 손댄 게 없으니 되돌릴 필요조차 없다.
 		// 성공했을 때만, 바로 아래에서 필드에서 지운다. 이 함수 전체가 한
 		// Zone 스레드 위에서 끊김 없이 실행되므로, "찾았는데 다른 요청이 먼저
 		// 가져갔다" 같은 중간 상태가 존재하지 않는다.
+		// 강화된 무기를 버렸다가 다시 주우면 강화 수치가 그대로 따라온다.
+		const auto equipment = dynamic_pointer_cast<EquipmentItem>(target);
+		const uint8_t enchant = equipment != nullptr ? equipment->GetEnchant() : 0;
 		std::vector<uint16_t> touchedSlots;
-		if (!player->GetInventory()->TryAddItem(target->GetItemTableId(), target->GetCount(), &touchedSlots))
+		if (!player->GetInventory()->TryAddItem(target->GetItemTableId(), target->GetCount(), &touchedSlots, enchant))
 		{
 			UserHelper::SendITEM_PICKUP_ACK(player, false);
 			UserHelper::SendSYSTEM_MESSAGE_INF(player, SystemMessageCode::InventoryFull,

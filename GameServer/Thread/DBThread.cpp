@@ -3,6 +3,7 @@
 #include "DBConnectionPool.h"
 #include "UserHelper.h"
 #include "Zone/ZoneManager.h"
+#include "Data/WorldData.h"
 
 namespace
 {
@@ -92,7 +93,7 @@ void DBThread::RequestSaveUser(const ObjID& subjectId, const DB_USER_INFO& info)
 	ScheduleOnShard(std::move(event), shardIndex);
 }
 
-void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped)
+void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant)
 {
 	auto event        = std::make_shared<DB_ITEM_SAVE_EVENT>();
 	event->wakeupTime = Now();
@@ -101,6 +102,7 @@ void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId
 	event->itemId     = itemId;
 	event->count      = count;
 	event->equipped   = equipped;
+	event->enchant    = enchant;
 	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
 }
 
@@ -120,6 +122,35 @@ void DBThread::RequestSaveTwoItems(int playerId, const DB_ITEM_SLOT_SAVE& a, con
 	event->playerId   = playerId;
 	event->a          = a;
 	event->b          = b;
+	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
+}
+
+void DBThread::RequestSaveAdena(int playerId, uint32_t adena)
+{
+	auto event        = std::make_shared<DB_ADENA_SAVE_EVENT>();
+	event->wakeupTime = Now();
+	event->playerId   = playerId;
+	event->adena      = adena;
+	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
+}
+
+void DBThread::RequestShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot)
+{
+	auto event        = std::make_shared<DB_SHOP_TX_EVENT>();
+	event->wakeupTime = Now();
+	event->playerId   = playerId;
+	event->adena      = adena;
+	event->slot       = slot;
+	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
+}
+
+void DBThread::RequestSaveAlignment(int playerId, int16_t alignment, uint16_t pkCount)
+{
+	auto event        = std::make_shared<DB_ALIGNMENT_SAVE_EVENT>();
+	event->wakeupTime = Now();
+	event->playerId   = playerId;
+	event->alignment  = alignment;
+	event->pkCount    = pkCount;
 	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
 }
 
@@ -162,9 +193,15 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 			// New users have no saved position — assign a zone via round-robin for
 			// even load distribution. GetRandomPosition places the player within
 			// that zone's bounds; UpdatePosition then registers the correct zone ID.
+			//
+			// 확장 세션(새 클라이언트)의 신규 캐릭터는 리니지처럼 마을에서 시작한다.
+			// 레거시 봇은 예전 그대로 라운드로빈 — 부하 테스트에서 봇이 한 Zone에 몰리지
+			// 않게 하는 기존 분산 조건을 그대로 지킨다.
 			static std::atomic<uint32_t> s_counter{ 0 };
-			const ZoneId zoneId = static_cast<ZoneId>(
-				s_counter.fetch_add(1, std::memory_order_relaxed) % ZoneLayout::ZoneCount);
+			const bool extended = e->session != nullptr && e->session->IsExtended();
+			const ZoneId zoneId = extended
+				? static_cast<ZoneId>(WorldData::kTownZoneId)
+				: static_cast<ZoneId>(s_counter.fetch_add(1, std::memory_order_relaxed) % ZoneLayout::ZoneCount);
 
 			DB_USER_INFO info;
 			info._playerId = playerId;
@@ -182,7 +219,7 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 	}
 	else if (const auto e = std::dynamic_pointer_cast<DB_ITEM_SAVE_EVENT>(event))
 	{
-		connection->SaveInventorySlot(e->playerId, e->slotIndex, e->itemId, e->count, e->equipped);
+		connection->SaveInventorySlot(e->playerId, e->slotIndex, e->itemId, e->count, e->equipped, e->enchant);
 	}
 	else if (const auto e = std::dynamic_pointer_cast<DB_ITEM_DELETE_EVENT>(event))
 	{
@@ -191,6 +228,18 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 	else if (const auto e = std::dynamic_pointer_cast<DB_ITEM_SAVE_TWO_EVENT>(event))
 	{
 		connection->SaveTwoInventorySlots(e->playerId, e->a, e->b);
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_ADENA_SAVE_EVENT>(event))
+	{
+		connection->SavePlayerAdena(e->playerId, e->adena);
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_SHOP_TX_EVENT>(event))
+	{
+		connection->ShopTransaction(e->playerId, e->adena, e->slot);
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_ALIGNMENT_SAVE_EVENT>(event))
+	{
+		connection->SavePlayerAlignment(e->playerId, e->alignment, e->pkCount);
 	}
 }
 

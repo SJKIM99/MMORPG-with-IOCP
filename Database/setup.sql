@@ -199,6 +199,26 @@ BEGIN
 END
 GO
 
+-- ----------------------------------------
+-- 3-1. 리니지풍 컨텐츠 확장 컬럼 (1회성 마이그레이션 — 기존 데이터 보존)
+--    Players.adena     : 아데나(지갑). 인벤토리 슬롯이 아니라 플레이어 단위 값이다.
+--    Players.alignment : 성향치(+ 라우풀 / - 카오틱). SMALLINT(-32768 ~ 32767)
+--    Players.pkCount   : PK 횟수
+--    Inventory.enchant : 무기 강화 수치(+0 ~ +15). 장비 슬롯에만 의미가 있다.
+--
+--    아데나/성향치는 서버가 playerId 기준 DB 샤드로 저장한다(인벤토리와 같은 샤드).
+--    그래서 한 플레이어의 "아데나 변경"과 "슬롯 변경"이 넣은 순서 그대로 커밋된다.
+-- ----------------------------------------
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Players') AND name = N'adena')
+    ALTER TABLE Players ADD adena INT NOT NULL CONSTRAINT DF_Players_adena DEFAULT 0;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Players') AND name = N'alignment')
+    ALTER TABLE Players ADD alignment SMALLINT NOT NULL CONSTRAINT DF_Players_alignment DEFAULT 0;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Players') AND name = N'pkCount')
+    ALTER TABLE Players ADD pkCount SMALLINT NOT NULL CONSTRAINT DF_Players_pkCount DEFAULT 0;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Inventory') AND name = N'enchant')
+    ALTER TABLE Inventory ADD enchant TINYINT NOT NULL CONSTRAINT DF_Inventory_enchant DEFAULT 0;
+GO
+
 -- 예전 이름으로 만들어졌던 프로시저가 남아있으면 정리한다(위에서 새 이름으로
 -- 다시 만들기 때문에, 지우지 않으면 예전 이름의 프로시저가 고아로 남는다).
 IF OBJECT_ID(N'GetPlayerItems', N'P')    IS NOT NULL DROP PROCEDURE GetPlayerItems;
@@ -312,7 +332,8 @@ GO
 -- ExtractPlayerInfo
 --   호출: EXEC ExtractPlayerInfo ?
 --   파라미터: @name
---   반환: playerId, x, y, level, exp  (BindCol 순서: 1=playerId, 2=x, 3=y, 4=level, 5=exp)
+--   반환: playerId, x, y, level, exp, adena, alignment, pkCount
+--         (BindCol 순서: 1=playerId, 2=x, 3=y, 4=level, 5=exp, 6=adena, 7=alignment, 8=pkCount)
 --
 --   DBConnection::ExtractUserInfo() 에서 호출
 --   기존 플레이어 로그인 시 저장 데이터 복원. playerId는 서버가 User에 캐싱해서
@@ -328,7 +349,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT playerId, x, y, level, exp
+    SELECT playerId, x, y, level, exp, adena, alignment, pkCount
     FROM Players
     WHERE name = @name;
 END
@@ -370,7 +391,7 @@ GO
 -- GetInventory
 --   호출: EXEC GetInventory ?
 --   파라미터: @playerId (서버가 로그인 시 확보해 캐싱해둔 정수 PK — name 조회 없음)
---   반환: slotIndex, itemId, count, equipped (행마다 슬롯 하나)
+--   반환: slotIndex, itemId, count, equipped, enchant (행마다 슬롯 하나)
 --
 --   DBConnection::ExtractInventory() 에서 호출
 --   로그인 시 인벤토리 전체 로드
@@ -385,7 +406,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT slotIndex, itemId, count, equipped
+    SELECT slotIndex, itemId, count, equipped, enchant
     FROM Inventory
     WHERE playerId = @playerId;
 END
@@ -393,8 +414,8 @@ GO
 
 -- ----------------------------------------
 -- SaveInventorySlot
---   호출: EXEC SaveInventorySlot ?, ?, ?, ?, ?
---   파라미터: @playerId, @slotIndex, @itemId, @count, @equipped
+--   호출: EXEC SaveInventorySlot ?, ?, ?, ?, ?, ?
+--   파라미터: @playerId, @slotIndex, @itemId, @count, @equipped, @enchant
 --   반환: 없음
 --
 --   DBConnection::SaveInventorySlot() 에서 호출
@@ -412,7 +433,8 @@ CREATE PROCEDURE SaveInventorySlot
     @slotIndex SMALLINT,
     @itemId    SMALLINT,
     @count     SMALLINT,
-    @equipped  BIT
+    @equipped  BIT,
+    @enchant   TINYINT = 0
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -427,13 +449,13 @@ BEGIN
     -- 하나가 끝난 뒤에야 다음 게 실행되어, 이전의 "IF EXISTS ... ELSE INSERT"
     -- 방식이 갖고 있던 이중 INSERT/유실 갱신(lost update) 경쟁 상태가 사라진다.
     UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
-    SET itemId = @itemId, count = @count, equipped = @equipped
+    SET itemId = @itemId, count = @count, equipped = @equipped, enchant = @enchant
     WHERE playerId = @playerId AND slotIndex = @slotIndex;
 
     IF @@ROWCOUNT = 0
     BEGIN
-        INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped)
-        VALUES (@playerId, @slotIndex, @itemId, @count, @equipped);
+        INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
+        VALUES (@playerId, @slotIndex, @itemId, @count, @equipped, @enchant);
     END
 
     COMMIT TRAN;
@@ -467,10 +489,11 @@ GO
 
 -- ----------------------------------------
 -- SaveTwoInventorySlots
---   호출: EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+--   호출: EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 --   파라미터: @playerId,
 --             @slotIndexA, @hasA, @itemIdA, @countA, @equippedA,
---             @slotIndexB, @hasB, @itemIdB, @countB, @equippedB
+--             @slotIndexB, @hasB, @itemIdB, @countB, @equippedB,
+--             @enchantA, @enchantB   (강화 수치 — 기존 호출 순서를 깨지 않도록 끝에 붙였다)
 --   반환: 없음
 --
 --   DBConnection::SaveTwoInventorySlots() 에서 호출
@@ -503,7 +526,9 @@ CREATE PROCEDURE SaveTwoInventorySlots
     @hasB       BIT,
     @itemIdB    SMALLINT,
     @countB     SMALLINT,
-    @equippedB  BIT
+    @equippedB  BIT,
+    @enchantA   TINYINT = 0,
+    @enchantB   TINYINT = 0
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -514,25 +539,28 @@ BEGIN
     -- has/itemId/count/equipped도 짝을 맞춰 함께 바꿔야 한다.
     IF @slotIndexA > @slotIndexB
     BEGIN
-        DECLARE @tmpSlot SMALLINT, @tmpHas BIT, @tmpItemId SMALLINT, @tmpCount SMALLINT, @tmpEquipped BIT;
+        DECLARE @tmpSlot SMALLINT, @tmpHas BIT, @tmpItemId SMALLINT, @tmpCount SMALLINT, @tmpEquipped BIT, @tmpEnchant TINYINT;
 
         SELECT @tmpSlot     = @slotIndexA,
                @tmpHas      = @hasA,
                @tmpItemId   = @itemIdA,
                @tmpCount    = @countA,
-               @tmpEquipped = @equippedA;
+               @tmpEquipped = @equippedA,
+               @tmpEnchant  = @enchantA;
 
         SELECT @slotIndexA = @slotIndexB,
                @hasA       = @hasB,
                @itemIdA    = @itemIdB,
                @countA     = @countB,
-               @equippedA  = @equippedB;
+               @equippedA  = @equippedB,
+               @enchantA   = @enchantB;
 
         SELECT @slotIndexB = @tmpSlot,
                @hasB       = @tmpHas,
                @itemIdB    = @tmpItemId,
                @countB     = @tmpCount,
-               @equippedB  = @tmpEquipped;
+               @equippedB  = @tmpEquipped,
+               @enchantB   = @tmpEnchant;
     END
 
     BEGIN TRAN;
@@ -540,12 +568,12 @@ BEGIN
     IF @hasA = 1
     BEGIN
         UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
-        SET itemId = @itemIdA, count = @countA, equipped = @equippedA
+        SET itemId = @itemIdA, count = @countA, equipped = @equippedA, enchant = @enchantA
         WHERE playerId = @playerId AND slotIndex = @slotIndexA;
 
         IF @@ROWCOUNT = 0
-            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped)
-            VALUES (@playerId, @slotIndexA, @itemIdA, @countA, @equippedA);
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
+            VALUES (@playerId, @slotIndexA, @itemIdA, @countA, @equippedA, @enchantA);
     END
     ELSE
     BEGIN
@@ -555,16 +583,118 @@ BEGIN
     IF @hasB = 1
     BEGIN
         UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
-        SET itemId = @itemIdB, count = @countB, equipped = @equippedB
+        SET itemId = @itemIdB, count = @countB, equipped = @equippedB, enchant = @enchantB
         WHERE playerId = @playerId AND slotIndex = @slotIndexB;
 
         IF @@ROWCOUNT = 0
-            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped)
-            VALUES (@playerId, @slotIndexB, @itemIdB, @countB, @equippedB);
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
+            VALUES (@playerId, @slotIndexB, @itemIdB, @countB, @equippedB, @enchantB);
     END
     ELSE
     BEGIN
         DELETE FROM Inventory WHERE playerId = @playerId AND slotIndex = @slotIndexB;
+    END
+
+    COMMIT TRAN;
+END
+GO
+
+-- ----------------------------------------
+-- SavePlayerAdena
+--   호출: EXEC SavePlayerAdena ?, ?
+--   파라미터: @playerId, @adena (절대값 — 서버 메모리의 최신 지갑)
+--
+--   DBConnection::SavePlayerAdena() 에서 호출. 아데나 줍기/텔레포트 요금처럼
+--   슬롯 변화 없이 지갑만 바뀐 경우. 델타가 아니라 절대값이라 같은 샤드 안의
+--   순서만 지켜지면 마지막 커밋이 곧 최신 상태다(메모리가 권위, DB는 저널).
+-- ----------------------------------------
+IF OBJECT_ID(N'SavePlayerAdena', N'P') IS NOT NULL
+    DROP PROCEDURE SavePlayerAdena;
+GO
+
+CREATE PROCEDURE SavePlayerAdena
+    @playerId INT,
+    @adena    INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Players SET adena = CASE WHEN @adena >= 0 THEN @adena ELSE adena END
+    WHERE playerId = @playerId;
+END
+GO
+
+-- ----------------------------------------
+-- SavePlayerAlignment
+--   호출: EXEC SavePlayerAlignment ?, ?, ?
+--   파라미터: @playerId, @alignment, @pkCount
+--
+--   DBConnection::SavePlayerAlignment() 에서 호출. 사냥으로 조금씩 오르는 값이라
+--   서버가 일정 폭 이상 변했을 때 / PK 직후 / 로그아웃 때만 저장한다.
+-- ----------------------------------------
+IF OBJECT_ID(N'SavePlayerAlignment', N'P') IS NOT NULL
+    DROP PROCEDURE SavePlayerAlignment;
+GO
+
+CREATE PROCEDURE SavePlayerAlignment
+    @playerId  INT,
+    @alignment SMALLINT,
+    @pkCount   SMALLINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Players SET alignment = @alignment, pkCount = @pkCount
+    WHERE playerId = @playerId;
+END
+GO
+
+-- ----------------------------------------
+-- ShopTransaction
+--   호출: EXEC ShopTransaction ?, ?, ?, ?, ?, ?, ?, ?
+--   파라미터: @playerId, @adena, @slotIndex, @hasItem, @itemId, @count, @equipped, @enchant
+--
+--   DBConnection::ShopTransaction() 에서 호출. 상점 구매/판매는 "아데나"와 "슬롯"이
+--   반드시 함께 바뀌어야 하는 동작이다 — 따로 저장하다 그 사이에 서버가 죽으면
+--   "돈만 나가고 물건이 없음" 또는 "물건은 생겼는데 돈이 그대로(복사)"가 DB에 남는다.
+--   그래서 하나의 트랜잭션으로 묶는다. (서버는 한 슬롯에 다 들어가는 거래만 받는다 —
+--   Inventory::TryBuy 참고 — 그래서 슬롯 하나 + 아데나로 충분하다.)
+-- ----------------------------------------
+IF OBJECT_ID(N'ShopTransaction', N'P') IS NOT NULL
+    DROP PROCEDURE ShopTransaction;
+GO
+
+CREATE PROCEDURE ShopTransaction
+    @playerId  INT,
+    @adena     INT,
+    @slotIndex SMALLINT,
+    @hasItem   BIT,
+    @itemId    SMALLINT,
+    @count     SMALLINT,
+    @equipped  BIT,
+    @enchant   TINYINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRAN;
+
+    UPDATE Players SET adena = @adena WHERE playerId = @playerId;
+
+    IF @hasItem = 1
+    BEGIN
+        UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
+        SET itemId = @itemId, count = @count, equipped = @equipped, enchant = @enchant
+        WHERE playerId = @playerId AND slotIndex = @slotIndex;
+
+        IF @@ROWCOUNT = 0
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
+            VALUES (@playerId, @slotIndex, @itemId, @count, @equipped, @enchant);
+    END
+    ELSE
+    BEGIN
+        DELETE FROM Inventory WHERE playerId = @playerId AND slotIndex = @slotIndex;
     END
 
     COMMIT TRAN;

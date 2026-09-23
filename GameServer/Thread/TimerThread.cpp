@@ -5,6 +5,7 @@
 #include "UserHelper.h"
 #include "Item/ItemHelper.h"
 #include "Zone/ZoneManager.h"
+#include "Content/ContentHelper.h"
 
 bool TimerThread::TimerEventCompare::operator()(const TIMER_EVENT& lhs, const TIMER_EVENT& rhs) const noexcept
 {
@@ -175,9 +176,10 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 		break;
 
 	case TIMER_EVENT_TYPE::EV_USER_RESPAWN:
-		enqueue([subjectId]()
+		// targetId에는 예약 시점의 사망 번호(User::m_deathSeq)가 실려 있다.
+		enqueue([subjectId, deathSeq = static_cast<uint32_t>(targetId.GetDatabaseID())]()
 		{
-			UserHelper::HandleRespawn(subjectId);
+			UserHelper::HandleRespawn(subjectId, deathSeq);
 		});
 		break;
 
@@ -192,6 +194,37 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 		enqueue([subjectId]()
 		{
 			ItemHelper::HandleLootPriorityExpire(subjectId);
+		});
+		break;
+
+	// ── 리니지풍 컨텐츠 확장 ──
+	// 보스는 Zone을 벗어나지 않으므로 몬스터와 같은 이유로 Zone 힌트를 믿어도 된다.
+	case TIMER_EVENT_TYPE::EV_BOSS_SKILL_CAST:
+		enqueue([subjectId]()
+		{
+			MonsterHelper::HandleBossSkillCast(subjectId);
+		});
+		break;
+
+	case TIMER_EVENT_TYPE::EV_BOSS_SKILL_IMPACT:
+		enqueue([subjectId]()
+		{
+			MonsterHelper::HandleBossSkillImpact(subjectId);
+		});
+		break;
+
+	// 플레이어 이벤트는 위 hintedZone 계산에서 이미 조회 경로로 빠진다.
+	case TIMER_EVENT_TYPE::EV_PURPLE_EXPIRE:
+		enqueue([subjectId]()
+		{
+			ContentHelper::HandlePurpleExpire(subjectId);
+		});
+		break;
+
+	case TIMER_EVENT_TYPE::EV_HASTE_EXPIRE:
+		enqueue([subjectId]()
+		{
+			ContentHelper::HandleHasteExpire(subjectId);
 		});
 		break;
 	}

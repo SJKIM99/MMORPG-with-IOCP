@@ -38,8 +38,20 @@ namespace ServerPacketSizeDetail
 	constexpr size_t s21 = ConstMaxSize(s20, sizeof(ITEM_PICKUP_ACK_PACKET));
 	constexpr size_t s22 = ConstMaxSize(s21, sizeof(SUBJECT_EQUIP_CHANGE_NFY_PACKET));
 	constexpr size_t s23 = ConstMaxSize(s22, sizeof(ITEM_USE_ACK_PACKET));
+	// 확장 프로토콜
+	constexpr size_t s24 = ConstMaxSize(s23, sizeof(USER_INFO_EX_INF_PACKET));
+	constexpr size_t s25 = ConstMaxSize(s24, sizeof(SUBJECT_INFO_EX_NFY_PACKET));
+	constexpr size_t s26 = ConstMaxSize(s25, sizeof(ITEM_LIST_EX_ACK_PACKET));
+	constexpr size_t s27 = ConstMaxSize(s26, sizeof(ITEM_SLOT_EX_INF_PACKET));
+	constexpr size_t s28 = ConstMaxSize(s27, sizeof(ADENA_INF_PACKET));
+	constexpr size_t s29 = ConstMaxSize(s28, sizeof(ENCHANT_RESULT_ACK_PACKET));
+	constexpr size_t s30 = ConstMaxSize(s29, sizeof(SHOP_RESULT_ACK_PACKET));
+	constexpr size_t s31 = ConstMaxSize(s30, sizeof(SUBJECT_DAMAGE_NFY_PACKET));
+	constexpr size_t s32 = ConstMaxSize(s31, sizeof(EFFECT_NFY_PACKET));
+	constexpr size_t s33 = ConstMaxSize(s32, sizeof(WORLD_NOTICE_INF_PACKET));
+	constexpr size_t s34 = ConstMaxSize(s33, sizeof(SC_CHAT_EX_PACKET));
 }
-constexpr size_t MAX_SERVER_PACKET_SIZE = ServerPacketSizeDetail::s23;
+constexpr size_t MAX_SERVER_PACKET_SIZE = ServerPacketSizeDetail::s34;
 constexpr size_t SEND_BATCH_BUFFER_SIZE = 4096;
 static_assert(SEND_BATCH_BUFFER_SIZE >= MAX_SERVER_PACKET_SIZE, "Send batch buffer must fit one server packet.");
 
@@ -214,6 +226,12 @@ public:
 	atomic<ZoneId> m_routingZoneId{ InvalidZoneId };
 	mutex m_sessionLock;
 	weak_ptr<User> m_owner;
+	// USER_LOGIN_EX_REQ로 로그인한 세션(새 클라이언트)인가. 확장 패킷(리니지풍 컨텐츠)은
+	// 이 값이 true인 세션에만 보낸다 — STRESS_TEST 봇/레거시 클라이언트가 받는 패킷
+	// 구성을 예전과 똑같이 유지해서 기존 부하 측정 조건을 보존하기 위함이다.
+	// 로그인 요청을 처리하는 시점(ST_ALLOC, 기본 로직 스레드)에 한 번 쓰이고 이후엔
+	// 읽기만 하므로 원자적일 필요까지는 없지만, 여러 Zone 스레드가 읽으므로 atomic으로 둔다.
+	atomic<bool> m_extended{ false };
 
 protected:
 	unique_ptr<RecvContext> m_recvContext;
@@ -227,6 +245,8 @@ public:
 
 	void BindOwner(const shared_ptr<User>& owner);
 	[[nodiscard]] shared_ptr<User> GetOwner() const;
+	[[nodiscard]] bool IsExtended() const noexcept { return m_extended.load(memory_order_relaxed); }
+	void SetExtended(bool extended) noexcept { m_extended.store(extended, memory_order_relaxed); }
 	[[nodiscard]] ZoneId GetRoutingZoneId() const noexcept { return m_routingZoneId.load(memory_order_relaxed); }
 	void SetRoutingZoneId(ZoneId zoneId) noexcept { m_routingZoneId.store(zoneId, memory_order_relaxed); }
 	bool AttachSocket(SOCKET socket);

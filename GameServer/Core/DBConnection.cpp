@@ -277,7 +277,9 @@ DB_PLAYER_INFO DBConnection::ExtractUserInfo(const string& name)
 	SQLINTEGER  player_x{}, player_y{};
 	SQLCHAR     player_level{};
 	SQLUINTEGER player_exp{};
-	SQLLEN cb_id{}, cb_x{}, cb_y{}, cb_level{}, cb_exp{};
+	SQLINTEGER  player_adena{};
+	SQLSMALLINT player_alignment{}, player_pk{};
+	SQLLEN cb_id{}, cb_x{}, cb_y{}, cb_level{}, cb_exp{}, cb_adena{}, cb_alignment{}, cb_pk{};
 
 	if (!BindParam(1, SQL_C_CHAR, SQL_WVARCHAR, name.size(), (SQLPOINTER)name.c_str(), nullptr)) return playerInfo;
 	if (!Execute(query.c_str())) return playerInfo;
@@ -286,6 +288,10 @@ DB_PLAYER_INFO DBConnection::ExtractUserInfo(const string& name)
 	if (!BindCol(3, SQL_INTEGER,  sizeof(player_y),     &player_y,     &cb_y))     return playerInfo;
 	if (!BindCol(4, SQL_TINYINT,  sizeof(player_level), &player_level, &cb_level)) return playerInfo;
 	if (!BindCol(5, SQL_INTEGER,  sizeof(player_exp),   &player_exp,   &cb_exp))   return playerInfo;
+	// 리니지풍 컨텐츠 확장 컬럼 — ExtractPlayerInfo 프로시저가 6~8번째로 돌려준다.
+	if (!BindCol(6, SQL_INTEGER,  sizeof(player_adena),     &player_adena,     &cb_adena))     return playerInfo;
+	if (!BindCol(7, SQL_SMALLINT, sizeof(player_alignment), &player_alignment, &cb_alignment)) return playerInfo;
+	if (!BindCol(8, SQL_SMALLINT, sizeof(player_pk),        &player_pk,        &cb_pk))        return playerInfo;
 	if (!Fetch()) return playerInfo;
 
 	playerInfo._playerId = static_cast<int>(player_id);
@@ -294,6 +300,9 @@ DB_PLAYER_INFO DBConnection::ExtractUserInfo(const string& name)
 	playerInfo._y        = player_y;
 	playerInfo._level    = static_cast<uint8>(player_level);
 	playerInfo._exp      = static_cast<uint32>(player_exp);
+	playerInfo._adena     = player_adena > 0 ? static_cast<uint32>(player_adena) : 0;
+	playerInfo._alignment = static_cast<int16_t>(player_alignment);
+	playerInfo._pkCount   = player_pk > 0 ? static_cast<uint16_t>(player_pk) : 0;
 
 	return playerInfo;
 }
@@ -322,7 +331,8 @@ vector<DB_ITEM_INFO> DBConnection::ExtractInventory(int playerId)
 	SQLINTEGER  pid = playerId;
 	SQLSMALLINT slotIndex{}, itemId{}, count{};
 	SQLCHAR     equipped{};
-	SQLLEN cb_slot{}, cb_item{}, cb_count{}, cb_equipped{};
+	SQLCHAR     enchant{};
+	SQLLEN cb_slot{}, cb_item{}, cb_count{}, cb_equipped{}, cb_enchant{};
 
 	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return items;
 	if (!Execute(query.c_str())) return items;
@@ -330,6 +340,7 @@ vector<DB_ITEM_INFO> DBConnection::ExtractInventory(int playerId)
 	if (!BindCol(2, SQL_SMALLINT, sizeof(itemId),    &itemId,    &cb_item))     return items;
 	if (!BindCol(3, SQL_SMALLINT, sizeof(count),     &count,     &cb_count))    return items;
 	if (!BindCol(4, SQL_BIT,      sizeof(equipped),  &equipped,  &cb_equipped)) return items;
+	if (!BindCol(5, SQL_TINYINT,  sizeof(enchant),   &enchant,   &cb_enchant))  return items;
 
 	// GetInventory는 슬롯 개수만큼 여러 행을 반환하므로, 다른 Extract*와 달리
 	// Fetch()를 한 번이 아니라 SQL_NO_DATA가 나올 때까지 반복한다.
@@ -340,29 +351,32 @@ vector<DB_ITEM_INFO> DBConnection::ExtractInventory(int playerId)
 		info._itemId    = static_cast<uint16_t>(itemId);
 		info._count     = static_cast<uint16_t>(count);
 		info._equipped  = (equipped != 0);
+		info._enchant   = static_cast<uint8_t>(enchant);
 		items.push_back(info);
 	}
 
 	return items;
 }
 
-bool DBConnection::SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped)
+bool DBConnection::SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant)
 {
 	StatementCleanup cleanup(*this);
 
-	wstring query = L"EXEC SaveInventorySlot ?, ?, ?, ?, ?";
+	wstring query = L"EXEC SaveInventorySlot ?, ?, ?, ?, ?, ?";
 
 	SQLINTEGER  pid  = playerId;
 	SQLSMALLINT slot = static_cast<SQLSMALLINT>(slotIndex);
 	SQLSMALLINT item = static_cast<SQLSMALLINT>(itemId);
 	SQLSMALLINT cnt  = static_cast<SQLSMALLINT>(count);
 	SQLCHAR     eq   = equipped ? 1 : 0;
+	SQLCHAR     enc  = enchant;
 
-	if (!BindParam(1, SQL_C_LONG,  SQL_INTEGER,  0, (SQLPOINTER)&pid,  nullptr)) return false;
-	if (!BindParam(2, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slot, nullptr)) return false;
-	if (!BindParam(3, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&item, nullptr)) return false;
-	if (!BindParam(4, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&cnt,  nullptr)) return false;
-	if (!BindParam(5, SQL_C_BIT,   SQL_BIT,      0, (SQLPOINTER)&eq,   nullptr)) return false;
+	if (!BindParam(1, SQL_C_LONG,     SQL_INTEGER,  0, (SQLPOINTER)&pid,  nullptr)) return false;
+	if (!BindParam(2, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&slot, nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&item, nullptr)) return false;
+	if (!BindParam(4, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&cnt,  nullptr)) return false;
+	if (!BindParam(5, SQL_C_BIT,      SQL_BIT,      0, (SQLPOINTER)&eq,   nullptr)) return false;
+	if (!BindParam(6, SQL_C_UTINYINT, SQL_TINYINT,  0, (SQLPOINTER)&enc,  nullptr)) return false;
 	return Execute(query.c_str());
 }
 
@@ -384,7 +398,7 @@ bool DBConnection::SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& 
 {
 	StatementCleanup cleanup(*this);
 
-	wstring query = L"EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+	wstring query = L"EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
 
 	SQLINTEGER  pid    = playerId;
 	SQLSMALLINT slotA  = static_cast<SQLSMALLINT>(a.slotIndex);
@@ -397,6 +411,8 @@ bool DBConnection::SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& 
 	SQLSMALLINT itemB  = static_cast<SQLSMALLINT>(b.itemId);
 	SQLSMALLINT cntB   = static_cast<SQLSMALLINT>(b.count);
 	SQLCHAR     eqB    = b.equipped ? 1 : 0;
+	SQLCHAR     encA   = a.enchant;
+	SQLCHAR     encB   = b.enchant;
 
 	if (!BindParam(1,  SQL_C_LONG,  SQL_INTEGER,  0, (SQLPOINTER)&pid,   nullptr)) return false;
 	if (!BindParam(2,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slotA, nullptr)) return false;
@@ -409,5 +425,64 @@ bool DBConnection::SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& 
 	if (!BindParam(9,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&itemB, nullptr)) return false;
 	if (!BindParam(10, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&cntB,  nullptr)) return false;
 	if (!BindParam(11, SQL_C_BIT,   SQL_BIT,      0, (SQLPOINTER)&eqB,   nullptr)) return false;
+	// 강화 수치는 프로시저 끝 두 파라미터(@enchantA, @enchantB)로 붙였다.
+	if (!BindParam(12, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&encA, nullptr)) return false;
+	if (!BindParam(13, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&encB, nullptr)) return false;
+	return Execute(query.c_str());
+}
+
+bool DBConnection::SavePlayerAdena(int playerId, uint32_t adena)
+{
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC SavePlayerAdena ?, ?";
+
+	SQLINTEGER pid = playerId;
+	SQLINTEGER amt = static_cast<SQLINTEGER>(adena);
+
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&amt, nullptr)) return false;
+	return Execute(query.c_str());
+}
+
+bool DBConnection::SavePlayerAlignment(int playerId, int16_t alignment, uint16_t pkCount)
+{
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC SavePlayerAlignment ?, ?, ?";
+
+	SQLINTEGER  pid = playerId;
+	SQLSMALLINT al  = alignment;
+	SQLSMALLINT pk  = static_cast<SQLSMALLINT>(pkCount);
+
+	if (!BindParam(1, SQL_C_LONG,  SQL_INTEGER,  0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&al,  nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&pk,  nullptr)) return false;
+	return Execute(query.c_str());
+}
+
+bool DBConnection::ShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot)
+{
+	StatementCleanup cleanup(*this);
+
+	wstring query = L"EXEC ShopTransaction ?, ?, ?, ?, ?, ?, ?, ?";
+
+	SQLINTEGER  pid   = playerId;
+	SQLINTEGER  amt   = static_cast<SQLINTEGER>(adena);
+	SQLSMALLINT idx   = static_cast<SQLSMALLINT>(slot.slotIndex);
+	SQLCHAR     has   = slot.hasItem ? 1 : 0;
+	SQLSMALLINT item  = static_cast<SQLSMALLINT>(slot.itemId);
+	SQLSMALLINT cnt   = static_cast<SQLSMALLINT>(slot.count);
+	SQLCHAR     eq    = slot.equipped ? 1 : 0;
+	SQLCHAR     enc   = slot.enchant;
+
+	if (!BindParam(1, SQL_C_LONG,     SQL_INTEGER,  0, (SQLPOINTER)&pid,  nullptr)) return false;
+	if (!BindParam(2, SQL_C_LONG,     SQL_INTEGER,  0, (SQLPOINTER)&amt,  nullptr)) return false;
+	if (!BindParam(3, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&idx,  nullptr)) return false;
+	if (!BindParam(4, SQL_C_BIT,      SQL_BIT,      0, (SQLPOINTER)&has,  nullptr)) return false;
+	if (!BindParam(5, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&item, nullptr)) return false;
+	if (!BindParam(6, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&cnt,  nullptr)) return false;
+	if (!BindParam(7, SQL_C_BIT,      SQL_BIT,      0, (SQLPOINTER)&eq,   nullptr)) return false;
+	if (!BindParam(8, SQL_C_UTINYINT, SQL_TINYINT,  0, (SQLPOINTER)&enc,  nullptr)) return false;
 	return Execute(query.c_str());
 }
