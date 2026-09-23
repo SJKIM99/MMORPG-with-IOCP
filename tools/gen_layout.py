@@ -1430,6 +1430,13 @@ def main(argv: list[str]) -> int:
         build_region.write(out, build_region.compile_region(src))
         build_region.verify(out, src)
     print(f"{'바이너리':<10} 갱신 {', '.join(built)}  (tools/build_region.py 와 같은 산출물)")
+
+    # 콜리전 메시(Recast 입력)도 같이 만든다. 지형이 바뀌면 내비메시도 낡는다.
+    import build_collision
+
+    for name in built:
+        build_collision.build(name)
+    print(f"{'내비메시':<10} 다시 구우려면: Binary/Debug/GameServer.exe --build-navmesh")
     return 0
 
 

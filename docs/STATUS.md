@@ -1096,6 +1096,104 @@ CPU 20초(첫 3초에 소비)를 보고서야 알았다.
 - `Collision` / `AStar` 는 아직 2000x2000 타일 격자다. 4번(Recast)이 걷어낸다.
 - 리전 간 포탈은 구조만 열어 뒀고 기능은 Week 2.
 
+### 4번 완료 — Recast / Detour 내비메시 (2026-09-23)
+
+사용자 요청으로 Week 2 에서 당겨 왔다. 덕분에 별도 높이맵 샘플러를 만들지
+않아도 되고, 6번(이동 검증)이 처음부터 최종형이 된다.
+
+#### 파이프라인 — 빌드는 오프라인, 쿼리만 런타임 (7장)
+
+```
+regions/*.json ──build_region.py──> build/*.bin
+                                      │
+                    build_collision.py│  (gen_layout 이 자동 호출)
+                                      ▼
+                                  build/*.obj   ← 중간 산출물, git 제외(8MB)
+                                      │
+             GameServer.exe --build-navmesh
+                                      ▼
+                                build/*.navmesh ← 커밋. 서버가 읽기만 한다
+```
+
+```
+town      poly 3,162  500 KB  grid  873x859
+field_01  poly 5,200  844 KB  grid 1707x1707
+```
+
+의존성은 vcpkg 의 `recastnavigation:x64-windows` 1.6.0 이다.
+
+#### 콜리전 메시는 **클라이언트와 같은 규칙**으로 뽑는다
+
+`tools/build_collision.py` 가 `CollisionBuilder.cs` 를 그대로 옮긴 것이다 —
+aabb / cylinder / mesh / ramp 네 가지 모양을 같은 식으로 만든다. 어긋나면
+"클라에선 벽, 서버 내비메시에선 통과" 가 생기는데 그게 5장이 막으려는 문제다.
+
+OBJ 의 `usemtl` 로 `walkable` / `blocker` 를 나눈다. blocker 를 **싣되 걸을 수
+없는 면으로 표시**하는 것이 핵심이다 — 아예 빼면 건물 안으로 길이 나고,
+그냥 넣으면 지붕이 걸을 수 있는 섬이 된다.
+
+물에 잠긴 지형 칸은 아예 빼서 내비메시에 구멍을 낸다. 5장의 `nav: exclude` 를
+그대로 구현한 것이다.
+
+#### 스레드 규약 — 7장이 "주석으로 명시하라"고 한 부분
+
+```
+dtNavMesh       읽기 전용 -> 모든 Zone 스레드가 공유
+dtNavMeshQuery  내부에 탐색 상태 -> Zone 스레드마다 하나씩 소유
+```
+
+`Zone::_navQuery` 를 `GSector` 와 같은 자리에서 초기화하고 `thread_local
+GNavQuery` 로 노출한다. 이미 있는 Sector 규약에 얹은 것이라 새 동기화 장치가
+없다. 근거는 `docs/decisions/008-navmesh-thread-model.md`.
+
+`dtCrowd` 는 쓰지 않는다. 단일 스레드 전역 상태를 가정해 Zone 모델과 정면으로
+부딪히고, 매 틱 이웃 질의가 돌아 Sector 기반 AI LOD 와도 충돌한다.
+근거는 `009-no-dtcrowd.md`.
+
+#### 하마터면 "성공"으로 넘어갈 뻔한 것
+
+첫 빌드가 **마을 9폴리곤 / 필드 0폴리곤**으로 나왔다. 마을은 에러 없이
+"빌드 성공" 이라 로그만 보면 통과다.
+
+원인은 **삼각형 감는 방향**이었다. Recast 는 법선으로 경사를 재는데 오른손
+규약(반시계가 앞면)이라, Godot 지면 메시와 같은 순서로 감으면 법선이 아래를
+향한다. 그러면 모든 지면이 180도 경사가 되어 "걸을 수 없음" 이다.
+클라이언트 지형 메시에서 겪었던 것과 같은 함정인데 **규약이 반대**였다.
+
+그래서 검사를 폴리곤 수가 아니라 **실제 쿼리**로 만들었다:
+
+```
+[worldtest] town      nav poly 3162  표본  64곳 중  64곳(100%) 통행 가능  경로 21점
+[worldtest] field_01  nav poly 5200  표본 256곳 중 242곳( 94%) 통행 가능  경로  9점
+[worldtest] OK   Zone 합계 20개, 실패 0건
+```
+
+필드의 6% 는 물과 건물이라 맞는 값이다. 감는 방향이 뒤집히면 여기서 0% 가 된다.
+스폰 지점이 내비메시 위인지, 리전을 가로지르는 경로가 나오는지, 리전 밖이
+거절되는지도 함께 본다.
+
+#### 에이전트 치수를 클라이언트와 맞췄다
+
+```
+agentHeight 2.2   = PlayerSpawner 의 CapsuleHeight
+agentRadius 0.42  = CapsuleRadius
+agentMaxClimb 0.75 = PlayerController 의 MaxStepHeight
+agentMaxSlope 52도 = Godot 의 FloorMaxAngle
+```
+
+어긋나면 "서버는 지나갈 수 있다는데 클라에서는 벽에 낀다" 가 된다.
+
+#### 남은 것
+
+- 아직 **이동 검증에 연결하지 않았다.** `NavQuery::SampleWalkable` 이
+  Y 와 통행 가능 여부를 함께 주므로 6번 단계에서 그대로 쓴다.
+- `Collision` / `AStar`(2000x2000 타일 격자)는 아직 살아 있다. 몬스터 이동이
+  내비메시로 옮겨 가는 Week 2 에 걷어낸다.
+- 단일 타일 내비메시다. 월드가 커지면 타일 빌드로 바꿔야 한다.
+- `findNearestPoly` 의 최대 끌림이 마을 5.8m / 필드 9.6m 다. 막힌 지점에서
+  가장 가까운 통행 가능 면까지의 거리라 이상하지는 않지만, 이동 검증에서
+  허용 반경을 정할 때 이 값을 근거로 삼아야 한다.
+
 ### 이번 주에 하지 않는 것
 
 Recast/내비메시, 몬스터 FSM, 인던, 리전 간 포탈(구조만 열어 두고 기능은 Week 2),

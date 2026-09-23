@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "RegionData.h"
+#include "NavMesh.h"
 #include "Zone/ZoneTypes.h"
 
 // 여러 리전을 **동시에** 들고 있는 곳. Week 1 의 3번 단계.
@@ -130,6 +131,10 @@ public:
 	[[nodiscard]] const RegionData& Region(RegionIndex index) const { return *_regions[index].data; }
 	[[nodiscard]] const ZoneGrid& Grid(RegionIndex index) const { return _regions[index].grid; }
 
+	// 리전의 내비메시. **읽기 전용이라 모든 Zone 스레드가 공유한다** (7장).
+	// 쿼리는 여기서 만들지 말고 Zone 스레드가 가진 NavQuery 를 쓸 것.
+	[[nodiscard]] const NavMesh& Nav(RegionIndex index) const { return _regions[index].nav; }
+
 	// 없으면 InvalidRegionIndex.
 	[[nodiscard]] RegionIndex IndexOf(const std::string& regionId) const noexcept;
 
@@ -165,6 +170,7 @@ private:
 	{
 		std::unique_ptr<RegionData> data;
 		ZoneGrid grid;
+		NavMesh nav;
 	};
 
 	std::vector<Entry> _regions;

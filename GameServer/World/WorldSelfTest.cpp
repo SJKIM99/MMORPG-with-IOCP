@@ -131,12 +131,95 @@ namespace
 	}
 }
 
+namespace
+{
+	// 내비메시가 실제로 쿼리에 답하는지 본다.
+	//
+	// 폴리곤 수만 보는 것으로는 부족하다 — 감는 방향이 뒤집혔을 때 마을이
+	// 9폴리곤으로 "빌드 성공" 했다. 걸어 다닐 지점을 실제로 찍어 봐야 안다.
+	void CheckNav(const WorldRegistry& world, RegionIndex index)
+	{
+		const RegionData& region = world.Region(index);
+		const ZoneGrid& grid = world.Grid(index);
+		const NavMesh& nav = world.Nav(index);
+
+		if (!nav.IsLoaded())
+		{
+			cout << "[worldtest] " << region.Id() << " 내비메시 없음 — 건너뜀" << endl;
+			return;
+		}
+
+		// 검사용 쿼리. 실제 쿼리는 Zone 스레드가 각자 소유한다(7장) — 여기서는
+		// 메인 스레드가 혼자 쓰므로 하나 만들어 쓰고 버린다.
+		NavQuery query;
+		if (!query.Init(nav))
+		{
+			Fail(region.Id() + ": NavQuery 초기화 실패");
+			return;
+		}
+
+		// 1) 리전 곳곳이 내비메시 위에 있는가.
+		//    물·건물 안은 당연히 아니므로 비율로 본다. 감는 방향이 뒤집히면
+		//    여기서 0% 가 나온다.
+		const float step = grid.sectorSize;
+		int sampled = 0, onMesh = 0;
+		float worstDrop = 0.0f;
+		for (float z = step * 0.5f; z < grid.sizeZ; z += step)
+		{
+			for (float x = step * 0.5f; x < grid.sizeX; x += step)
+			{
+				++sampled;
+				Vec3 snapped;
+				if (!query.SampleWalkable(Vec3{ x, 0.0f, z }, 4.0f, snapped))
+					continue;
+
+				++onMesh;
+				// 끌어당긴 지점이 원래 XZ 에서 너무 멀면 내비메시가 엉뚱한 곳에 있다.
+				const float moved = Vec3{ x, snapped.y, z }.Distance2D(snapped);
+				worstDrop = std::max<float>(worstDrop, moved);
+			}
+		}
+
+		const int percent = sampled > 0 ? (onMesh * 100 / sampled) : 0;
+		if (percent < 40)
+			Fail(region.Id() + ": 내비메시 위 지점이 " + std::to_string(percent)
+				+ "% 뿐이다 — 삼각형 감는 방향이나 경사 한계를 의심할 것");
+
+		// 2) 스폰 지점은 반드시 걸을 수 있어야 한다. 아니면 로그인하자마자
+		//    내비메시 밖에 서고, 6번 단계의 이동 검증이 전부 거부한다.
+		Vec3 spawnSnap;
+		if (!query.SampleWalkable(region.SpawnPoint(), 6.0f, spawnSnap))
+			Fail(region.Id() + ": spawn_point 가 내비메시 밖이다");
+
+		// 3) 경로가 실제로 나오는가. 리전을 가로지르는 두 점을 잡는다.
+		const Vec3 from{ grid.sizeX * 0.25f, 0.0f, grid.sizeZ * 0.25f };
+		const Vec3 to{ grid.sizeX * 0.75f, 0.0f, grid.sizeZ * 0.75f };
+		const std::vector<Vec3> path = query.FindPath(from, to, 8.0f);
+		if (path.size() < 2)
+			Fail(region.Id() + ": 리전을 가로지르는 경로를 못 찾는다");
+
+		// 4) 리전 밖은 거절해야 한다.
+		Vec3 outside;
+		if (query.SampleWalkable(Vec3{ -500.0f, 0.0f, -500.0f }, 4.0f, outside))
+			Fail(region.Id() + ": 리전 밖 좌표가 내비메시 위라고 나온다");
+
+		cout << "[worldtest] " << region.Id()
+			<< "  nav poly " << nav.PolyCount()
+			<< "  표본 " << sampled << "곳 중 " << onMesh << "곳(" << percent << "%) 통행 가능"
+			<< "  최대 끌림 " << worstDrop << "m"
+			<< "  경로 " << path.size() << "점" << endl;
+	}
+}
+
 int WorldSelfTest::Run(const WorldRegistry& world)
 {
 	g_failures = 0;
 
 	for (RegionIndex i = 0; i < static_cast<RegionIndex>(world.RegionCount()); ++i)
+	{
 		CheckRegion(world, i);
+		CheckNav(world, i);
+	}
 
 	// 6) ZoneId 포장/해체 왕복. 리전을 상위 바이트에 박았으므로 여기서
 	//    어긋나면 **다른 리전의 Zone 큐로 일이 흘러간다.** 조용히 틀리는 유형이다.

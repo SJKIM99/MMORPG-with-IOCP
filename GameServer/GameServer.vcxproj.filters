@@ -142,6 +142,12 @@
     <ClCompile Include="World\RegionData.cpp">
       <Filter>World</Filter>
     </ClCompile>
+    <ClCompile Include="World\NavMesh.cpp">
+      <Filter>World</Filter>
+    </ClCompile>
+    <ClCompile Include="World\NavMeshBuilder.cpp">
+      <Filter>World</Filter>
+    </ClCompile>
     <ClCompile Include="World\WorldRegistry.cpp">
       <Filter>World</Filter>
     </ClCompile>
@@ -277,6 +283,12 @@
       <Filter>Transform</Filter>
     </ClInclude>
     <ClInclude Include="World\RegionData.h">
+      <Filter>World</Filter>
+    </ClInclude>
+    <ClInclude Include="World\NavMesh.h">
+      <Filter>World</Filter>
+    </ClInclude>
+    <ClInclude Include="World\NavMeshBuilder.h">
       <Filter>World</Filter>
     </ClInclude>
     <ClInclude Include="World\WorldRegistry.h">

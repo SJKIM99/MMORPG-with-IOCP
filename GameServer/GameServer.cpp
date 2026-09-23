@@ -7,6 +7,7 @@
 #include <psapi.h>
 #include <dbghelp.h>
 #include <future>
+#include <filesystem>
 #pragma comment(lib, "Psapi.lib")
 #pragma comment(lib, "dbghelp.lib")
 #include "ThreadManager.h"
@@ -24,6 +25,7 @@
 #include "World/RegionData.h"
 #include "World/WorldRegistry.h"
 #include "World/WorldSelfTest.h"
+#include "World/NavMeshBuilder.h"
 
 static void WriteCrashLog(const char* tag, DWORD exCode, void* exAddr, EXCEPTION_POINTERS* ep = nullptr)
 {
@@ -84,7 +86,7 @@ static void WriteCrashLog(const char* tag, DWORD exCode, void* exAddr, EXCEPTION
 	}
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	std::set_new_handler([]() noexcept {
 		WriteCrashLog("OOM", 0, nullptr);
@@ -97,6 +99,53 @@ int main()
 		WriteCrashLog("CRASH", code, addr, ep);
 		return EXCEPTION_CONTINUE_SEARCH;
 	});
+
+	// --- 내비메시 오프라인 빌드 모드 -------------------------------------------
+	//
+	// GameServer.exe --build-navmesh
+	//
+	// 7장 — "런타임에 내비메시를 빌드하지 않는다. 바이너리를 로드한다."
+	// 여기서 구운 .navmesh 를 커밋하고, 평소 기동은 그걸 읽기만 한다.
+	// 별도 툴 프로젝트를 만들지 않은 이유는 NavMeshBuilder.h 주석 참고.
+	for (int i = 1; i < argc; ++i)
+	{
+		if (::strcmp(argv[i], "--build-navmesh") != 0)
+			continue;
+
+		int failed = 0;
+		for (const char* regionId : { "town", "field_01" })
+		{
+			const std::string bin = RegionData::FindRegionFile(regionId);
+			if (bin.empty())
+			{
+				cout << "[navmesh] " << regionId << ".bin 이 없다 — build_region.py 먼저" << endl;
+				++failed;
+				continue;
+			}
+
+			std::filesystem::path obj(bin);
+			obj.replace_extension(".obj");
+			std::filesystem::path nav(bin);
+			nav.replace_extension(".navmesh");
+
+			if (!std::filesystem::exists(obj))
+			{
+				cout << "[navmesh] " << obj.string()
+					<< " 가 없다 — tools/build_collision.py 먼저" << endl;
+				++failed;
+				continue;
+			}
+
+			std::string error;
+			const NavMeshBuilder::Config config;
+			if (!NavMeshBuilder::BuildFromObj(obj.string(), nav.string(), config, error))
+			{
+				cout << "[navmesh] " << regionId << " 빌드 실패: " << error << endl;
+				++failed;
+			}
+		}
+		return failed == 0 ? 0 : 1;
+	}
 
 	//소켓API이용해서 네트워크 초기설정 해주기
 	SocketManager::Init();

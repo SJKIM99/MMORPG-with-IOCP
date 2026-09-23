@@ -11,6 +11,8 @@ extern std::shared_ptr<GameObjectManager> GGameObjectManager;
 
 extern std::shared_ptr<class DBThread>           GDBThread;
 extern thread_local class Sector*                GSector;
+// 이 Zone 스레드 전용 내비메시 쿼리. GSector 와 같은 시점에 설정된다.
+extern thread_local class NavQuery*              GNavQuery;
 // 이 스레드가 담당하는 Zone. Zone::Run() 시작 시 1회 설정된다(GSector와 동일한 시점).
 // ZoneManager::IsCurrentThreadOwner()가 "지금 이 스레드가 어떤 오브젝트의 소유
 // Zone 스레드가 맞는가"를 판정하는 데 사용한다.

@@ -202,6 +202,8 @@
     <ClCompile Include="Thread\WorkerThread.cpp" />
     <ClCompile Include="Transform\Transform.cpp" />
     <ClCompile Include="World\RegionData.cpp" />
+    <ClCompile Include="World\NavMesh.cpp" />
+    <ClCompile Include="World\NavMeshBuilder.cpp" />
     <ClCompile Include="World\WorldRegistry.cpp" />
     <ClCompile Include="World\WorldSelfTest.cpp" />
     <ClCompile Include="User\User.cpp" />
@@ -251,6 +253,8 @@
     <ClInclude Include="Transform\Transform.h" />
     <ClInclude Include="Transform\Vec3.h" />
     <ClInclude Include="World\RegionData.h" />
+    <ClInclude Include="World\NavMesh.h" />
+    <ClInclude Include="World\NavMeshBuilder.h" />
     <ClInclude Include="World\WorldRegistry.h" />
     <ClInclude Include="World\WorldSelfTest.h" />
     <ClInclude Include="User\User.h" />

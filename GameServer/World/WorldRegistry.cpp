@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "WorldRegistry.h"
 
+#include <filesystem>
+
 WorldRegistry* GWorld = nullptr;
 
 bool ZoneGrid::Build(const RegionData& region, ZoneGrid& out, std::string& outError)
@@ -72,6 +74,21 @@ bool WorldRegistry::Load(const std::vector<std::string>& regionIds, std::string&
 
 		if (!ZoneGrid::Build(*entry.data, entry.grid, outError))
 			return false;
+
+		// 내비메시는 **있으면 쓰고 없으면 넘어간다.** 아직 안 구운 리전이 있을
+		// 수 있고, 그때 서버가 아예 안 뜨는 것보다는 "내비 없음" 으로 도는 편이
+		// 낫다 — 이동 검증이 붙는 6번 단계에서 필수로 바꾼다.
+		std::filesystem::path navPath(path);
+		navPath.replace_extension(".navmesh");
+		if (std::filesystem::exists(navPath))
+		{
+			std::string navError;
+			if (!entry.nav.Load(navPath.string(), navError))
+			{
+				outError = navError;
+				return false;
+			}
+		}
 
 		_regions.push_back(std::move(entry));
 	}
@@ -161,6 +178,8 @@ void WorldRegistry::PrintSummary() const
 			<< e.grid.sectorCountX << "x" << e.grid.sectorCountZ
 			<< "  zone " << e.grid.zoneCountX << "x" << e.grid.zoneCountZ
 			<< " (" << e.grid.ZoneCount() << ")"
+			<< "  nav " << (e.nav.IsLoaded()
+				? ("poly " + std::to_string(e.nav.PolyCount())) : std::string("없음"))
 			<< "  zoneId " << MakeZoneId(static_cast<RegionIndex>(i), 0)
 			<< ".." << MakeZoneId(static_cast<RegionIndex>(i),
 				static_cast<ZoneId>(e.grid.ZoneCount() - 1))

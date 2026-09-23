@@ -39,6 +39,15 @@ void Zone::Run()
 	// 이 Zone 스레드의 TLS GSector를 자신의 Sector로 설정한다.
 	// 이후 이 스레드에서 실행되는 모든 게임 로직은 GSector를 통해 Zone 전용 섹터에 접근한다.
 	GSector = &_sector;
+
+	// 이 스레드 전용 쿼리를 만든다. dtNavMesh 는 공유하지만 dtNavMeshQuery 는
+	// 내부에 탐색 상태(노드 풀, 열린 목록)를 들고 있어 **절대 공유하면 안 된다.**
+	// 두 스레드가 같은 것을 쓰면 서로의 탐색을 짓밟아 재현 불가능한 크래시가 난다.
+	const NavMesh& nav = GWorld->Nav(RegionOfZone(_id));
+	if (nav.IsLoaded() && !_navQuery.Init(nav))
+		cout << "[Zone " << _id << "] NavQuery 초기화 실패" << endl;
+
+	GNavQuery = &_navQuery;
 	// ZoneManager::IsCurrentThreadOwner()가 이 스레드를 자신의 ZoneId로 식별할 수 있도록 설정.
 	LCurrentZoneId = _id;
 
