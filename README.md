@@ -4,6 +4,7 @@ Windows IOCP 기반 대규모 분산 MMORPG 게임 서버 · C++20 · 3개월 1�
 
 - 포트폴리오 원본 PDF — [MMORPG-with-IOCP_포트폴리오.pdf](MMORPG-with-IOCP_포트폴리오.pdf)
 - 시연 영상 — [youtube.com/watch?v=BjdfZrlOad4](https://www.youtube.com/watch?v=BjdfZrlOad4)
+- 리니지풍 2D 클라이언트 — [Client2D/README.md](Client2D/README.md) · 서버 컨텐츠 확장(종족·보스, 아데나·상점·강화, 마을·사망 패널티, PK·성향치) — [docs/LINEAGE_CONTENT.md](docs/LINEAGE_CONTENT.md)
 
 ---
 

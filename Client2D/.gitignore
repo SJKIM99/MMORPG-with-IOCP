@@ -1,0 +1,4 @@
+# CMake 빌드 폴더 (명령줄: build/, Visual Studio 폴더 열기: out/)
+build/
+out/
+.vs/

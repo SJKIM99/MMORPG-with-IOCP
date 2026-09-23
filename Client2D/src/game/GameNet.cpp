@@ -1,0 +1,975 @@
+#include "game/Game.h"
+#include "game/Texts.h"
+#include "fx/Effects.h"
+#include "fx/Particles.h"
+#include "render/Draw.h"
+#include "render/Actors.h"
+#include "render/Icons.h"
+#include "audio/Sfx.h"
+#include "core/Util.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <cstdlib>
+
+using util::Rgb;
+
+namespace
+{
+	template <typename T>
+	bool As(const char* data, uint16_t size, T& out)
+	{
+		if (size < sizeof(T)) return false;
+		std::memcpy(&out, data, sizeof(T));
+		return true;
+	}
+
+	std::string FixedStr(const char* s, size_t n)
+	{
+		size_t len = 0;
+		while (len < n && s[len] != '\0') ++len;
+		return std::string(s, len);
+	}
+
+	uint32_t HashName(const std::string& s)
+	{
+		uint32_t h = 2166136261u;
+		for (char c : s) { h ^= static_cast<uint8_t>(c); h *= 16777619u; }
+		return h;
+	}
+
+	int Cheb(int ax, int ay, int bx, int by) { return std::max(std::abs(ax - bx), std::abs(ay - by)); }
+
+	float EntityHeight(const Entity& e)
+	{
+		if (e.kind == EntityKind::Monster && e.row) return actors::MonsterHeight(*e.row);
+		if (e.kind == EntityKind::Item) return 16.f;
+		return actors::PlayerHeight();
+	}
+
+	void FaceToward(Entity& e, int tx, int ty)
+	{
+		const int dx = tx - e.tx, dy = ty - e.ty;
+		const int sx = dx - dy, sy = dx + dy;
+		if (sx != 0) e.faceRight = sx > 0;
+		if (sy != 0) e.faceBack = sy < 0;
+	}
+}
+
+void Game::OnPacket(const char* data, uint16_t size)
+{
+	const auto type = static_cast<PacketType>(static_cast<uint8_t>(data[2]));
+	switch (type)
+	{
+	case PacketType::USER_LOGIN_ACK:
+	{
+		USER_LOGIN_ACK_PACKET p{};
+		if (As(data, size, p)) HandleLoginAck(p);
+		break;
+	}
+	case PacketType::USER_LOGIN_FAIL_ACK:
+		m_net.Disconnect();
+		m_scene = Scene::Login;
+		m_loginError = "로그인에 실패했습니다. 잠시 후 다시 시도하세요.";
+		sfx::Play(sfx::Id::Error);
+		break;
+
+	case PacketType::SUBJECT_ADD_NFY:
+	{
+		SUBJECT_ADD_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSubjectAdd(p);
+		break;
+	}
+	case PacketType::SUBJECT_MOVE_NFY:
+	{
+		SUBJECT_MOVE_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSubjectMove(p);
+		break;
+	}
+	case PacketType::SUBJECT_REMOVE_NFY:
+	{
+		SUBJECT_REMOVE_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSubjectRemove(p);
+		break;
+	}
+	case PacketType::SUBJECT_DIE_NFY:
+	{
+		SUBJECT_DIE_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSubjectDie(p);
+		break;
+	}
+	case PacketType::SUBJECT_RESPAWN_NFY:
+	{
+		SUBJECT_RESPAWN_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSubjectRespawn(p);
+		break;
+	}
+	case PacketType::PLAYER_ATTACK_NFY:
+	{
+		PLAYER_ATTACK_NFY_PACKET p{};
+		if (!As(data, size, p)) break;
+		if (Entity* a = Find(p.attacker_id); a && p.attacker_id != m_selfId)
+		{
+			a->attackT = 0.f;
+			PlayAt(static_cast<int>(sfx::Id::Swing), a->pos, 0.5f, 0.1f);
+		}
+		break;
+	}
+	case PacketType::SUBJECT_EQUIP_CHANGE_NFY:
+	{
+		SUBJECT_EQUIP_CHANGE_NFY_PACKET p{};
+		if (!As(data, size, p)) break;
+		if (Entity* e = Find(p.id))
+		{
+			e->itemId = p.itemId;
+			if (p.itemId == 0) e->enchant = 0;
+		}
+		break;
+	}
+	case PacketType::USER_HEAL_INF:
+	{
+		USER_HEAL_INF_PACKET p{};
+		if (!As(data, size, p)) break;
+		m_hp = std::max(0, p.hp);
+		if (Entity* me = Self()) me->hp = m_hp;
+		break;
+	}
+	case PacketType::USER_STAT_CHANGE_INF:
+	{
+		USER_STAT_CHANGE_INF_PACKET p{};
+		if (!As(data, size, p)) break;
+		m_level = p.level;
+		m_hp = p.hp;
+		m_maxhp = p.maxhp;
+		m_exp = p.exp;
+		m_expToNext = LevelTable::ExpToNext(p.level);
+		if (Entity* me = Self()) { me->hp = m_hp; me->maxhp = m_maxhp; me->level = m_level; }
+		break;
+	}
+	case PacketType::SYSTEM_MESSAGE_INF:
+	{
+		SYSTEM_MESSAGE_INF_PACKET p{};
+		if (As(data, size, p)) HandleSystemMessage(p);
+		break;
+	}
+	case PacketType::SC_CHAT:
+	{
+		SC_CHAT_PACKET p{};
+		if (!As(data, size, p)) break;
+		std::string name;
+		if (p.sender_id == m_selfId) name = m_playerName;
+		else if (Entity* e = Find(p.sender_id)) name = e->name;
+		else name = "???";
+		HandleChat(p.sender_id, name, FixedStr(p.mess, CHAT_SIZE), ChatChannel::Normal);
+		break;
+	}
+
+	// ── 인벤토리(레거시 ACK는 성공/실패 피드백에만 쓴다. 슬롯 내용은 ITEM_SLOT_EX_INF가 원본) ──
+	case PacketType::ITEM_EQUIP_ACK:
+	{
+		ITEM_EQUIP_ACK_PACKET p{};
+		if (!As(data, size, p)) break;
+		if (p.success)
+		{
+			sfx::Play(sfx::Id::Equip);
+			if (Entity* me = Self()) me->itemId = p.slot.itemId;
+		}
+		else sfx::Play(sfx::Id::Error, 0.5f);
+		break;
+	}
+	case PacketType::ITEM_UNEQUIP_ACK:
+	{
+		ITEM_UNEQUIP_ACK_PACKET p{};
+		if (!As(data, size, p)) break;
+		if (p.success) { sfx::Play(sfx::Id::Equip, 0.6f, 0.1f); if (Entity* me = Self()) me->itemId = 0; }
+		break;
+	}
+	case PacketType::ITEM_SWAP_ACK:
+	{
+		ITEM_SWAP_ACK_PACKET p{};
+		if (As(data, size, p) && p.success) sfx::Play(sfx::Id::Drop, 0.4f, 0.1f);
+		break;
+	}
+	case PacketType::ITEM_DISCARD_ACK:
+	{
+		ITEM_DISCARD_ACK_PACKET p{};
+		if (!As(data, size, p)) break;
+		sfx::Play(p.success ? sfx::Id::Drop : sfx::Id::Error, 0.7f);
+		break;
+	}
+	case PacketType::ITEM_PICKUP_ACK:
+	{
+		ITEM_PICKUP_ACK_PACKET p{};
+		if (As(data, size, p) && p.success) sfx::Play(sfx::Id::Pickup, 0.7f);
+		break;
+	}
+	case PacketType::ITEM_USE_ACK:
+	{
+		ITEM_USE_ACK_PACKET p{};
+		if (As(data, size, p) && !p.success)
+		{
+			AddCenter("지금은 사용할 수 없습니다.", Rgb(0xC8C8C8));
+			sfx::Play(sfx::Id::Error, 0.5f);
+		}
+		break;
+	}
+	case PacketType::ITEM_LIST_ACK:
+	case PacketType::ITEM_ACQUIRE_INF:
+	case PacketType::USER_ATTACK_ACK:
+	case PacketType::SUBJECT_ATTACK_NFY:
+		break;  // 확장 세션은 *_EX / SUBJECT_DAMAGE_NFY로 같은 정보를 더 자세히 받는다
+
+	// ── 확장 프로토콜 ──
+	case PacketType::USER_INFO_EX_INF:
+	{
+		USER_INFO_EX_INF_PACKET p{};
+		if (As(data, size, p)) HandleInfoEx(p);
+		break;
+	}
+	case PacketType::SUBJECT_INFO_EX_NFY:
+	{
+		SUBJECT_INFO_EX_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSubjectInfoEx(p);
+		break;
+	}
+	case PacketType::ITEM_LIST_EX_ACK:
+	{
+		ITEM_LIST_EX_ACK_PACKET p{};
+		if (!As(data, size, p)) break;
+		for (auto& s : m_inv.slots) s = InvSlot{};
+		const int n = std::min<int>(p.slotCount, MAX_INVENTORY_SLOTS);
+		for (int i = 0; i < n; ++i)
+			HandleSlot(p.items[i], false);
+		break;
+	}
+	case PacketType::ITEM_SLOT_EX_INF:
+	{
+		ITEM_SLOT_EX_INF_PACKET p{};
+		if (As(data, size, p)) HandleSlot(p.slot, true);
+		break;
+	}
+	case PacketType::ADENA_INF:
+	{
+		ADENA_INF_PACKET p{};
+		if (!As(data, size, p)) break;
+		m_inv.adena = p.adena;
+		const auto reason = static_cast<AdenaReason>(p.reason);
+		if (reason == AdenaReason::Pickup && p.delta > 0)
+		{
+			sfx::Play(sfx::Id::Coin, 0.9f);
+			if (Entity* me = Self())
+			{
+				fx::Fx().FloatText(TileToIso(me->pos), actors::PlayerHeight() + 10.f, "+" + texts::Number(p.delta) + " 아데나", Rgb(0xFFD84A), 20.f);
+				fx::Fx().CoinBurst(TileToIso(me->pos), std::clamp(p.delta / 20, 3, 12));
+			}
+		}
+		else if (reason == AdenaReason::Teleport && p.delta < 0)
+			AddChat("텔레포트 비용 " + texts::Number(-p.delta) + " 아데나를 지불했습니다.", Rgb(0xC8B070));
+		break;
+	}
+	case PacketType::ENCHANT_RESULT_ACK:
+	{
+		ENCHANT_RESULT_ACK_PACKET p{};
+		if (!As(data, size, p)) break;
+		const auto result = static_cast<EnchantResult>(p.result);
+		if (result == EnchantResult::Invalid)
+		{
+			m_enchant = EnchantFlow{};
+			AddCenter("강화할 수 없습니다.", Rgb(0xFF8A7A));
+			sfx::Play(sfx::Id::Error);
+			break;
+		}
+		m_enchant.resultKnown = true;
+		m_enchant.result = result;
+		m_enchant.before = p.enchantBefore;
+		m_enchant.after = p.enchantAfter;
+		m_enchant.itemId = p.itemId;
+		break;
+	}
+	case PacketType::SHOP_RESULT_ACK:
+	{
+		SHOP_RESULT_ACK_PACKET p{};
+		if (!As(data, size, p)) break;
+		const auto kind = static_cast<ShopKind>(p.kind);
+		const auto result = static_cast<ShopResult>(p.result);
+		if (result == ShopResult::Duplicate)
+			break;
+		if (result != ShopResult::Success)
+		{
+			AddCenter(texts::ShopResultText(kind, result), Rgb(0xFF8A7A));
+			sfx::Play(sfx::Id::Error);
+			break;
+		}
+		if (kind == ShopKind::Buy)
+		{
+			sfx::Play(sfx::Id::Buy);
+			AddChat(texts::ItemName(p.itemId) + " ×" + std::to_string(p.count) + " 구매 (" + texts::Number(-p.adenaDelta) + " 아데나)", Rgb(0xC8E0A0));
+		}
+		else if (kind == ShopKind::Sell)
+		{
+			sfx::Play(sfx::Id::Coin);
+			AddChat(texts::ItemName(p.itemId) + " ×" + std::to_string(p.count) + " 판매 (+" + texts::Number(p.adenaDelta) + " 아데나)", Rgb(0xC8E0A0));
+			m_sellSlot = -1;
+		}
+		else
+		{
+			CloseNpcWindows();
+			ClearGoal();
+		}
+		break;
+	}
+	case PacketType::SUBJECT_DAMAGE_NFY:
+	{
+		SUBJECT_DAMAGE_NFY_PACKET p{};
+		if (As(data, size, p)) HandleDamage(p);
+		break;
+	}
+	case PacketType::EFFECT_NFY:
+	{
+		EFFECT_NFY_PACKET p{};
+		if (As(data, size, p)) HandleEffect(p);
+		break;
+	}
+	case PacketType::WORLD_NOTICE_INF:
+	{
+		WORLD_NOTICE_INF_PACKET p{};
+		if (!As(data, size, p)) break;
+		const auto code = static_cast<WorldNoticeCode>(p.code);
+		const std::string text = texts::WorldNotice(code, p.param1, p.param2, FixedStr(p.name, NAME_SIZE));
+		Color c = Rgb(0xFFD070);
+		switch (code)
+		{
+		case WorldNoticeCode::BossSpawned: c = Rgb(0xFF6A5A); sfx::Play(sfx::Id::BossRoar, 0.5f); break;
+		case WorldNoticeCode::BossKilled: c = Rgb(0xFFD070); sfx::Play(sfx::Id::Notice); break;
+		case WorldNoticeCode::EnchantSuccess: c = Rgb(0xA8D8FF); sfx::Play(sfx::Id::Notice, 0.7f); break;
+		case WorldNoticeCode::PlayerKilled: c = Rgb(0xFF4A4A); sfx::Play(sfx::Id::Notice, 0.6f); break;
+		}
+		AddBanner(text, c);
+		AddChat("[공지] " + text, c);
+		break;
+	}
+	case PacketType::SC_CHAT_EX:
+	{
+		SC_CHAT_EX_PACKET p{};
+		if (!As(data, size, p)) break;
+		HandleChat(p.senderId, FixedStr(p.senderName, NAME_SIZE), FixedStr(p.mess, CHAT_SIZE), static_cast<ChatChannel>(p.channel));
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
+{
+	ResetWorld();
+	m_selfId = p.id;
+	m_hasSelf = true;
+	m_level = p.level;
+	m_hp = p.hp;
+	m_maxhp = p.maxhp;
+	m_exp = p.exp;
+	m_expToNext = LevelTable::ExpToNext(p.level);
+	m_attack = LevelTable::BaseAttack(p.level);
+	m_srvX = m_predX = p.x;
+	m_srvY = m_predY = p.y;
+	m_hpShown = m_hpLag = m_maxhp > 0 ? static_cast<float>(m_hp) / m_maxhp : 1.f;
+
+	Entity me;
+	me.id = p.id;
+	me.kind = EntityKind::Player;
+	me.name = m_playerName;
+	me.nameHash = HashName(m_playerName);
+	me.tx = p.x; me.ty = p.y;
+	me.pos = me.from = me.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+	me.hp = p.hp; me.maxhp = p.maxhp; me.level = p.level;
+	me.spawnT = 0.f;
+	m_ents[p.id] = me;
+
+	m_scene = Scene::Game;
+	m_cam.SnapTo(TileToIso(me.pos, 0.6f));
+	LoadQuickSlots();
+	fx::Fx().TeleportIn(TileToIso(me.pos));
+	sfx::Play(sfx::Id::Teleport, 0.6f);
+	AddChat(std::string(WorldData::kTownName) + "에 오신 것을 환영합니다, " + m_playerName + "님!", Rgb(0xFFE08A));
+	AddChat("도움말: F1 · 이동: 클릭/WASD · 공격: 몬스터 클릭/Space · 기술: Q · 줍기: Z · 가방: I", Rgb(0xB8B0A0));
+}
+
+void Game::HandleSubjectAdd(const SUBJECT_ADD_NFY_PACKET& p)
+{
+	if (p.id == m_selfId)
+		return;
+	const bool existed = m_ents.count(p.id) != 0;
+	Entity& e = m_ents[p.id];
+	e.id = p.id;
+	e.tx = p.x;
+	e.ty = p.y;
+	e.removing = false;
+	e.removeT = 0.f;
+	if (!existed)
+	{
+		e.pos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+		e.moveT = 1.f;
+		e.spawnT = 0.f;
+		e.faceRight = util::RandI(0, 1) == 1;
+	}
+	else
+	{
+		e.from = e.pos;
+		e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+		e.moveT = 0.f;
+		e.moveDur = 0.25f;
+	}
+	e.dead = false;
+	e.deadT = 0.f;
+
+	switch (static_cast<EnumCategory>(p.id.GetCategory()))
+	{
+	case EnumCategory::eUser:
+		e.kind = EntityKind::Player;
+		e.name = FixedStr(p.name, NAME_SIZE);
+		e.nameHash = HashName(e.name);
+		e.itemId = p.itemId;
+		if (e.maxhp == 0) { e.maxhp = e.hp = 100; }
+		break;
+	case EnumCategory::eMonster:
+	{
+		e.kind = EntityKind::Monster;
+		e.species = p.id.GetKIND();
+		e.row = MonsterTable::Find(e.species);
+		if (!e.row)  // 종족 정보가 없는 레거시 몬스터: 선공/비선공만 구분해서 대신 그린다
+			e.row = MonsterTable::Find(p.monster_type == AGGRO ? 3 : 1);
+		e.aggressive = p.monster_type == AGGRO;
+		e.name = e.row ? e.row->name : FixedStr(p.name, NAME_SIZE);
+		if (!existed)
+		{
+			e.maxhp = e.row ? e.row->maxHp : MONSTER_MAX_HP;
+			e.hp = e.maxhp;
+			e.hpShown = e.hpLag = 1.f;
+		}
+		e.level = e.row ? e.row->level : 1;
+		if (e.IsBoss() && !existed)
+		{
+			fx::Fx().BossSpawn(TileToIso(e.pos));
+			if (m_now - m_bossWarnAt > 20.0)
+			{
+				m_bossWarnAt = m_now;
+				sfx::Play(sfx::Id::BossRoar, 0.8f);
+				m_cam.AddTrauma(0.35f);
+				AddCenter("강력한 기운이 느껴집니다... " + e.name, Rgb(0xFF6A5A));
+			}
+		}
+		break;
+	}
+	case EnumCategory::eItem:
+	{
+		e.kind = EntityKind::Item;
+		e.itemId = p.itemId;
+		e.name = texts::ItemName(p.itemId);
+		if (!existed)
+		{
+			// 방금 근처에서 죽은 몬스터가 있으면 거기서 튀어나와 떨어진다
+			e.dropT = 0.f;
+			e.dropFrom = e.pos;
+			float best = 3.5f;
+			for (const auto& [oid, o] : m_ents)
+			{
+				if (o.kind != EntityKind::Monster || !o.dead || o.deadT > 1.2f) continue;
+				const float d = static_cast<float>(Cheb(o.tx, o.ty, p.x, p.y));
+				if (d < best) { best = d; e.dropFrom = o.pos; }
+			}
+			const ItemTableRow* row = ItemTableData::Find(p.itemId);
+			if (row && row->type == ItemType::eEquipment && row->grade >= ItemGrade::eRare)
+			{
+				fx::Fx().Beam(TileToIso(e.pos), 34.f, 240.f, 1.6f, icons::GradeColor(row->grade));
+				PlayAt(static_cast<int>(sfx::Id::Notice), e.pos, 0.5f);
+			}
+			else
+				PlayAt(static_cast<int>(sfx::Id::Drop), e.pos, 0.4f, 0.15f);
+		}
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
+{
+	if (p.id == m_selfId)
+	{
+		Entity* me = Self();
+		m_srvX = p.x;
+		m_srvY = p.y;
+		if (!me) return;
+		me->tx = p.x;
+		me->ty = p.y;
+		const Vector2 target{ static_cast<float>(p.x), static_cast<float>(p.y) };
+		if (m_pending)
+		{
+			m_pending = false;
+			if (p.x != m_predX || p.y != m_predY)
+			{
+				// 서버가 다르게 판정했다(드묾) — 부드럽게 서버 위치로
+				m_predX = p.x;
+				m_predY = p.y;
+				me->from = me->pos;
+				me->to = target;
+				me->moveT = 0.f;
+				me->moveDur = 0.18f;
+				m_path.clear();
+			}
+			return;
+		}
+		// 요청하지 않은 이동: 순간이동/존 이동/늦게 도착한 응답
+		const int d = Cheb(p.x, p.y, m_predX, m_predY);
+		m_predX = p.x;
+		m_predY = p.y;
+		if (d > 2)
+		{
+			me->pos = me->from = me->to = target;
+			me->moveT = 1.f;
+			m_cam.SnapTo(TileToIso(target, 0.6f));
+			ClearGoal();
+			m_mouseHeld = false;
+		}
+		else if (d > 0)
+		{
+			me->from = me->pos;
+			me->to = target;
+			me->moveT = 0.f;
+			me->moveDur = 0.18f;
+		}
+		return;
+	}
+
+	Entity* e = Find(p.id);
+	if (!e) return;
+	const int d = Cheb(p.x, p.y, e->tx, e->ty);
+	FaceToward(*e, p.x, p.y);
+	e->tx = p.x;
+	e->ty = p.y;
+	const Vector2 target{ static_cast<float>(p.x), static_cast<float>(p.y) };
+	if (d > 2)
+	{
+		e->pos = e->from = e->to = target;
+		e->moveT = 1.f;
+		return;
+	}
+	e->from = e->pos;
+	e->to = target;
+	e->moveT = 0.f;
+	if (e->kind == EntityKind::Monster && e->row)
+		e->moveDur = std::max(0.25f, e->row->moveIntervalMs / 1000.f * 0.95f);
+	else
+		e->moveDur = 0.5f;
+}
+
+void Game::HandleSubjectRemove(const SUBJECT_REMOVE_NFY_PACKET& p)
+{
+	Entity* e = Find(p.id);
+	if (!e || p.id == m_selfId) return;
+	if (e->kind == EntityKind::Item)
+	{
+		// 방금 내가 주운 것이면 나에게 날아온다
+		if (m_now - m_pickupSentAt < 1.5 && e->tx == m_srvX && e->ty == m_srvY)
+		{
+			e->flyT = 0.f;
+			e->dropFrom = e->pos;
+			return;
+		}
+	}
+	if (e->dead) return;   // 쓰러지는 연출은 끝까지
+	e->removing = true;
+	e->removeT = 0.f;
+	if (m_goal.target == p.id) ClearGoal();
+}
+
+void Game::HandleSubjectDie(const SUBJECT_DIE_NFY_PACKET& p)
+{
+	Entity* e = Find(p.id);
+	if (!e) return;
+	e->dead = true;
+	e->deadT = 0.f;
+	e->hp = 0;
+	e->attackT = -1.f;
+	const Vector2 iso = TileToIso(e->pos);
+	if (e->kind == EntityKind::Monster && e->row)
+	{
+		const float sc = e->row->scale / 100.f;
+		fx::Fx().DeathBurst(iso, EntityHeight(*e), Rgb(e->row->color1), Rgb(e->row->color2), sc, e->IsBoss());
+		PlayAt(static_cast<int>(sfx::Id::Kill), e->pos, 0.9f);
+		if (e->IsBoss())
+		{
+			m_cam.AddTrauma(0.7f);
+			m_cam.Kick(0.08f);
+			fx::Fx().HitStop(0.18f);
+			sfx::Play(sfx::Id::Slam, 0.8f);
+		}
+	}
+	if (p.id == m_selfId)
+	{
+		m_dead = true;
+		m_deadAt = m_now;
+		m_restartSent = false;
+		m_hp = 0;
+		ClearGoal();
+		m_target = ObjID{};
+		m_mouseHeld = false;
+		CloseNpcWindows();
+		m_enchant = EnchantFlow{};
+		sfx::Play(sfx::Id::Death);
+		m_cam.AddTrauma(0.6f);
+		fx::Fx().Flash(Rgb(0x8A0A0A), 0.5f, 0.6f);
+		fx::Fx().HitStop(0.25f);
+	}
+	else if (e->kind == EntityKind::Player)
+		PlayAt(static_cast<int>(sfx::Id::Death), e->pos, 0.6f);
+	if (m_target == p.id) m_target = ObjID{};
+}
+
+void Game::HandleSubjectRespawn(const SUBJECT_RESPAWN_NFY_PACKET& p)
+{
+	if (p.id == m_selfId)
+	{
+		// 부활: 이전 시야 목록은 모두 무효(서버가 새로 ADD를 보낸다)
+		Entity keep = m_ents[m_selfId];
+		m_ents.clear();
+		keep.dead = false;
+		keep.deadT = 0.f;
+		keep.tx = p.x; keep.ty = p.y;
+		keep.pos = keep.from = keep.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+		keep.moveT = 1.f;
+		keep.hp = p.hp;
+		keep.spawnT = 0.f;
+		m_ents[m_selfId] = keep;
+		m_dead = false;
+		m_hp = p.hp;
+		m_srvX = m_predX = p.x;
+		m_srvY = m_predY = p.y;
+		m_pending = false;
+		m_path.clear();
+		m_goal = Goal{};
+		m_cam.SnapTo(TileToIso(keep.pos, 0.6f));
+		fx::Fx().Restart(TileToIso(keep.pos));
+		sfx::Play(sfx::Id::Heal);
+		AddCenter("다시 일어섰습니다.", Rgb(0xFFF2C8));
+		return;
+	}
+
+	const bool existed = m_ents.count(p.id) != 0;
+	Entity& e = m_ents[p.id];
+	e.id = p.id;
+	e.tx = p.x; e.ty = p.y;
+	e.pos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+	e.moveT = 1.f;
+	e.dead = false;
+	e.deadT = 0.f;
+	e.removing = false;
+	e.spawnT = 0.f;
+	e.hp = p.hp;
+	if (p.id.GetCategory() == EnumCategory::eMonster)
+	{
+		e.kind = EntityKind::Monster;
+		e.species = p.id.GetKIND();
+		e.row = MonsterTable::Find(e.species);
+		if (!e.row) e.row = MonsterTable::Find(p.monster_type == AGGRO ? 3 : 1);
+		e.name = e.row ? e.row->name : FixedStr(p.name, NAME_SIZE);
+		e.maxhp = e.row ? e.row->maxHp : MONSTER_MAX_HP;
+		e.level = e.row ? e.row->level : 1;
+		e.hpShown = e.hpLag = e.HpRatio();
+		if (e.IsBoss())
+			fx::Fx().BossSpawn(TileToIso(e.pos));
+	}
+	else
+	{
+		e.kind = EntityKind::Player;
+		if (!existed || e.name.empty())
+		{
+			e.name = FixedStr(p.name, NAME_SIZE);
+			e.nameHash = HashName(e.name);
+		}
+		if (e.maxhp == 0) e.maxhp = p.hp;
+	}
+	fx::Fx().Dust(TileToIso(e.pos), 3.f);
+}
+
+void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
+{
+	Entity* v = Find(p.victimId);
+	Entity* a = Find(p.attackerId);
+	const bool selfVictim = p.victimId == m_selfId;
+	const bool selfAttacker = p.attackerId == m_selfId;
+	const bool crit = (p.flags & DAMAGE_CRIT) != 0;
+	const bool skill = (p.flags & DAMAGE_SKILL) != 0;
+	const bool killed = (p.flags & DAMAGE_KILLED) != 0;
+	const bool bossSkill = (p.flags & DAMAGE_BOSS_SKILL) != 0;
+
+	if (v)
+	{
+		v->hp = std::max(0, p.hp);
+		v->maxhp = std::max(1, p.maxhp);
+		v->lastHitAt = m_time;
+		v->hurtT = 1.f;
+		v->flashT = 1.f;
+	}
+	if (selfVictim)
+	{
+		m_hp = std::max(0, p.hp);
+		m_maxhp = std::max(1, p.maxhp);
+	}
+	// 공격자 동작(내 공격은 요청 시점에 이미 재생)
+	if (a && !selfAttacker && !skill && !bossSkill)
+	{
+		a->attackT = 0.f;
+		if (v) FaceToward(*a, v->tx, v->ty);
+	}
+
+	if (!v) return;
+	const Vector2 iso = TileToIso(v->pos);
+	const float h = EntityHeight(*v) * (v->row ? 1.f : 1.f);
+	fx::DamageStyle style = fx::DamageStyle::Other;
+	if (selfAttacker) style = crit ? fx::DamageStyle::Crit : (skill ? fx::DamageStyle::Skill : fx::DamageStyle::Normal);
+	else if (selfVictim) style = crit ? fx::DamageStyle::TakenCrit : fx::DamageStyle::Taken;
+	fx::Fx().Damage(iso, h + 6.f, p.damage, style);
+
+	float dirSign = 1.f;
+	if (a) dirSign = ((v->pos.x - v->pos.y) - (a->pos.x - a->pos.y)) >= 0.f ? 1.f : -1.f;
+	const Color bodyColor = (v->kind == EntityKind::Monster && v->row) ? Rgb(v->row->color1) : Rgb(0xC83A3A);
+	fx::Fx().HitSpark(iso, h, bodyColor, crit, dirSign);
+
+	if (selfAttacker)
+	{
+		PlayAt(static_cast<int>(crit ? sfx::Id::HitHeavy : sfx::Id::Hit), v->pos, 1.f, 0.12f);
+		m_cam.AddTrauma(crit ? 0.32f : 0.12f);
+		if (crit) { fx::Fx().HitStop(0.07f); m_cam.Kick(0.04f); }
+		if (killed) { fx::Fx().HitStop(0.09f); m_cam.AddTrauma(0.2f); m_cam.Kick(0.03f); }
+	}
+	else if (selfVictim)
+	{
+		sfx::Play(sfx::Id::PlayerHurt, 0.8f, 0.1f);
+		if (a && a->kind == EntityKind::Monster) PlayAt(static_cast<int>(sfx::Id::MonsterSwipe), a->pos, 0.6f);
+		m_cam.AddTrauma(bossSkill ? 0.6f : (crit ? 0.4f : 0.22f));
+		fx::Fx().Flash(Rgb(0xFF2A1A), bossSkill ? 0.35f : 0.16f, 0.2f);
+	}
+	else
+		PlayAt(static_cast<int>(sfx::Id::Hit), v->pos, 0.45f, 0.15f);
+}
+
+void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
+{
+	const auto id = static_cast<EffectId>(p.effectId);
+	const Vector2 tile{ static_cast<float>(p.x), static_cast<float>(p.y) };
+	const Vector2 iso = TileToIso(tile);
+	Entity* subj = Find(p.subjectId);
+	const bool self = p.subjectId == m_selfId;
+	switch (id)
+	{
+	case EffectId::SkillCross:
+		if (self && m_now - m_localSkillFxAt < 0.8) break;   // 내가 이미 즉시 재생했다
+		fx::Fx().SkillCross(iso);
+		if (subj) subj->castT = 0.f;
+		PlayAt(static_cast<int>(sfx::Id::Skill), tile, 0.8f);
+		break;
+	case EffectId::LevelUp:
+		fx::Fx().LevelUp(iso);
+		PlayAt(static_cast<int>(sfx::Id::LevelUp), tile, 1.f, 0.f);
+		if (self)
+		{
+			m_cam.AddTrauma(0.3f);
+			m_cam.Kick(0.05f);
+			AddBanner("LEVEL UP!  Lv." + std::to_string(p.param), Rgb(0xFFD66A), 3.5f);
+			fx::Fx().FloatText(iso, actors::PlayerHeight() + 20.f, "LEVEL UP!", Rgb(0xFFE08A), 30.f, 1.8f);
+		}
+		break;
+	case EffectId::PotionHeal:
+		fx::Fx().Heal(iso, actors::PlayerHeight());
+		PlayAt(static_cast<int>(self ? sfx::Id::Potion : sfx::Id::Heal), tile, 0.8f);
+		if (self && p.param > 0)
+			fx::Fx().Damage(iso, actors::PlayerHeight() + 4.f, p.param, fx::DamageStyle::Heal);
+		break;
+	case EffectId::TeleportOut:
+		fx::Fx().TeleportOut(iso);
+		PlayAt(static_cast<int>(sfx::Id::Teleport), tile, 0.9f, 0.f);
+		break;
+	case EffectId::TeleportIn:
+		fx::Fx().TeleportIn(iso);
+		if (self) sfx::Play(sfx::Id::Teleport, 0.5f, 0.f);
+		break;
+	case EffectId::HasteOn:
+		fx::Fx().Haste(iso);
+		PlayAt(static_cast<int>(sfx::Id::Haste), tile, 0.9f, 0.f);
+		break;
+	case EffectId::EnchantSuccess:
+	case EffectId::EnchantFail:
+		if (self) break;   // 내 강화는 강화 창에서 연출을 맞춰 보여 준다
+		fx::Fx().EnchantResult(iso, id == EffectId::EnchantSuccess);
+		PlayAt(static_cast<int>(id == EffectId::EnchantSuccess ? sfx::Id::EnchantSuccess : sfx::Id::EnchantFail), tile, 0.7f, 0.f);
+		break;
+	case EffectId::BossSlamCast:
+	{
+		const int radius = std::max(1, p.param);
+		fx::Fx().Telegraph(iso, radius, 1.2f, Rgb(0xFF3A2A));
+		if (subj) subj->castT = 0.f;
+		PlayAt(static_cast<int>(sfx::Id::SlamWarn), tile, 1.f, 0.f);
+		if (Cheb(m_predX, m_predY, p.x, p.y) <= radius)
+			AddCenter("붉은 장판에서 벗어나세요!", Rgb(0xFF6A5A));
+		break;
+	}
+	case EffectId::BossSlamImpact:
+	{
+		fx::Fx().BossSlamImpact(iso, std::max(1, p.param));
+		PlayAt(static_cast<int>(sfx::Id::Slam), tile, 1.2f, 0.f);
+		const int d = Cheb(m_predX, m_predY, p.x, p.y);
+		m_cam.AddTrauma(d <= 6 ? 0.55f : 0.2f);
+		m_cam.Kick(0.04f);
+		if (subj) subj->attackT = 0.f;
+		break;
+	}
+	case EffectId::PlayerKill:
+		fx::Fx().PlayerKill(iso);
+		PlayAt(static_cast<int>(sfx::Id::HitHeavy), tile, 0.9f);
+		break;
+	case EffectId::Restart:
+		if (!self) fx::Fx().Restart(iso);
+		break;
+	case EffectId::BossSpawn:
+		fx::Fx().BossSpawn(iso);
+		PlayAt(static_cast<int>(sfx::Id::BossRoar), tile, 1.f);
+		break;
+	default:
+		break;
+	}
+}
+
+void Game::HandleSlot(const ITEM_SLOT_EX_DATA& s, bool announce)
+{
+	if (s.slotIndex >= MAX_INVENTORY_SLOTS) return;
+	const uint16_t itemId = s.count > 0 ? s.itemId : 0;
+	const int before = itemId ? m_inv.CountOf(itemId) : 0;
+	InvSlot& slot = m_inv.slots[s.slotIndex];
+	const uint16_t oldItem = slot.itemId;
+	slot.itemId = itemId;
+	slot.count = itemId ? s.count : 0;
+	slot.equipped = itemId && s.equipped;
+	slot.enchant = itemId ? s.enchant : 0;
+
+	// 내 무기 외형 갱신
+	if (Entity* me = Self())
+	{
+		const int eq = m_inv.EquippedSlot();
+		me->itemId = eq >= 0 ? m_inv.slots[eq].itemId : 0;
+		me->enchant = eq >= 0 ? m_inv.slots[eq].enchant : 0;
+	}
+
+	// 획득 알림: 그 아이템의 "총 개수"가 늘었을 때만(교환/이동은 제외)
+	if (announce && itemId != 0)
+	{
+		const int after = m_inv.CountOf(itemId);
+		if (after > before)
+		{
+			const int gained = after - before;
+			AddToast(itemId, texts::ItemNameEnchanted(itemId, slot.enchant) + (gained > 1 ? " ×" + std::to_string(gained) : ""), icons::ItemNameColor(itemId));
+		}
+	}
+	// 강화 창이 보던 슬롯이 사라지면 정리
+	if (m_enchant.stage == 2 && (s.slotIndex == m_enchant.targetSlot || s.slotIndex == m_enchant.scrollSlot) && oldItem != itemId)
+		m_enchant = EnchantFlow{};
+	if (m_sellSlot == s.slotIndex && itemId == 0)
+		m_sellSlot = -1;
+}
+
+void Game::HandleSystemMessage(const SYSTEM_MESSAGE_INF_PACKET& p)
+{
+	const auto code = static_cast<SystemMessageCode>(p.code);
+	bool important = false;
+	const std::string text = texts::SystemMessage(code, p.param1, p.param2, important);
+	Color c = Rgb(0xE8D8A8);
+	switch (code)
+	{
+	case SystemMessageCode::HasteStart:
+		m_hasteUntil = m_now + p.param1;
+		c = Rgb(0x8AFF9A);
+		break;
+	case SystemMessageCode::HasteEnd:
+		m_hasteUntil = 0.0;
+		break;
+	case SystemMessageCode::BecameChaotic:
+	case SystemMessageCode::BecamePurple:
+	case SystemMessageCode::ItemDroppedOnDeath:
+		c = Rgb(0xFF7A6A);
+		break;
+	case SystemMessageCode::LevelUp:
+		c = Rgb(0xFFD66A);
+		break;
+	case SystemMessageCode::ItemCooldown:
+		c = Rgb(0xB8B8B8);
+		sfx::Play(sfx::Id::Error, 0.35f);
+		break;
+	case SystemMessageCode::TargetTooFar:
+	case SystemMessageCode::TargetInvalid:
+		c = Rgb(0xB8B8B8);
+		break;
+	case SystemMessageCode::SafeZoneNoCombat:
+		ClearGoal();
+		break;
+	default:
+		break;
+	}
+	AddChat(text, c);
+	if (important) AddCenter(text, c);
+}
+
+void Game::HandleInfoEx(const USER_INFO_EX_INF_PACKET& p)
+{
+	m_level = p.level;
+	m_exp = p.exp;
+	m_expToNext = p.expToNext;
+	m_hp = p.hp;
+	m_maxhp = p.maxhp;
+	m_attack = p.attack;
+	m_inv.adena = p.adena;
+	m_alignment = p.alignment;
+	m_pkCount = p.pkCount;
+	m_flags = p.flags;
+	m_hasteUntil = p.hasteRemainMs > 0 ? m_now + p.hasteRemainMs / 1000.0 : 0.0;
+	if (Entity* me = Self())
+	{
+		me->hp = p.hp; me->maxhp = p.maxhp; me->level = p.level;
+		me->alignment = p.alignment; me->flags = p.flags;
+	}
+}
+
+void Game::HandleSubjectInfoEx(const SUBJECT_INFO_EX_NFY_PACKET& p)
+{
+	Entity* e = Find(p.id);
+	if (!e) return;
+	e->level = p.level;
+	e->alignment = p.alignment;
+	e->flags = p.flags;
+	e->enchant = p.enchant;
+	if (p.maxhp > 0)
+	{
+		e->hp = p.hp;
+		e->maxhp = p.maxhp;
+	}
+}
+
+void Game::HandleChat(const ObjID& sender, const std::string& senderName, const std::string& text, ChatChannel channel)
+{
+	if (channel == ChatChannel::World)
+	{
+		AddChat("[전체] " + senderName + ": " + text, Rgb(0xFFB060));
+		sfx::Play(sfx::Id::Chat, 0.5f);
+		return;
+	}
+	AddChat(senderName + ": " + text, sender == m_selfId ? Rgb(0xFFFFFF) : Rgb(0xE8E4DA));
+	if (Entity* e = Find(sender))
+	{
+		e->chat = text;
+		e->chatT = 5.f;
+	}
+	sfx::Play(sfx::Id::Chat, 0.4f);
+}
