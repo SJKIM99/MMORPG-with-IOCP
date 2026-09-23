@@ -72,22 +72,22 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)World\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)World\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)World\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)Core\;$(ProjectDir)Area\;$(ProjectDir)GameObject\;$(ProjectDir)Monster\;$(ProjectDir)Network\;$(ProjectDir)ObjID\;$(ProjectDir)Route\;$(ProjectDir)Stat\;$(ProjectDir)Subject\;$(ProjectDir)Thread\;$(ProjectDir)Transform\;$(ProjectDir)World\;$(ProjectDir)User\;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)Binary\$(Configuration)\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -201,6 +201,7 @@
     <ClCompile Include="Thread\TimerThread.cpp" />
     <ClCompile Include="Thread\WorkerThread.cpp" />
     <ClCompile Include="Transform\Transform.cpp" />
+    <ClCompile Include="World\RegionData.cpp" />
     <ClCompile Include="User\User.cpp" />
     <ClCompile Include="Subject\SubjectHelper.cpp" />
     <ClCompile Include="User\UserHelper.cpp" />
@@ -247,6 +248,7 @@
     <ClInclude Include="Thread\WorkerThread.h" />
     <ClInclude Include="Transform\Transform.h" />
     <ClInclude Include="Transform\Vec3.h" />
+    <ClInclude Include="World\RegionData.h" />
     <ClInclude Include="User\User.h" />
     <ClInclude Include="Subject\SubjectHelper.h" />
     <ClInclude Include="User\UserHelper.h" />

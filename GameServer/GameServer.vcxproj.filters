@@ -28,6 +28,9 @@
     <Filter Include="Subject">
       <UniqueIdentifier>{629c44ef-c2f8-494f-b9bc-b4630fd2135f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="World">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-9000-00000000w0r1}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Transform">
       <UniqueIdentifier>{afcb63b2-c8c2-4e8c-9e0b-a03e8fa3d0ca}</UniqueIdentifier>
     </Filter>
@@ -135,6 +138,9 @@
     </ClCompile>
     <ClCompile Include="Monster\MonsterHelper.cpp">
       <Filter>Monster</Filter>
+    </ClCompile>
+    <ClCompile Include="World\RegionData.cpp">
+      <Filter>World</Filter>
     </ClCompile>
     <ClCompile Include="Transform\Transform.cpp">
       <Filter>Transform</Filter>
@@ -263,6 +269,9 @@
     </ClInclude>
     <ClInclude Include="Transform\Transform.h">
       <Filter>Transform</Filter>
+    </ClInclude>
+    <ClInclude Include="World\RegionData.h">
+      <Filter>World</Filter>
     </ClInclude>
     <ClInclude Include="Transform\Vec3.h">
       <Filter>Transform</Filter>

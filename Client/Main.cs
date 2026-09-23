@@ -13,6 +13,7 @@ namespace Client;
 /// 조작 — WASD 이동, 마우스 시점, Shift 달리기, Space 점프, Esc 마우스 잠금 해제
 /// 1 = 마을 / 2 = 필드 / R = 다시 로드 / Tab = 관전(자유 비행) 전환 / F = 전경(관전 중에만)
 /// </summary>
+[Tool]
 public partial class Main : Node3D
 {
     private static readonly string[] Regions = { "town", "field_01" };
@@ -87,7 +88,8 @@ public partial class Main : Node3D
             _selfTestFailures += CollisionSelfTest.Run(this, _world.Region);
             _selfTestFailures += await Spinner.SelfTest(_world, GetTree(), _world.SpinningCount);
             _selfTestFailures += Smoke.SelfTest(_world, _world.SmokeCount);
-            _selfTestFailures += WaterMesh.SelfTest(_world.WaterHoles);
+            _selfTestFailures += WaterMesh.SelfTest(
+                _world.WaterHoles, _world.WaterCells, _world.WaterMeshBuilt);
         }
 
         if (_moveTest && _player is not null)

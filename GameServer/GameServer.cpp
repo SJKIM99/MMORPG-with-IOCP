@@ -21,6 +21,7 @@
 #include "Collision.h"
 #include "Zone/ZoneLayout.h"
 #include "Zone/ZoneManager.h"
+#include "World/RegionData.h"
 
 static void WriteCrashLog(const char* tag, DWORD exCode, void* exAddr, EXCEPTION_POINTERS* ep = nullptr)
 {
@@ -103,6 +104,29 @@ int main()
 	SocketManager::CreateIocpHandle();
 
 	InitCollisionTile();
+
+	// --- 리전 데이터 ------------------------------------------------------------
+	//
+	// Week 1 의 2번 단계. 아직 **읽고 검증만** 한다 — Sector/Zone 을 이 값으로
+	// 재편하는 것은 3번, 내비메시는 4번이다. 여기서 먼저 읽어 두는 이유는
+	// 그 둘이 전부 이 데이터를 필요로 하는데, 지금은 아무도 안 쓰므로 무엇도
+	// 깨뜨릴 수 없는 가장 안전한 자리이기 때문이다.
+	for (const char* regionId : { "town", "field_01" })
+	{
+		const std::string path = RegionData::FindRegionFile(regionId);
+		if (path.empty())
+		{
+			cout << "[region] " << regionId
+				<< " .bin 을 찾지 못했다 — tools/build_region.py 를 먼저 돌려라" << endl;
+			continue;
+		}
+
+		std::string error;
+		if (const auto region = RegionData::Load(path, error))
+			region->PrintSummary();
+		else
+			cout << "[region] " << regionId << " 로드 실패: " << error << endl;
+	}
 
 	// 몬스터 초기화는 각 Zone 스레드의 Zone::Run() 안에서 GSector 설정 후 수행된다.
 	// (메인 스레드에서 호출하면 GSector=nullptr로 크래시 발생)

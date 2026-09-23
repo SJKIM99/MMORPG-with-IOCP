@@ -27,8 +27,19 @@ public static class WorldData
 
     public static Manifest LoadManifest() => Read<Manifest>(WorldRoot.PathJoin("manifest.json"));
 
+    /// <summary>
+    /// 리전은 **바이너리 산출물**을 읽는다 (world/build/&lt;id&gt;.bin).
+    ///
+    /// JSON 을 버린 것이 아니다 — world/regions/*.json 은 여전히 소스이고
+    /// git 이 diff 한다. 서버에는 JSON 파서가 없어서(넣으려면 새 라이브러리가
+    /// 필요하고 그건 2장의 승인 대상) 서버·클라가 함께 읽을 수 있는 형식이
+    /// 바이너리뿐이었다. 같은 파일을 읽으면 콜리전 불일치가 생길 자리가 없다.
+    ///
+    /// manifest 는 그대로 JSON 이다. 서버가 쓰지 않는 에셋 메타데이터라
+    /// 바꿀 이유가 없다.
+    /// </summary>
     public static Region LoadRegion(string id) =>
-        Read<Region>(WorldRoot.PathJoin("regions").PathJoin($"{id}.json"));
+        RegionBinary.Load(WorldRoot.PathJoin("build").PathJoin($"{id}.bin"));
 
     private static T Read<T>(string absolutePath)
     {
@@ -181,6 +192,12 @@ public sealed class Terrain
 
     /// <summary>물 없음을 뜻하는 센티널. 표준 JSON 에 NaN 을 넣을 수 없어서 쓴다.</summary>
     [JsonPropertyName("no_water")] public float NoWater { get; set; } = -1000f;
+
+    /// <summary>
+    /// 지형 높이의 FNV-1a. 파이썬 기록기·C++ 리더와 **같은 값**이 나와야 한다.
+    /// 세 구현이 어긋나는 순간 여기서 드러난다.
+    /// </summary>
+    public uint Hash { get; set; }
 }
 
 public sealed class RegionFlags
@@ -231,6 +248,9 @@ public sealed class SpawnGroup
     [JsonPropertyName("center")] public float[] Center { get; set; } = { 0, 0, 0 };
     [JsonPropertyName("radius")] public float Radius { get; set; }
     [JsonPropertyName("count")] public int Count { get; set; }
+
+    /// <summary>리스폰 간격. 스폰 권한은 서버에 있어 클라는 표시에만 쓴다(9장).</summary>
+    [JsonPropertyName("respawn_ms")] public int RespawnMs { get; set; }
 }
 
 public sealed class PatrolRoute

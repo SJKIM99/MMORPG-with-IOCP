@@ -13,6 +13,7 @@ namespace Client.World;
 /// 정적 콜리전도 같은 JSON 의 collision 필드에서 만든다.
 /// 서버 내비메시(Week 2)도 같은 필드를 읽으므로 둘이 어긋날 수 없다.
 /// </summary>
+[Tool]
 public partial class WorldLoader : Node3D
 {
     [Export] public string RegionId { get; set; } = "town";
@@ -34,6 +35,7 @@ public partial class WorldLoader : Node3D
     private int _smokeCount;
     private int _waterCells;
     private int _waterHoles;
+    private bool _waterMeshBuilt;
 
     public Region Region { get; private set; } = null!;
 
@@ -41,6 +43,8 @@ public partial class WorldLoader : Node3D
     public int SpinningCount => _spinningCount;
     public int SmokeCount => _smokeCount;
     public int WaterHoles => _waterHoles;
+    public bool WaterMeshBuilt => _waterMeshBuilt;
+    public int WaterCells => Region.Water?.Cells ?? 0;
 
     /// <summary>플레이어 스폰 등에서 재사용한다. 파일을 두 번 읽지 않기 위함.</summary>
     public Manifest Manifest => _manifest;
@@ -69,6 +73,7 @@ public partial class WorldLoader : Node3D
             $"배치 {placed}  NPC {npcs}  몬스터 {monsters}  " +
             $"흔들림 {_swayingCount}  회전 {_spinningCount}  연기 {_smokeCount}  " +
             $"물 {_waterCells}  콜라이더 {_colliderCount}  " +
+            $"해시 {Region.Terrain?.Hash:x8}  " +
             $"고유메시 {_cache.Count}  {sw.ElapsedMilliseconds}ms  " +
             $"pvp={Region.Flags.Pvp}");
     }
@@ -142,6 +147,7 @@ public partial class WorldLoader : Node3D
 
         ArrayMesh? mesh = WaterMesh.Build(terrain, out int holes);
         _waterHoles = holes;
+        _waterMeshBuilt = mesh is not null;
         if (mesh is null)
         {
             return;

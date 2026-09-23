@@ -169,10 +169,25 @@ public static class WaterMesh
     /// 지형 생성기 쪽 한 줄이라 클라 코드를 아무리 봐도 안 나온다.
     /// 그리는 쪽에서 세는 것이 가장 확실하다.
     /// </summary>
-    public static int SelfTest(int holes)
+    /// <param name="expectedCells">
+    /// 리전 데이터가 말하는 물 격자 수. 이게 0 보다 큰데 메시가 없으면
+    /// **물이 통째로 안 실린 것**이다.
+    ///
+    /// 구멍 수만 보던 검사는 공백이 있었다 — 물이 하나도 없으면 구멍도 0 이라
+    /// 그냥 통과한다. 실제로 JSON 을 바이너리로 갈아끼우다 물 배열을 빠뜨렸는데
+    /// 이 검사가 OK 를 찍었다.
+    /// </param>
+    public static int SelfTest(int holes, int expectedCells, bool meshBuilt)
     {
+        if (expectedCells > 0 && !meshBuilt)
+        {
+            GD.Print($"[water] 실패 물 격자 {expectedCells}칸인데 수면 메시가 없다");
+            return 1;
+        }
+
         bool ok = holes == 0;
-        GD.Print($"[water] {(ok ? "OK  " : "실패")} 수면 구멍 {holes}칸 (기대 0칸)");
+        GD.Print($"[water] {(ok ? "OK  " : "실패")} 수면 구멍 {holes}칸 (기대 0칸), "
+                 + $"물 격자 {expectedCells}칸");
         if (!ok)
         {
             GD.Print("           -> 물가 줄이 모자라다. terrain.finish_water() 가 "

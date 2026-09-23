@@ -1416,6 +1416,20 @@ def main(argv: list[str]) -> int:
             f"지형 {region['terrain']['resolution']}²  "
             f"높이 {min(hs):.1f}~{max(hs):.1f}m  -> {path.relative_to(REPO)}"
         )
+
+    # JSON 을 새로 썼으면 .bin 도 **바로** 다시 만든다.
+    #
+    # 따로 돌리게 두면 반드시 잊는다. 그러면 서버는 옛 지형을, 클라는 새 지형을
+    # 읽는 상태가 되는데 그건 5장이 통째로 막으려는 바로 그 어긋남이다.
+    import build_region
+
+    built = sorted(n for n in ("town", "field_01") if n in wanted)
+    for name in built:
+        src = build_region.SRC_DIR / f"{name}.json"
+        out = build_region.OUT_DIR / f"{name}.bin"
+        build_region.write(out, build_region.compile_region(src))
+        build_region.verify(out, src)
+    print(f"{'바이너리':<10} 갱신 {', '.join(built)}  (tools/build_region.py 와 같은 산출물)")
     return 0
 
 
