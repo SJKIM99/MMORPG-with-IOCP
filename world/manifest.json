@@ -1,0 +1,1126 @@
+{
+  "$comment": "에셋 ID -> 파일 경로 / 콜리전 / 출처 / 라이선스. CLAUDE.md 5·6장의 Single Source of Truth. 서버와 Godot 임포터가 같은 파일을 읽는다.",
+  "schema_version": 1,
+  "generated": "2026-09-22",
+  "conventions": {
+    "units": "1 unit = 1 meter",
+    "axes": "right-handed, Y-up, -Z forward (Godot 4 / glTF 기본)",
+    "rotation": "yaw(Y축) 라디안 하나만. 서버는 쿼터니언을 다루지 않는다.",
+    "vendor_root": "assets/vendor",
+    "id_format": "{category}_{name}_{variant}",
+    "categories": {
+      "chr": "캐릭터 (플레이어 / NPC / 몬스터)",
+      "bld": "건물 — 통짜 블로커",
+      "tile": "모듈형 바닥·벽 — 격자에 맞춰 반복 배치",
+      "prop": "소품 — 개별 배치"
+    },
+    "collision": [
+      "static_walkable",
+      "static_blocker",
+      "none"
+    ],
+    "nav": [
+      "include",
+      "exclude",
+      "area:water"
+    ],
+    "size_m": "glTF POSITION 접근자의 min/max 에서 실측한 바운딩 박스 (scale 적용 전)"
+  },
+  "sources": {
+    "kaykit_skeletons": {
+      "pack": "KayKit Character Pack : Skeletons",
+      "version": "1.1 FREE",
+      "author": "Kay Lousberg",
+      "url": "https://kaylousberg.itch.io/kaykit-skeletons",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license_file": "assets/vendor/kaykit_skeletons/License.txt",
+      "root": "assets/vendor/kaykit_skeletons",
+      "rig": "Rig_Medium",
+      "texture": "texture/skeleton_texture.png",
+      "notes": "캐릭터 .glb 에는 애니메이션이 들어있지 않다 (animations=0). Animations/gltf/Rig_Medium/ 의 2개 파일에서 가져온다."
+    },
+    "kaykit_adventurers": {
+      "pack": "KayKit Character Pack : Adventurers",
+      "version": "2.0 FREE",
+      "author": "Kay Lousberg",
+      "url": "https://kaylousberg.itch.io/kaykit-adventurers",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license_file": "assets/vendor/kaykit_adventurers/License.txt",
+      "root": "assets/vendor/kaykit_adventurers",
+      "rig": "Rig_Medium",
+      "notes": "Skeletons 와 리그가 동일(본 23개, 이름 일치)해 애니메이션 라이브러리를 공유한다. 플레이어와 몬스터가 같은 AnimationLibrary 하나를 쓴다."
+    },
+    "kaykit_dungeon": {
+      "pack": "KayKit Dungeon Asset Pack",
+      "version": "1.1 FREE",
+      "author": "Kay Lousberg",
+      "url": "https://kaylousberg.itch.io/dungeon-remastered-pack",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license_file": "assets/vendor/kaykit_dungeon/License.txt",
+      "root": "assets/vendor/kaykit_dungeon",
+      "texture": "Assets/textures/dungeon_texture.png",
+      "notes": "211개 전부 dungeon_texture.png 한 장을 공유한다. 벽·바닥 모듈은 4m 격자."
+    },
+    "kaykit_medieval": {
+      "pack": "KayKit Medieval Builder Pack",
+      "version": "1.0 FREE",
+      "author": "Kay Lousberg",
+      "url": "https://kaylousberg.itch.io/medieval-builder-pack",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license_file": "assets/vendor/kaykit_medieval/License.txt",
+      "root": "assets/vendor/kaykit_medieval",
+      "notes": "이 팩은 걸어다니는 마을 키트가 아니라 hex/square 격자 전략맵용 미니어처다. house 실측이 1.69 x 0.91 x 1.66 으로 2.17m 인 Skeleton_Warrior 보다 낮다. bld_* 는 대부분 scale 6.0 으로 확대해서 쓴다 — 2026-09-22 에 마을을 렌더해 2.65m 인 상인 NPC 옆에서 건물 크기가 맞는 것을 눈으로 확인했다 (scale_verified: true). 단 bld_well 만 3.2 다: 이 팩은 전략맵 비율이라 우물과 집의 크기 비가 실제와 달라 일괄 배율로는 맞출 수 없다. 외부 텍스처 파일 없이 정점 색을 쓴다. tiles/ 의 hex 128개·square 69개는 격자 보드용이라 이 프로젝트에서 쓰지 않는다."
+    },
+    "quaternius_nature": {
+      "pack": "Stylized Nature MegaKit",
+      "version": "FREE (68 / 116 models)",
+      "author": "Quaternius",
+      "url": "https://quaternius.com/packs/stylizednaturemegakit.html",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license_file": "assets/vendor/quaternius_nature/License.txt",
+      "root": "assets/vendor/quaternius_nature",
+      "notes": "Textures/ 의 PNG 20장이 38MB (한 장당 4~5MB). 나무 껍질에 과한 해상도이므로 Week 4 에 1K 로 줄인다. glTF/ 폴더 안에 같은 PNG 사본이 또 있어 현재 중복 보관 중이다."
+    },
+    "kaykit_animations": {
+      "pack": "KayKit Character Animations",
+      "version": "1.2",
+      "author": "Kay Lousberg",
+      "url": "https://kaylousberg.itch.io/kaykit-character-animations",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license_file": "assets/vendor/kaykit_animations/LICENSE_NOTE.md",
+      "root": "assets/vendor/kaykit_animations",
+      "rig": "KayKit Animated Character (구버전, 노드 8개)",
+      "status": "unused",
+      "notes": "사용하지 않는다. 리그가 구버전(Head/Body/armLeft/armRight/handSlot*)이라 Rig_Medium(root/hips/spine/chest/... 본 23개)과 본 구조가 달라 30개 클립을 적용할 수 없다. 원본 License.txt 가 Medieval 압축 해제 때 같은 경로로 덮어써져 LICENSE_NOTE.md 로 대체 기록했다."
+    }
+  },
+  "animation_libraries": {
+    "rig_medium_general": {
+      "source": "kaykit_skeletons",
+      "file": "Animations/gltf/Rig_Medium/Rig_Medium_General.glb",
+      "shared_with": [
+        "kaykit_adventurers"
+      ],
+      "clips": [
+        "Death_A",
+        "Death_A_Pose",
+        "Death_B",
+        "Death_B_Pose",
+        "Hit_A",
+        "Hit_B",
+        "Idle_A",
+        "Idle_B",
+        "Interact",
+        "PickUp",
+        "Spawn_Air",
+        "Spawn_Ground",
+        "T-Pose",
+        "Throw",
+        "Use_Item"
+      ]
+    },
+    "rig_medium_movement": {
+      "source": "kaykit_skeletons",
+      "file": "Animations/gltf/Rig_Medium/Rig_Medium_MovementBasic.glb",
+      "shared_with": [
+        "kaykit_adventurers"
+      ],
+      "clips": [
+        "Jump_Full_Long",
+        "Jump_Full_Short",
+        "Jump_Idle",
+        "Jump_Land",
+        "Jump_Start",
+        "Running_A",
+        "Running_B",
+        "T-Pose",
+        "Walking_A",
+        "Walking_B",
+        "Walking_C"
+      ]
+    },
+    "$missing": {
+      "attack": "FREE 티어 26클립에 공격 모션이 없다. 맞는 모션(Hit_A/B)과 죽는 모션(Death_A/B)만 있다. FSM 의 Combat 상태에서 재생할 클립이 없으므로 (a) itch.io 에서 Rig_Medium 대응 애니메이션 팩을 추가로 받거나 (b) 무기 노드(handslot.r)를 코드 트윈으로 휘두르는 것으로 대체한다. 서버 로직에는 영향이 없다 — 데미지 판정은 서버 타이머이지 애니메이션 이벤트가 아니다."
+    }
+  },
+  "assets": {
+    "chr_skeleton_warrior": {
+      "source": "kaykit_skeletons",
+      "file": "characters/gltf/Skeleton_Warrior.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "size_m": [
+        1.94,
+        2.17,
+        1.46
+      ],
+      "note": "몬스터 1종 — aggressive + melee + wander, leash 20m"
+    },
+    "chr_skeleton_minion": {
+      "source": "kaykit_skeletons",
+      "file": "characters/gltf/Skeleton_Minion.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "note": "몬스터 2종 — passive + assist:family, 어그로 전파"
+    },
+    "chr_skeleton_elite": {
+      "source": "kaykit_skeletons",
+      "file": "characters/gltf/Skeleton_Warrior.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.4,
+      "material_override": "elite",
+      "note": "몬스터 3종 — 전용 모델 없음. CLAUDE.md 6장대로 워리어 1.4배 + 머티리얼 교체."
+    },
+    "chr_player_knight": {
+      "source": "kaykit_adventurers",
+      "file": "Characters/gltf/Knight.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "size_m": [
+        1.94,
+        2.54,
+        1.31
+      ]
+    },
+    "chr_npc_merchant": {
+      "source": "kaykit_adventurers",
+      "file": "Characters/gltf/Mage.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "material_override": "merchant",
+      "animation": "Idle_A",
+      "note": "전용 모델 없음. CLAUDE.md 6장대로 Mage 머티리얼 교체 + Idle 고정."
+    },
+    "prop_tree_common_01": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.6
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/CommonTree_1.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0,
+      "size_m": [
+        4.31,
+        7.26,
+        4.58
+      ]
+    },
+    "prop_tree_common_02": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.6
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/CommonTree_2.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_common_03": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.6
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/CommonTree_3.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_common_04": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.6
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/CommonTree_4.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_common_05": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.6
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/CommonTree_5.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_pine_01": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.65
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/Pine_1.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0,
+      "size_m": [
+        4.94,
+        7.32,
+        4.54
+      ]
+    },
+    "prop_tree_pine_02": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.65
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/Pine_2.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_pine_03": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.65
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/Pine_3.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_pine_04": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.65
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/Pine_4.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_pine_05": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.65
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/Pine_5.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_dead_01": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.45
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/DeadTree_1.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_dead_02": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.45
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/DeadTree_2.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_dead_03": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.45
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/DeadTree_3.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_twisted_01": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 1.3
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/TwistedTree_1.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_tree_twisted_02": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 1.3
+      },
+      "source": "quaternius_nature",
+      "file": "glTF/TwistedTree_2.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_rock_medium_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Rock_Medium_1.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0,
+      "size_m": [
+        3.23,
+        2.26,
+        2.99
+      ]
+    },
+    "prop_rock_medium_02": {
+      "source": "quaternius_nature",
+      "file": "glTF/Rock_Medium_2.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_rock_medium_03": {
+      "source": "quaternius_nature",
+      "file": "glTF/Rock_Medium_3.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_pebble_round_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Pebble_Round_1.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0,
+      "note": "밟고 지나간다. 내비메시에서 파내지 않는다."
+    },
+    "prop_pebble_round_02": {
+      "source": "quaternius_nature",
+      "file": "glTF/Pebble_Round_2.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_bush_common_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Bush_Common.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_grass_tall_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Grass_Common_Tall.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0,
+      "size_m": [
+        0.9,
+        1.87,
+        0.99
+      ]
+    },
+    "prop_fern_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Fern_1.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "tile_dgn_floor_large": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/floor_tile_large.gltf",
+      "kind": "tile",
+      "collision": "static_walkable",
+      "nav": "include",
+      "scale": 1.0,
+      "grid_m": 4.0,
+      "size_m": [
+        4.0,
+        0.15,
+        4.0
+      ]
+    },
+    "tile_dgn_floor_small": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/floor_tile_small.gltf",
+      "kind": "tile",
+      "collision": "static_walkable",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "tile_dgn_wall": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/wall.gltf",
+      "kind": "tile",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0,
+      "grid_m": 4.0,
+      "size_m": [
+        4.0,
+        4.0,
+        1.0
+      ]
+    },
+    "tile_dgn_wall_corner": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/wall_corner.gltf",
+      "kind": "tile",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "tile_dgn_wall_doorway": {
+      "collider": {
+        "shape": "mesh"
+      },
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/wall_doorway.gltf",
+      "kind": "tile",
+      "collision": "static_blocker",
+      "nav": "include",
+      "scale": 1.0,
+      "note": "통로가 뚫려 있으므로 nav 는 include. 콜리전 메시가 문틀만 막는다."
+    },
+    "tile_dgn_wall_half": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/wall_half.gltf",
+      "kind": "tile",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "tile_dgn_stairs": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/stairs.gltf",
+      "kind": "tile",
+      "collision": "static_walkable",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_dgn_pillar": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/pillar.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_dgn_chest": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/chest.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0,
+      "interactable": true,
+      "size_m": [
+        1.7,
+        0.97,
+        1.91
+      ]
+    },
+    "prop_dgn_barrel_large": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/barrel_large.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_dgn_box_large": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/box_large.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_dgn_table_medium": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/table_medium.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0,
+      "size_m": [
+        2.0,
+        1.0,
+        2.0
+      ]
+    },
+    "prop_dgn_torch_mounted": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/torch_mounted.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0,
+      "note": "벽에 붙는다. 지면 높이 스냅 대상이 아니다."
+    },
+    "prop_dgn_coin_stack": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/coin_stack_small.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_barrel_large": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/barrel_large.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 0.7
+    },
+    "prop_barrel_small": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/barrel_small.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 0.7
+    },
+    "prop_barrel_stack": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/barrel_small_stack.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 0.7
+    },
+    "prop_crates": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/crates_stacked.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 0.7
+    },
+    "prop_box_small": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/box_small.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 0.7
+    },
+    "prop_keg": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/keg.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 0.7
+    },
+    "prop_table_long": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/table_long.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_stool": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/stool.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_chair": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/chair.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_fence": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/barrier.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0,
+      "note": "4m 모듈 난간. 텃밭·마당 경계에 쓴다."
+    },
+    "prop_fence_half": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/barrier_half.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_fence_column": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/barrier_column.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 1.0
+    },
+    "prop_banner_red": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/banner_red.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0,
+      "note": "원점보다 위에 매달린다 (min.y = +0.53). 벽에 붙이는 용도라 지면 스냅 대상이 아니다."
+    },
+    "prop_banner_blue": {
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/banner_blue.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_lamp_post": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.5
+      },
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/pillar.gltf",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 0.6,
+      "note": "가로등 기둥 대용. 전용 모델이 없어 던전 기둥을 줄여 쓴다."
+    },
+    "tile_stairs_long": {
+      "collider": {
+        "shape": "ramp"
+      },
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/stairs_long.gltf",
+      "kind": "tile",
+      "collision": "static_walkable",
+      "nav": "include",
+      "scale": 0.6,
+      "rise_m": 3.06,
+      "run_m": 4.8,
+      "note": "5.10m 상승 / 8m 진행 = 32도. 다른 계단(5.1/4 = 52도)보다 완만해 실제로 걸어 오를 만하다. 0.6 배에서 상승 3.06m."
+    },
+    "tile_stairs_wide": {
+      "collider": {
+        "shape": "ramp"
+      },
+      "source": "kaykit_dungeon",
+      "file": "Assets/gltf/stairs_wide.gltf",
+      "kind": "tile",
+      "collision": "static_walkable",
+      "nav": "include",
+      "scale": 0.6,
+      "rise_m": 3.06,
+      "run_m": 2.4
+    },
+    "prop_med_tree_a": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.12
+      },
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/detail_treeA.gltf.glb",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "note": "마을 정원수. Quaternius 나무(7m+)보다 작아 건물 사이에 들어간다."
+    },
+    "prop_med_tree_b": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.12
+      },
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/detail_treeB.gltf.glb",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0
+    },
+    "prop_med_tree_c": {
+      "collider": {
+        "shape": "cylinder",
+        "radius": 0.12
+      },
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/detail_treeC.gltf.glb",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0
+    },
+    "prop_med_rocks": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/detail_rocks.gltf.glb",
+      "kind": "prop",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0
+    },
+    "prop_med_rocks_small": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/detail_rocks_small.gltf.glb",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 6.0
+    },
+    "prop_flower_group_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Flower_3_Group.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_flower_group_02": {
+      "source": "quaternius_nature",
+      "file": "glTF/Flower_4_Group.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_mushroom_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Mushroom_Common.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_clover_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Clover_1.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_grass_short_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Grass_Common_Short.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_grass_wispy_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Grass_Wispy_Tall.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "prop_plant_big_01": {
+      "source": "quaternius_nature",
+      "file": "glTF/Plant_1_Big.gltf",
+      "kind": "prop",
+      "collision": "none",
+      "nav": "include",
+      "scale": 1.0
+    },
+    "chr_npc_guard": {
+      "source": "kaykit_adventurers",
+      "file": "Characters/gltf/Knight.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "animation": "Idle_A"
+    },
+    "chr_npc_villager_a": {
+      "source": "kaykit_adventurers",
+      "file": "Characters/gltf/Barbarian.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "animation": "Idle_A"
+    },
+    "chr_npc_villager_b": {
+      "source": "kaykit_adventurers",
+      "file": "Characters/gltf/Ranger.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "animation": "Idle_A"
+    },
+    "chr_npc_villager_c": {
+      "source": "kaykit_adventurers",
+      "file": "Characters/gltf/Rogue.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "animation": "Idle_A"
+    },
+    "chr_npc_villager_d": {
+      "source": "kaykit_adventurers",
+      "file": "Characters/gltf/Rogue_Hooded.glb",
+      "kind": "character",
+      "rig": "Rig_Medium",
+      "collision": "none",
+      "nav": "exclude",
+      "scale": 1.0,
+      "animation": "Idle_A"
+    },
+    "bld_house_a": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/house.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true,
+      "size_m": [
+        1.69,
+        0.91,
+        1.66
+      ],
+      "chimney": [
+        [
+          0.3782,
+          0.9049,
+          -0.4013
+        ]
+      ]
+    },
+    "bld_shop_market": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/market.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true,
+      "size_m": [
+        1.47,
+        0.86,
+        1.67
+      ],
+      "note": "상인 NPC 배치 지점. 상점의 정체성은 서버 트랜잭션이 담당하고 이 모델은 위치 표식일 뿐이다."
+    },
+    "bld_mill": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/mill.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true,
+      "note": "min.y = -0.69 는 기초가 아니라 전략맵 타일에 꽂는 말뚝이다. 원점이 이미 지면이므로 띄우지 않는다 — y_offset 을 넣었더니 4.1m 공중에 떴다 (2026-09-22 렌더로 확인)."
+    },
+    "bld_barracks": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/barracks.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true
+    },
+    "bld_watchtower": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/watchtower.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true,
+      "size_m": [
+        0.97,
+        1.98,
+        1.71
+      ]
+    },
+    "bld_well": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/well.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 3.2,
+      "scale_verified": true,
+      "note": "마을 광장 중심 표식. 다른 bld_* 와 달리 배율이 3.2 다 — 이 팩은 전략맵 비율이라 우물(1.02)과 집(1.69)의 비가 실제(약 1:5)와 맞지 않는다. ×6 을 걸면 우물이 6.1m 가 되어 집의 절반 크기가 된다."
+    },
+    "bld_wall_straight": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/wall_straight.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true
+    },
+    "bld_wall_corner": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/wall_corner.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true
+    },
+    "bld_wall_gate": {
+      "collider": {
+        "shape": "mesh"
+      },
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/wall_gate.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "include",
+      "scale": 6.0,
+      "scale_verified": true,
+      "note": "마을 입구. 통로가 뚫려 있어 nav include."
+    },
+    "bld_archery_range": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/archeryrange.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true
+    },
+    "bld_lumbermill": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/lumbermill.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true
+    },
+    "bld_watermill": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/watermill.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true,
+      "note": "bld_mill 과 같이 min.y 가 음수지만(-0.58) 그것은 타일에 꽂는 말뚝이다. 띄우지 않는다."
+    },
+    "bld_castle": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/castle.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true,
+      "note": "마을 랜드마크. ×6 에서 10.8 x 15.2m 로 마을에서 가장 높다.",
+      "chimney": [
+        [
+          -0.0,
+          2.4151,
+          -0.5633
+        ]
+      ]
+    },
+    "bld_mine": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/mine.gltf.glb",
+      "kind": "building",
+      "collision": "static_blocker",
+      "nav": "exclude",
+      "scale": 6.0,
+      "scale_verified": true
+    },
+    "bld_farm_plot": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/farm_plot.gltf.glb",
+      "kind": "building",
+      "collision": "none",
+      "nav": "include",
+      "scale": 6.0,
+      "scale_verified": true,
+      "note": "밭. 높이 2.7m 로 낮아 걸어서 지나간다."
+    },
+    "prop_bridge": {
+      "source": "kaykit_medieval",
+      "file": "Models/objects/gltf/bridge.gltf.glb",
+      "kind": "tile",
+      "collision": "static_walkable",
+      "nav": "include",
+      "scale": 6.0,
+      "scale_verified": false,
+      "size_m": [
+        2.0,
+        0.78,
+        0.74
+      ],
+      "note": "개울을 건너는 다리. 상판이 아치라 상자 콜라이더로 두면 아치 아래가 막히고 상판 경사도 사라진다 — 성문과 같은 이유로 mesh 를 쓴다. 상판 끝은 로컬 y=-0.025(배율 6 이면 -0.15m), 아치 꼭대기는 1.66m.",
+      "collider": {
+        "shape": "mesh"
+      }
+    }
+  }
+}

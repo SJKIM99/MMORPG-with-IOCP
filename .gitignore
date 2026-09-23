@@ -75,3 +75,24 @@ Desktop.ini
 # 크래시 덤프/로그 — 실행 중 생성되는 디버그 산출물
 crash.dmp
 crash.log
+
+# [ 3D 벤더 에셋 ]
+# CC0 외부 에셋 원본 255MB — 저장소에 넣지 않는다.
+# 출처·라이선스는 world/manifest.json, 받는 절차는 README.md 참조.
+# (디렉터리째 ignore 하면 git 이 내부로 내려가지 않아 아래 negation 이 무효가 된다)
+assets/vendor/*
+# 경로 규약을 남기기 위해 디렉터리 자체는 커밋한다.
+!assets/vendor/.gitkeep
+
+# [ Godot ]
+# 임포트 캐시·빌드 산출물 — 프로젝트를 열면 재생성된다.
+.godot/
+# Client/assets 는 assets/vendor 로 향하는 정션이다.
+# 막지 않으면 git 이 정션 너머 255MB 를 추적하려 든다.
+Client/assets/
+*.csproj.user
+
+# [ Python 툴체인 ]
+__pycache__/
+*.py[cod]
+.venv/

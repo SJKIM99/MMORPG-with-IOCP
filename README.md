@@ -39,3 +39,57 @@ Windows IOCP 기반 대규모 분산 MMORPG 게임 서버 · C++20 · 3개월 1�
 ```
 powershell -ExecutionPolicy Bypass -File portfolio\build.ps1
 ```
+
+---
+
+## 3D 에셋 받기
+
+3D 에셋 원본 255MB는 저장소에 포함되어 있지 않습니다 (`.gitignore`). 전부 **CC0**이며
+아래에서 **0원**으로 받을 수 있습니다. itch.io는 name-your-own-price이므로 금액 입력란에
+`0`을 넣고 *No thanks, just take me to the downloads* 를 누르면 됩니다.
+
+받은 zip을 아래 경로에 **폴더째** 풀어주세요. 경로가 곧 `world/manifest.json`의
+`sources.*.root`이므로 이름이 정확해야 합니다.
+
+| 받을 곳 | 압축 해제 위치 | 용도 |
+|---|---|---|
+| [KayKit Skeletons 1.1](https://kaylousberg.itch.io/kaykit-skeletons) | `assets/vendor/kaykit_skeletons/` | 몬스터 3종 |
+| [KayKit Adventurers 2.0](https://kaylousberg.itch.io/kaykit-adventurers) | `assets/vendor/kaykit_adventurers/` | 플레이어, 상인 NPC |
+| [KayKit Dungeon Pack 1.1](https://kaylousberg.itch.io/dungeon-remastered-pack) | `assets/vendor/kaykit_dungeon/` | 인던 128² 모듈 |
+| [KayKit Medieval Builder Pack 1.0](https://kaylousberg.itch.io/medieval-builder-pack) | `assets/vendor/kaykit_medieval/` | 마을 256² 건물 |
+| [Quaternius Stylized Nature MegaKit](https://quaternius.com/packs/stylizednaturemegakit.html) | `assets/vendor/quaternius_nature/` | 필드 512² 식생·바위 |
+
+압축 해제 후 아래로 경로를 검증합니다. `manifest.json`에 등록된 51개 에셋과
+외부 `.bin`/`.png` 의존성이 전부 존재하는지 확인합니다.
+
+```
+powershell -ExecutionPolicy Bypass -File tools\verify_assets.ps1
+```
+
+### 클론 직후 — 에셋 정션 연결
+
+Godot은 프로젝트 폴더 아래(`res://`)만 봅니다. 에셋은 `assets/vendor/`에 있고
+Godot 프로젝트는 `Client/`에 있으므로 디렉터리 정션으로 이어줍니다.
+**정션은 git에 담기지 않으므로 클론할 때마다 한 번 만들어야 합니다.**
+
+`mklink`는 cmd 내장 명령이라 **PowerShell이 아닌 cmd**에서 실행합니다.
+관리자 권한은 필요 없습니다.
+
+```
+cd /d <저장소 경로>
+mklink /J Client\assets assets\vendor
+```
+
+연결되면 Godot FileSystem 독에 `res://assets/` 아래로 5개 팩이 보입니다.
+첫 임포트는 255MB라 수 분 걸립니다.
+
+### 주의
+
+- **`Asset/` 루트에 한꺼번에 풀지 마세요.** KayKit 팩 중 일부는 zip 안에
+  `License.txt`, `Models/`를 최상위에 두고 있어, 같은 폴더에 여러 팩을 풀면
+  서로 덮어씁니다. 실제로 Medieval Builder Pack이 Character Animations의
+  `License.txt`를 덮어쓴 이력이 있습니다 (`assets/vendor/kaykit_animations/LICENSE_NOTE.md`).
+- **glTF(`.glb` / `.gltf`)만 사용합니다.** 각 팩의 `FBX/` 폴더는 쓰지 않습니다.
+- 각 에셋의 ID·콜리전 타입·출처·라이선스는 전부 [`world/manifest.json`](world/manifest.json)에
+  기록되어 있습니다. 씬에 손으로 배치하지 않고 이 파일과 `world/regions/*.json`을
+  서버와 클라이언트가 함께 읽습니다.
