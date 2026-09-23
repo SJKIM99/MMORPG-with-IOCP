@@ -3,8 +3,8 @@
 
 void Transform::Reset() noexcept
 {
-	m_x       = -1;
-	m_y       = -1;
+	m_pos     = Vec3{};
+	m_yaw     = 0.0f;
 	m_sectorX = -1;
-	m_sectorY = -1;
+	m_sectorZ = -1;
 }

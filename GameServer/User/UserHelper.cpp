@@ -115,8 +115,8 @@ namespace UserHelper
 		SUBJECT_MOVE_NFY_PACKET packet;
 		InitializePacket(packet, PacketType::SUBJECT_MOVE_NFY);
 		packet.id = target->GetObjID();
-		packet.x = target->GetX();
-		packet.y = target->GetY();
+		packet.x = ToLegacyTile(target->GetX());
+		packet.y = ToLegacyTile(target->GetZ());
 
 		session->PostSend(packet);
 	}
@@ -160,8 +160,8 @@ namespace UserHelper
 			packet.itemId = item->GetItemTableId();
 		}
 		packet.id = target->GetObjID();
-		packet.x = target->GetX();
-		packet.y = target->GetY();
+		packet.x = ToLegacyTile(target->GetX());
+		packet.y = ToLegacyTile(target->GetZ());
 		::strncpy_s(packet.name, NAME_SIZE, target->GetName().c_str(), _TRUNCATE);
 
 		session->PostSend(packet);
@@ -189,7 +189,7 @@ namespace UserHelper
 		const uint16_t itemId = static_cast<uint16_t>(player->GetInventory()->GetEquippedItemId());
 		const ObjID playerId = player->GetObjID();
 
-		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorZ(), [&](const shared_ptr<Subject>& object)
 		{
 			if (object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
 				return;
@@ -227,8 +227,8 @@ namespace UserHelper
 		USER_LOGIN_ACK_PACKET packet;
 		InitializePacket(packet, PacketType::USER_LOGIN_ACK);
 		packet.id    = sender->GetObjID();
-		packet.x     = sender->GetX();
-		packet.y     = sender->GetY();
+		packet.x     = ToLegacyTile(sender->GetX());
+		packet.y     = ToLegacyTile(sender->GetZ());
 		packet.maxhp = sender->GetStat()->GetMaxHp();
 		packet.hp    = sender->GetStat()->GetHp();
 		packet.level = sender->GetStat()->GetLevel();
@@ -319,8 +319,8 @@ namespace UserHelper
 			packet.monster_type = static_cast<char>(monster->GetType());
 		}
 		packet.id = target->GetObjID();
-		packet.x = target->GetX();
-		packet.y = target->GetY();
+		packet.x = ToLegacyTile(target->GetX());
+		packet.y = ToLegacyTile(target->GetZ());
 		packet.hp = target->GetStat()->GetHp();
 		::strncpy_s(packet.name, NAME_SIZE, target->GetName().c_str(), _TRUNCATE);
 
@@ -624,8 +624,8 @@ namespace UserHelper
 		if (target == nullptr)
 			return false;
 
-		short saveX = target->GetX();
-		short saveY = target->GetY();
+		short saveX = ToLegacyTile(target->GetX());
+		short saveY = ToLegacyTile(target->GetZ());
 		if (!IsValidWorldPosition(saveX, saveY))
 		{
 			const auto [fallbackX, fallbackY] = FindRandomValidPosition();
@@ -633,7 +633,7 @@ namespace UserHelper
 			saveY = fallbackY;
 
 			cout << "Recovered invalid logout position for [" << target->GetName()
-				<< "] from (" << target->GetX() << ", " << target->GetY()
+				<< "] from (" << target->GetX() << ", " << target->GetZ()
 				<< ") to (" << saveX << ", " << saveY << ")\n";
 		}
 
@@ -680,10 +680,10 @@ namespace UserHelper
 
 		// RemoveObject는 섹터 좌표만 지우고 월드 좌표(x,y)는 건드리지 않지만,
 		// "죽은 자리"라는 의도를 코드에서 바로 알아보도록 미리 값으로 떼어둔다.
-		const short deathX = monster->GetX();
-		const short deathY = monster->GetY();
+		const short deathX = ToLegacyTile(monster->GetX());
+		const short deathY = ToLegacyTile(monster->GetZ());
 
-		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorZ(), [&](const shared_ptr<Subject>& object)
 		{
 			ObjID id = object->GetObjID();
 			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
@@ -696,7 +696,7 @@ namespace UserHelper
 				SendSUBJECT_DIE_NFY(viewer, monster);
 		});
 
-		GSector->RemoveObject(monsterId, monster->RefSectorX(), monster->RefSectorY());
+		GSector->RemoveObject(monsterId, monster->RefSectorX(), monster->RefSectorZ());
 		monster->SetActive(false);
 		monster->SetAttack(false);
 		monster->ClearViewList(); // 다음 리스폰 시 oldList가 빈 상태로 시작하도록 초기화
@@ -715,19 +715,20 @@ namespace UserHelper
 		if (player == nullptr || player->GetStat()->IsDead())
 			return;
 
-		const int px = player->GetX();
-		const int py = player->GetY();
+		// 스킬 범위 판정은 아직 타일이다 (SubjectHelper::IsAdjacent 와 같은 규칙).
+		const int px = ToLegacyTile(player->GetX());
+		const int py = ToLegacyTile(player->GetZ());
 
 		// Collect IDs of monsters on the 4 adjacent cardinal tiles first,
 		// then attack them — avoids mutating the sector while iterating.
 		std::vector<ObjID> targets;
-		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorY(),
+		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorZ(),
 			[&](const shared_ptr<Subject>& object)
 		{
 			if (object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eMonster)
 				return;
-			const int dx = object->GetX() - px;
-			const int dy = object->GetY() - py;
+			const int dx = ToLegacyTile(object->GetX()) - px;
+			const int dy = ToLegacyTile(object->GetZ()) - py;
 			if (abs(dx) + abs(dy) == 1)
 				targets.push_back(object->GetObjID());
 		});
@@ -742,7 +743,7 @@ namespace UserHelper
 
 		std::vector<ObjID> monsterTargets;
 
-		GSector->ForEachNeighborObject(attacker->GetSectorX(), attacker->GetSectorY(),
+		GSector->ForEachNeighborObject(attacker->GetSectorX(), attacker->GetSectorZ(),
 			[&](const shared_ptr<Subject>& object)
 		{
 			ObjID id = object->GetObjID();
@@ -776,7 +777,7 @@ namespace UserHelper
 		const ObjID senderId = sender->GetObjID();
 		SendSC_CHAT(sender, senderId, mess);
 
-		GSector->ForEachNeighborObject(sender->GetSectorX(), sender->GetSectorY(),
+		GSector->ForEachNeighborObject(sender->GetSectorX(), sender->GetSectorZ(),
 			[&](const shared_ptr<Subject>& object)
 		{
 			ObjID id = object->GetObjID();
@@ -862,7 +863,8 @@ namespace UserHelper
 		ObjID objId = player->GetObjID();
 		if (IsValidWorldPosition(userInfo._x, userInfo._y))
 		{
-			SectorHelper::UpdatePosition(objId, static_cast<short>(userInfo._x), static_cast<short>(userInfo._y));
+			// DB 의 _y 는 높이가 아니라 지면의 두 번째 축이다 -> z 로 넣는다.
+			SectorHelper::UpdatePosition(objId, static_cast<float>(userInfo._x), static_cast<float>(userInfo._y));
 		}
 		else
 		{

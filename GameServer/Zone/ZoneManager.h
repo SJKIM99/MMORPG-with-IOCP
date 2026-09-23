@@ -17,7 +17,7 @@ public:
 
 	void Enqueue(Task task);
 	void EnqueueByZone(ZoneId zoneId, Task task);
-	void EnqueueByWorld(int worldX, int worldY, Task task);
+	void EnqueueByWorld(float worldX, float worldZ, Task task);
 	void EnqueueByObject(const ObjID& objectId, Task task);
 	void EnqueueBySession(const shared_ptr<GameSession>& session, Task task);
 

@@ -144,7 +144,7 @@ void WorkerThread::Disconnect(ObjID clientId)
 		}
 	}
 
-	GSector->ForEachNeighborObject(user->GetSectorX(), user->GetSectorY(), [&](const shared_ptr<Subject>& subject)
+	GSector->ForEachNeighborObject(user->GetSectorX(), user->GetSectorZ(), [&](const shared_ptr<Subject>& subject)
 	{
 		const auto subjectId = subject->GetObjID();
 		if (subjectId == clientId) return;
@@ -158,7 +158,7 @@ void WorkerThread::Disconnect(ObjID clientId)
 		UserHelper::SendSUBJECT_REMOVE_NFY(neighbor, clientId);
 	});
 
-	GSector->RemoveObject(clientId, user->RefSectorX(), user->RefSectorY());
+	GSector->RemoveObject(clientId, user->RefSectorX(), user->RefSectorZ());
 	(void)UserHelper::SaveUserInfo(clientId);
 
 	if (auto session = user->GetGameSession())

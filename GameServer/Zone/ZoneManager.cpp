@@ -32,9 +32,9 @@ void ZoneManager::EnqueueByZone(ZoneId zoneId, Task task)
 	Enqueue(std::move(task));
 }
 
-void ZoneManager::EnqueueByWorld(int worldX, int worldY, Task task)
+void ZoneManager::EnqueueByWorld(float worldX, float worldZ, Task task)
 {
-	EnqueueByZone(ZoneLayout::GetZoneIdByWorld(worldX, worldY), std::move(task));
+	EnqueueByZone(ZoneLayout::GetZoneIdByWorld(worldX, worldZ), std::move(task));
 }
 
 void ZoneManager::EnqueueByObject(const ObjID& objectId, Task task)

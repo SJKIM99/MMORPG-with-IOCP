@@ -29,7 +29,7 @@ namespace
 	{
 		ObjID itemId = item->GetObjID();
 
-		GSector->ForEachNeighborObject(item->GetSectorX(), item->GetSectorY(), [&](const shared_ptr<Subject>& viewer)
+		GSector->ForEachNeighborObject(item->GetSectorX(), item->GetSectorZ(), [&](const shared_ptr<Subject>& viewer)
 		{
 			if (viewer->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
 				return;
@@ -44,7 +44,7 @@ namespace
 			UserHelper::SendSUBJECT_REMOVE_NFY(user, itemId);
 		});
 
-		GSector->RemoveObject(itemId, item->RefSectorX(), item->RefSectorY());
+		GSector->RemoveObject(itemId, item->RefSectorX(), item->RefSectorZ());
 		GZoneManager->RemoveObject(item->GetObjID());
 		GGameObjectManager->Delete(item->GetObjID());
 	}
@@ -66,7 +66,7 @@ namespace ItemHelper
 		ObjID itemId = item->GetObjID();
 		SectorHelper::UpdatePosition(itemId, x, y);
 
-		GSector->ForEachNeighborObject(item->GetSectorX(), item->GetSectorY(), [&](const shared_ptr<Subject>& viewer)
+		GSector->ForEachNeighborObject(item->GetSectorX(), item->GetSectorZ(), [&](const shared_ptr<Subject>& viewer)
 		{
 			if (viewer->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
 				return;
@@ -93,13 +93,13 @@ namespace ItemHelper
 			return;
 
 		Item::SharedPtr target;
-		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorZ(), [&](const shared_ptr<Subject>& object)
 		{
 			if (target != nullptr)
 				return;  // 이미 하나 찾음 - 한 번의 습득 요청은 아이템 하나만 대상으로 한다
 			if (object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eItem)
 				return;
-			if (object->GetX() != player->GetX() || object->GetY() != player->GetY())
+			if (object->GetX() != player->GetX() || object->GetZ() != player->GetZ())
 				return;
 
 			auto candidate = static_pointer_cast<Item>(object);

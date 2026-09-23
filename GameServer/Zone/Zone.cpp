@@ -7,7 +7,7 @@ Zone::Zone(ZoneId id)
 	: _id(id)
 	, _sector(
 		static_cast<short>(ZoneLayout::GetZoneCoordById(id).x * ZoneLayout::SectorsPerZoneX),
-		static_cast<short>(ZoneLayout::GetZoneCoordById(id).y * ZoneLayout::SectorsPerZoneY))
+		static_cast<short>(ZoneLayout::GetZoneCoordById(id).z * ZoneLayout::SectorsPerZoneZ))
 {
 }
 

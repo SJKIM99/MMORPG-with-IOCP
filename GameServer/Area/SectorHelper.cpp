@@ -13,7 +13,7 @@
 
 namespace SectorHelper
 {
-	void UpdatePosition(ObjID& subjectId, short nextX, short nextY)
+	void UpdatePosition(ObjID& subjectId, float nextX, float nextZ)
 	{
 		auto object = ::GetGameObject<Subject>(subjectId);
 		if (object == nullptr)
@@ -24,14 +24,14 @@ namespace SectorHelper
 		// 이 Zone 스레드 외에는 건드리는 쪽이 없어 락이 필요 없다.
 		const bool valid = GSector->UpdateObjectSectorAndPosition(
 			subjectId,
-			nextX, nextY,
-			object->RefSectorX(), object->RefSectorY(),
-			object->RefX(), object->RefY());
+			nextX, nextZ,
+			object->RefSectorX(), object->RefSectorZ(),
+			object->RefX(), object->RefZ());
 
 		if (!valid)
 			return;
 
-		const ZoneId zoneId = ZoneLayout::GetZoneIdByWorld(nextX, nextY);
+		const ZoneId zoneId = ZoneLayout::GetZoneIdByWorld(nextX, nextZ);
 
 		// 좌표가 바뀌어도 Zone은 대부분 그대로다. 몬스터는 아예 Zone을 벗어날 수
 		// 없고(RandomMove가 존 밖 걸음을 거부하고, 어그로 추격은 ZONE_BOUNDARY_MARGIN
@@ -72,7 +72,7 @@ namespace SectorHelper
 		const short minX = static_cast<short>(GSector->GetOffsetX() * SECTOR_RANGE);
 		const short maxX = static_cast<short>((GSector->GetOffsetX() + Sector::kLocalWidth)  * SECTOR_RANGE - 1);
 		const short minY = static_cast<short>(GSector->GetOffsetY() * SECTOR_RANGE);
-		const short maxY = static_cast<short>((GSector->GetOffsetY() + Sector::kLocalHeight) * SECTOR_RANGE - 1);
+		const short maxY = static_cast<short>((GSector->GetOffsetY() + Sector::kLocalDepth) * SECTOR_RANGE - 1);
 
 		std::uniform_int_distribution<short> distX(minX, maxX);
 		std::uniform_int_distribution<short> distY(minY, maxY);
@@ -99,7 +99,7 @@ namespace SectorHelper
 		// ForEachNeighborObject 대신 ObjID 직접 순회:
 		// 카테고리 필터를 먼저 적용해 몬스터 ObjID에 대한
 		// GetGameObject 조회와 shared_ptr atomic 증가를 생략한다.
-		GSector->ForEachNeighborObjID(monster->GetSectorX(), monster->GetSectorY(), [&](const ObjID& id)
+		GSector->ForEachNeighborObjID(monster->GetSectorX(), monster->GetSectorZ(), [&](const ObjID& id)
 		{
 			if (id.GetCategory() != EnumCategory::eUser) return;
 			const auto user = ::GetGameObject<User>(id);
@@ -120,7 +120,7 @@ namespace SectorHelper
 			return visibleSubjects;
 
 		visibleSubjects.reserve(32);
-		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		GSector->ForEachNeighborObject(player->GetSectorX(), player->GetSectorZ(), [&](const shared_ptr<Subject>& object)
 		{
 			const ObjID objectId = object->GetObjID();
 			if (objectId == player->GetObjID())
@@ -216,7 +216,7 @@ namespace SectorHelper
 	// ── Zone A 스레드에서 실행 ─────────────────────────────────────────────────────
 	// 플레이어가 존 경계를 넘을 때 Zone A 측 정리를 수행하고,
 	// Zone B 스레드에 HandleEnterZone을 비동기 메시지로 위임한다.
-	static void HandleZoneTransfer(const shared_ptr<User>& player, short nextX, short nextY, ZoneId newZoneId)
+	static void HandleZoneTransfer(const shared_ptr<User>& player, float nextX, float nextZ, ZoneId newZoneId)
 	{
 		const ObjID playerId = player->GetObjID();
 
@@ -228,12 +228,12 @@ namespace SectorHelper
 		const auto oldVisible = CollectSubjects(player);
 
 		// 3. Zone A 섹터에서 제거
-		GSector->RemoveObject(const_cast<ObjID&>(playerId), player->RefSectorX(), player->RefSectorY());
+		GSector->RemoveObject(const_cast<ObjID&>(playerId), player->RefSectorX(), player->RefSectorZ());
 
 		// 4. 위치를 존 B 좌표로 갱신 (섹터 그리드에는 아직 미등록 상태)
 		//    플레이어가 섹터에서 빠진 직후이므로 다른 Zone 스레드가 섹터를 통해
 		//    이 플레이어를 조회할 수 없어 락 없이 SetPosition이 안전하다.
-		player->SetPosition(nextX, nextY);
+		player->SetGround(nextX, nextZ);
 
 		// 5. Zone A 이웃들에게 이동·제거 알림
 		UserHelper::SendSUBJECT_MOVE_NFY(player, static_pointer_cast<Subject>(player));
@@ -255,39 +255,42 @@ namespace SectorHelper
 			session->SetRoutingZoneId(newZoneId);
 
 		// 7. Zone B에 입장 처리 위임 (비동기 메시지 패싱)
-		//    Zone B 큐는 FIFO이므로 HandleEnterZone이 새 패킷보다 반드시 먼저 처리된다
-		GZoneManager->EnqueueByZone(newZoneId, [playerId, nextX, nextY]()
+		//    FIFO는 "먼저 넣은 것이 먼저 나간다"만 보장할 뿐, HandleEnterZone이 먼저
+		//    들어간다는 보장은 아니다 — 바로 위에서 라우팅을 B로 돌린 순간부터 이 push가
+		//    끝나기 전까지, 워커가 이 플레이어의 패킷을 Zone B 큐에 먼저 밀어 넣을 수 있다.
+		//    그래서 큐 순서에 기대지 않고 IsTransferring으로 막는다(Route.cpp의 각 핸들러 첫 검사).
+		GZoneManager->EnqueueByZone(newZoneId, [playerId, nextX, nextZ]()
 		{
-			SectorHelper::HandleEnterZone(playerId, nextX, nextY);
+			SectorHelper::HandleEnterZone(playerId, nextX, nextZ);
 		});
 	}
 	// ──────────────────────────────────────────────────────────────────────────────
 
-	void HandlePlayerMove(const shared_ptr<User>& player, short nextX, short nextY)
+	void HandlePlayerMove(const shared_ptr<User>& player, float nextX, float nextZ)
 	{
 		if (player == nullptr)
 			return;
 
 		// Zone 경계 이동 감지 → Actor 모델 비동기 전달
-		const ZoneId newZoneId = ZoneLayout::GetZoneIdByWorld(nextX, nextY);
+		const ZoneId newZoneId = ZoneLayout::GetZoneIdByWorld(nextX, nextZ);
 		const ZoneId curZoneId = player->GetZoneId();
 		if (newZoneId != curZoneId && ZoneLayout::IsValidZoneId(newZoneId))
 		{
-			HandleZoneTransfer(player, nextX, nextY, newZoneId);
+			HandleZoneTransfer(player, nextX, nextZ, newZoneId);
 			return;
 		}
 
 		// ── 같은 Zone 내 이동 ─────────────────────────────────────────────────────
-		const short oldX     = player->GetX();
-		const short oldY     = player->GetY();
+		const float oldX     = player->GetX();
+		const float oldZ     = player->GetZ();
 		const ObjID playerId = player->GetObjID();
 
 		const auto oldVisible = CollectSubjects(player);
 
-		UpdatePosition(const_cast<ObjID&>(playerId), nextX, nextY);
+		UpdatePosition(const_cast<ObjID&>(playerId), nextX, nextZ);
 		UserHelper::SendSUBJECT_MOVE_NFY(player, static_pointer_cast<Subject>(player));
 
-		if (oldX == player->GetX() && oldY == player->GetY())
+		if (oldX == player->GetX() && oldZ == player->GetZ())
 			return;
 
 		const auto newVisible = CollectSubjects(player);
@@ -343,8 +346,10 @@ namespace SectorHelper
 
 	// ── Zone B 스레드에서 실행 ─────────────────────────────────────────────────────
 	// HandleZoneTransfer가 비동기 메시지로 위임한 Zone B 진입 처리.
-	// Zone B 큐의 FIFO 보장으로 이 함수가 새 패킷보다 반드시 먼저 실행된다.
-	void HandleEnterZone(const ObjID& playerId, short nextX, short nextY)
+	// 이 함수보다 먼저 도착해 처리되는 패킷이 있을 수 있다(7번 주석 참고).
+	// 그쪽은 IsTransferring이 아직 true라 아무 일도 하지 않고 반환하고,
+	// 마지막 줄에서 플래그를 내리는 순간부터 Zone B가 정상 처리를 시작한다.
+	void HandleEnterZone(const ObjID& playerId, float nextX, float nextZ)
 	{
 		const auto player = ::GetGameObject<User>(playerId);
 		if (player == nullptr)
@@ -353,9 +358,9 @@ namespace SectorHelper
 		// Zone B 섹터에 등록 및 좌표 원자적 갱신
 		const bool valid = GSector->UpdateObjectSectorAndPosition(
 			const_cast<ObjID&>(playerId),
-			nextX, nextY,
-			player->RefSectorX(), player->RefSectorY(),
-			player->RefX(), player->RefY());
+			nextX, nextZ,
+			player->RefSectorX(), player->RefSectorZ(),
+			player->RefX(), player->RefZ());
 
 		if (!valid)
 			GetRandomPosition(const_cast<ObjID&>(playerId));

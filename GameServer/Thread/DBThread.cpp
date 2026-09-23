@@ -138,7 +138,11 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 			// Skip password verification — dev prototype with no auth requirement
 			DB_USER_INFO userInfo = connection->ExtractUserInfo(e->name);
 			vector<DB_ITEM_INFO> items = connection->ExtractInventory(userInfo._playerId);
-			GZoneManager->EnqueueByWorld(userInfo._x, userInfo._y, [session = e->session, userInfo, items]()
+			// DB 는 아직 2D 정수 좌표(_x, _y)를 들고 있다. 여기서 미터로 올린다 —
+			// _y 는 높이가 아니라 지면의 두 번째 축이므로 z 로 간다.
+			// DB 스키마를 Vec3 로 바꾸는 것은 Week 1 의 6번 단계에 묶어 처리한다.
+			GZoneManager->EnqueueByWorld(static_cast<float>(userInfo._x), static_cast<float>(userInfo._y),
+				[session = e->session, userInfo, items]()
 			{
 				UserHelper::HandleGetUserInfo(session, userInfo, items);
 			});

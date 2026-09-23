@@ -23,7 +23,7 @@ namespace ItemHelper
 	void SpawnFieldItem(const Item::SharedPtr& item, short x, short y,
 		const ObjID& lootPriorityOwner = ObjID::npos);
 
-	// player가 지금 서 있는 칸(GetX()/GetY())에 필드 아이템이 있으면 주워서
+	// player가 지금 서 있는 칸(GetX()/GetZ())에 필드 아이템이 있으면 주워서
 	// player의 인벤토리에 넣는다. 결과(성공/실패/인벤토리 꽉 참)는 이 함수 안에서
 	// 전부 패킷으로 통지하므로 반환값은 없다. 그 아이템에 아직 유효한 루팅
 	// 우선권이 걸려 있고 player가 그 보유자가 아니면, "아무 것도 없음"과 동일하게

@@ -1,62 +1,63 @@
 #include "pch.h"
 #include "Sector.h"
 
-Sector::Sector(short offsetX, short offsetY)
-	: _offsetX(offsetX), _offsetY(offsetY)
+Sector::Sector(short offsetX, short offsetZ)
+	: _offsetX(offsetX), _offsetZ(offsetZ)
 {
 }
 
-bool Sector::IsValidSector(short sectorX, short sectorY) const noexcept
+bool Sector::IsValidSector(short sectorX, short sectorZ) const noexcept
 {
 	return sectorX >= _offsetX && sectorX < _offsetX + kLocalWidth
-		&& sectorY >= _offsetY && sectorY < _offsetY + kLocalHeight;
+		&& sectorZ >= _offsetZ && sectorZ < _offsetZ + kLocalDepth;
 }
 
 bool Sector::IsValidSector(const SectorCoord& sector) const noexcept
 {
-	return IsValidSector(sector.x, sector.y);
+	return IsValidSector(sector.x, sector.z);
 }
 
-SectorCoord Sector::GetSectorCoord(short worldX, short worldY) const noexcept
+SectorCoord Sector::GetSectorCoord(float worldX, float worldZ) const noexcept
 {
-	if (worldX < 0 || worldX >= W_WIDTH || worldY < 0 || worldY >= W_HEIGHT)
+	if (worldX < 0.0f || worldX >= static_cast<float>(W_WIDTH)
+		|| worldZ < 0.0f || worldZ >= static_cast<float>(W_HEIGHT))
 		return {};
 
 	return SectorCoord{
-		static_cast<short>(worldX / SECTOR_RANGE),
-		static_cast<short>(worldY / SECTOR_RANGE)
+		static_cast<short>(worldX / static_cast<float>(SECTOR_RANGE)),
+		static_cast<short>(worldZ / static_cast<float>(SECTOR_RANGE))
 	};
 }
 
-const Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorY) const
+const Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorZ) const
 {
-	ASSERT_CRASH(IsValidSector(sectorX, sectorY));
-	return _sectors[sectorY - _offsetY][sectorX - _offsetX];
+	ASSERT_CRASH(IsValidSector(sectorX, sectorZ));
+	return _sectors[sectorZ - _offsetZ][sectorX - _offsetX];
 }
 
-Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorY)
+Sector::SectorObjects& Sector::GetObjects(short sectorX, short sectorZ)
 {
-	ASSERT_CRASH(IsValidSector(sectorX, sectorY));
-	return _sectors[sectorY - _offsetY][sectorX - _offsetX];
+	ASSERT_CRASH(IsValidSector(sectorX, sectorZ));
+	return _sectors[sectorZ - _offsetZ][sectorX - _offsetX];
 }
 
-Sector::NeighborSnapshot Sector::CollectNeighborObjects(short sectorX, short sectorY) const
+Sector::NeighborSnapshot Sector::CollectNeighborObjects(short sectorX, short sectorZ) const
 {
 	NeighborSnapshot snapshot;
 
-	if (IsValidSector(sectorX, sectorY) == false)
+	if (IsValidSector(sectorX, sectorZ) == false)
 		return snapshot;
 
 	std::vector<ObjID> idSnapshot;
 
-	const short minY = std::max<short>(_offsetY, static_cast<short>(sectorY - 1));
-	const short maxY = std::min<short>(static_cast<short>(_offsetY + kLocalHeight - 1), static_cast<short>(sectorY + 1));
+	const short minZ = std::max<short>(_offsetZ, static_cast<short>(sectorZ - 1));
+	const short maxZ = std::min<short>(static_cast<short>(_offsetZ + kLocalDepth - 1), static_cast<short>(sectorZ + 1));
 	const short minX = std::max<short>(_offsetX, static_cast<short>(sectorX - 1));
 	const short maxX = std::min<short>(static_cast<short>(_offsetX + kLocalWidth - 1), static_cast<short>(sectorX + 1));
 
-	for (short currentY = minY; currentY <= maxY; ++currentY)
+	for (short currentZ = minZ; currentZ <= maxZ; ++currentZ)
 		for (short currentX = minX; currentX <= maxX; ++currentX)
-			for (const ObjID subjectId : _sectors[currentY - _offsetY][currentX - _offsetX])
+			for (const ObjID subjectId : _sectors[currentZ - _offsetZ][currentX - _offsetX])
 				idSnapshot.push_back(subjectId);
 
 	snapshot.reserve(idSnapshot.size());
@@ -67,54 +68,54 @@ Sector::NeighborSnapshot Sector::CollectNeighborObjects(short sectorX, short sec
 	return snapshot;
 }
 
-bool Sector::UpdateObjectSector(ObjID& subjectId, short worldX, short worldY, short& inOutSectorX, short& inOutSectorY)
+bool Sector::UpdateObjectSector(ObjID& subjectId, float worldX, float worldZ, short& inOutSectorX, short& inOutSectorZ)
 {
-	const SectorCoord nextSector = GetSectorCoord(worldX, worldY);
+	const SectorCoord nextSector = GetSectorCoord(worldX, worldZ);
 	if (IsValidSector(nextSector) == false)
 		return false;
 
-	if (inOutSectorX == nextSector.x && inOutSectorY == nextSector.y)
+	if (inOutSectorX == nextSector.x && inOutSectorZ == nextSector.z)
 		return false;
 
-	if (IsValidSector(inOutSectorX, inOutSectorY))
-		GetObjects(inOutSectorX, inOutSectorY).erase(subjectId);
+	if (IsValidSector(inOutSectorX, inOutSectorZ))
+		GetObjects(inOutSectorX, inOutSectorZ).erase(subjectId);
 
-	GetObjects(nextSector.x, nextSector.y).insert(subjectId);
+	GetObjects(nextSector.x, nextSector.z).insert(subjectId);
 	inOutSectorX = nextSector.x;
-	inOutSectorY = nextSector.y;
+	inOutSectorZ = nextSector.z;
 	return true;
 }
 
 bool Sector::UpdateObjectSectorAndPosition(
-	ObjID& subjectId, short worldX, short worldY,
-	short& inOutSectorX, short& inOutSectorY,
-	short& inOutX, short& inOutY)
+	ObjID& subjectId, float worldX, float worldZ,
+	short& inOutSectorX, short& inOutSectorZ,
+	float& inOutX, float& inOutZ)
 {
-	const SectorCoord nextSector = GetSectorCoord(worldX, worldY);
+	const SectorCoord nextSector = GetSectorCoord(worldX, worldZ);
 	if (IsValidSector(nextSector) == false)
 		return false;
 
-	if (inOutSectorX != nextSector.x || inOutSectorY != nextSector.y)
+	if (inOutSectorX != nextSector.x || inOutSectorZ != nextSector.z)
 	{
-		if (IsValidSector(inOutSectorX, inOutSectorY))
-			GetObjects(inOutSectorX, inOutSectorY).erase(subjectId);
+		if (IsValidSector(inOutSectorX, inOutSectorZ))
+			GetObjects(inOutSectorX, inOutSectorZ).erase(subjectId);
 
-		GetObjects(nextSector.x, nextSector.y).insert(subjectId);
+		GetObjects(nextSector.x, nextSector.z).insert(subjectId);
 		inOutSectorX = nextSector.x;
-		inOutSectorY = nextSector.y;
+		inOutSectorZ = nextSector.z;
 	}
 
 	inOutX = worldX;
-	inOutY = worldY;
+	inOutZ = worldZ;
 	return true;
 }
 
-void Sector::RemoveObject(ObjID& objectId, short& inOutSectorX, short& inOutSectorY)
+void Sector::RemoveObject(ObjID& objectId, short& inOutSectorX, short& inOutSectorZ)
 {
-	if (IsValidSector(inOutSectorX, inOutSectorY) == false)
+	if (IsValidSector(inOutSectorX, inOutSectorZ) == false)
 		return;
 
-	GetObjects(inOutSectorX, inOutSectorY).erase(objectId);
+	GetObjects(inOutSectorX, inOutSectorZ).erase(objectId);
 	inOutSectorX = -1;
-	inOutSectorY = -1;
+	inOutSectorZ = -1;
 }

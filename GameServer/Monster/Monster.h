@@ -10,8 +10,10 @@ class Monster : public Subject
 	std::atomic<bool> m_Active;
 	std::atomic<bool> m_Attack;
 
+	// 리쉬(귀환) 기준점. 아직 타일 좌표다 — Week 2 에서 Vec3 로 간다.
+	// 두 번째 축이 Z 인 이유는 Transform 과 같다: Y 는 높이다.
 	short m_spawnX = 0;
-	short m_spawnY = 0;
+	short m_spawnZ = 0;
 	short m_pathGoalX = -1;
 	short m_pathGoalY = -1;
 
@@ -52,8 +54,8 @@ public:
 	void SetViewList(vector<ObjID> list) noexcept { m_viewList = std::move(list); }
 	void ClearViewList() noexcept { m_viewList.clear(); }
 
-	void  SetSpawn(short x, short y) { m_spawnX = x; m_spawnY = y; }
+	void  SetSpawn(short x, short z) { m_spawnX = x; m_spawnZ = z; }
 	short GetSpawnX() const { return m_spawnX; }
-	short GetSpawnY() const { return m_spawnY; }
+	short GetSpawnZ() const { return m_spawnZ; }
 
 };

@@ -49,7 +49,7 @@ namespace
 
 	void MoveMonsterStep(const shared_ptr<Monster>& monster, const ObjID& monsterId, short nextX, short nextY)
 	{
-		monster->UpdateFacing(nextX - monster->GetX());
+		monster->UpdateFacing(nextX - ToLegacyTile(monster->GetX()));
 		ObjID mutableId = monsterId;
 		MonsterHelper::AStarMove(mutableId, nextX, nextY);
 	}
@@ -61,7 +61,7 @@ namespace
 
 		auto& path = monster->GetPath();
 		const NODE next = path.back();
-		if (IsWalkableStep(monster->GetX(), monster->GetY(), next._x, next._y) == false)
+		if (IsWalkableStep(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ()), next._x, next._y) == false)
 		{
 			monster->ClearPath();
 			return false;
@@ -77,8 +77,8 @@ namespace
 		if (monster == nullptr)
 			return false;
 
-		const short currentX = monster->GetX();
-		const short currentY = monster->GetY();
+		const short currentX = ToLegacyTile(monster->GetX());
+		const short currentY = ToLegacyTile(monster->GetZ());
 		const int currentDistance = ManhattanDistance(currentX, currentY, goalX, goalY);
 		if (currentDistance <= 1)
 			return false;
@@ -124,7 +124,7 @@ namespace
 			return false;
 
 		auto& path = monster->GetPath();
-		path = FindPath(monster->GetX(), monster->GetY(), goalX, goalY);
+		path = FindPath(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ()), goalX, goalY);
 		monster->CachePathTarget(goalX, goalY);
 
 		if (path.empty())
@@ -134,7 +134,7 @@ namespace
 		}
 
 		const NODE next = path.back();
-		if (IsWalkableStep(monster->GetX(), monster->GetY(), next._x, next._y) == false)
+		if (IsWalkableStep(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ()), next._x, next._y) == false)
 		{
 			monster->ClearPath();
 			return false;
@@ -168,24 +168,24 @@ namespace MonsterHelper
 		// 캐시된 viewList를 oldList로 사용 — CollectUsers 첫 번째 호출 제거
 		const vector<ObjID> oldList = monster->GetViewList();
 
-		short x = monster->GetX();
-		short y = monster->GetY();
-		const short prevX = x;
+		float x = monster->GetX();
+		float z = monster->GetZ();
+		const float prevX = x;
 
-		SubjectHelper::MovePositionByDirection(x, y, static_cast<char>(LRng() % 4));
+		SubjectHelper::MovePositionByDirection(x, z, static_cast<char>(LRng() % 4));
 
 		// Guard: new position must stay inside this zone and within world bounds.
-		// Without this check a monster near y=499 can randomly step to y=500
+		// Without this check a monster near z=499 can randomly step to z=500
 		// (a different zone), causing UpdateObjectSectorAndPosition to return false
 		// and ASSERT_CRASH to fire.
-		if (!ZoneLayout::IsValidWorldPosition(x, y) ||
-		    ZoneLayout::GetZoneIdByWorld(x, y) != monster->GetZoneId())
+		if (!ZoneLayout::IsValidWorldPosition(x, z) ||
+		    ZoneLayout::GetZoneIdByWorld(x, z) != monster->GetZoneId())
 		{
 			return;
 		}
 
-		monster->UpdateFacing(x - prevX);
-		SectorHelper::UpdatePosition(monsterId, x, y);
+		monster->UpdateFacing(static_cast<int>(x - prevX));
+		SectorHelper::UpdatePosition(monsterId, x, z);
 
 		auto newList = SectorHelper::CollectUsers(monsterId);
 		SectorHelper::Replace(monsterId, oldList, newList);
@@ -221,7 +221,7 @@ namespace MonsterHelper
 		if (!forceWake && monster->GetType() == MONSTER_TYPE::AGGRO)
 		{
 			if (abs(monster->GetX() - waker->GetX()) > WAKE_RANGE) return;
-			if (abs(monster->GetY() - waker->GetY()) > WAKE_RANGE) return;
+			if (abs(monster->GetZ() - waker->GetZ()) > WAKE_RANGE) return;
 		}
 
 		// atomic exchange: 이미 활성화된 경우 중복 스케줄링 방지
@@ -248,7 +248,7 @@ namespace MonsterHelper
 		bool hasNearbyPlayer  = false;
 		ObjID attackTargetId;
 
-		GSector->ForEachNeighborObjID(monster->GetSectorX(), monster->GetSectorY(), [&](const ObjID& id)
+		GSector->ForEachNeighborObjID(monster->GetSectorX(), monster->GetSectorZ(), [&](const ObjID& id)
 		{
 			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
 			const auto user = ::GetGameObject<User>(id);
@@ -297,9 +297,9 @@ namespace MonsterHelper
 
 		ObjID mutableId = monsterId;
 		SectorHelper::GetRandomPosition(mutableId);
-		monster->SetSpawn(monster->GetX(), monster->GetY());
+		monster->SetSpawn(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ()));
 
-		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorZ(), [&](const shared_ptr<Subject>& object)
 		{
 			ObjID id = object->GetObjID();
 			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
@@ -349,22 +349,22 @@ namespace MonsterHelper
 		// ── Zone boundary guard ───────────────────────────────────────────────
 		// 존 경계 ZONE_BOUNDARY_MARGIN 칸 이내에 도달하면 추적을 중단하고 스폰으로 복귀.
 		// 몬스터가 Zone을 넘지 않으므로 Zone Transfer 로직이 불필요해진다.
-		if (IsNearZoneBoundary(monster->GetX(), monster->GetY()))
+		if (IsNearZoneBoundary(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ())))
 		{
 			monster->SetAttack(false);
 
 			const short spawnX = monster->GetSpawnX();
-			const short spawnY = monster->GetSpawnY();
+			const short spawnZ = monster->GetSpawnZ();
 
 			// 스폰 위치도 경계 근처이면(배치 오류 등) 즉시 비활성화
-			if (IsNearZoneBoundary(spawnX, spawnY))
+			if (IsNearZoneBoundary(spawnX, spawnZ))
 			{
 				monster->ClearPath();
 				monster->SetActive(false);
 				return;
 			}
 
-			if (TryAdvanceTowardGoal(monster, monsterId, spawnX, spawnY))
+			if (TryAdvanceTowardGoal(monster, monsterId, spawnX, spawnZ))
 				GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
 			else
 			{
@@ -377,11 +377,11 @@ namespace MonsterHelper
 
 		// ── Leash check: stop chasing if > 7 tiles from spawn in any axis ──
 		if (abs(monster->GetX() - monster->GetSpawnX()) > 7 ||
-		    abs(monster->GetY() - monster->GetSpawnY()) > 7)
+		    abs(monster->GetZ() - monster->GetSpawnZ()) > 7)
 		{
 			monster->SetAttack(false);
 
-			if (TryAdvanceTowardGoal(monster, monsterId, monster->GetSpawnX(), monster->GetSpawnY()))
+			if (TryAdvanceTowardGoal(monster, monsterId, monster->GetSpawnX(), monster->GetSpawnZ()))
 			{
 				GTimerThread->ScheduleAfter(monsterId, 500ms, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
 			}
@@ -406,7 +406,7 @@ namespace MonsterHelper
 		// ─────────────────────────────────────────────────────────────────────
 
 		// ── A* chase: target is > 1 tile away ────────────────────────────────
-		(void)TryAdvanceTowardGoal(monster, monsterId, target->GetX(), target->GetY());
+		(void)TryAdvanceTowardGoal(monster, monsterId, ToLegacyTile(target->GetX()), ToLegacyTile(target->GetZ()));
 
 		if (SubjectHelper::CanSee(monster, target))
 		{
@@ -447,7 +447,7 @@ namespace MonsterHelper
 		{
 			const ObjID  victimId = victim->GetObjID();
 			const int32_t victimHp = static_cast<int32_t>(victim->GetStat()->GetHp());
-			GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
+			GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorZ(), [&](const shared_ptr<Subject>& object)
 			{
 				ObjID id = object->GetObjID();
 				if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
@@ -469,7 +469,7 @@ namespace MonsterHelper
 		}
 
 		// 플레이어 사망 처리
-		GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorZ(), [&](const shared_ptr<Subject>& object)
 		{
 			ObjID id = object->GetObjID();
 			if (id.GetCategory<EnumCategory>() != EnumCategory::eUser) return;
@@ -483,7 +483,7 @@ namespace MonsterHelper
 		monster->SetAttack(false);
 		monster->SetActive(false);
 		monster->ClearPath();
-		GSector->RemoveObject(const_cast<ObjID&>(playerId), victim->RefSectorX(), victim->RefSectorY());
+		GSector->RemoveObject(const_cast<ObjID&>(playerId), victim->RefSectorX(), victim->RefSectorZ());
 		GTimerThread->ScheduleAfter(playerId, 30s, TIMER_EVENT_TYPE::EV_USER_RESPAWN);
 
 		(void)remaining;
@@ -503,7 +503,7 @@ namespace MonsterHelper
 			SectorHelper::GetRandomPosition(monsterId);  // GSector는 호출 전에 Zone::Run()이 설정
 
 			auto monster = ::GetGameObject<Monster>(monsterId);
-			if (monster) monster->SetSpawn(monster->GetX(), monster->GetY());
+			if (monster) monster->SetSpawn(ToLegacyTile(monster->GetX()), ToLegacyTile(monster->GetZ()));
 		}
 
 		cout << "[Zone " << zoneId << "] Monster Init Success ("
