@@ -614,7 +614,13 @@ void Game::HandleSkillResult(const SKILL_RESULT_ACK_PACKET& p)
 	case SkillResult::Cooldown: if (!basic) msg = Fmt("%s 재사용 대기 중", row->name); break;
 	case SkillResult::NoMana: msg = "마나가 부족합니다."; c = Rgb(0x8AB8FF); m_mpFlashAt = m_now; break;
 	case SkillResult::OutOfRange: if (!basic) msg = "대상이 너무 멉니다."; break;
-	case SkillResult::InvalidTarget: if (!basic) msg = "대상이 없습니다."; break;
+	case SkillResult::InvalidTarget:
+	{
+		// 대부분은 누르는 사이 대상이 쓰러진 경우다 — 그때는 조용히 넘어간다
+		const Entity* t = Find(m_target);
+		if (!basic && t && !t->dead) msg = "대상이 없습니다.";
+		break;
+	}
 	case SkillResult::Locked: msg = Fmt("%s — Lv.%u에 배울 수 있습니다.", row->name, static_cast<unsigned>(p.cooldownMs)); break;
 	case SkillResult::SafeZone: msg = "마을 안에서는 싸울 수 없습니다."; c = Rgb(0xFFD070); break;
 	case SkillResult::Stunned: msg = "몸이 움직이지 않습니다!"; c = Rgb(0xFFE070); break;

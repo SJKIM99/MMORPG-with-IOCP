@@ -1352,7 +1352,13 @@ void Game::RunScript(float dt)
 			m_scriptStep = 2;
 		else if (m_scriptStep == 2)
 		{
-			if (m_goal.kind == GoalKind::None) TargetNearestMonster();
+			if (m_goal.kind == GoalKind::None)
+			{
+				bool any = false;
+				for (auto& [id, e] : m_ents) if (e.kind == EntityKind::Monster && !e.dead && Cheb(m_predX, m_predY, e.tx, e.ty) <= 8) any = true;
+				if (any) TargetNearestMonster();
+				else SetGoal(Goal{ GoalKind::Move, ObjID{}, m_predX + util::RandI(-6, 6), m_predY + util::RandI(3, 8) });   // 사냥감을 찾아 더 나간다
+			}
 			Entity* t = Find(m_target);
 			if (t && !t->dead && m_now >= m_actionLockUntil)
 			{
