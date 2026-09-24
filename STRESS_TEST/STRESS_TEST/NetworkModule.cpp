@@ -48,11 +48,11 @@ constexpr uint16_t HEALTH_POTION_ID    = 1;  // 봇이 쓰는 회복 물약(빨�
 // 장비(무기) 아이템 id. 예전에는 "2번부터 전부 장비"였지만, 리니지풍 확장으로 7번 이후에
 // 아데나/물약/주문서가 추가되면서 더 이상 성립하지 않는다(봇이 주운 주문서를 장착하려 들면
 // 서버는 실패만 돌려주지만, 봇이 진짜 무기 슬롯을 잃어버려 부하 패턴이 바뀐다).
-// GameServer/Item/ItemTableData.h의 eEquipment 행(2~6, 15~18)과 같아야 한다 — 이 프로젝트는
+// GameServer/Item/ItemTableData.h의 eEquipment 행(2~6, 15~20)과 같아야 한다 — 이 프로젝트는
 // Protocol.h만 절대경로로 참조해서 아이템 표 헤더를 직접 include하지 않는다.
 [[nodiscard]] constexpr bool IsEquipmentItemId(uint16_t itemId) noexcept
 {
-    return (itemId >= 2 && itemId <= 6) || (itemId >= 15 && itemId <= 18);
+    return (itemId >= 2 && itemId <= 6) || (itemId >= 15 && itemId <= 20);
 }
 
 // ConsumeReceivedBytes()는 MAX_PACKET_SIZE를 넘는 패킷을 받으면 그 클라이언트를

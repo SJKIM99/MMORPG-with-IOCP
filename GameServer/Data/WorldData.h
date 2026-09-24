@@ -98,7 +98,7 @@ namespace WorldData
 	inline constexpr const char* kTownName = "여명의 마을";
 
 	// 행 = y, 열 = x. 막힌 칸: # 성벽, O 망루, B 큰 건물, H 집, F 분수, T 나무,
-	// L 가로등, * 꽃밭, N NPC가 서 있는 칸, S 가판대. 나머지(. = , G)는 걸을 수 있다.
+	// L 가로등, * 꽃밭, S 가판대. 나머지(. = , G, N = NPC의 원래 자리)는 걸을 수 있다.
 	// (. 풀밭, = 길, , 광장 포석, G 성문 — 차이는 클라이언트 표시용)
 	inline constexpr const char* kTownLayout[kTownSize] =
 	{
@@ -163,8 +163,8 @@ namespace WorldData
 	{
 		switch (c)
 		{
-		case '#': case 'O': case 'B': case 'H': case 'F': case 'T': case 'L': case '*': case 'N': case 'S':
-			return true;
+		case '#': case 'O': case 'B': case 'H': case 'F': case 'T': case 'L': case '*': case 'S':
+			return true;   // 'N'(NPC 자리)은 V2부터 걸을 수 있다 — NPC가 배회하고, 사람을 막지 않는다
 		default:
 			return false;
 		}
@@ -217,28 +217,68 @@ namespace WorldData
 		{ BuildingKind::eHouse,      kTownX0 + 25, kTownY0 + 36, kTownX0 + 28, kTownY0 + 39, "" },
 	};
 
-	// ── NPC — 서버는 "플레이어가 NPC 근처인가"만 검증하고, 모양/대사는 클라이언트 몫이다.
-	// NPC는 움직이지 않으므로 서버 월드(Sector)에 오브젝트로 올리지 않는다 — 기존
-	// 봇/레거시 클라이언트가 모르는 카테고리의 SUBJECT_ADD_NFY를 받을 일이 없다.
-	enum class NpcKind : uint8_t { eMerchant, eWeaponSmith, eTeleporter, eGuard };
+	// ── NPC ─────────────────────────────────────────────────────────────────
+	// V2: 마을 NPC는 서버가 배회시킨다(Npc/NpcHelper — 마을 Zone 스레드, 확장 세션에만
+	// NPC_* 패킷). 기존 봇/레거시 클라이언트가 모르는 카테고리의 SUBJECT_ADD_NFY를 받지
+	// 않도록 Sector의 오브젝트로 올리지는 않는다. 여기의 x, y는 "집"(배회의 중심).
+	enum class NpcKind : uint8_t
+	{
+		eMerchant, eWeaponSmith, eTeleporter, eGuard,
+		// V2 — 살아 있는 마을
+		eElder,       // 촌장(이야기의 시작)
+		ePriest,      // 사제(치유의 기도)
+		eInnkeeper,   // 여관 주인(수프·소문)
+		eBard,        // 음유시인(노래)
+		eChild,       // 뛰노는 아이
+		eVillager,    // 주민
+		eFarmer,      // 농부
+		eDog, eCat, eChicken,   // 동물(쓰다듬기)
+	};
+
+	[[nodiscard]] constexpr bool IsAnimal(NpcKind k) noexcept
+	{
+		return k == NpcKind::eDog || k == NpcKind::eCat || k == NpcKind::eChicken;
+	}
+
+	// NPC 서비스(NPC_SERVICE_REQ)
+	enum class NpcService : uint8_t { None, Heal, Soup };
 
 	struct NpcRow
 	{
 		uint16_t    id;
 		NpcKind     kind;
 		const char* name;
-		int16_t     x, y;          // 월드 좌표(레이아웃에서 'N' 칸)
+		int16_t     x, y;          // 집(배회의 중심) — 걸을 수 있는 칸
 		uint8_t     facing;        // 클라 표시용: 0=남서 1=남동 2=북동 3=북서
 		const char* greeting;
+		uint8_t     wander = 0;    // 배회 반경(칸). 0 = 제자리(가끔 돌아본다)
+		uint16_t    stepMs = 650;  // 한 칸 걷는 시간(ms)
+		uint32_t    color = 0;     // 옷 색(클라, 0 = 종류 기본)
 	};
 
 	inline constexpr NpcRow kNpcs[] =
 	{
-		{ 1, NpcKind::eMerchant,    "잡화상인 그레타",  kTownX0 + 16, kTownY0 + 16, 1, "어서 오세요! 물약과 주문서가 가득하답니다." },
-		{ 2, NpcKind::eWeaponSmith, "대장장이 브론",    kTownX0 + 27, kTownY0 + 16, 0, "좋은 무기는 좋은 사냥의 시작이지. 쓰던 물건도 사 주마." },
-		{ 3, NpcKind::eTeleporter,  "텔레포터 루시엔",  kTownX0 + 21, kTownY0 + 17, 1, "어디로 모셔다 드릴까요? 먼 곳일수록 값이 비쌉니다." },
+		{ 1, NpcKind::eMerchant,    "잡화상인 그레타",  kTownX0 + 16, kTownY0 + 16, 1, "어서 오세요! 물약과 주문서가 가득하답니다.", 1, 900 },
+		{ 2, NpcKind::eWeaponSmith, "대장장이 브론",    kTownX0 + 27, kTownY0 + 16, 0, "좋은 무기는 좋은 사냥의 시작이지. 쓰던 물건도 사 주마.", 1, 900 },
+		{ 3, NpcKind::eTeleporter,  "텔레포터 루시엔",  kTownX0 + 21, kTownY0 + 17, 1, "어디로 모셔다 드릴까요? 먼 곳일수록 값이 비쌉니다.", 1, 900 },
 		{ 4, NpcKind::eGuard,       "마을 경비병",      kTownX0 + 18, kTownY0 + 2,  1, "마을 안에서는 싸움이 금지되어 있소." },
 		{ 5, NpcKind::eGuard,       "마을 경비병",      kTownX0 + 25, kTownY0 + 2,  0, "성 밖은 위험하니 물약을 챙기시오." },
+		// ── V2: 살아 있는 마을 ──
+		{ 6,  NpcKind::eElder,     "촌장 알데릭",      kTownX0 + 18, kTownY0 + 19, 1, "어서 오게, 젊은이. 요즘 숲이 조용해도 너무 조용하다네.", 3, 1100 },
+		{ 7,  NpcKind::ePriest,    "사제 세라핀",      kTownX0 + 10, kTownY0 + 30, 1, "빛이 함께하기를. 다친 곳이 있다면 기도를 올려 드리지요.", 2, 900 },
+		{ 8,  NpcKind::eInnkeeper, "여관 주인 마르타", kTownX0 + 33, kTownY0 + 30, 0, "따뜻한 수프 한 그릇 어때요? 30 아데나면 속이 든든해요!", 2, 800 },
+		{ 9,  NpcKind::eBard,      "음유시인 리안",    kTownX0 + 26, kTownY0 + 22, 0, "새벽을 지키던 기사들의 노래를 들어 보시겠소?", 1, 1000 },
+		{ 10, NpcKind::eChild,     "꼬마 토비",        kTownX0 + 22, kTownY0 + 26, 1, "형도 모험가야? 나도 크면 기사 될 거야!", 6, 380, 0x3A7AD8 },
+		{ 11, NpcKind::eChild,     "꼬마 미나",        kTownX0 + 19, kTownY0 + 25, 0, "쉿! 지금 토비랑 숨바꼭질하는 중이야.", 6, 400, 0xD85A7A },
+		{ 12, NpcKind::eVillager,  "오르다 할멈",      kTownX0 + 20, kTownY0 + 8,  1, "아이고, 젊은이. 이 늙은이 말 좀 들어 보겠수?", 3, 1300, 0x6A5A7A },
+		{ 13, NpcKind::eFarmer,    "농부 한스",        kTownX0 + 6,  kTownY0 + 21, 1, "허허, 닭 좀 봐 주시오. 자꾸 도망가서 말이오.", 4, 800, 0x7A6A3A },
+		{ 14, NpcKind::eGuard,     "마을 경비병",      kTownX0 + 18, kTownY0 + 41, 3, "남쪽 평원엔 젤리와 고블린이 많소. 처음이라면 거기서 시작하시오." },
+		{ 15, NpcKind::eGuard,     "마을 경비병",      kTownX0 + 25, kTownY0 + 41, 2, "몬스터 몸이 붉게 달아오르면 강공격이오. 바닥을 보고 피하시오." },
+		{ 16, NpcKind::eGuard,     "순찰 경비병",      kTownX0 + 21, kTownY0 + 12, 1, "순찰 중이오. 무슨 일이오?", 9, 700 },
+		{ 17, NpcKind::eDog,       "누렁이",           kTownX0 + 23, kTownY0 + 27, 1, "멍!", 10, 300 },
+		{ 18, NpcKind::eCat,       "나비",             kTownX0 + 30, kTownY0 + 31, 0, "야옹~", 2, 700 },
+		{ 19, NpcKind::eChicken,   "닭",               kTownX0 + 4,  kTownY0 + 18, 1, "꼬꼬!", 3, 450 },
+		{ 20, NpcKind::eChicken,   "닭",               kTownX0 + 6,  kTownY0 + 17, 0, "꼬꼬댁!", 3, 450 },
 	};
 	inline constexpr size_t kNpcCount = sizeof(kNpcs) / sizeof(kNpcs[0]);
 
@@ -260,6 +300,21 @@ namespace WorldData
 		return (dx < 0 ? -dx : dx) <= kNpcInteractRange && (dy < 0 ? -dy : dy) <= kNpcInteractRange;
 	}
 
+	namespace Detail
+	{
+		constexpr bool ValidateNpcs() noexcept
+		{
+			for (size_t i = 0; i < kNpcCount; ++i)
+			{
+				if (!IsInTown(kNpcs[i].x, kNpcs[i].y) || IsBlocked(kNpcs[i].x, kNpcs[i].y)) return false;
+				for (size_t j = i + 1; j < kNpcCount; ++j)
+					if (kNpcs[i].id == kNpcs[j].id) return false;
+			}
+			return kNpcCount <= 32;
+		}
+	}
+	static_assert(Detail::ValidateNpcs(), "WorldData::kNpcs: NPC 집은 마을 안의 걸을 수 있는 칸이어야 하고 id는 겹치면 안 됩니다(최대 32).");
+
 	// ── 상점: NPC별 판매 목록(아이템 id). 매입은 상인(eMerchant/eWeaponSmith) 누구나 한다.
 	struct ShopRow
 	{
@@ -270,7 +325,7 @@ namespace WorldData
 	inline constexpr ShopRow kShops[] =
 	{
 		{ 1, { 1, 8, 9, 10, 11, 12, 13, 0 } },   // 물약/주문서
-		{ 2, { 2, 3, 15, 0, 0, 0, 0, 0 } },       // 무기
+		{ 2, { 2, 19, 20, 3, 15, 0, 0, 0 } },     // 무기(직업별 초보자 무기 포함)
 	};
 
 	[[nodiscard]] constexpr bool ShopSells(uint16_t npcId, uint16_t itemId) noexcept
@@ -325,8 +380,8 @@ namespace WorldData
 						const char c = TownCell(x, y);
 						if (c != 'B' && c != 'H') return false;
 					}
-			for (const auto& npc : kNpcs)
-				if (TownCell(npc.x, npc.y) != 'N') return false;
+			// NPC 집 칸은 ValidateNpcs(걸을 수 있는 마을 칸)가 따로 검사한다 — 'N'은 원래
+			// 서 있던 상인들의 자리 표시일 뿐이다.
 			for (const auto& p : kTownSpawnPoints)
 				if (IsBlocked(p.x, p.y) || !IsInTown(p.x, p.y)) return false;
 			return true;

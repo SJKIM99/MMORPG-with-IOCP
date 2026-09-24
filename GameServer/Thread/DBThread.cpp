@@ -154,6 +154,15 @@ void DBThread::RequestSaveAlignment(int playerId, int16_t alignment, uint16_t pk
 	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
 }
 
+void DBThread::RequestSaveProgress(int playerId, std::vector<uint8_t> data)
+{
+	auto event        = std::make_shared<DB_PROGRESS_SAVE_EVENT>();
+	event->wakeupTime = Now();
+	event->playerId   = playerId;
+	event->data       = std::move(data);
+	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
+}
+
 void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 {
 	ScopedDBConnection scopedConnection(GDBConnectionPool);
@@ -169,9 +178,11 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 			// Skip password verification — dev prototype with no auth requirement
 			DB_USER_INFO userInfo = connection->ExtractUserInfo(e->name);
 			vector<DB_ITEM_INFO> items = connection->ExtractInventory(userInfo._playerId);
-			GZoneManager->EnqueueByWorld(userInfo._x, userInfo._y, [session = e->session, userInfo, items]()
+			std::vector<uint8_t> progress;
+			(void)connection->LoadPlayerProgress(userInfo._playerId, progress);
+			GZoneManager->EnqueueByWorld(userInfo._x, userInfo._y, [session = e->session, userInfo, items, progress = std::move(progress)]()
 			{
-				UserHelper::HandleGetUserInfo(session, userInfo, items);
+				UserHelper::HandleGetUserInfo(session, userInfo, items, progress);
 			});
 		}
 		else {
@@ -212,6 +223,10 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 				UserHelper::HandleAddUserInfo(session, info);
 			});
 		}
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_PROGRESS_SAVE_EVENT>(event))
+	{
+		connection->SavePlayerProgress(e->playerId, e->data);
 	}
 	else if (const auto e = std::dynamic_pointer_cast<DB_SAVE_EVENT>(event))
 	{

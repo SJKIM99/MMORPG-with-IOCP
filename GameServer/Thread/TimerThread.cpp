@@ -1,4 +1,6 @@
 #include "pch.h"
+#include "Combat/CombatHelper.h"
+#include "Combat/SkillHelper.h"
 #include "TimerThread.h"
 #include "GameObjectManager.h"
 #include "MonsterHelper.h"
@@ -6,6 +8,7 @@
 #include "Item/ItemHelper.h"
 #include "Zone/ZoneManager.h"
 #include "Content/ContentHelper.h"
+#include "Npc/NpcHelper.h"
 
 bool TimerThread::TimerEventCompare::operator()(const TIMER_EVENT& lhs, const TIMER_EVENT& rhs) const noexcept
 {
@@ -225,6 +228,36 @@ void TimerThread::Dispatch(const TIMER_EVENT& timerEvent)
 		enqueue([subjectId]()
 		{
 			ContentHelper::HandleHasteExpire(subjectId);
+		});
+		break;
+
+	// ── V2 전투 ──
+	case TIMER_EVENT_TYPE::EV_SKILL_IMPACT:
+		enqueue([subjectId, seq = static_cast<uint32_t>(targetId.GetDatabaseID())]()
+		{
+			SkillHelper::HandleImpact(subjectId, seq);
+		});
+		break;
+
+	case TIMER_EVENT_TYPE::EV_STATUS_TICK:
+		enqueue([subjectId]()
+		{
+			CombatHelper::HandleStatusTick(subjectId);
+		});
+		break;
+
+	case TIMER_EVENT_TYPE::EV_MONSTER_PATTERN:
+		enqueue([subjectId, targetId]()
+		{
+			MonsterHelper::HandlePatternImpact(subjectId, targetId);
+		});
+		break;
+
+	// 마을 NPC: 예약 시점의 Zone(마을)으로 곧장 간다 — NPC는 GameObject가 아니다.
+	case TIMER_EVENT_TYPE::EV_NPC_TICK:
+		enqueue([]()
+		{
+			NpcHelper::HandleTick();
 		});
 		break;
 	}

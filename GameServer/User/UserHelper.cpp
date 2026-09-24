@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Combat/CombatHelper.h"
 #include "Data/MoveRule.h"
 #include "UserHelper.h"
 #include "GameObjectManager.h"
@@ -786,6 +787,11 @@ namespace UserHelper
 		{
 			// 레벨업: 최대 HP/기본 공격력 재계산 + HP 가득(연출상 "레벨업 = 부활의 순간")
 			player->ApplyLevelStats(true);
+			if (player->IsExtended())
+			{
+				CombatHelper::SendStats(player);
+				CombatHelper::SendResource(player);
+			}
 		}
 
 		// 레거시 알림은 예전과 같은 조건(경험치가 바뀔 때마다)으로 보낸다.
@@ -806,7 +812,8 @@ namespace UserHelper
 			BroadcastInfoEx(player);
 	}
 
-	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage, uint8_t damageFlags)
+	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage, uint8_t damageFlags,
+		uint16_t skillId, uint8_t comboId, uint8_t flags2, uint8_t hitIndex)
 	{
 		auto monster = ::GetGameObject<Monster>(monsterId);
 		auto attacker = ::GetGameObject<User>(playerId);
@@ -820,7 +827,7 @@ namespace UserHelper
 		if (remaining > 0)
 		{
 			SendUSER_ATTACK_ACK(attacker, monster, clamped);
-			BroadcastDamage(monster, playerId, clamped, damageFlags);
+			BroadcastDamage(monster, playerId, clamped, damageFlags, skillId, comboId, flags2, hitIndex);
 			// 리니지처럼 맞으면 반격한다(선공 몬스터가 아니어도 때린 사람을 쫓는다).
 			MonsterHelper::Provoke(monster, attacker);
 			return;
@@ -831,7 +838,8 @@ namespace UserHelper
 		const short deathX = monster->GetX();
 		const short deathY = monster->GetY();
 
-		BroadcastDamage(monster, playerId, clamped, static_cast<uint8_t>(damageFlags | DAMAGE_KILLED));
+		BroadcastDamage(monster, playerId, clamped, static_cast<uint8_t>(damageFlags | DAMAGE_KILLED), skillId, comboId, flags2, hitIndex);
+		monster->Status().Clear();
 
 		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
@@ -989,6 +997,20 @@ namespace UserHelper
 		// 레벨이 오를수록 회복량이 늘고, 마을(안전지대)에서는 두 배로 회복한다.
 		const bool inSafeZone = WorldData::IsSafeZone(player->GetX(), player->GetY());
 		const uint16_t before = player->GetStat()->GetHp();
+		if (player->IsExtended())
+		{
+			// V2: 능력치 기반 회복. 전투에서 벗어나 4초가 지나면 세 배(쉬면 빨리 찬다).
+			const uint32_t now = GetNowTime();
+			const bool resting = now - player->m_lastCombatAt > 4000;
+			const uint32_t mul = inSafeZone ? 4u : (resting ? 3u : 1u);
+			player->GetStat()->HealHp(static_cast<uint16_t>(std::min<uint32_t>(65535, player->m_derived.hpRegen * mul)), player->GetStat()->GetMaxHp());
+			const uint16_t mpBefore = player->m_mp;
+			player->m_mp = static_cast<uint16_t>(std::min<uint32_t>(player->m_derived.maxMp, player->m_mp + player->m_derived.mpRegen * mul));
+			if (player->GetStat()->GetHp() != before || player->m_mp != mpBefore)
+				CombatHelper::SendResource(player);
+			GTimerThread->ScheduleAfter(playerId, 2500ms, TIMER_EVENT_TYPE::EV_HEAL);
+			return;
+		}
 		player->GetStat()->HealHp(LevelTable::RegenPerTick(player->GetStat()->GetLevel(), inSafeZone), player->GetStat()->GetMaxHp());
 		if (player->GetStat()->GetHp() != before || !player->IsExtended())
 			SendUSER_HEAL_INF(player);  // 확장 세션에는 실제로 바뀌었을 때만(가득 찬 상태면 생략)
@@ -1036,7 +1058,8 @@ namespace UserHelper
 		session->PostSend(packet);
 	}
 
-	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items)
+	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items,
+		const std::vector<uint8_t>& progress)
 	{
 		if (session == nullptr || session->m_state != SOCKET_STATE::ST_ALLOC)
 			return;
@@ -1063,6 +1086,24 @@ namespace UserHelper
 		session->BindOwner(player);
 		player->SetGameSession(session);
 		session->m_state = SOCKET_STATE::ST_INGAME;
+		// V2: 직업·포인트 복원 후 능력치를 다시 계산(세션이 붙은 뒤라 확장 공식이 적용된다).
+		if (player->IsExtended())
+		{
+			// V2 기록이 없는 기존 캐릭터는 이번 접속에서 고른 직업으로 시작한다(한 번만).
+			if (!player->DeserializeProgress(progress))
+			{
+				player->m_classId = static_cast<ClassId>(ClassTable::IsValid(session->GetNewClassId()) ? session->GetNewClassId() : 0);
+				if (player->m_classId != ClassId::Knight)
+				{
+					// 새 직업의 초보자 무기를 쥐여 준다(기사는 가진 검을 그대로 쓴다).
+					std::vector<uint16_t> touched;
+					if (player->GetInventory()->TryAddItem(ClassTable::Get(player->m_classId).starterWeapon, 1, &touched) && !touched.empty())
+						(void)player->GetInventory()->TryEquip(touched.front());
+				}
+				SaveProgress(player);
+			}
+			player->RecomputeStats(true);
+		}
 
 		ObjID objId = player->GetObjID();
 		if (IsValidWorldPosition(userInfo._x, userInfo._y))
@@ -1088,6 +1129,8 @@ namespace UserHelper
 			SendITEM_LIST_EX_ACK(player);
 			SendUSER_INFO_EX_INF(player);
 			SendADENA_INF(player, 0, AdenaReason::Init);
+			CombatHelper::SendStats(player);
+			CombatHelper::SendResource(player);
 		}
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
@@ -1116,6 +1159,13 @@ namespace UserHelper
 
 		ObjID objId = player->GetObjID();
 		const bool extended = player->IsExtended();
+		if (extended)
+		{
+			// 로그인 화면에서 고른 직업으로 시작한다.
+			player->m_classId = static_cast<ClassId>(ClassTable::IsValid(session->GetNewClassId()) ? session->GetNewClassId() : 0);
+			player->RecomputeStats(true);
+			SaveProgress(player);
+		}
 		if (extended && LCurrentZoneId == static_cast<ZoneId>(WorldData::kTownZoneId))
 		{
 			// 새 클라이언트의 신규 캐릭터는 마을 광장에서 시작한다(DBThread가 이미
@@ -1135,7 +1185,10 @@ namespace UserHelper
 			SendITEM_LIST_EX_ACK(player);
 			// 리니지의 "초보자 지원" — 물약/주문서/무기/아데나를 쥐여 준다.
 			ContentHelper::GiveStarterKit(player);
+			player->RecomputeStats(true);
 			SendUSER_INFO_EX_INF(player);
+			CombatHelper::SendStats(player);
+			CombatHelper::SendResource(player);
 		}
 
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
@@ -1193,6 +1246,7 @@ namespace UserHelper
 			packet.enchant   = user->GetInventory()->GetEquippedEnchant();
 			packet.hp        = user->GetStat()->GetHp();
 			packet.maxhp     = user->GetStat()->GetMaxHp();
+			packet.classId   = static_cast<uint8_t>(user->m_classId);
 		}
 		else if (category == EnumCategory::eMonster)
 		{
@@ -1334,7 +1388,8 @@ namespace UserHelper
 		SendSYSTEM_MESSAGE_INF(user, code, param1, param2);
 	}
 
-	void BroadcastDamage(const Subject::SharedPtr& victim, const ObjID& attackerId, int32_t damage, uint8_t flags)
+	void BroadcastDamage(const Subject::SharedPtr& victim, const ObjID& attackerId, int32_t damage, uint8_t flags,
+		uint16_t skillId, uint8_t comboId, uint8_t flags2, uint8_t hitIndex)
 	{
 		if (victim == nullptr || victim->GetSectorX() < 0)
 			return;
@@ -1347,6 +1402,10 @@ namespace UserHelper
 		packet.maxhp      = victim->GetStat()->GetMaxHp();
 		packet.damage     = damage;
 		packet.flags      = flags;
+		packet.skillId    = skillId;
+		packet.comboId    = comboId;
+		packet.flags2     = flags2;
+		packet.hitIndex   = hitIndex;
 
 		GSector->ForEachNeighborObject(victim->GetSectorX(), victim->GetSectorY(), [&](const shared_ptr<Subject>& object)
 		{
@@ -1490,7 +1549,7 @@ namespace UserHelper
 		// 토큰 버킷: 늦게 온 패킷이 잃은 시간은 kCatchupMs까지 되찾고, kSlackMs까지는
 		// 일찍 와도 받아 준다. 그보다 빠르면(속도 핵/시계 조작) 거절하고 좌표를 되돌린다.
 		const uint32_t earliest = now > MoveRule::kCatchupMs ? now - MoveRule::kCatchupMs : 0;
-		const uint32_t start = std::max(player->m_moveClock, earliest);
+		const uint32_t start = (std::max)(player->m_moveClock, earliest);
 		if (start > now + MoveRule::kSlackMs)
 		{
 			SendUSER_MOVE_EX_ACK(player, seq, MoveResult::TooFast, cost);
@@ -1508,5 +1567,12 @@ namespace UserHelper
 		player->SetLastStepMs(cost);
 		SectorHelper::HandlePlayerMove(player, x, y, false);
 		SendUSER_MOVE_EX_ACK(player, seq, MoveResult::Ok, cost);
+	}
+
+	void SaveProgress(const shared_ptr<User>& user)
+	{
+		if (user == nullptr || user->GetPlayerId() == 0 || !user->IsExtended())
+			return;
+		GDBThread->RequestSaveProgress(user->GetPlayerId(), user->SerializeProgress());
 	}
 }

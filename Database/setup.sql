@@ -702,6 +702,56 @@ END
 GO
 
 -- ============================================================
+-- 4-1. V2 캐릭터 진행 데이터 (직업·능력치 포인트·퀘스트 등)
+--   기능이 늘 때마다 Players에 컬럼을 늘리는 대신, 서버가 버전 있는 바이너리 한
+--   덩어리로 읽고 쓴다(User::SerializeProgress). 없으면 기본값(황혼의 기사)으로 시작.
+-- ============================================================
+IF OBJECT_ID(N'PlayerProgress', N'U') IS NULL
+BEGIN
+    CREATE TABLE PlayerProgress (
+        playerId  INT             NOT NULL PRIMARY KEY,
+        data      VARBINARY(4000) NOT NULL,
+        updatedAt DATETIME2       NOT NULL CONSTRAINT DF_PlayerProgress_updatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_PlayerProgress_Players FOREIGN KEY (playerId) REFERENCES Players(playerId) ON DELETE CASCADE
+    );
+END
+GO
+
+IF OBJECT_ID(N'LoadPlayerProgress', N'P') IS NOT NULL
+    DROP PROCEDURE LoadPlayerProgress;
+GO
+
+CREATE PROCEDURE LoadPlayerProgress
+    @playerId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT data FROM PlayerProgress WHERE playerId = @playerId;
+END
+GO
+
+IF OBJECT_ID(N'SavePlayerProgress', N'P') IS NOT NULL
+    DROP PROCEDURE SavePlayerProgress;
+GO
+
+CREATE PROCEDURE SavePlayerProgress
+    @playerId INT,
+    @data     VARBINARY(4000)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    BEGIN TRAN;
+    UPDATE PlayerProgress WITH (UPDLOCK, HOLDLOCK)
+    SET data = @data, updatedAt = SYSUTCDATETIME()
+    WHERE playerId = @playerId;
+    IF @@ROWCOUNT = 0
+        INSERT INTO PlayerProgress (playerId, data) VALUES (@playerId, @data);
+    COMMIT TRAN;
+END
+GO
+
+-- ============================================================
 -- 5. ODBC System DSN 설정 안내 (64비트 빌드 기준)
 -- ============================================================
 -- 관리자 권한 PowerShell에서 아래 명령어 실행:

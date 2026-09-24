@@ -486,3 +486,35 @@ bool DBConnection::ShopTransaction(int playerId, uint32_t adena, const DB_ITEM_S
 	if (!BindParam(8, SQL_C_UTINYINT, SQL_TINYINT,  0, (SQLPOINTER)&enc,  nullptr)) return false;
 	return Execute(query.c_str());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V2 캐릭터 진행 데이터 — PlayerProgress(playerId, data VARBINARY(4000))
+// ─────────────────────────────────────────────────────────────────────────────
+bool DBConnection::LoadPlayerProgress(int playerId, std::vector<uint8_t>& out)
+{
+	out.clear();
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC LoadPlayerProgress ?";
+	SQLINTEGER pid = playerId;
+	std::vector<uint8_t> buffer(4000);
+	SQLLEN cb_data{};
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_BINARY, buffer.size(), buffer.data(), &cb_data)) return false;
+	if (!Fetch())
+		return true;   // 행 없음 = 아직 저장한 적 없는 캐릭터(기본값으로 시작)
+	if (cb_data > 0 && static_cast<size_t>(cb_data) <= buffer.size())
+		out.assign(buffer.begin(), buffer.begin() + cb_data);
+	return true;
+}
+
+bool DBConnection::SavePlayerProgress(int playerId, const std::vector<uint8_t>& data)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC SavePlayerProgress ?, ?";
+	SQLINTEGER pid = playerId;
+	SQLLEN cb_data = static_cast<SQLLEN>(data.size());
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_BINARY, SQL_VARBINARY, 4000, (SQLPOINTER)data.data(), &cb_data)) return false;
+	return Execute(query.c_str());
+}

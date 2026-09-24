@@ -3,6 +3,7 @@
 #include "Transform.h"
 #include "Stat.h"
 #include "GameObject.h"
+#include "Combat/StatusSet.h"
 
 class Subject : public GameObject, public Transform
 {
@@ -12,6 +13,8 @@ class Subject : public GameObject, public Transform
 	// 마지막 걸음에 걸린 시간(ms). SUBJECT_MOVE_NFY.move_time으로 보내 클라이언트가 그
 	// 속도로 보간하게 한다. 0 = 순간이동/재배치(보간 없이 바로 옮김).
 	uint16_t         m_lastStepMs = 0;
+	// V2 상태이상(기절·빙결·화상·중독·버프…) — 소유 Zone 스레드 전용
+	StatusSet        m_status;
 
 public:
 	using SharedPtr = shared_ptr<Subject>;
@@ -23,6 +26,7 @@ public:
 
 	std::string& GetName() { return m_Name; }
 	Stat::SharedPtr GetStat() { return m_stat; }
+	[[nodiscard]] const Stat* GetStatConst() const noexcept { return m_stat.get(); }
 
 	bool IsFacingLeft() const           { return m_facingLeft; }
 	void SetFacingLeft(bool facingLeft) { m_facingLeft = facingLeft; }
@@ -33,6 +37,8 @@ public:
 	void SetName(const std::string& name) { m_Name = name; }
 
 	[[nodiscard]] uint16_t GetLastStepMs() const noexcept { return m_lastStepMs; }
+	[[nodiscard]] StatusSet& Status() noexcept { return m_status; }
+	[[nodiscard]] const StatusSet& Status() const noexcept { return m_status; }
 	void SetLastStepMs(uint32_t ms) noexcept { m_lastStepMs = static_cast<uint16_t>(ms > 60000 ? 60000 : ms); }
 
 	virtual void InitInstance() override;

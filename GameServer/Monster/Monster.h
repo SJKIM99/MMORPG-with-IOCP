@@ -32,6 +32,20 @@ class Monster : public Subject
 	std::atomic<bool> m_bossSkillLoop{ false };
 	short m_skillX = 0;
 	short m_skillY = 0;
+public:
+	// ── V2 강공격 패턴(예고 → 판정). 소유 Zone 스레드 전용 ──
+	struct PatternState
+	{
+		MonsterPattern type = MonsterPattern::None;
+		short cx = 0, cy = 0;          // 판정 중심(원) / 끝점(선)
+		short fromX = 0, fromY = 0;
+		int8_t dx = 0, dy = 0;         // 돌진 방향
+		uint8_t radius = 0;
+		bool pending = false;
+	};
+	PatternState m_pattern;
+	uint32_t m_patternReadyAt = 0;   // 다음 패턴 가능 시각(GetNowTime)
+	uint32_t m_busyUntil = 0;        // 예고·후딜 동안 이동/평타를 멈춘다
 
 public:
 	using SharedPtr = shared_ptr<Monster>;

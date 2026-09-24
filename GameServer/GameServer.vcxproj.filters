@@ -52,6 +52,12 @@
     <Filter Include="Data">
       <UniqueIdentifier>{6e2b9d41-0a7c-4f3e-8b55-1c9d4e7f2a63}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Combat">
+      <UniqueIdentifier>{b1d4e2f7-5c3a-4e8b-9a16-2f7c8d9e0a41}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Npc">
+      <UniqueIdentifier>{c7e2a9d3-1b4f-4a6c-8d25-6e9f0b3c7d52}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\CoreGlobal.cpp">
@@ -314,6 +320,15 @@
     <ClCompile Include="Content\ContentHelper.cpp">
       <Filter>Content</Filter>
     </ClCompile>
+    <ClCompile Include="Combat\CombatHelper.cpp">
+      <Filter>Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="Combat\SkillHelper.cpp">
+      <Filter>Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="Npc\NpcHelper.cpp">
+      <Filter>Npc</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Content\ContentHelper.h">
@@ -324,6 +339,24 @@
     </ClInclude>
     <ClInclude Include="Data\MoveRule.h">
       <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\CombatData.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\NpcTalk.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Combat\CombatHelper.h">
+      <Filter>Combat</Filter>
+    </ClInclude>
+    <ClInclude Include="Combat\SkillHelper.h">
+      <Filter>Combat</Filter>
+    </ClInclude>
+    <ClInclude Include="Combat\StatusSet.h">
+      <Filter>Combat</Filter>
+    </ClInclude>
+    <ClInclude Include="Npc\NpcHelper.h">
+      <Filter>Npc</Filter>
     </ClInclude>
     <ClInclude Include="Data\MonsterTable.h">
       <Filter>Data</Filter>

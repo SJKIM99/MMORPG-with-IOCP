@@ -8,6 +8,8 @@ namespace MonsterHelper
 {
 	void RandomMove(ObjID& monsterId);
 	void AStarMove(ObjID& monsterId, short nextX, short nextY);
+	// V2 강공격 판정(예고 시간이 지난 뒤, EV_MONSTER_PATTERN)
+	void HandlePatternImpact(const ObjID& monsterId, const ObjID& targetId);
 
 	void WakeUpMonster(ObjID& monsterId, ObjID& wakerId, bool forceWake = false);
 

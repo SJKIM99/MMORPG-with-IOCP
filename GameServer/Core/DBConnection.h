@@ -43,6 +43,10 @@ public:
 	bool			SavePlayerAlignment(int playerId, int16_t alignment, uint16_t pkCount);
 	// 상점 거래: 아데나 + 슬롯 하나를 하나의 SQL 트랜잭션으로 반영한다(ShopTransaction 프로시저).
 	bool			ShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot);
+	// V2 캐릭터 진행 데이터(직업·능력치 포인트·퀘스트 등)를 한 덩어리(버전 있는 바이너리)로
+	// 읽고 쓴다(PlayerProgress 테이블). 기능이 늘 때마다 컬럼을 늘리지 않기 위함.
+	bool			LoadPlayerProgress(int playerId, std::vector<uint8_t>& out);
+	bool			SavePlayerProgress(int playerId, const std::vector<uint8_t>& data);
 
 	// a/b 두 슬롯을 하나의 SQL 트랜잭션으로 함께 반영한다(각 슬롯은 독립적으로
 	// upsert 또는 삭제될 수 있다 — DB_ITEM_SLOT_SAVE::hasItem 참고). 장착 시 이전

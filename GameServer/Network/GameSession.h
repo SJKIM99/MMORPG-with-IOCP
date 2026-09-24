@@ -232,6 +232,7 @@ public:
 	// 로그인 요청을 처리하는 시점(ST_ALLOC, 기본 로직 스레드)에 한 번 쓰이고 이후엔
 	// 읽기만 하므로 원자적일 필요까지는 없지만, 여러 Zone 스레드가 읽으므로 atomic으로 둔다.
 	atomic<bool> m_extended{ false };
+	atomic<uint8_t> m_newClassId{ 0 };   // V2: 새 캐릭터를 만들 때 고른 직업(로그인 패킷)
 
 protected:
 	unique_ptr<RecvContext> m_recvContext;
@@ -247,6 +248,8 @@ public:
 	[[nodiscard]] shared_ptr<User> GetOwner() const;
 	[[nodiscard]] bool IsExtended() const noexcept { return m_extended.load(memory_order_relaxed); }
 	void SetExtended(bool extended) noexcept { m_extended.store(extended, memory_order_relaxed); }
+	[[nodiscard]] uint8_t GetNewClassId() const noexcept { return m_newClassId.load(memory_order_relaxed); }
+	void SetNewClassId(uint8_t classId) noexcept { m_newClassId.store(classId, memory_order_relaxed); }
 	[[nodiscard]] ZoneId GetRoutingZoneId() const noexcept { return m_routingZoneId.load(memory_order_relaxed); }
 	void SetRoutingZoneId(ZoneId zoneId) noexcept { m_routingZoneId.store(zoneId, memory_order_relaxed); }
 	bool AttachSocket(SOCKET socket);

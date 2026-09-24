@@ -373,6 +373,315 @@ namespace sfx
 				}
 				Load(Id::AmbCrow, b, 0.2f);
 			}
+
+			// ── V2 전투: 직업 기술 ─────────────────────────────────────────────
+			// 기사 — 둔탁한 금속·무게감
+			{
+				Buf b(0.45f);
+				Tone(b, 0, 0.4f, Osc::Sine, ExpSweep(95, 36), 1.f, 0.001f, 9.f);
+				Noise(b, 0, 0.09f, Sweep(3500, 900), 1.f, 0.f, 30.f);
+				const float clang[] = { 523.f, 811.f, 1247.f, 1733.f };
+				for (int i = 0; i < 4; ++i)
+					Tone(b, 0.004f, 0.35f, Osc::Sine, Const(clang[i]), 0.22f - i * 0.03f, 0.f, 12.f + i * 4.f);
+				Load(Id::ShieldBash, b, 0.85f);
+			}
+			{
+				Buf b(0.5f);
+				Noise(b, 0, 0.45f, [](float u) { return 500.f + 3200.f * std::sin(u * 3.14159f); }, 1.f, 0.06f, 5.f, 250.f);
+				Noise(b, 0.12f, 0.3f, [](float u) { return 700.f + 2600.f * std::sin(u * 3.14159f); }, 0.6f, 0.04f, 7.f, 300.f);
+				Tone(b, 0, 0.4f, Osc::Sine, ExpSweep(140, 90), 0.35f, 0.05f, 6.f);
+				Load(Id::Whirl, b, 0.6f);
+			}
+			{
+				Buf b(0.4f);
+				Noise(b, 0, 0.35f, ExpSweep(300, 2800), 1.f, 0.03f, 7.f, 200.f);
+				Tone(b, 0, 0.3f, Osc::Sine, ExpSweep(70, 45), 0.7f, 0.01f, 8.f);
+				Load(Id::Dash, b, 0.6f);
+			}
+			{
+				Buf b(0.8f);
+				const float n[] = { 659.f, 988.f, 1319.f };
+				for (int i = 0; i < 3; ++i)
+					Tone(b, i * 0.03f, 0.7f, Osc::Sine, Const(n[i]), 0.5f, 0.06f, 3.5f, 5.f, 0.01f);
+				Noise(b, 0, 0.3f, Const(6000), 0.25f, 0.05f, 9.f, 2500.f);
+				Tone(b, 0, 0.25f, Osc::Sine, ExpSweep(110, 70), 0.6f, 0.002f, 12.f);
+				Load(Id::GuardUp, b, 0.5f);
+			}
+			{
+				Buf b(0.5f);
+				Tone(b, 0, 0.48f, Osc::Saw, ExpSweep(70, 240), 0.5f, 0.3f, 0.6f, 8.f, 0.04f);
+				Tone(b, 0, 0.48f, Osc::Sine, ExpSweep(160, 520), 0.5f, 0.3f, 0.6f, 11.f, 0.03f);
+				Noise(b, 0, 0.45f, ExpSweep(400, 3000), 0.3f, 0.35f, 0.8f, 300.f);
+				Load(Id::ChargeUp, b, 0.45f);
+			}
+			{
+				Buf b(1.1f);
+				Tone(b, 0, 1.0f, Osc::Sine, ExpSweep(80, 26), 1.f, 0.001f, 4.f);
+				Noise(b, 0, 0.35f, Sweep(6500, 300), 1.2f, 0.f, 9.f);
+				Noise(b, 0, 0.04f, Const(9000), 0.8f, 0.f, 80.f, 2500.f);
+				Tone(b, 0.01f, 0.6f, Osc::Sine, Const(1840), 0.2f, 0.f, 7.f);
+				Tone(b, 0.01f, 0.6f, Osc::Sine, Const(2710), 0.12f, 0.f, 9.f);
+				Noise(b, 0.05f, 0.9f, Const(260), 0.7f, 0.05f, 3.f);
+				Load(Id::Execute, b, 0.95f);
+			}
+			// 룬술사 — 마력·원소
+			{
+				Buf b(0.2f);
+				Tone(b, 0, 0.16f, Osc::Sine, ExpSweep(1500, 620), 0.8f, 0.002f, 16.f);
+				Tone(b, 0, 0.12f, Osc::Tri, ExpSweep(2300, 900), 0.4f, 0.002f, 20.f);
+				Noise(b, 0, 0.06f, Const(7000), 0.25f, 0.f, 50.f, 2000.f);
+				Load(Id::RuneBolt, b, 0.45f);
+			}
+			{
+				Buf b(0.8f);
+				for (int i = 0; i < 12; ++i)
+					Tone(b, Rand(0.f, 0.45f), 0.25f, Osc::Sine, Const(Rand(1900.f, 5200.f)), Rand(0.15f, 0.35f), 0.001f, 14.f);
+				Noise(b, 0, 0.6f, Sweep(4000, 9000), 0.4f, 0.02f, 4.f, 3000.f);
+				Tone(b, 0, 0.3f, Osc::Sine, ExpSweep(300, 140), 0.4f, 0.002f, 9.f);
+				Load(Id::FrostSeal, b, 0.5f);
+			}
+			{
+				Buf b(0.8f);
+				Noise(b, 0, 0.7f, [](float u) { return 300.f + 2600.f * std::sin(std::min(1.f, u * 1.6f) * 3.14159f); }, 1.f, 0.04f, 3.5f, 120.f);
+				for (int i = 0; i < 16; ++i)
+					Noise(b, Rand(0.05f, 0.7f), 0.015f, Const(6500), Rand(0.2f, 0.6f), 0.f, 200.f, 1800.f);
+				Tone(b, 0, 0.5f, Osc::Sine, ExpSweep(120, 60), 0.6f, 0.01f, 5.f);
+				Load(Id::FireRing, b, 0.65f);
+			}
+			{
+				Buf b(0.45f);
+				Tone(b, 0, 0.2f, Osc::Sine, ExpSweep(320, 2600), 0.7f, 0.01f, 8.f);
+				Tone(b, 0.12f, 0.25f, Osc::Sine, ExpSweep(2400, 380), 0.6f, 0.005f, 9.f);
+				Noise(b, 0, 0.4f, Sweep(3000, 8000), 0.25f, 0.05f, 6.f, 2500.f);
+				Load(Id::Blink, b, 0.45f);
+			}
+			{
+				Buf b(1.0f);
+				Noise(b, 0, 0.18f, Const(9000), 1.2f, 0.f, 22.f, 1400.f);
+				Noise(b, 0.02f, 0.9f, Const(320), 0.9f, 0.04f, 3.5f);
+				Tone(b, 0, 0.7f, Osc::Sine, ExpSweep(60, 35), 0.5f, 0.02f, 4.f);
+				for (int i = 0; i < 5; ++i)
+					Noise(b, 0.02f + i * 0.025f, 0.02f, Const(8000), 0.7f, 0.f, 120.f, 2000.f);
+				Load(Id::Thunder, b, 0.7f);
+			}
+			{
+				Buf b(0.9f);
+				Tone(b, 0, 0.85f, Osc::Sine, ExpSweep(1900, 260), 0.5f, 0.2f, 1.2f, 9.f, 0.02f);
+				Noise(b, 0, 0.85f, ExpSweep(1200, 300), 0.6f, 0.4f, 0.8f);
+				Load(Id::MeteorFall, b, 0.5f);
+			}
+			{
+				Buf b(1.4f);
+				Tone(b, 0, 1.3f, Osc::Sine, ExpSweep(70, 22), 1.f, 0.001f, 3.f);
+				Noise(b, 0, 0.5f, Sweep(7000, 250), 1.2f, 0.f, 6.f);
+				Noise(b, 0.04f, 1.2f, Const(220), 0.8f, 0.05f, 2.2f);
+				for (int i = 0; i < 18; ++i)
+					Noise(b, Rand(0.1f, 1.1f), 0.02f, Const(5000), Rand(0.15f, 0.45f), 0.f, 150.f, 1200.f);
+				Load(Id::MeteorImpact, b, 1.f);
+			}
+			// 그림자 사냥꾼 — 날카롭고 가볍게
+			{
+				Buf b(0.24f);
+				Noise(b, 0, 0.07f, Sweep(2000, 6000), 1.f, 0.005f, 30.f, 1200.f);
+				Noise(b, 0.1f, 0.07f, Sweep(2400, 7000), 0.9f, 0.005f, 30.f, 1200.f);
+				Tone(b, 0.02f, 0.05f, Osc::Sine, Const(2900), 0.2f, 0.f, 60.f);
+				Tone(b, 0.12f, 0.05f, Osc::Sine, Const(3300), 0.2f, 0.f, 60.f);
+				Load(Id::Stab, b, 0.45f);
+			}
+			{
+				Buf b(0.5f);
+				Noise(b, 0, 0.45f, ExpSweep(900, 180), 1.f, 0.15f, 6.f);
+				Tone(b, 0, 0.4f, Osc::Sine, ExpSweep(160, 55), 0.7f, 0.1f, 6.f, 6.f, 0.05f);
+				Load(Id::ShadowStep, b, 0.55f);
+			}
+			{
+				Buf b(0.4f);
+				Noise(b, 0, 0.18f, [](float u) { return 600.f + 4000.f * std::sin(u * 3.14159f); }, 1.f, 0.02f, 10.f, 400.f);
+				for (int i = 0; i < 6; ++i)
+				{
+					const float f = Rand(300.f, 700.f);
+					Tone(b, 0.12f + i * 0.035f, 0.05f, Osc::Sine, ExpSweep(f, f * 1.7f), 0.35f, 0.003f, 35.f);
+				}
+				Load(Id::PoisonSlash, b, 0.5f);
+			}
+			{
+				Buf b(0.3f);
+				Noise(b, 0, 0.26f, ExpSweep(900, 5500), 1.f, 0.03f, 9.f, 700.f);
+				Tone(b, 0, 0.2f, Osc::Sine, ExpSweep(500, 1200), 0.2f, 0.02f, 12.f);
+				Load(Id::Evade, b, 0.4f);
+			}
+			{
+				Buf b(0.4f);
+				Noise(b, 0, 0.04f, Const(9000), 1.f, 0.f, 70.f, 2500.f);
+				Tone(b, 0.005f, 0.3f, Osc::Sine, Const(2637), 0.35f, 0.f, 12.f);
+				Tone(b, 0.005f, 0.3f, Osc::Sine, Const(3951), 0.2f, 0.f, 16.f);
+				Tone(b, 0, 0.2f, Osc::Sine, ExpSweep(160, 60), 0.9f, 0.001f, 16.f);
+				Load(Id::Backstab, b, 0.7f);
+			}
+			{
+				Buf b(1.0f);
+				for (int i = 0; i < 5; ++i)
+					Noise(b, i * 0.14f, 0.12f, [](float u) { return 900.f + 5000.f * std::sin(u * 3.14159f); }, 0.8f, 0.01f, 16.f, 800.f);
+				const float n[] = { 1047.f, 1319.f, 1568.f };
+				for (int i = 0; i < 3; ++i)
+					Tone(b, 0.02f, 0.9f, Osc::Sine, Const(n[i]), 0.18f, 0.1f, 2.5f, 6.f, 0.01f);
+				Load(Id::MoonDance, b, 0.55f);
+			}
+			// 연계·피드백
+			{
+				Buf b(0.7f);
+				const float n[] = { 523.25f, 659.25f, 783.99f, 1046.5f };
+				for (int i = 0; i < 4; ++i)
+				{
+					Tone(b, i * 0.045f, 0.5f, Osc::Tri, Const(n[i]), 0.6f, 0.003f, 5.f);
+					Tone(b, i * 0.045f, 0.4f, Osc::Sine, Const(n[i] * 2.f), 0.25f, 0.003f, 7.f);
+				}
+				for (int i = 0; i < 8; ++i)
+					Tone(b, 0.15f + i * 0.04f, 0.15f, Osc::Sine, Const(Rand(2500.f, 5000.f)), 0.12f, 0.002f, 20.f);
+				Load(Id::ComboSting, b, 0.55f);
+			}
+			{
+				Buf b(0.25f);
+				Tone(b, 0, 0.22f, Osc::Sine, Const(1568), 0.6f, 0.002f, 14.f);
+				Tone(b, 0.03f, 0.2f, Osc::Sine, Const(2349), 0.35f, 0.002f, 16.f);
+				Load(Id::SkillReady, b, 0.22f);
+			}
+			{
+				Buf b(0.22f);
+				Tone(b, 0, 0.2f, Osc::Sine, ExpSweep(240, 170), 0.8f, 0.004f, 12.f);
+				Tone(b, 0, 0.2f, Osc::Square, ExpSweep(120, 85), 0.2f, 0.004f, 12.f);
+				Load(Id::NoMana, b, 0.35f);
+			}
+			{
+				Buf b(0.5f);
+				const float n[] = { 1109.f, 1663.f, 2489.f, 3322.f };
+				for (int i = 0; i < 4; ++i)
+					Tone(b, 0, 0.45f, Osc::Sine, Const(n[i]), 0.35f - i * 0.06f, 0.f, 8.f + i * 3.f);
+				Noise(b, 0, 0.03f, Const(9000), 0.8f, 0.f, 90.f, 2500.f);
+				Load(Id::Counter, b, 0.55f);
+			}
+			{
+				Buf b(0.5f);
+				Tone(b, 0, 0.45f, Osc::Sine, ExpSweep(85, 32), 1.f, 0.001f, 7.f);
+				Noise(b, 0, 0.35f, Sweep(1500, 200), 1.f, 0.f, 8.f);
+				for (int i = 0; i < 8; ++i)
+					Noise(b, Rand(0.03f, 0.35f), 0.02f, Const(4000), 0.4f, 0.f, 150.f, 1000.f);
+				Load(Id::WallSlam, b, 0.8f);
+			}
+			{
+				Buf b(0.6f);
+				for (int i = 0; i < 12; ++i)
+				{
+					const float f = Rand(250.f, 900.f);
+					Tone(b, Rand(0.f, 0.35f), 0.06f, Osc::Sine, ExpSweep(f, f * 1.8f), 0.5f, 0.003f, 30.f);
+				}
+				Noise(b, 0, 0.2f, Const(1500), 0.6f, 0.01f, 12.f);
+				Load(Id::PoisonBurst, b, 0.5f);
+			}
+			{
+				Buf b(0.9f);
+				Noise(b, 0, 0.85f, Sweep(9000, 3000), 1.f, 0.01f, 3.5f, 2000.f);
+				Tone(b, 0, 0.2f, Osc::Sine, ExpSweep(200, 70), 0.7f, 0.001f, 14.f);
+				Load(Id::SteamBurst, b, 0.5f);
+			}
+			{
+				Buf b(0.4f);
+				Tone(b, 0, 0.38f, Osc::Saw, ExpSweep(180, 330), 0.45f, 0.08f, 3.f, 14.f, 0.08f);
+				Tone(b, 0, 0.38f, Osc::Sine, ExpSweep(360, 660), 0.3f, 0.08f, 3.f);
+				Load(Id::TeleWarn, b, 0.32f);
+			}
+			{
+				Buf b(0.35f);
+				Tone(b, 0, 0.3f, Osc::Square, ExpSweep(1100, 260), 0.35f, 0.001f, 10.f);
+				Noise(b, 0, 0.05f, Const(6000), 0.7f, 0.f, 60.f, 1500.f);
+				Tone(b, 0, 0.25f, Osc::Sine, Const(1760), 0.3f, 0.f, 14.f);
+				Load(Id::Interrupt, b, 0.5f);
+			}
+			{
+				Buf b(0.45f);
+				const float n[] = { 880.f, 1174.7f, 1568.f };
+				for (int i = 0; i < 3; ++i)
+					Tone(b, i * 0.06f, 0.3f, Osc::Sine, Const(n[i]), 0.6f, 0.002f, 9.f);
+				Load(Id::StatUp, b, 0.4f);
+			}
+			{ Buf b(0.08f); Noise(b, 0, 0.07f, Const(5000), 1.f, 0.002f, 40.f, 2500.f); Load(Id::DotTick, b, 0.18f); }
+			{ Buf b(0.18f); Noise(b, 0, 0.15f, Sweep(800, 3500), 1.f, 0.02f, 14.f, 500.f); Load(Id::Miss, b, 0.3f); }
+			{
+				Buf b(0.5f);
+				Noise(b, 0, 0.06f, Const(9000), 1.f, 0.f, 50.f, 3000.f);
+				for (int i = 0; i < 7; ++i)
+					Tone(b, Rand(0.f, 0.15f), 0.3f, Osc::Sine, Const(Rand(2600.f, 6000.f)), 0.25f, 0.001f, 12.f);
+				Load(Id::Freeze, b, 0.45f);
+			}
+			{
+				Buf b(0.7f);
+				Tone(b, 0, 0.65f, Osc::Sine, Const(1244), 0.5f, 0.002f, 5.f, 7.f, 0.01f);
+				Tone(b, 0, 0.65f, Osc::Sine, Const(1866), 0.3f, 0.002f, 6.f);
+				Tone(b, 0, 0.15f, Osc::Sine, ExpSweep(200, 90), 0.6f, 0.001f, 20.f);
+				Load(Id::Stun, b, 0.4f);
+			}
+
+			// ── 살아 있는 마을 ─────────────────────────────────────────────────
+			{
+				// 알아들을 수 없는 웅얼거림(동물의 숲 풍) — 음절마다 음높이가 오르내린다
+				Buf b(0.62f);
+				float t = 0.f;
+				for (int i = 0; i < 6; ++i)
+				{
+					const float f = Rand(210.f, 330.f);
+					const float d = Rand(0.05f, 0.08f);
+					Tone(b, t, d, Osc::Tri, ExpSweep(f, f * Rand(0.85f, 1.2f)), 0.8f, 0.006f, 22.f, 30.f, 0.03f);
+					Tone(b, t, d, Osc::Sine, ExpSweep(f * 2.5f, f * 2.2f), 0.25f, 0.006f, 30.f);
+					Noise(b, t, d * 0.4f, Const(2500), 0.12f, 0.002f, 60.f, 800.f);
+					t += d + Rand(0.015f, 0.04f);
+				}
+				Load(Id::Voice, b, 0.35f);
+			}
+			{
+				Buf b(0.45f);
+				for (int k = 0; k < 2; ++k)
+				{
+					const float s0 = k * 0.2f;
+					Noise(b, s0, 0.09f, Sweep(2200, 700), 0.8f, 0.003f, 22.f, 300.f);
+					Tone(b, s0, 0.1f, Osc::Saw, ExpSweep(520, 320), 0.5f, 0.004f, 18.f);
+					Tone(b, s0, 0.1f, Osc::Sine, ExpSweep(1040, 620), 0.3f, 0.004f, 20.f);
+				}
+				Load(Id::DogBark, b, 0.5f);
+			}
+			{
+				Buf b(0.6f);
+				Tone(b, 0, 0.55f, Osc::Tri, [](float u) { return 650.f + 380.f * std::sin(u * 3.14159f) - 120.f * u; }, 0.8f, 0.05f, 3.5f, 7.f, 0.03f);
+				Tone(b, 0, 0.55f, Osc::Sine, [](float u) { return 1300.f + 700.f * std::sin(u * 3.14159f); }, 0.25f, 0.05f, 4.f);
+				Load(Id::CatMeow, b, 0.35f);
+			}
+			{
+				Buf b(0.5f);
+				for (int k = 0; k < 3; ++k)
+				{
+					Tone(b, k * 0.12f, 0.07f, Osc::Square, ExpSweep(780, 620), 0.35f, 0.003f, 30.f);
+					Noise(b, k * 0.12f, 0.05f, Const(3000), 0.3f, 0.002f, 60.f, 900.f);
+				}
+				Load(Id::Cluck, b, 0.3f);
+			}
+			{
+				// 류트: 뜯는 소리(빠르게 사라지는 배음) 아르페지오
+				Buf b(1.6f);
+				const float n[] = { 220.f, 261.6f, 329.6f, 392.f, 329.6f, 261.6f };
+				for (int i = 0; i < 6; ++i)
+				{
+					Tone(b, i * 0.16f, 0.9f, Osc::Tri, Const(n[i]), 0.6f, 0.002f, 5.f);
+					Tone(b, i * 0.16f, 0.5f, Osc::Sine, Const(n[i] * 2.f), 0.3f, 0.002f, 8.f);
+					Tone(b, i * 0.16f, 0.3f, Osc::Sine, Const(n[i] * 3.f), 0.15f, 0.001f, 14.f);
+				}
+				Load(Id::Lute, b, 0.3f);
+			}
+			{
+				Buf b(0.5f);
+				const float n[] = { 1318.5f, 1568.f, 2093.f };
+				for (int i = 0; i < 3; ++i)
+					Tone(b, i * 0.07f, 0.3f, Osc::Sine, Const(n[i]), 0.5f, 0.003f, 9.f);
+				Load(Id::Pet, b, 0.3f);
+			}
 		}
 	}
 
@@ -417,6 +726,21 @@ namespace sfx
 		slot.next = (slot.next + 1) % kVoices;
 		SetSoundVolume(s, std::clamp(volume, 0.f, 1.5f));
 		SetSoundPitch(s, 1.f + Rand(-pitchVar, pitchVar));
+		SetSoundPan(s, std::clamp(pan, 0.f, 1.f));
+		PlaySound(s);
+	}
+
+	void PlayPitched(Id id, float volume, float pitch, float pan)
+	{
+		if (!g_ready)
+			return;
+		Slot& slot = g_slots[static_cast<size_t>(id)];
+		if (!slot.loaded)
+			return;
+		Sound& s = slot.alias[slot.next];
+		slot.next = (slot.next + 1) % kVoices;
+		SetSoundVolume(s, std::clamp(volume, 0.f, 1.5f));
+		SetSoundPitch(s, std::clamp(pitch, 0.25f, 4.f));
 		SetSoundPan(s, std::clamp(pan, 0.f, 1.f));
 		PlaySound(s);
 	}

@@ -24,11 +24,12 @@ namespace actors
 			float dir = 1.f;     // +1 오른쪽, -1 왼쪽
 			float rot = 0.f;     // 쓰러짐 회전
 			float sy = 1.f;      // 세로 눌림
+			float sx = 1.f;      // 가로 눌림(몸을 돌리는 회전 베기 등)
 			float ox = 0.f, oy = 0.f;
 
 			Vector2 P(float x, float y) const
 			{
-				x += ox;
+				x = (x + ox) * sx;
 				y = (y + oy) * sy;
 				const float c = std::cos(rot), sn = std::sin(rot);
 				const float rx = x * c - y * sn, ry = x * sn + y * c;
@@ -126,7 +127,14 @@ namespace actors
 			g.dir = p.faceRight ? 1.f : -1.f;
 			if (p.dead > 0.f)
 				g.rot = -util::EaseOutBounce(util::Clamp01(p.dead * 1.4f)) * 1.35f;
-			g.ox = -p.hurt * 4.f;
+			g.ox = -p.hurt * 4.f - p.knock * 6.f;
+			if (p.windup > 0.f)
+			{
+				// 강공격 예고: 웅크리고 뒤로 젖힌 채 떤다(몸이 "곧 친다"고 말하게)
+				g.sy = 1.f - 0.1f * p.windup;
+				g.ox -= 3.5f * p.windup;
+				g.ox += std::sin(p.time * 55.f) * 1.4f * p.windup;
+			}
 			return g;
 		}
 
@@ -235,16 +243,41 @@ namespace actors
 		}
 	}
 
-	PlayerLook LookForPlayer(uint32_t nameHash, uint16_t weaponId, int enchant)
+	PlayerLook LookForPlayer(uint32_t nameHash, uint16_t weaponId, int enchant, uint8_t cls)
 	{
-		static const Color cloths[] = { Rgb(0x3A5AB0), Rgb(0xA83232), Rgb(0x2E7A4A), Rgb(0x6A3AA0), Rgb(0xB07A2A), Rgb(0x2A7A8A), Rgb(0x8A2A5A), Rgb(0x4A4A5A) };
-		static const Color armors[] = { Rgb(0xA0AABA), Rgb(0xB8A888), Rgb(0x8A96A8), Rgb(0xC0C4CC), Rgb(0x9A8A7A) };
 		PlayerLook look;
+		look.cls = cls;
 		look.weaponId = weaponId;
 		look.enchant = enchant;
-		look.cloth = cloths[nameHash % 8];
-		look.armor = armors[(nameHash / 8) % 5];
-		look.trim = Shade(look.cloth, 0.85f);
+		switch (cls)
+		{
+		case 1:   // 룬술사: 짙은 로브 + 이름마다 다른 룬 빛
+		{
+			static const Color robes[] = { Rgb(0x2A3468), Rgb(0x3A2A5A), Rgb(0x1E3A4A), Rgb(0x2E2A3E), Rgb(0x3A3050) };
+			static const Color runes[] = { Rgb(0x6AD8FF), Rgb(0xB08AFF), Rgb(0x7AF0C8), Rgb(0xFFC870) };
+			look.cloth = robes[nameHash % 5];
+			look.trim = runes[(nameHash / 5) % 4];
+			look.armor = Rgb(0xB8A07A);
+			break;
+		}
+		case 2:   // 그림자 사냥꾼: 검은 가죽 + 스카프 색
+		{
+			static const Color scarves[] = { Rgb(0x9A2A3A), Rgb(0x5A3A9A), Rgb(0x2A6A5A), Rgb(0x7A6A2A), Rgb(0x3A4A8A) };
+			look.cloth = scarves[nameHash % 5];
+			look.armor = Rgb(0x3A3236);
+			look.trim = Rgb(0xB88AFF);
+			break;
+		}
+		default:  // 황혼의 기사: 강철 + 저녁노을 망토
+		{
+			static const Color cloths[] = { Rgb(0x8A3A2A), Rgb(0xA8582A), Rgb(0x6A2A3A), Rgb(0x3A4A8A), Rgb(0x7A5A2A), Rgb(0x4A2A5A) };
+			static const Color armors[] = { Rgb(0xA0AABA), Rgb(0xB8A888), Rgb(0x8A96A8), Rgb(0xC0C4CC), Rgb(0x9A8A7A) };
+			look.cloth = cloths[nameHash % 6];
+			look.armor = armors[(nameHash / 6) % 5];
+			look.trim = Shade(look.cloth, 0.85f);
+			break;
+		}
+		}
 		return look;
 	}
 
@@ -255,53 +288,532 @@ namespace actors
 
 	float PlayerHeight() { return 70.f; }
 
+	namespace
+	{
+		// 기술 동작 공통: 팔·무기·몸 자세
+		struct Arms
+		{
+			float hx = 10.f, hy = -31.f, ang = -0.95f;   // 주무기 손(앞)
+			float fx = -9.f, fy = -30.f, ang2 = 0.f;     // 보조 손(뒤): 방패/빈손/두 번째 단검
+			float lean = 0.f, crouch = 0.f;
+			float spin = 0.f;                              // 회전(라디안) — 좌우가 뒤집히며 가로로 눌린다
+			bool  offFront = false;                        // 보조 손이 몸 앞으로 나왔나(방패 강타·철벽)
+			float glow = 0.f;                              // 손끝/지팡이 빛
+		};
+
+		// 기술 진행값: 스킬 모션이 없으면 레거시 공격 동작(attack)을 기본 공격으로 본다
+		void Progress(const Pose& p, uint16_t basicId, uint16_t& sk, float& t)
+		{
+			if (p.skillT >= 0.f && p.skill != 0) { sk = p.skill; t = p.skillT; return; }
+			if (p.attack >= 0.f) { sk = basicId; t = p.attack; return; }
+			sk = 0; t = -1.f;
+		}
+
+		void ApplySpin(Rig& g, float spin)
+		{
+			if (spin == 0.f) return;
+			const float c = std::cos(spin);
+			if (c < 0.f) g.dir = -g.dir;
+			g.sx = std::max(0.28f, std::fabs(c));
+		}
+
+		// ── 황혼의 기사 ─────────────────────────────────────────────────────────
+		Arms KnightArms(const Pose& p)
+		{
+			Arms a;
+			uint16_t sk; float t;
+			Progress(p, 1, sk, t);
+			switch (sk)
+			{
+			case 1:   // 검격 — 크게 휘두른다
+			{
+				const Swing s = SwingOf(t, -0.95f, 10.f, -31.f);
+				a.ang = s.angle; a.hx = s.hx; a.hy = s.hy; a.lean = s.lean * 1.3f;
+				break;
+			}
+			case 2:   // 방패 강타 — 당겼다가 앞으로 내지른다
+			{
+				float k;
+				if (t < 0.3f) k = -util::EaseOutCubic(t / 0.3f) * 0.5f;
+				else if (t < 0.45f) k = Lerp(-0.5f, 1.f, util::EaseInCubic((t - 0.3f) / 0.15f));
+				else k = 1.f - util::EaseInOutCubic((t - 0.45f) / 0.55f);
+				a.fx = k > 0.f ? Lerp(-9.f, 15.f, k) : -9.f + k * 8.f;
+				a.fy = -34.f;
+				a.offFront = k > 0.25f;
+				a.lean = k * 6.f;
+				a.ang = 0.9f; a.hx = 4.f; a.hy = -28.f;
+				break;
+			}
+			case 3:   // 회전 베기 — 칼을 수평으로 들고 한 바퀴
+				a.spin = util::EaseOutCubic(t) * kPi * 2.f;
+				a.ang = -0.12f; a.hx = 14.f; a.hy = -34.f;
+				a.crouch = util::Pulse(t) * 3.f;
+				break;
+			case 4:   // 돌진 — 몸을 숙이고 칼끝을 앞으로
+			{
+				const float k = util::Pulse(std::min(1.f, t * 1.4f));
+				a.lean = 8.f * k; a.ang = Lerp(-0.95f, -0.1f, k); a.hx = Lerp(10.f, 16.f, k); a.hy = Lerp(-31.f, -33.f, k);
+				a.fx = Lerp(-9.f, 8.f, k); a.offFront = k > 0.3f; a.crouch = 3.f * k;
+				break;
+			}
+			case 5:   // 철벽 태세 — 방패를 들고 버틴다
+			{
+				const float k = util::EaseOutBack(std::min(1.f, t * 3.f));
+				a.fx = Lerp(-9.f, 10.f, k); a.fy = Lerp(-30.f, -38.f, k); a.offFront = k > 0.3f;
+				a.ang = 1.1f; a.hx = 2.f; a.hy = -26.f; a.crouch = 3.f * std::min(1.f, k);
+				break;
+			}
+			case 6:   // 황혼의 처형 — 들어 올려 힘을 모았다가 내려찍는다
+			{
+				const float hold = std::max(0.2f, p.skillHold);
+				if (t < hold)
+				{
+					const float u = util::EaseOutCubic(t / hold);
+					a.ang = Lerp(-0.95f, -2.55f, u); a.hx = Lerp(10.f, 2.f, u); a.hy = Lerp(-31.f, -60.f, u);
+					a.lean = -3.f * u; a.crouch = 2.f * u; a.glow = u;
+				}
+				else
+				{
+					const float u = (t - hold) / std::max(0.01f, 1.f - hold);
+					const float s = util::EaseInCubic(std::min(1.f, u * 3.f));
+					const float back = u > 0.45f ? util::EaseInOutCubic((u - 0.45f) / 0.55f) : 0.f;
+					a.ang = Lerp(Lerp(-2.55f, 1.35f, s), -0.95f, back);
+					a.hx = Lerp(Lerp(2.f, 14.f, s), 10.f, back);
+					a.hy = Lerp(Lerp(-60.f, -18.f, s), -31.f, back);
+					a.lean = Lerp(Lerp(-3.f, 8.f, s), 0.f, back);
+					a.crouch = Lerp(Lerp(2.f, 5.f, s), 0.f, back);
+					a.glow = 1.f - back;
+				}
+				break;
+			}
+			default:
+				break;
+			}
+			return a;
+		}
+
+		void DrawKnight(const Pose& p, const PlayerLook& look)
+		{
+			Rig g = MakeRig(p);
+			const Walk w = WalkOf(p);
+			Arms a = KnightArms(p);
+			// 레거시 시전 자세(십자베기): 칼을 높이 든다
+			if (p.cast > 0.f && p.attack < 0.f && p.skillT < 0.f)
+			{
+				const float u = util::Pulse(p.cast);
+				a.ang = Lerp(a.ang, -1.57f, u);
+				a.hy = Lerp(a.hy, -52.f, u);
+				a.hx = Lerp(a.hx, 4.f, u);
+			}
+			ApplySpin(g, a.spin);
+			g.ox += a.lean * 0.6f;
+			g.oy += a.crouch;
+			const Color armor = look.armor, cloth = look.cloth;
+			const Color skin = Rgb(0xE8B890);
+			const bool back = p.faceBack;
+			const float armSwing = (a.offFront ? 0.f : -w.sw * 5.f);
+			const float sx = a.fx + armSwing, sy = a.fy + w.bob;
+			if (a.glow > 0.f)
+			{
+				gfx::Additive(true);
+				Glow(g, a.hx, a.hy + w.bob, 26.f * a.glow, Rgb(0xFF9A40, static_cast<uint8_t>(150 * a.glow)));
+				gfx::Additive(false);
+			}
+
+			if (!back)
+			{
+				Cape(g, p, cloth, false);
+				if (!a.offFront)
+				{
+					Limb(g, -7, -41 + w.bob, sx, sy, 3.f, Shade(armor, 0.75f));
+					Shield(g, sx, sy, Shade(cloth, 0.8f), Shade(armor, 0.7f), false);
+				}
+				Legs(g, w, Rgb(0x4A4038), Rgb(0x3A2A1E));
+				Torso(g, w, armor, look.trim, false);
+				Head(g, w, p, armor, cloth, false);
+				Limb(g, 7, -41 + w.bob, a.hx, a.hy + w.bob, 3.2f, armor);
+				Circ(g, a.hx, a.hy + w.bob, 3.f, skin);
+				Weapon(g, look.weaponId, a.hx, a.hy + w.bob, a.ang, 0.78f, p.time, look.enchant);
+				Circ(g, 7, -42 + w.bob, 4.5f, Shade(armor, 1.05f));
+				if (a.offFront)
+				{
+					// 방패를 몸 앞으로 내민 자세
+					Limb(g, -5, -41 + w.bob, sx, sy, 3.f, armor);
+					Shield(g, sx, sy, cloth, Shade(armor, 0.9f), true);
+				}
+			}
+			else
+			{
+				Limb(g, 7, -41 + w.bob, a.hx, a.hy + w.bob, 3.2f, Shade(armor, 0.75f));
+				Weapon(g, look.weaponId, a.hx, a.hy + w.bob, a.ang, 0.78f, p.time, look.enchant);
+				Legs(g, w, Rgb(0x4A4038), Rgb(0x3A2A1E));
+				Torso(g, w, armor, look.trim, true);
+				Head(g, w, p, armor, cloth, true);
+				Cape(g, p, cloth, true);
+				Limb(g, -7, -41 + w.bob, sx, sy, 3.f, armor);
+				Shield(g, sx, sy, cloth, Shade(armor, 0.9f), true);
+			}
+		}
+
+		// ── 룬술사 ───────────────────────────────────────────────────────────────
+		Arms CasterArms(const Pose& p)
+		{
+			Arms a;
+			a.hx = 9.f; a.hy = -30.f; a.ang = -1.35f;   // 지팡이를 세워 든다
+			a.fx = -8.f; a.fy = -30.f;
+			uint16_t sk; float t;
+			Progress(p, 7, sk, t);
+			switch (sk)
+			{
+			case 7:   // 룬 탄환: 지팡이를 앞으로 내민다
+			{
+				const float k = util::Pulse(std::min(1.f, t * 1.5f));
+				a.ang = Lerp(-1.35f, -0.35f, k); a.hx = Lerp(9.f, 15.f, k); a.hy = Lerp(-30.f, -36.f, k);
+				a.fx = Lerp(-8.f, 3.f, k); a.fy = Lerp(-30.f, -37.f, k); a.lean = 3.f * k; a.glow = k;
+				break;
+			}
+			case 8: case 11:   // 지팡이를 높이, 빈손은 대상 쪽으로
+			{
+				const float k = util::Pulse(t);
+				a.ang = Lerp(-1.35f, -1.75f, k); a.hx = Lerp(9.f, 6.f, k); a.hy = Lerp(-30.f, -54.f, k);
+				a.fx = Lerp(-8.f, 14.f, k); a.fy = Lerp(-30.f, -41.f, k); a.offFront = k > 0.3f; a.glow = k; a.lean = 2.f * k;
+				break;
+			}
+			case 12:  // 혜성: 양손을 하늘로(예고 동안 떨린다)
+			{
+				const float hold = std::max(0.2f, p.skillHold);
+				const float k = t < hold ? util::EaseOutCubic(t / hold) : 1.f - util::EaseInOutCubic((t - hold) / std::max(0.01f, 1.f - hold));
+				a.ang = Lerp(-1.35f, -1.6f, k); a.hx = Lerp(9.f, 4.f, k); a.hy = Lerp(-30.f, -62.f, k);
+				a.fx = Lerp(-8.f, -3.f, k); a.fy = Lerp(-30.f, -60.f, k); a.glow = k; a.crouch = -2.f * k;
+				break;
+			}
+			case 9:   // 화염 고리: 웅크렸다가 두 팔을 활짝
+			{
+				const float k = t < 0.3f ? -util::EaseOutCubic(t / 0.3f) : util::Pulse((t - 0.3f) / 0.7f);
+				a.crouch = k < 0.f ? -k * 5.f : 0.f;
+				const float o = std::max(0.f, k);
+				a.fx = Lerp(-8.f, -18.f, o); a.fy = Lerp(-30.f, -41.f, o);
+				a.hx = Lerp(9.f, 16.f, o); a.hy = Lerp(-30.f, -42.f, o); a.ang = Lerp(-1.35f, -0.8f, o); a.glow = o;
+				break;
+			}
+			case 10:  // 공간 도약: 몸을 웅크린다
+			{
+				const float k = util::Pulse(t);
+				a.crouch = 4.f * k; a.fx = Lerp(-8.f, -2.f, k); a.hx = Lerp(9.f, 4.f, k); a.glow = k;
+				break;
+			}
+			default:
+				break;
+			}
+			return a;
+		}
+
+		void Staff(const Rig& g, const PlayerLook& look, float hx, float hy, float ang, float time, float glow)
+		{
+			if (look.weaponId != 0 && !ItemTableData::IsStaff(look.weaponId))
+			{
+				Weapon(g, look.weaponId, hx, hy, ang, 0.72f, time, look.enchant);   // 지팡이가 아니면 그 무기를 든다
+				return;
+			}
+			// 지팡이: 손 아래로 조금, 위로 길게. 끝에 룬 수정.
+			const float c = std::cos(ang), sn = std::sin(ang);
+			const float x0 = hx - c * 13.f, y0 = hy - sn * 13.f;
+			const float x1 = hx + c * 40.f, y1 = hy + sn * 40.f;
+			Seg(g, x0, y0, x1, y1, 2.6f, Rgb(0x6A4A2E));
+			Seg(g, x0, y0, x1, y1, 1.1f, Rgb(0x9A7448));
+			Seg(g, hx + c * 30.f - sn * 3.f, hy + sn * 30.f + c * 3.f, hx + c * 34.f + sn * 3.f, hy + sn * 34.f - c * 3.f, 1.5f, Rgb(0xC8A060));
+			const float pulse = 0.75f + 0.25f * std::sin(time * 4.f);
+			const float gk = std::max(glow, 0.25f + look.enchant * 0.05f);
+			gfx::Additive(true);
+			Glow(g, x1 + c * 4.f, y1 + sn * 4.f, (12.f + 14.f * gk) * pulse, WithA(look.trim, 0.55f + 0.35f * gk));
+			gfx::Additive(false);
+			const float cx = x1 + c * 4.f, cy = y1 + sn * 4.f;
+			Tri(g, cx - 3.f, cy, cx + 3.f, cy, cx, cy - 8.f, Shade(look.trim, 1.3f));
+			Tri(g, cx - 3.f, cy, cx + 3.f, cy, cx, cy + 5.f, Shade(look.trim, 0.8f));
+			Circ(g, cx, cy - 1.f, 1.3f, Rgb(0xFFFFFF, 230));
+		}
+
+		void DrawRuneCaster(const Pose& p, const PlayerLook& look)
+		{
+			Rig g = MakeRig(p);
+			const Walk w = WalkOf(p);
+			const Arms a = CasterArms(p);
+			g.ox += a.lean * 0.6f;
+			g.oy += a.crouch;
+			const float b = w.bob;
+			const Color robe = look.cloth, rune = look.trim, leather = look.armor;
+			const Color skin = Rgb(0xE8C0A0);
+			const bool back = p.faceBack;
+			const float sway = std::sin(p.walk) * 2.2f * p.moving + std::sin(p.time * 1.7f) * 0.6f;
+
+			auto offHand = [&](bool front)
+			{
+				Limb(g, -6, -41 + b, a.fx, a.fy + b, 2.8f, front ? robe : Shade(robe, 0.75f));
+				Circ(g, a.fx, a.fy + b, 2.6f, skin);
+				if (a.glow > 0.05f)
+				{
+					gfx::Additive(true);
+					Glow(g, a.fx, a.fy + b, 10.f + 10.f * a.glow, WithA(rune, 0.7f * a.glow));
+					gfx::Additive(false);
+					gfx::Star(g.P(a.fx, a.fy + b), g.R(1.5f), g.R(5.f + 3.f * a.glow), 4, p.time * 3.f, WithA(Shade(rune, 1.4f), a.glow));
+				}
+			};
+			auto boots = [&]()
+			{
+				Ell(g, -3 - w.sw * 5.f, -1.5f - w.lift1, 4.f, 2.2f, Rgb(0x2A2018));
+				Ell(g, 4 + w.sw * 5.f, -1.5f - w.lift0, 4.2f, 2.3f, Rgb(0x3A2A1E));
+			};
+			auto body = [&]()
+			{
+				// 로브(치맛자락이 걸음에 흔들린다)
+				Quad4(g, -9, -44 + b, 9, -44 + b, 13 + sway, -2, -13 + sway, -2,
+					Shade(robe, 1.15f), Shade(robe, 0.85f), Shade(robe, 0.55f), Shade(robe, 0.8f));
+				if (!back)
+				{
+					Quad(g, 0, -40 + b, 4, -40 + b, 6 + sway, -2, 1 + sway, -2, Shade(robe, 0.55f));
+					Seg(g, 2, -40 + b, 3.5f + sway, -3, 1.2f, WithA(rune, 0.8f));
+				}
+				Seg(g, -13 + sway, -2.5f, 13 + sway, -2.5f, 1.6f, WithA(rune, 0.7f));
+				// 허리띠 + 룬 주머니
+				Seg(g, -8.5f, -25 + b, 8.5f, -25 + b, 2.6f, Rgb(0x3A2A1E));
+				Ell(g, -6, -22 + b, 2.6f, 3.2f, leather);
+				// 어깨 망토
+				Quad4(g, -10, -45 + b, 10, -45 + b, 11, -36 + b, -11, -36 + b, Shade(leather, 1.1f), Shade(leather, 0.9f), Shade(leather, 0.7f), Shade(leather, 0.8f));
+				if (!back)
+				{
+					// 가슴의 룬(맥동)
+					const float pulse = 0.6f + 0.4f * std::sin(p.time * 3.f);
+					gfx::Additive(true);
+					Glow(g, 3, -33 + b, 7.f, WithA(rune, 0.5f * pulse));
+					gfx::Additive(false);
+					Tri(g, 1, -33 + b, 5, -33 + b, 3, -37 + b, Shade(rune, 1.2f));
+					Tri(g, 1, -33 + b, 5, -33 + b, 3, -30 + b, rune);
+				}
+			};
+			auto head = [&]()
+			{
+				// 두건: 얼굴은 그늘 속, 눈만 룬빛
+				Ball(g, 0, -52 + b, 9.5f, Shade(robe, 0.9f));
+				Tri(g, -8, -58 + b, -2, -61 + b, -14 + sway * 0.5f, -50 + b, Shade(robe, 0.75f));
+				if (!back)
+				{
+					Ell(g, 4, -50 + b, 5.5f, 6.f, Rgb(0x1A1624));
+					Circ(g, 3.5f, -48 + b, 3.f, WithA(skin, 0.35f));
+					gfx::Additive(true);
+					Circ(g, 3.f, -51 + b, 1.3f, Shade(rune, 1.3f));
+					Circ(g, 7.f, -51 + b, 1.1f, Shade(rune, 1.3f));
+					gfx::Additive(false);
+				}
+			};
+
+			// 떠다니는 룬 두 점(직업 표식)
+			gfx::Additive(true);
+			for (int i = 0; i < 2; ++i)
+			{
+				const float ang = p.time * 1.6f + i * kPi;
+				const float rx = std::cos(ang) * 16.f, ry = -38.f + std::sin(ang * 1.3f) * 6.f + b;
+				Glow(g, rx, ry, 6.f, WithA(rune, 0.55f));
+			}
+			gfx::Additive(false);
+
+			if (!back)
+			{
+				if (!a.offFront) offHand(false);
+				boots();
+				body();
+				head();
+				Limb(g, 6, -41 + b, a.hx, a.hy + b, 2.9f, robe);
+				Circ(g, a.hx, a.hy + b, 2.8f, skin);
+				Staff(g, look, a.hx, a.hy + b, a.ang, p.time, a.glow);
+				if (a.offFront) offHand(true);
+			}
+			else
+			{
+				Staff(g, look, a.hx, a.hy + b, a.ang, p.time, a.glow);
+				Limb(g, 6, -41 + b, a.hx, a.hy + b, 2.9f, Shade(robe, 0.8f));
+				boots();
+				body();
+				head();
+				offHand(true);
+			}
+		}
+
+		// ── 그림자 사냥꾼 ───────────────────────────────────────────────────────
+		Arms HunterArms(const Pose& p)
+		{
+			Arms a;
+			a.hx = 9.f; a.hy = -28.f; a.ang = 0.35f;      // 단검을 낮게 앞으로
+			a.fx = -7.f; a.fy = -30.f; a.ang2 = 2.5f;     // 보조 단검은 역수로
+			a.crouch = 2.f;
+			uint16_t sk; float t;
+			Progress(p, 13, sk, t);
+			switch (sk)
+			{
+			case 13:  // 연속 찌르기: 오른손 → 왼손
+				if (t < 0.5f)
+				{
+					const float k = util::Pulse(t / 0.5f);
+					a.hx = Lerp(9.f, 19.f, k); a.hy = Lerp(-28.f, -34.f, k); a.ang = Lerp(0.35f, -0.05f, k); a.lean = 4.f * k;
+				}
+				else
+				{
+					const float k = util::Pulse((t - 0.5f) / 0.5f);
+					a.fx = Lerp(-7.f, 17.f, k); a.fy = Lerp(-30.f, -35.f, k); a.ang2 = Lerp(2.5f, -0.05f, k); a.lean = 4.f * k; a.offFront = k > 0.2f;
+				}
+				break;
+			case 14:  // 그림자 돌진: 낮게 웅크려 뛰어든다
+			{
+				const float k = util::Pulse(t);
+				a.crouch = 2.f + 5.f * k; a.lean = 7.f * k; a.hx = Lerp(9.f, 2.f, k); a.fx = Lerp(-7.f, -13.f, k);
+				break;
+			}
+			case 15:  // 독 칼날: 크게 가로베기
+			{
+				const Swing s = SwingOf(t, 0.35f, 9.f, -28.f);
+				a.ang = s.angle; a.hx = s.hx + 3.f; a.hy = s.hy; a.lean = s.lean; a.glow = util::Pulse(t);
+				break;
+			}
+			case 16:  // 잔상 회피: 뒤로 젖히며 튄다
+			{
+				const float k = util::Pulse(t);
+				a.lean = -7.f * k; a.crouch = 2.f - 4.f * k; a.hx = Lerp(9.f, 4.f, k); a.hy = Lerp(-28.f, -40.f, k); a.fx = Lerp(-7.f, -14.f, k); a.fy = Lerp(-30.f, -40.f, k);
+				break;
+			}
+			case 17:  // 후방 습격: 두 단검을 머리 위로 → 내리꽂는다
+			{
+				if (t < 0.4f)
+				{
+					const float u = util::EaseOutCubic(t / 0.4f);
+					a.hx = Lerp(9.f, 5.f, u); a.hy = Lerp(-28.f, -56.f, u); a.ang = Lerp(0.35f, -1.9f, u);
+					a.fx = Lerp(-7.f, 1.f, u); a.fy = Lerp(-30.f, -55.f, u); a.ang2 = Lerp(2.5f, -1.8f, u); a.offFront = true;
+					a.lean = -2.f * u;
+				}
+				else
+				{
+					const float u = util::EaseInCubic(std::min(1.f, (t - 0.4f) / 0.2f));
+					const float back = t > 0.7f ? util::EaseInOutCubic((t - 0.7f) / 0.3f) : 0.f;
+					a.hx = Lerp(Lerp(5.f, 15.f, u), 9.f, back); a.hy = Lerp(Lerp(-56.f, -22.f, u), -28.f, back); a.ang = Lerp(Lerp(-1.9f, 1.3f, u), 0.35f, back);
+					a.fx = Lerp(Lerp(1.f, 12.f, u), -7.f, back); a.fy = Lerp(Lerp(-55.f, -24.f, u), -30.f, back); a.ang2 = Lerp(Lerp(-1.8f, 1.4f, u), 2.5f, back);
+					a.offFront = back < 0.5f; a.lean = Lerp(7.f * u, 0.f, back); a.crouch = 2.f + 3.f * u * (1.f - back);
+				}
+				break;
+			}
+			case 18:  // 월영 난무: 두 바퀴 돌며 벤다
+				a.spin = t * kPi * 4.f;
+				a.hx = 15.f; a.hy = -33.f; a.ang = -0.1f;
+				a.fx = 13.f; a.fy = -30.f; a.ang2 = 0.2f; a.offFront = true;
+				a.crouch = 3.f; a.glow = 1.f - t;
+				break;
+			default:
+				break;
+			}
+			return a;
+		}
+
+		void DrawShadowHunter(const Pose& p, const PlayerLook& look)
+		{
+			Rig g = MakeRig(p);
+			const Walk w = WalkOf(p);
+			Arms a = HunterArms(p);
+			ApplySpin(g, a.spin);
+			g.ox += a.lean * 0.6f;
+			g.oy += a.crouch;
+			const float b = w.bob;
+			const Color leather = look.armor, scarf = look.cloth, eye = look.trim;
+			const Color skin = Rgb(0xD8A888);
+			const bool back = p.faceBack;
+			const float flut = std::sin(p.time * 5.f + p.walk) * (1.5f + p.moving * 3.f);
+			const float trail = p.moving * 7.f + std::fabs(a.lean) * 0.8f;
+
+			auto scarfTail = [&]()
+			{
+				Quad4(g, -3, -44 + b, 2, -45 + b, -12 - trail + flut * 0.3f, -36 + b + flut * 0.4f, -16 - trail + flut, -39 + b + flut,
+					Shade(scarf, 1.1f), Shade(scarf, 0.95f), Shade(scarf, 0.6f), Shade(scarf, 0.7f));
+			};
+			auto dagger = [&](float x, float y, float ang, bool front)
+			{
+				Circ(g, x, y, 2.6f, front ? skin : Shade(skin, 0.8f));
+				Weapon(g, look.weaponId != 0 ? look.weaponId : static_cast<uint16_t>(ItemTableData::Id::HunterDagger), x, y, ang, 0.62f, p.time, look.enchant);
+			};
+			auto body = [&]()
+			{
+				// 다리: 가늘고 날렵하게
+				Legs(g, w, Rgb(0x2A2628), Rgb(0x151214), 0.9f);
+				// 가죽 조끼 + X자 끈
+				Quad4(g, -8, -43 + b, 8, -43 + b, 7, -22 + b, -7, -22 + b, Shade(leather, 1.25f), Shade(leather, 0.9f), Shade(leather, 0.75f), Shade(leather, 1.0f));
+				if (!back)
+				{
+					Seg(g, -7, -41 + b, 6, -25 + b, 1.6f, Rgb(0x5A4638));
+					Seg(g, 7, -41 + b, -6, -25 + b, 1.6f, Rgb(0x5A4638));
+					Circ(g, 0, -33 + b, 1.6f, Rgb(0xB8A070));
+				}
+				Seg(g, -7.5f, -23 + b, 7.5f, -23 + b, 2.4f, Rgb(0x1E1A1C));
+				// 짧은 망토(허리까지)
+				Quad4(g, -9, -44 + b, 9, -44 + b, 8 - trail * 0.3f, -27 + b, -11 - trail * 0.5f + flut * 0.3f, -26 + b,
+					WithA(Shade(leather, 0.7f), 0.95f), WithA(Shade(leather, 0.6f), 0.95f), WithA(Shade(leather, 0.45f), 0.9f), WithA(Shade(leather, 0.5f), 0.9f));
+			};
+			auto head = [&]()
+			{
+				// 두건 + 복면, 보랏빛 눈
+				Ball(g, 0, -51 + b, 8.5f, Rgb(0x2A2428));
+				Tri(g, -6, -57 + b, 0, -60 + b, -10, -49 + b, Rgb(0x221E22));
+				if (!back)
+				{
+					Ell(g, 4, -50 + b, 5.f, 4.2f, skin);
+					Quad(g, -1, -48.5f + b, 10, -48.5f + b, 9, -43 + b, -1, -44 + b, Rgb(0x1A161A));
+					gfx::Additive(true);
+					Seg(g, 2.f, -51.5f + b, 5.f, -51 + b, 1.4f, Shade(eye, 1.2f));
+					Seg(g, 6.5f, -51 + b, 9.f, -51.5f + b, 1.2f, Shade(eye, 1.2f));
+					gfx::Additive(false);
+				}
+				// 스카프 매듭
+				Ell(g, 0, -44 + b, 6.f, 2.6f, scarf);
+			};
+			if (a.glow > 0.05f)
+			{
+				gfx::Additive(true);
+				Glow(g, a.hx, a.hy + b, 18.f * a.glow, WithA(p.skill == 15 ? Rgb(0x8AE85A) : Rgb(0xC8B8FF), 0.5f * a.glow));
+				gfx::Additive(false);
+			}
+
+			if (!back)
+			{
+				scarfTail();
+				if (!a.offFront)
+				{
+					Limb(g, -6, -41 + b, a.fx, a.fy + b, 2.6f, Shade(leather, 0.8f));
+					dagger(a.fx, a.fy + b, a.ang2, false);
+				}
+				body();
+				head();
+				Limb(g, 6, -41 + b, a.hx, a.hy + b, 2.8f, leather);
+				dagger(a.hx, a.hy + b, a.ang, true);
+				if (a.offFront)
+				{
+					Limb(g, -5, -41 + b, a.fx, a.fy + b, 2.6f, leather);
+					dagger(a.fx, a.fy + b, a.ang2, true);
+				}
+			}
+			else
+			{
+				Limb(g, 6, -41 + b, a.hx, a.hy + b, 2.8f, Shade(leather, 0.8f));
+				dagger(a.hx, a.hy + b, a.ang, false);
+				body();
+				head();
+				scarfTail();
+				Limb(g, -6, -41 + b, a.fx, a.fy + b, 2.6f, leather);
+				dagger(a.fx, a.fy + b, a.ang2, true);
+			}
+		}
+	}
+
 	void DrawPlayer(const Pose& p, const PlayerLook& look)
 	{
-		Rig g = MakeRig(p);
-		const Walk w = WalkOf(p);
-		const Swing sw = SwingOf(p.attack, -0.95f, 10.f, -31.f);
-		g.ox += sw.lean * 0.6f;
-		const Color armor = look.armor, cloth = look.cloth;
-		const Color skin = Rgb(0xE8B890);
-		const bool back = p.faceBack;
-
-		// 시전 자세: 칼을 높이 든다
-		float wAngle = sw.angle, hx = sw.hx, hy = sw.hy;
-		if (p.cast > 0.f && p.attack < 0.f)
+		switch (look.cls)
 		{
-			const float u = util::Pulse(p.cast);
-			wAngle = Lerp(wAngle, -1.57f, u);
-			hy = Lerp(hy, -52.f, u);
-			hx = Lerp(hx, 4.f, u);
-		}
-		const float armSwing = -w.sw * 5.f;
-
-		if (!back)
-		{
-			Cape(g, p, cloth, false);
-			// 방패 팔(몸 뒤)
-			Limb(g, -7, -41 + w.bob, -9 + armSwing, -30 + w.bob, 3.f, Shade(armor, 0.75f));
-			Shield(g, -10 + armSwing, -31 + w.bob, Shade(cloth, 0.8f), Shade(armor, 0.7f), false);
-			Legs(g, w, Rgb(0x4A4038), Rgb(0x3A2A1E));
-			Torso(g, w, armor, look.trim, false);
-			Head(g, w, p, armor, cloth, false);
-			// 칼 든 팔(앞)
-			Limb(g, 7, -41 + w.bob, hx, hy + w.bob, 3.2f, armor);
-			Circ(g, hx, hy + w.bob, 3.f, skin);
-			Weapon(g, look.weaponId, hx, hy + w.bob, wAngle, 0.78f, p.time, look.enchant);
-			Circ(g, 7, -42 + w.bob, 4.5f, Shade(armor, 1.05f));
-		}
-		else
-		{
-			// 뒷모습: 무기 팔이 몸 너머로
-			Limb(g, 7, -41 + w.bob, hx, hy + w.bob, 3.2f, Shade(armor, 0.75f));
-			Weapon(g, look.weaponId, hx, hy + w.bob, wAngle, 0.78f, p.time, look.enchant);
-			Legs(g, w, Rgb(0x4A4038), Rgb(0x3A2A1E));
-			Torso(g, w, armor, look.trim, true);
-			Head(g, w, p, armor, cloth, true);
-			Cape(g, p, cloth, true);
-			Limb(g, -7, -41 + w.bob, -9 + armSwing, -30 + w.bob, 3.f, armor);
-			Shield(g, -10 + armSwing, -31 + w.bob, cloth, Shade(armor, 0.9f), true);
+		case 1: DrawRuneCaster(p, look); break;
+		case 2: DrawShadowHunter(p, look); break;
+		default: DrawKnight(p, look); break;
 		}
 	}
 
@@ -1017,7 +1529,17 @@ namespace actors
 	// ── NPC ─────────────────────────────────────────────────────────────────────
 	float NpcHeight(const WorldData::NpcRow& npc)
 	{
-		return npc.kind == WorldData::NpcKind::eTeleporter ? 84.f : 72.f;
+		using WorldData::NpcKind;
+		switch (npc.kind)
+		{
+		case NpcKind::eTeleporter: return 84.f;
+		case NpcKind::eChild:      return 50.f;
+		case NpcKind::eVillager:   return 62.f;
+		case NpcKind::eDog:        return 30.f;
+		case NpcKind::eCat:        return 24.f;
+		case NpcKind::eChicken:    return 22.f;
+		default:                   return 72.f;
+		}
 	}
 
 	void DrawNpc(const Pose& p, const WorldData::NpcRow& npc)
@@ -1116,6 +1638,257 @@ namespace actors
 			if (!p.faceBack)
 				Seg(g, 2, -53 + b, 8.5f, -53 + b, 1.8f, Rgb(0x1A1A22));
 			Tri(g, -2, -61 + b, 2, -61 + b, -8, -66 + b, Rgb(0xC83A3A));
+			break;
+		}
+		// ── V2: 살아 있는 마을 ──
+		case NpcKind::eElder:
+		{
+			// 굽은 허리, 긴 수염, 지팡이
+			const Color robe = Rgb(0x3A5A3A);
+			g.ox += 2.f;
+			Seg(g, 12, 1, 14 + w.sw * 2.f, -50 + b, 2.2f, Rgb(0x6A4A2A));
+			Circ(g, 14 + w.sw * 2.f, -51 + b, 2.6f, Rgb(0x7A5A3A));
+			Ell(g, -3 - w.sw * 4.f, -1.5f - w.lift1, 4.f, 2.2f, Rgb(0x2A2018));
+			Ell(g, 4 + w.sw * 4.f, -1.5f - w.lift0, 4.2f, 2.3f, Rgb(0x3A2A1E));
+			Quad4(g, -9, -42 + b, 9, -44 + b, 12, -2, -12, -2, Shade(robe, 1.15f), Shade(robe, 0.85f), Shade(robe, 0.6f), Shade(robe, 0.8f));
+			Seg(g, -12, -3, 12, -3, 1.6f, Rgb(0xC8A860));
+			Limb(g, 6, -39 + b, 13 + w.sw * 2.f, -34 + b, 3.f, robe);
+			Circ(g, 13 + w.sw * 2.f, -34 + b, 2.6f, skin);
+			Ball(g, 3, -50 + b, 8.f, skin);
+			Ell(g, 2, -57 + b, 8.f, 3.4f, Rgb(0xE8E8E8));
+			Vector2 beard[5] = { g.P(-2, -49 + b), g.P(11, -49 + b), g.P(9, -38 + b), g.P(4, -30 + b), g.P(0, -40 + b) };
+			gfx::Poly(beard, 5, Rgb(0xF0F0F0));
+			if (!p.faceBack)
+			{
+				Seg(g, 5, -53 + b, 9, -53 + b, 1.4f, Rgb(0xDADADA));
+				Circ(g, 7, -51 + b, 1.1f, Rgb(0x2A1A1A));
+			}
+			break;
+		}
+		case NpcKind::ePriest:
+		{
+			// 흰 사제복 + 금빛 테, 손에 작은 성표 — 은은한 빛
+			const Color robe = Rgb(0xE8E4DA), gold = Rgb(0xE0C060);
+			const float pulse = 0.7f + 0.3f * std::sin(p.time * 2.f);
+			gfx::Additive(true);
+			Glow(g, 0, -36 + b, 30.f * pulse, Rgb(0xFFF0C0, 60));
+			gfx::Additive(false);
+			props::FrameLights().push_back({ g.P(0, 0), 120.f, Rgb(0xFFE8B0), 0.55f * pulse });
+			Ell(g, -3 - w.sw * 4.f, -1.5f - w.lift1, 4.f, 2.2f, Rgb(0x6A5A4A));
+			Ell(g, 4 + w.sw * 4.f, -1.5f - w.lift0, 4.2f, 2.3f, Rgb(0x7A6A5A));
+			Quad4(g, -9, -45 + b, 9, -45 + b, 13, -2, -13, -2, Shade(robe, 1.05f), Shade(robe, 0.88f), Shade(robe, 0.7f), Shade(robe, 0.85f));
+			Seg(g, 1, -44 + b, 1, -3, 2.4f, gold);
+			Seg(g, -13, -3, 13, -3, 1.8f, gold);
+			Quad(g, -10, -46 + b, 10, -46 + b, 8, -38 + b, -8, -38 + b, Shade(robe, 0.92f));
+			Limb(g, 6, -41 + b, 10, -32 + b, 3.f, robe);
+			Circ(g, 10, -32 + b, 2.5f, skin);
+			Seg(g, 11, -35 + b, 11, -27 + b, 1.6f, gold);
+			Seg(g, 8.5f, -32 + b, 13.5f, -32 + b, 1.6f, gold);
+			Ball(g, 1, -53 + b, 7.8f, skin);
+			Ell(g, 0, -58 + b, 8.5f, 4.f, Rgb(0xC8A878));
+			if (!p.faceBack)
+			{
+				Circ(g, 4.5f, -53 + b, 1.1f, Rgb(0x2A1A1A));
+				Seg(g, 3, -49 + b, 6, -49.5f + b, 0.9f, Rgb(0xB06060));
+			}
+			break;
+		}
+		case NpcKind::eInnkeeper:
+		{
+			// 통통한 여관 주인: 앞치마, 걷어 올린 소매, 국자
+			const Color dress = Rgb(0x8A5A3A), apron = Rgb(0xF0E8D8);
+			Ell(g, -3 - w.sw * 4.f, -1.5f - w.lift1, 4.4f, 2.4f, Rgb(0x3A2A1E));
+			Ell(g, 4 + w.sw * 4.f, -1.5f - w.lift0, 4.6f, 2.5f, Rgb(0x4A3A2A));
+			Quad4(g, -11, -40 + b, 11, -40 + b, 14, -2, -14, -2, Shade(dress, 1.1f), Shade(dress, 0.85f), Shade(dress, 0.6f), Shade(dress, 0.85f));
+			Ell(g, 0, -30 + b, 12.f, 11.f, Shade(dress, 1.0f));
+			Quad(g, -6, -34 + b, 8, -34 + b, 10, -4, -7, -4, apron);
+			Limb(g, -9, -38 + b, -12, -27 + b, 3.4f, skin);
+			const float stir = std::sin(p.time * 3.f) * 2.f;
+			Limb(g, 9, -38 + b, 13, -29 + b, 3.4f, skin);
+			Seg(g, 13, -29 + b, 17 + stir, -43 + b, 1.6f, Rgb(0x9A7A4A));
+			Ell(g, 17 + stir, -44 + b, 2.8f, 2.f, Rgb(0x9A7A4A));
+			Ball(g, 1, -49 + b, 8.4f, skin);
+			Quad(g, -8, -53 + b, 9, -56 + b, 8, -60 + b, -7, -58 + b, Rgb(0xC83A3A));
+			if (!p.faceBack)
+			{
+				Circ(g, 4.5f, -50 + b, 1.2f, Rgb(0x2A1A1A));
+				Circ(g, 6, -46.5f + b, 1.6f, Rgb(0xF0A090, 130));
+				Seg(g, 3, -45 + b, 6, -45.5f + b, 1.f, Rgb(0xA05050));
+			}
+			break;
+		}
+		case NpcKind::eBard:
+		{
+			// 깃털 모자, 망토, 류트(줄을 튕긴다)
+			const Color cloak = Rgb(0x7A2A4A), tunic = Rgb(0x2A5A7A);
+			Legs(g, w, Rgb(0x3A3A48), Rgb(0x2A2020));
+			Quad4(g, -10, -44 + b, 8, -44 + b, 6 - p.moving * 3.f, -14, -14 - p.moving * 3.f, -15, Shade(cloak, 0.9f), Shade(cloak, 0.75f), Shade(cloak, 0.55f), Shade(cloak, 0.65f));
+			Quad4(g, -8, -44 + b, 8, -44 + b, 7, -22 + b, -7, -22 + b, Shade(tunic, 1.15f), Shade(tunic, 0.9f), Shade(tunic, 0.75f), Shade(tunic, 1.f));
+			Seg(g, -7.5f, -23 + b, 7.5f, -23 + b, 2.4f, Rgb(0x5A3A22));
+			// 류트: 몸통(배) + 목
+			Ell(g, 6, -30 + b, 7.f, 5.5f, Rgb(0xA0703A));
+			Ell(g, 6, -30 + b, 2.f, 2.f, Rgb(0x3A2410));
+			Seg(g, 8, -32 + b, 20, -43 + b, 2.f, Rgb(0x7A5028));
+			const float strum = std::sin(p.time * 9.f) * 2.5f;
+			Limb(g, -6, -41 + b, 5 + strum * 0.5f, -28 + b, 2.8f, tunic);
+			Circ(g, 5 + strum * 0.5f, -28 + b, 2.4f, skin);
+			Limb(g, 6, -41 + b, 16, -39 + b, 2.8f, tunic);
+			Circ(g, 16, -39 + b, 2.3f, skin);
+			Ball(g, 1, -52 + b, 7.8f, skin);
+			Quad(g, -9, -55 + b, 9, -57 + b, 6, -63 + b, -6, -62 + b, cloak);
+			SegG(g, -6, -62 + b, -16 + std::sin(p.time * 2.f) * 1.5f, -70 + b, 2.5f, 1.f, Rgb(0xF0E8D0), Rgb(0xC8B890));
+			if (!p.faceBack)
+			{
+				Circ(g, 4.5f, -52 + b, 1.1f, Rgb(0x2A1A1A));
+				Seg(g, 3, -48 + b, 6.5f, -47.5f + b, 1.f, Rgb(0xA05050));
+			}
+			break;
+		}
+		case NpcKind::eChild:
+		{
+			// 아이: 작고 통통 튄다
+			Rig c = MakeRig(p, 0.68f);
+			const Color shirt = npc.color ? Rgb(npc.color) : Rgb(0x3A7AD8);
+			const float hop = std::fabs(std::sin(p.walk)) * 3.f * p.moving;
+			c.oy -= hop;
+			Legs(c, w, Rgb(0x4A3A2A), Rgb(0x2A2018));
+			Quad4(c, -8, -44 + b, 8, -44 + b, 9, -22 + b, -9, -22 + b, Shade(shirt, 1.15f), Shade(shirt, 0.9f), Shade(shirt, 0.75f), Shade(shirt, 1.f));
+			Limb(c, -7, -40 + b, -10 - w.sw * 5.f, -28 + b, 2.8f, shirt);
+			Limb(c, 7, -40 + b, 10 + w.sw * 5.f, -28 + b, 2.8f, shirt);
+			Circ(c, -10 - w.sw * 5.f, -28 + b, 2.6f, skin);
+			Circ(c, 10 + w.sw * 5.f, -28 + b, 2.6f, skin);
+			Ball(c, 1, -55 + b, 11.f, skin);
+			Ell(c, 0, -62 + b, 11.f, 6.f, npc.id % 2 ? Rgb(0x8A4A2A) : Rgb(0x3A2418));
+			if (npc.id % 2 == 0)
+			{
+				Circ(c, -11, -56 + b, 3.2f, Rgb(0x3A2418));   // 땋은 머리
+				Circ(c, 12, -56 + b, 3.2f, Rgb(0x3A2418));
+			}
+			if (!p.faceBack)
+			{
+				Circ(c, 5, -55 + b, 1.5f, Rgb(0x2A1A1A));
+				Circ(c, 7, -50 + b, 2.f, Rgb(0xF08A8A, 120));
+				Seg(c, 3, -49 + b, 6, -48.5f + b, 1.2f, Rgb(0xA04040));
+			}
+			break;
+		}
+		case NpcKind::eVillager:
+		{
+			// 할멈: 숄, 바구니, 굽은 등
+			const Color shawl = npc.color ? Rgb(npc.color) : Rgb(0x6A5A7A), dress = Rgb(0x5A4A3A);
+			Rig c = MakeRig(p, 0.9f);
+			c.ox += 2.f;
+			Ell(c, -3 - w.sw * 3.f, -1.5f - w.lift1, 4.f, 2.2f, Rgb(0x2A2018));
+			Ell(c, 4 + w.sw * 3.f, -1.5f - w.lift0, 4.2f, 2.3f, Rgb(0x3A2A1E));
+			Quad4(c, -9, -40 + b, 9, -42 + b, 12, -2, -12, -2, Shade(dress, 1.1f), Shade(dress, 0.85f), Shade(dress, 0.6f), Shade(dress, 0.85f));
+			Quad4(c, -11, -46 + b, 10, -46 + b, 12, -30 + b, -12, -30 + b, Shade(shawl, 1.15f), Shade(shawl, 0.9f), Shade(shawl, 0.7f), Shade(shawl, 0.9f));
+			Limb(c, 7, -40 + b, 12, -28 + b, 3.f, shawl);
+			Ell(c, 13, -24 + b, 7.f, 4.f, Rgb(0x9A6A3A));
+			Seg(c, 7, -25 + b, 19, -25 + b, 1.2f, Rgb(0x6A4A2A));
+			Circ(c, 11, -28 + b, 2.f, Rgb(0xD84A3A));
+			Circ(c, 15, -28 + b, 2.f, Rgb(0xE8C040));
+			Ball(c, 3, -52 + b, 8.f, skin);
+			Ell(c, 0, -57 + b, 9.f, 5.f, Rgb(0xD8D8D8));
+			Circ(c, -7, -56 + b, 3.5f, Rgb(0xD8D8D8));
+			if (!p.faceBack)
+			{
+				Circ(c, 7, -52 + b, 1.1f, Rgb(0x2A1A1A));
+				Seg(c, 5, -47 + b, 8, -47.5f + b, 1.f, Rgb(0x9A6060));
+			}
+			break;
+		}
+		case NpcKind::eFarmer:
+		{
+			// 밀짚모자, 멜빵바지, 쇠스랑
+			const Color overall = npc.color ? Rgb(npc.color) : Rgb(0x4A5A8A), shirt = Rgb(0xD8C8A8);
+			Seg(g, 13, 2, 17, -70, 2.f, Rgb(0x7A5A3A));
+			for (int i = -1; i <= 1; ++i) Seg(g, 17 + i * 3.f, -70, 17.5f + i * 3.5f, -80, 1.4f, Rgb(0x8A8A92));
+			Legs(g, w, overall, Rgb(0x3A2A1E));
+			Quad4(g, -9, -44 + b, 9, -44 + b, 8, -22 + b, -8, -22 + b, Shade(shirt, 1.1f), Shade(shirt, 0.9f), Shade(shirt, 0.75f), Shade(shirt, 0.95f));
+			Quad(g, -7, -36 + b, 7, -36 + b, 8, -20 + b, -8, -20 + b, overall);
+			Seg(g, -5, -44 + b, -5, -36 + b, 1.6f, overall);
+			Seg(g, 5, -44 + b, 5, -36 + b, 1.6f, overall);
+			Limb(g, 7, -41 + b, 14, -32 + b, 3.f, shirt);
+			Circ(g, 14, -32 + b, 2.6f, skin);
+			Limb(g, -7, -41 + b, -10 - w.sw * 4.f, -29 + b, 3.f, shirt);
+			Ball(g, 1, -53 + b, 8.2f, Rgb(0xD8A07A));
+			Ell(g, 0, -59 + b, 15.f, 4.f, Rgb(0xE8C870));
+			Ell(g, 0, -62 + b, 8.f, 4.5f, Rgb(0xF0D888));
+			Seg(g, -8, -60 + b, 8, -60 + b, 1.5f, Rgb(0xA84A2A));
+			if (!p.faceBack)
+			{
+				Circ(g, 5, -53 + b, 1.2f, Rgb(0x2A1A1A));
+				Seg(g, 3, -48 + b, 7, -48 + b, 1.f, Rgb(0x9A5A40));
+			}
+			break;
+		}
+		case NpcKind::eDog:
+		{
+			// 누렁이: 걸을 때 통통, 멈추면 꼬리를 흔든다
+			const Color fur = Rgb(0xC8904A), dark = Rgb(0x8A5A2A);
+			const float gait = std::sin(p.walk * 2.f) * p.moving;
+			const float wag = std::sin(p.time * (p.moving > 0.3f ? 10.f : 16.f)) * (6.f + 3.f * (1.f - p.moving));
+			const float by = -std::fabs(gait) * 1.5f;
+			// 다리
+			Limb(g, -9 + gait * 3.f, -9 + by, -9 + gait * 4.f, -1, 2.4f, dark);
+			Limb(g, 8 - gait * 3.f, -9 + by, 8 - gait * 4.f, -1, 2.4f, dark);
+			Limb(g, -6 - gait * 3.f, -9 + by, -6 - gait * 4.f, -1, 2.4f, fur);
+			Limb(g, 11 + gait * 3.f, -9 + by, 11 + gait * 4.f, -1, 2.4f, fur);
+			// 꼬리 + 몸
+			SegG(g, -12, -15 + by, -18 + wag * 0.3f, -24 + by - std::fabs(wag) * 0.3f, 3.f, 1.5f, fur, Shade(fur, 1.2f));
+			Ell(g, 0, -13 + by, 13.f, 6.5f, fur);
+			Ell(g, 1, -11 + by, 10.f, 3.5f, Rgb(0xF0D0A0));
+			// 머리
+			Ball(g, 13, -20 + by, 6.f, fur);
+			Ell(g, 18, -18 + by, 3.5f, 2.5f, Rgb(0xE8C8A0));
+			Circ(g, 20.5f, -19 + by, 1.3f, Rgb(0x1A1210));
+			Tri(g, 9, -24 + by, 12, -25 + by, 10, -17 + by, dark);
+			if (!p.faceBack)
+				Circ(g, 15, -22 + by, 1.2f, Rgb(0x1A1210));
+			break;
+		}
+		case NpcKind::eCat:
+		{
+			// 나비: 식빵 굽는 자세 + 느린 꼬리
+			const Color fur = Rgb(0xE89A4A), stripe = Rgb(0xB8662A);
+			const float swish = std::sin(p.time * 1.6f) * 5.f;
+			const float gait = std::sin(p.walk * 2.f) * p.moving;
+			if (p.moving > 0.2f)
+			{
+				Limb(g, -6 + gait * 3.f, -6, -6 + gait * 4.f, -1, 1.8f, stripe);
+				Limb(g, 7 - gait * 3.f, -6, 7 - gait * 4.f, -1, 1.8f, fur);
+			}
+			SegG(g, -9, -8, -15 + swish, -17, 2.4f, 1.2f, fur, stripe);
+			Ell(g, 0, -8 - p.moving * 2.f, 10.f, 5.5f, fur);
+			for (int i = -1; i <= 1; ++i) Seg(g, i * 4.f - 1.f, -13, i * 4.f + 1.f, -5, 1.2f, stripe);
+			Ball(g, 9, -14 - p.moving * 2.f, 5.f, fur);
+			Tri(g, 6, -17 - p.moving * 2.f, 8, -22 - p.moving * 2.f, 9, -17 - p.moving * 2.f, fur);
+			Tri(g, 10, -17 - p.moving * 2.f, 13, -21 - p.moving * 2.f, 13, -16 - p.moving * 2.f, fur);
+			if (!p.faceBack)
+			{
+				const float blink = std::fmod(p.time + p.seed * 0.37f, 4.f) < 0.12f ? 0.3f : 1.f;
+				Ell(g, 11, -15 - p.moving * 2.f, 1.1f, 1.1f * blink, Rgb(0x2A3A1A));
+			}
+			break;
+		}
+		case NpcKind::eChicken:
+		{
+			// 닭: 멈추면 모이를 쪼아 먹는다
+			const Color body = Rgb(0xF4F0E8);
+			const float peck = p.moving < 0.2f ? std::max(0.f, std::sin(p.time * 5.f + p.seed)) : 0.f;
+			const float gait = std::sin(p.walk * 2.f) * p.moving;
+			Seg(g, -2 + gait * 2.f, -5, -2 + gait * 3.f, 0, 1.2f, Rgb(0xE8A030));
+			Seg(g, 2 - gait * 2.f, -5, 2 - gait * 3.f, 0, 1.2f, Rgb(0xE8A030));
+			Tri(g, -8, -12, -13, -17, -7, -8, Shade(body, 0.85f));
+			Ell(g, 0, -9, 7.5f, 5.5f, body);
+			Ell(g, -1, -9, 4.5f, 3.f, Shade(body, 0.9f));
+			const float hx = 6.f + peck * 3.f, hy = -15.f + peck * 9.f;
+			Ball(g, hx, hy, 3.5f, body);
+			Tri(g, hx + 3.f, hy - 0.5f, hx + 6.f, hy + 0.5f, hx + 3.f, hy + 1.5f, Rgb(0xE8A030));
+			Circ(g, hx, hy - 3.5f, 1.8f, Rgb(0xD83A2A));
+			Circ(g, hx + 2.5f, hy + 2.5f, 1.2f, Rgb(0xD83A2A));
+			if (!p.faceBack)
+				Circ(g, hx + 1.2f, hy - 0.8f, 0.8f, Rgb(0x1A1210));
 			break;
 		}
 		}

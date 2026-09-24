@@ -46,6 +46,33 @@ struct Entity
 	int16_t  alignment = 0;
 	uint8_t  flags = 0;              // SubjectExFlag
 	uint32_t nameHash = 0;
+	uint8_t  classId = 0;            // 플레이어 직업(ClassId)
+	uint8_t  weaponGrade = 0;
+
+	// 상태이상(표시용) — STATUS_NFY로 갱신, 만료는 클라 시계로
+	struct StatusFx { uint8_t id = 0; uint8_t stacks = 0; float until = 0.f; };
+	std::array<StatusFx, 6> statuses{};
+	[[nodiscard]] const StatusFx* Status(uint8_t id, float now) const
+	{
+		for (const auto& s : statuses) if (s.id == id && s.stacks > 0 && now < s.until) return &s;
+		return nullptr;
+	}
+
+	// 스킬 모션(시전자) — 0이면 기본 동작
+	uint16_t animSkill = 0;
+	float    animT = -1.f;           // 경과(초), <0 없음
+	float    animDur = 0.5f;
+	float    animCast = 0.f;         // 예고 시간(처형·혜성)
+
+	// 몬스터 강공격 예고
+	struct Telegraph { bool active = false; uint8_t shape = 0, pattern = 0; Vector2 c{}, from{}; float radius = 0.f, t = 0.f, dur = 1.f; };
+	Telegraph tele;
+	float    windup = 0.f;           // 0~1 예고 자세
+	float    knockT = 0.f;           // 1→0 넉백 흔들림
+	float    hopT = -1.f;            // 도약 포물선 진행(0→1), <0 없음
+	float    hopH = 46.f;
+	double   projArriveAt = 0.0;     // 이 대상에게 날아가는 투사체가 닿는 시각(표시 지연)
+	float    stunShake = 0.f;        // 기절/빙결 걸린 순간 흔들림
 
 	// 연출
 	bool  dead = false;

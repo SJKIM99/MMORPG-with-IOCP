@@ -3,6 +3,7 @@
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "fx/Particles.h"
+#include "fx/SkillFx.h"
 #include "render/Draw.h"
 #include "render/Actors.h"
 #include "render/Icons.h"
@@ -335,7 +336,75 @@ void Game::OnPacket(const char* data, uint16_t size)
 	case PacketType::SUBJECT_DAMAGE_NFY:
 	{
 		SUBJECT_DAMAGE_NFY_PACKET p{};
-		if (As(data, size, p)) HandleDamage(p);
+		if (As(data, size, p)) QueueDamage(p);
+		break;
+	}
+	// ── 전투 V2 ──
+	case PacketType::USER_STATS_INF:
+	{
+		USER_STATS_INF_PACKET p{};
+		if (As(data, size, p)) HandleStats(p);
+		break;
+	}
+	case PacketType::USER_RESOURCE_INF:
+	{
+		USER_RESOURCE_INF_PACKET p{};
+		if (As(data, size, p)) HandleResource(p);
+		break;
+	}
+	case PacketType::SKILL_RESULT_ACK:
+	{
+		SKILL_RESULT_ACK_PACKET p{};
+		if (As(data, size, p)) HandleSkillResult(p);
+		break;
+	}
+	case PacketType::SKILL_CAST_NFY:
+	{
+		SKILL_CAST_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSkillCast(p);
+		break;
+	}
+	case PacketType::STATUS_NFY:
+	{
+		STATUS_NFY_PACKET p{};
+		if (As(data, size, p)) HandleStatus(p);
+		break;
+	}
+	case PacketType::MONSTER_TELEGRAPH_NFY:
+	{
+		MONSTER_TELEGRAPH_NFY_PACKET p{};
+		if (As(data, size, p)) HandleTelegraph(p);
+		break;
+	}
+	// ── 살아 있는 마을 ──
+	case PacketType::NPC_LIST_NFY:
+	{
+		NPC_LIST_NFY_PACKET p{};
+		if (As(data, size, p)) HandleNpcList(p);
+		break;
+	}
+	case PacketType::NPC_STATE_NFY:
+	{
+		NPC_STATE_NFY_PACKET p{};
+		if (As(data, size, p)) HandleNpcState(p);
+		break;
+	}
+	case PacketType::NPC_BARK_NFY:
+	{
+		NPC_BARK_NFY_PACKET p{};
+		if (As(data, size, p)) HandleNpcBark(p);
+		break;
+	}
+	case PacketType::NPC_TALK_ACK:
+	{
+		NPC_TALK_ACK_PACKET p{};
+		if (As(data, size, p)) HandleNpcTalkAck(p);
+		break;
+	}
+	case PacketType::NPC_SERVICE_ACK:
+	{
+		NPC_SERVICE_ACK_PACKET p{};
+		if (As(data, size, p)) HandleNpcServiceAck(p);
 		break;
 	}
 	case PacketType::EFFECT_NFY:
@@ -380,6 +449,20 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 	ResetWorld();
 	m_selfId = p.id;
 	m_hasSelf = true;
+	m_skillReady = {};
+	m_skillCdTotal = {};
+	m_skillFlash = {};
+	m_readyPrev = {};
+	m_delayedHits.clear();
+	m_deferredDies.clear();
+	m_chainHops.clear();
+	m_queuedSkill = -1;
+	m_bufferSlot = -1;
+	m_dashWaitSeq = 0;
+	m_actionLockUntil = 0.0;
+	m_comboHits = 0;
+	m_statsKnown = false;
+	InitNpcs();
 	m_level = p.level;
 	m_hp = p.hp;
 	m_maxhp = p.maxhp;
@@ -407,7 +490,7 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 	fx::Fx().TeleportIn(TileToIso(me.pos));
 	sfx::Play(sfx::Id::Teleport, 0.6f);
 	AddChat(std::string(WorldData::kTownName) + "에 오신 것을 환영합니다, " + m_playerName + "님!", Rgb(0xFFE08A));
-	AddChat("도움말: F1 · 이동: 클릭/WASD · 공격: 몬스터 클릭/Space · 기술: Q · 줍기: Z · 가방: I", Rgb(0xB8B0A0));
+	AddChat("이동 WASD · 공격 Space · 기술 1~5 · 대상 Tab · 대화/줍기 F · 물약 Q E R T · 가방 I · 능력치 C · 도움말 F1", Rgb(0xB8B0A0));
 }
 
 void Game::HandleSubjectAdd(const SUBJECT_ADD_NFY_PACKET& p)
@@ -529,13 +612,24 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 	Entity* e = Find(p.id);
 	if (!e) return;
 	FaceToward(*e, p.x, p.y);
+	const int fromX = e->tx, fromY = e->ty;
 	e->tx = p.x;
 	e->ty = p.y;
 	// 서버가 실어 준 걸음 시간(ms)대로 보간. 0이면 순간이동 → 스냅.
 	float dur = p.move_time / 1000.f;
-	if (p.move_time == 0 && e->kind == EntityKind::Monster && e->row)
-		dur = 0.f;
-	motion::RemoteStep(*e, p.x, p.y, dur);
+	bool far = false;
+	if (e->kind == EntityKind::Monster && p.move_time == 0 && e->tele.pattern == static_cast<uint8_t>(MonsterPattern::Leap)
+		&& e->tele.t >= e->tele.dur - 0.1f && e->tele.t < e->tele.dur + 0.8f && Cheb(fromX, fromY, p.x, p.y) <= 6)
+	{
+		// 도약 패턴: 포물선으로 뛰어든다
+		dur = 0.3f;
+		far = true;
+		e->hopT = 0.f;
+		e->hopH = 34.f + 10.f * Cheb(fromX, fromY, p.x, p.y);
+	}
+	else if (e->kind == EntityKind::Monster && p.move_time > 0 && p.move_time < 120)
+		far = true;   // 넉백·돌진(빠른 걸음)은 밀린 걸음을 기다리지 않고 바로 따라간다
+	motion::RemoteStep(*e, p.x, p.y, dur, far);
 }
 
 void Game::HandleMoveAck(const USER_MOVE_EX_ACK_PACKET& p)
@@ -578,8 +672,18 @@ void Game::HandleSubjectRemove(const SUBJECT_REMOVE_NFY_PACKET& p)
 
 void Game::HandleSubjectDie(const SUBJECT_DIE_NFY_PACKET& p)
 {
+	// 투사체·연타가 아직 닿지 않았으면 그 뒤에 쓰러뜨린다(TickCombat)
+	if (HasDelayedHitFor(p.id))
+	{
+		m_deferredDies.push_back(p);
+		return;
+	}
 	Entity* e = Find(p.id);
 	if (!e) return;
+	e->tele.active = false;
+	e->windup = 0.f;
+	e->animT = -1.f;
+	for (auto& st : e->statuses) st = Entity::StatusFx{};
 	e->dead = true;
 	e->deadT = 0.f;
 	e->hp = 0;
@@ -685,68 +789,6 @@ void Game::HandleSubjectRespawn(const SUBJECT_RESPAWN_NFY_PACKET& p)
 	fx::Fx().Dust(TileToIso(e.pos), 3.f);
 }
 
-void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
-{
-	Entity* v = Find(p.victimId);
-	Entity* a = Find(p.attackerId);
-	const bool selfVictim = p.victimId == m_selfId;
-	const bool selfAttacker = p.attackerId == m_selfId;
-	const bool crit = (p.flags & DAMAGE_CRIT) != 0;
-	const bool skill = (p.flags & DAMAGE_SKILL) != 0;
-	const bool killed = (p.flags & DAMAGE_KILLED) != 0;
-	const bool bossSkill = (p.flags & DAMAGE_BOSS_SKILL) != 0;
-
-	if (v)
-	{
-		v->hp = std::max(0, p.hp);
-		v->maxhp = std::max(1, p.maxhp);
-		v->lastHitAt = m_time;
-		v->hurtT = 1.f;
-		v->flashT = 1.f;
-	}
-	if (selfVictim)
-	{
-		m_hp = std::max(0, p.hp);
-		m_maxhp = std::max(1, p.maxhp);
-	}
-	// 공격자 동작(내 공격은 요청 시점에 이미 재생)
-	if (a && !selfAttacker && !skill && !bossSkill)
-	{
-		a->attackT = 0.f;
-		if (v) FaceToward(*a, v->tx, v->ty);
-	}
-
-	if (!v) return;
-	const Vector2 iso = TileToIso(v->pos);
-	const float h = EntityHeight(*v) * (v->row ? 1.f : 1.f);
-	fx::DamageStyle style = fx::DamageStyle::Other;
-	if (selfAttacker) style = crit ? fx::DamageStyle::Crit : (skill ? fx::DamageStyle::Skill : fx::DamageStyle::Normal);
-	else if (selfVictim) style = crit ? fx::DamageStyle::TakenCrit : fx::DamageStyle::Taken;
-	fx::Fx().Damage(iso, h + 6.f, p.damage, style);
-
-	float dirSign = 1.f;
-	if (a) dirSign = ((v->pos.x - v->pos.y) - (a->pos.x - a->pos.y)) >= 0.f ? 1.f : -1.f;
-	const Color bodyColor = (v->kind == EntityKind::Monster && v->row) ? Rgb(v->row->color1) : Rgb(0xC83A3A);
-	fx::Fx().HitSpark(iso, h, bodyColor, crit, dirSign);
-
-	if (selfAttacker)
-	{
-		PlayAt(static_cast<int>(crit ? sfx::Id::HitHeavy : sfx::Id::Hit), v->pos, 1.f, 0.12f);
-		m_cam.AddTrauma(crit ? 0.32f : 0.12f);
-		if (crit) { fx::Fx().HitStop(0.07f); m_cam.Kick(0.04f); }
-		if (killed) { fx::Fx().HitStop(0.09f); m_cam.AddTrauma(0.2f); m_cam.Kick(0.03f); }
-	}
-	else if (selfVictim)
-	{
-		sfx::Play(sfx::Id::PlayerHurt, 0.8f, 0.1f);
-		if (a && a->kind == EntityKind::Monster) PlayAt(static_cast<int>(sfx::Id::MonsterSwipe), a->pos, 0.6f);
-		m_cam.AddTrauma(bossSkill ? 0.6f : (crit ? 0.4f : 0.22f));
-		fx::Fx().Flash(Rgb(0xFF2A1A), bossSkill ? 0.35f : 0.16f, 0.2f);
-	}
-	else
-		PlayAt(static_cast<int>(sfx::Id::Hit), v->pos, 0.45f, 0.15f);
-}
-
 void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 {
 	const auto id = static_cast<EffectId>(p.effectId);
@@ -827,6 +869,37 @@ void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 	case EffectId::BossSpawn:
 		fx::Fx().BossSpawn(iso);
 		PlayAt(static_cast<int>(sfx::Id::BossRoar), tile, 1.f);
+		break;
+	// ── V2 ──
+	case EffectId::RuneExplosion:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::Blink), tile, 0.8f, 0.1f);
+		PlayAt(static_cast<int>(sfx::Id::HitHeavy), tile, 0.6f, 0.1f);
+		if (self) m_cam.AddTrauma(0.15f);
+		break;
+	case EffectId::SteamBurst:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::SteamBurst), tile, 0.9f, 0.05f);
+		break;
+	case EffectId::Counter:
+		skillfx::OnServerEffect(id, subj ? TileToIso(subj->pos) : iso, p.param);
+		if (subj) { subj->animSkill = 1; subj->animT = 0.f; subj->animDur = 0.3f; }
+		break;
+	case EffectId::WallSlam:
+		skillfx::OnServerEffect(id, iso, p.param);
+		if (Cheb(m_predX, m_predY, p.x, p.y) <= 6) m_cam.AddTrauma(0.12f);
+		break;
+	case EffectId::PoisonBurst:
+		skillfx::OnServerEffect(id, subj ? TileToIso(subj->pos) : iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::PoisonBurst), tile, 0.9f, 0.05f);
+		break;
+	case EffectId::PriestHeal:
+		// 사제의 기도: 금빛 기둥 + 회복 숫자
+		fx::Fx().Beam(subj ? TileToIso(subj->pos) : iso, 46.f, 200.f, 0.9f, Rgb(0xFFE8A0, 200));
+		fx::Fx().Heal(subj ? TileToIso(subj->pos) : iso, actors::PlayerHeight());
+		if (self && p.param > 0)
+			fx::Fx().Damage(iso, actors::PlayerHeight() + 4.f, p.param, fx::DamageStyle::Heal);
+		if (!self) PlayAt(static_cast<int>(sfx::Id::Heal), tile, 0.6f);
 		break;
 	default:
 		break;
@@ -918,7 +991,7 @@ void Game::HandleInfoEx(const USER_INFO_EX_INF_PACKET& p)
 	m_expToNext = p.expToNext;
 	m_hp = p.hp;
 	m_maxhp = p.maxhp;
-	m_attack = p.attack;
+	if (!m_statsKnown) m_attack = p.attack;   // V2는 USER_STATS_INF의 전투 능력치를 쓴다
 	m_inv.adena = p.adena;
 	m_alignment = p.alignment;
 	m_pkCount = p.pkCount;
@@ -939,6 +1012,11 @@ void Game::HandleSubjectInfoEx(const SUBJECT_INFO_EX_NFY_PACKET& p)
 	e->alignment = p.alignment;
 	e->flags = p.flags;
 	e->enchant = p.enchant;
+	if (e->kind == EntityKind::Player)
+	{
+		e->classId = ClassTable::IsValid(p.classId) ? p.classId : 0;
+		e->weaponGrade = p.weaponGrade;
+	}
 	if (p.maxhp > 0)
 	{
 		e->hp = p.hp;

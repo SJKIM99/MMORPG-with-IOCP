@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include "net/Shared.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -14,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 namespace fx
 {
-	enum class DamageStyle { Normal, Crit, Skill, Taken, TakenCrit, Heal, Other, Exp };
+	enum class DamageStyle { Normal, Crit, Skill, Taken, TakenCrit, Heal, Other, Exp, DotBurn, DotPoison, Guarded };
 
 	class Effects
 	{
@@ -29,7 +30,9 @@ namespace fx
 		void DrawScreen(int w, int h);              // 화면 전체(번쩍임)
 
 		// ── 기본 요소 ──
-		void Damage(Vector2 iso, float height, int amount, DamageStyle style);
+		// stackKey != 0: 같은 열쇠의 숫자가 막 떠 있으면 새로 띄우지 않고 합쳐서 키운다
+		// (연타·다단 히트가 숫자 비로 번지지 않고 "쌓이는" 맛이 나게).
+		void Damage(Vector2 iso, float height, int amount, DamageStyle style, uint64_t stackKey = 0);
 		void FloatText(Vector2 iso, float height, const std::string& text, Color color, float size, float life = 1.4f);
 		void Ring(Vector2 iso, float r0, float r1, float life, Color color, float thickness);
 		void Beam(Vector2 iso, float width, float height, float life, Color color);
@@ -63,7 +66,7 @@ namespace fx
 		void Ambient(WorldData::Biome biome, Vector2 isoCenter, float viewW, float viewH, float dt, float night, bool inTown);
 
 	private:
-		struct DamageNum { Vector2 iso; float h; std::string text; DamageStyle style; float t, life; float vx; };
+		struct DamageNum { Vector2 iso; float h; std::string text; DamageStyle style; float t, life; float vx; uint64_t key = 0; int total = 0; int hits = 1; float punch = 0.f; };
 		struct Floating { Vector2 iso; float h; std::string text; Color color; float size, t, life; };
 		struct RingFx { Vector2 iso; float r0, r1, t, life, thick; Color color; };
 		struct BeamFx { Vector2 iso; float w, h, t, life; Color color; };

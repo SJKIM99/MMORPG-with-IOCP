@@ -42,6 +42,7 @@ public:
 		std::string traceMove;          // 테스트: 내 이동(논리/표시 위치)을 프레임마다 CSV로 기록
 		int         lagMs = 0;          // 테스트: 인공 지연(한쪽 방향, ms)
 		int         jitterMs = 0;
+		int         classId = -1;       // 새 캐릭터 직업(-1이면 로그인 화면에서 고른다)
 	};
 
 	bool Init(const Options& opts);
@@ -66,7 +67,8 @@ private:
 	struct Banner { std::string text; Color color; double start; float life; };
 	struct Toast { uint16_t itemId; std::string text; Color color; double start; };
 	struct CenterMsg { std::string text; Color color; double start; };
-	struct QuickSlot { int kind = 0; uint16_t itemId = 0; };   // kind 0 비었음, 1 아이템, 2 십자베기
+	struct QuickSlot { int kind = 0; uint16_t itemId = 0; };   // kind 0 비었음, 1 아이템
+	static constexpr int kQuickSlots = 4;                      // Q E R F(= F5~F8)
 	struct EnchantFlow
 	{
 		int stage = 0;              // 0 없음, 1 무기 고르기, 2 확인, 3 충전(결과 대기/연출), 4 결과
@@ -104,6 +106,17 @@ private:
 	void HandleSubjectInfoEx(const SUBJECT_INFO_EX_NFY_PACKET& p);
 	void HandleMoveAck(const USER_MOVE_EX_ACK_PACKET& p);
 	void HandleServerConfig(const SERVER_CONFIG_INF_PACKET& p);
+	// ── 전투 V2(GameCombat.cpp) ──
+	void HandleStats(const USER_STATS_INF_PACKET& p);
+	void HandleResource(const USER_RESOURCE_INF_PACKET& p);
+	void HandleSkillResult(const SKILL_RESULT_ACK_PACKET& p);
+	void HandleSkillCast(const SKILL_CAST_NFY_PACKET& p);
+	void HandleStatus(const STATUS_NFY_PACKET& p);
+	void HandleTelegraph(const MONSTER_TELEGRAPH_NFY_PACKET& p);
+	void QueueDamage(const SUBJECT_DAMAGE_NFY_PACKET& p);   // 투사체/연타 지연 표시 → HandleDamage
+	void TickCombat(float dt);
+	[[nodiscard]] bool HasDelayedHitFor(const ObjID& victim) const;
+	void OnTelegraphImpact(Entity& m);                  // 몬스터 강공격 예고가 끝난 순간(연출)
 	void HandleChat(const ObjID& sender, const std::string& senderName, const std::string& text, ChatChannel channel);
 
 	// ── 행동 ──
@@ -118,7 +131,44 @@ private:
 	void TryAttackTarget(Entity& target);
 	void UseSlot(int slot);
 	void UseQuickSlot(int index);
-	void CastSkill();
+	void CycleTarget();
+	void Interact();                                    // F: 가까운 NPC와 대화, 없으면 줍기
+	[[nodiscard]] Vector2 NpcTile(uint16_t npcId) const;  // NPC의 지금 칸(서버가 알려 준 배회 위치)
+	// ── 마을 NPC(GameNpc.cpp) — 서버가 배회시키는 위치를 받아 걷게 그린다 ──
+	struct NpcView
+	{
+		const WorldData::NpcRow* row = nullptr;
+		int      tx = 0, ty = 0;             // 서버 칸
+		Vector2  pos{}, logPos{}, from{}, to{};
+		float    moveT = 1.f, moveDur = 0.5f;
+		float    walkPhase = 0.f, moving = 0.f, speed = 0.f;
+		bool     faceRight = true, faceBack = false;
+		uint8_t  state = 0;                  // NpcActState
+		ObjID    talkTo{};
+		std::string bark;
+		float    barkT = 0.f, barkLife = 1.f;
+		float    heartT = -1.f;              // 쓰다듬었을 때 하트
+		float    hopT = -1.f;                // 반가워서 폴짝
+		float    noteAt = 0.f;               // 음유시인 음표
+		bool     known = false;              // 서버 위치를 받았나
+	};
+	void InitNpcs();
+	void UpdateNpcs(float dt);
+	[[nodiscard]] NpcView* NpcViewOf(uint16_t npcId);
+	void HandleNpcList(const NPC_LIST_NFY_PACKET& p);
+	void HandleNpcState(const NPC_STATE_NFY_PACKET& p);
+	void HandleNpcBark(const NPC_BARK_NFY_PACKET& p);
+	void HandleNpcTalkAck(const NPC_TALK_ACK_PACKET& p);
+	void HandleNpcServiceAck(const NPC_SERVICE_ACK_PACKET& p);
+	void RequestNpcService(uint16_t npcId, WorldData::NpcService service);
+	// 0 = 기본 공격, 1~5 스킬. quiet: 안내 문구 없이(자동 공격·예약 시전).
+	// forced: 대상을 정해서(자동 공격의 목표·사거리 밖에서 눌러 예약한 대상).
+	bool TryCastSkill(int slot, bool quiet = false, const ObjID& forced = ObjID{});
+	[[nodiscard]] const SkillRow* SkillInSlot(int slot) const;
+	[[nodiscard]] Entity* PickSkillTarget(const SkillRow& row);
+	[[nodiscard]] int AttackRange() const;              // 자동 공격/예약 기술이 멈춰 설 거리
+	[[nodiscard]] Vector2 PredictLanding(const SkillRow& row, int tx, int ty, const Entity* target) const;
+	void AddCombo(int hits);
 	void PickupHere();
 	void TargetNearestMonster();
 	void OpenNpc(uint16_t npcId);
@@ -139,6 +189,13 @@ private:
 	void DrawHud();
 	void DrawChat();
 	void DrawQuickBar();
+	void DrawSkillBar();
+	void DrawSkillTooltip(const SkillRow& row);
+	void DrawStatusIcons(float x, float y);
+	void DrawComboCounter();
+	void DrawCharacter();
+	void DrawClassSelect(Rectangle area);
+	void DrawSkillPreview();                            // 스킬 칸에 마우스를 올리면 사거리/범위
 	void DrawTargetFrame();
 	void DrawMinimap();
 	void DrawInventory();
@@ -208,6 +265,48 @@ private:
 	double           m_deadAt = 0.0;
 	bool             m_restartSent = false;
 
+	// ── 전투 V2 ──
+	ClassId          m_classId = ClassId::Knight;
+	uint8_t          m_newClassId = 0;              // 로그인 화면에서 고른 직업(새 캐릭터)
+	DerivedStats     m_stats{};
+	BaseStats        m_baseStats{}, m_allocStats{}, m_gearStats{};
+	uint16_t         m_freePoints = 0;
+	int              m_mp = 0, m_maxmp = 0;
+	float            m_mpShown = 1.f;
+	std::array<double, 6> m_skillReady{};           // 슬롯별 다시 쓸 수 있는 시각(로컬)
+	std::array<double, 6> m_skillCdTotal{};         // 쿨다운 길이(스윕 표시)
+	std::array<double, 6> m_skillFlash{};           // 쿨다운이 끝난 순간(반짝임)
+	uint16_t         m_castSeq = 0;
+	int              m_queuedSkill = -1;            // 사거리 밖에서 누른 스킬 — 다가가서 쓴다
+	double           m_queuedAt = 0.0;
+	ObjID            m_queuedTarget{};
+	struct DelayedHit { double at; SUBJECT_DAMAGE_NFY_PACKET p; };
+	std::vector<DelayedHit> m_delayedHits;
+	int              m_comboHits = 0;
+	double           m_comboLastAt = -10.0;
+	std::string      m_comboName;
+	double           m_comboNameAt = -10.0;
+	bool             m_charOpen = false;            // 캐릭터(능력치) 창
+	std::array<double, 6> m_castSentAt{};           // 슬롯별 마지막 시전 요청 시각(쿨다운 기준)
+	double           m_actionLockUntil = 0.0;       // 기술 동작 중엔 걸음을 보내지 않는다(무게감)
+	uint16_t         m_dashWaitSeq = 0;             // 돌진류: 서버 도착 칸을 받을 때까지 멈춤
+	double           m_dashWaitUntil = 0.0;
+	int              m_bufferSlot = -1;             // 쿨다운 직전에 누른 기술(선입력)
+	double           m_bufferAt = 0.0;
+	double           m_mpFlashAt = -10.0;
+	double           m_lastHitSfxAt = 0.0;
+	std::vector<SUBJECT_DIE_NFY_PACKET> m_deferredDies;   // 투사체가 닿은 뒤에 쓰러뜨린다
+	std::array<double, 16> m_comboShownAt{};
+	int              m_comboBest = 0;
+	int              m_previewSkill = -1;
+	uint16_t         m_prevFreePoints = 0;
+	bool             m_statsKnown = false;
+	double           m_dangerAt = -10.0;            // 내 발밑에 예고가 깔린 시각(화면 가장자리 경고)
+	struct ChainHop { ObjID caster; Vector2 iso; float z; double at; };
+	std::vector<ChainHop> m_chainHops;              // 번개 폭발: 직전에 맞은 곳(다음 줄기의 시작점)
+	std::array<double, 6> m_readyPrev{};            // 쿨다운 끝 알림(반짝임) 판정용
+	float            m_feelTrauma = 0.f, m_feelKick = 0.f, m_feelStop = 0.f;   // 이번 프레임 적중 체감(최댓값만)
+
 	// 이동 예측(game/Motion.h). m_srv*/m_pred*는 mover 값을 매 프레임 비춰 둔 사본.
 	motion::LocalMover m_mover;
 	int              m_srvX = 0, m_srvY = 0;
@@ -242,12 +341,17 @@ private:
 	std::deque<Banner>   m_banners;
 	std::deque<Toast>    m_toasts;
 	std::deque<CenterMsg> m_center;
-	std::array<QuickSlot, 8> m_quick{};
+	std::array<QuickSlot, kQuickSlots> m_quick{};
 	bool             m_invOpen = false;
 	bool             m_helpOpen = false;
 	bool             m_mapOpen = false;
 	bool             m_showGrid = true;
 	uint16_t         m_dialogNpc = 0;
+	int              m_dialogLine = -1;             // 대화창: -1 인사, 0.. 이야기
+	double           m_dialogTextAt = 0.0;          // 글자가 한 자씩 나타나기 시작한 시각
+	std::unordered_map<uint16_t, NpcView> m_npcView;
+	double           m_npcServiceReadyAt[3]{};      // NpcService별(표시용)
+	double           m_lastVoiceAt = 0.0;
 	ShopMode         m_shopMode = ShopMode::None;
 	uint16_t         m_buyItem = 0;
 	int              m_buyCount = 1;

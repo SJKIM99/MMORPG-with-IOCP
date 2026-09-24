@@ -25,10 +25,17 @@ namespace actors
 		float time = 0.f;        // 전역 시간(대기 동작)
 		float hover = 0.f;       // 마우스 올림 강조
 		uint32_t seed = 0;       // 개체별 변화(머리색 등)
+		// V2
+		uint16_t skill = 0;      // 재생 중인 직업 기술(Data/CombatData.h SkillTable id)
+		float skillT = -1.f;     // 0~1 기술 동작 진행(<0 = 없음)
+		float skillHold = 0.f;   // 기술 앞부분의 "힘 모으기" 구간 비율(처형·혜성)
+		float windup = 0.f;      // 몬스터 강공격 예고 자세 0~1
+		float knock = 0.f;       // 1 → 0 크게 밀려남
 	};
 
 	struct PlayerLook
 	{
+		uint8_t  cls = 0;        // ClassId: 0 황혼의 기사 · 1 룬술사 · 2 그림자 사냥꾼
 		uint16_t weaponId = 0;
 		int      enchant = 0;
 		Color    armor{ 150, 160, 176, 255 };
@@ -37,7 +44,7 @@ namespace actors
 	};
 
 	// 캐릭터 외형 기본색(이름 해시로 망토 색 등을 고른다)
-	PlayerLook LookForPlayer(uint32_t nameHash, uint16_t weaponId, int enchant);
+	PlayerLook LookForPlayer(uint32_t nameHash, uint16_t weaponId, int enchant, uint8_t cls = 0);
 
 	void DrawShadow(Vector2 base, float rx, float alpha);
 	void DrawPlayer(const Pose& pose, const PlayerLook& look);

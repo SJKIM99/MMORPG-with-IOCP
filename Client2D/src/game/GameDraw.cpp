@@ -1,6 +1,7 @@
 #include "game/Game.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
+#include "fx/SkillFx.h"
 #include "render/Draw.h"
 #include "render/Actors.h"
 #include "render/Icons.h"
@@ -62,6 +63,15 @@ void Game::DrawGame()
 			Rectangle{ -40, -40, (float)m_screenW + 80, (float)m_screenH + 80 }, Vector2{ 0, 0 }, 0.f,
 			Color{ 255, 30, 20, static_cast<unsigned char>((90 + 110 * pulse) * k) });
 	}
+	// 내 발밑에 몬스터 강공격 예고가 깔렸다 — 화면 가장자리가 붉게 두 번 깜빡인다
+	if (!m_dead && m_now - m_dangerAt < 0.9)
+	{
+		const float u = static_cast<float>((m_now - m_dangerAt) / 0.9);
+		const float a = (1.f - u) * (0.55f + 0.45f * std::sin(u * util::kPi * 4.f));
+		DrawTexturePro(tex.vignette, Rectangle{ 0, 0, (float)tex.vignette.width, (float)tex.vignette.height },
+			Rectangle{ -30, -30, (float)m_screenW + 60, (float)m_screenH + 60 }, Vector2{ 0, 0 }, 0.f,
+			Color{ 255, 60, 30, static_cast<unsigned char>(std::clamp(a, 0.f, 1.f) * 150) });
+	}
 	fx::Fx().DrawScreen(m_screenW, m_screenH);
 
 	DrawWorldOverlay(cam);
@@ -73,10 +83,13 @@ void Game::DrawGame()
 	DrawMinimap();
 	DrawTargetFrame();
 	DrawChat();
+	DrawSkillBar();
 	DrawQuickBar();
+	DrawComboCounter();
 	DrawBanners();
 	DrawToasts();
 	if (m_invOpen) DrawInventory();
+	if (m_charOpen) DrawCharacter();
 	if (m_dialogNpc && m_shopMode == ShopMode::None) DrawNpcDialog();
 	if (m_shopMode == ShopMode::Buy) DrawShop();
 	if (m_shopMode == ShopMode::Sell) DrawSell();
@@ -165,16 +178,23 @@ void Game::DrawWorld(const Camera2D& cam)
 				gfx::EllipseGrad(base, 22.f, 11.f, util::MulA(icons::GradeColor(row->grade), 0.5f), util::WithA(icons::GradeColor(row->grade), 0.f));
 		}
 	}
-	for (const auto& npc : WorldData::kNpcs)
+	for (const auto& [nid, v] : m_npcView)
 	{
-		actors::DrawShadow(gfx::IsoPx(npc.x, npc.y), 15.f, 1.f);
-		if (npc.id == m_hoverNpc || npc.id == m_dialogNpc)
-		{
-			const Vector2 base = gfx::IsoPx(npc.x, npc.y);
-			gfx::EllipseArc(base, 20.f, 10.f, 0.f, util::kPi * 2.f, 2.f, Rgb(0xFFE08A, 200));
-		}
+		if (!v.row) continue;
+		const Vector2 base = TileToIso(v.pos);
+		const bool animal = WorldData::IsAnimal(v.row->kind);
+		const float sr = animal ? 10.f : (v.row->kind == WorldData::NpcKind::eChild ? 11.f : 15.f);
+		actors::DrawShadow(base, sr * (v.hopT >= 0.f ? 0.8f : 1.f), 1.f);
+		if (nid == m_hoverNpc || nid == m_dialogNpc)
+			gfx::EllipseArc(base, sr + 5.f, (sr + 5.f) * 0.5f, 0.f, util::kPi * 2.f, 2.f, Rgb(0xFFE08A, 200));
 	}
 	fx::Fx().DrawGround();
+	skillfx::DrawGround();
+	// 몬스터 강공격 예고(바닥이 차오른다) · 내 기술 사거리 미리보기
+	for (auto& [id, e] : m_ents)
+		if (e.tele.active && !e.dead)
+			skillfx::DrawTelegraph(e, static_cast<float>(m_now));
+	DrawSkillPreview();
 
 	// ── 2) 불투명: 깊이 쓰기 ──
 	gfx::DepthWrite(true);
@@ -214,7 +234,18 @@ void Game::DrawWorld(const Camera2D& cam)
 			m_ghostDraw = false;
 		}
 	}
+	// 상태이상 모양(기절 별·빙결 얼음·철벽 막·표식·중독 점)
+	for (auto& [id, e] : m_ents)
+	{
+		if (e.kind == EntityKind::Item || e.dead || e.removing) continue;
+		Vector2 base = TileToIso(e.pos);
+		if (e.hopT >= 0.f) base.y -= std::sin(util::kPi * e.hopT) * e.hopH;
+		gfx::ResetMod();
+		skillfx::DrawStatus(e, base, EntityHeight(e), static_cast<float>(m_now));
+	}
+	gfx::ResetMod();
 	fx::Fx().DrawWorld();
+	skillfx::DrawWorld();
 
 	gfx::Flush();
 	gfx::DepthTest(false);
@@ -239,6 +270,17 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	if (pose.attack >= 1.f) pose.attack = -1.f;
 	pose.cast = e.castT >= 0.f ? util::Clamp01(e.castT / 0.7f) : 0.f;
 	pose.dead = e.dead ? util::Clamp01(e.deadT / 0.7f) : 0.f;
+	if (e.animT >= 0.f && e.animSkill != 0 && !e.dead)
+	{
+		pose.skill = e.animSkill;
+		pose.skillT = util::Clamp01(e.animT / std::max(0.05f, e.animDur));
+		pose.skillHold = e.animDur > 0.f ? util::Clamp01(e.animCast / e.animDur) : 0.f;
+		pose.attack = -1.f;
+	}
+	pose.windup = e.dead ? 0.f : e.windup;
+	pose.knock = e.knockT;
+	if (e.hopT >= 0.f) pose.base.y -= std::sin(util::kPi * e.hopT) * e.hopH;
+	if (e.stunShake > 0.f) pose.base.x += std::sin(m_time * 70.f) * 3.f * e.stunShake;
 
 	float alpha = util::EaseOutCubic(e.spawnT);
 	if (e.removing) alpha *= 1.f - util::Clamp01(e.removeT);
@@ -251,8 +293,18 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	const float jitter = static_cast<float>((e.id.GetSerial() * 2654435761u + static_cast<uint32_t>(e.id.GetDatabaseID()) * 40503u) % 97) * 0.0006f;
 	gfx::SetDepth(e.pos.x + e.pos.y + jitter);
 	gfx::SetAlpha(alpha);
+	const float nowf = static_cast<float>(m_now);
 	if (e.flashT > 0.f) gfx::SetFlash(e.flashT * 0.85f);
+	else if (e.windup > 0.f && !e.dead)
+	{
+		// 강공격 예고: 몸이 붉게 달아오르며 깜빡인다
+		gfx::SetFlashColor(Rgb(0xFF3A1A));
+		gfx::SetFlash(0.12f + 0.38f * e.windup * (0.5f + 0.5f * std::sin(m_time * (18.f + 20.f * e.windup))));
+	}
 	else if (e.id == m_hover) gfx::SetFlash(0.12f);
+	if (e.Status(static_cast<uint8_t>(StatusId::Freeze), nowf)) gfx::SetTint(Rgb(0xA8D8FF));
+	else if (e.Status(static_cast<uint8_t>(StatusId::Poison), nowf)) gfx::SetTint(Rgb(0xC8F0B0));
+	if (e.Status(static_cast<uint8_t>(StatusId::Evade), nowf) && !m_silhouetteDraw) gfx::SetAlpha(alpha * 0.55f);
 	if (isGhostCopy) { gfx::SetFlashColor(Rgb(0x6AFF8A)); gfx::SetFlash(0.6f); }
 	if (m_silhouetteDraw)
 	{
@@ -265,7 +317,7 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	switch (e.kind)
 	{
 	case EntityKind::Player:
-		actors::DrawPlayer(pose, actors::LookForPlayer(e.nameHash, e.itemId, e.enchant));
+		actors::DrawPlayer(pose, actors::LookForPlayer(e.nameHash, e.itemId, e.enchant, e.classId));
 		if (e.id == m_selfId && m_light.Night() > 0.05f && !m_silhouetteDraw && !m_ghostDraw)
 			props::FrameLights().push_back({ pose.base, 170.f, Rgb(0xFFD8A0), 0.75f });
 		break;
@@ -308,29 +360,65 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	gfx::ResetMod();
 }
 
+// 기술 칸에 마우스를 올리면 사거리(마름모 = 서버의 체비셰프 거리)와 범위를 바닥에 보여 준다.
+void Game::DrawSkillPreview()
+{
+	if (m_previewSkill < 0 || m_dead) return;
+	const SkillRow* row = SkillInSlot(m_previewSkill);
+	Entity* me = Self();
+	if (!row || !me) return;
+	const Color col = Rgb(row->color);
+	const float pulse = 0.5f + 0.5f * std::sin(m_time * 4.f);
+	auto diamond = [&](Vector2 center, float R, Color fill, Color line, float th)
+	{
+		const Vector2 q[4] = { gfx::IsoPx(center.x - R, center.y - R), gfx::IsoPx(center.x + R, center.y - R),
+			gfx::IsoPx(center.x + R, center.y + R), gfx::IsoPx(center.x - R, center.y + R) };
+		if (fill.a > 0) gfx::Quad(q[0], q[1], q[2], q[3], fill);
+		for (int i = 0; i < 4; ++i) gfx::Line(q[i], q[(i + 1) % 4], th, line);
+	};
+	gfx::SetDepthRaw(-0.966f);
+	const Vector2 c{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
+	if (row->range > 1)
+		diamond(c, row->range + 0.5f, util::MulA(col, 0.05f), util::MulA(col, 0.45f + 0.25f * pulse), 2.f);
+	if (row->target == SkillTarget::Self && row->radius > 0)
+		diamond(c, row->radius + 0.5f, util::MulA(col, 0.16f), util::MulA(col, 0.85f), 2.5f);
+	else if (row->target == SkillTarget::Enemy || row->target == SkillTarget::Ground)
+	{
+		if (Entity* t = PickSkillTarget(*row))
+		{
+			const Vector2 tc{ static_cast<float>(t->tx), static_cast<float>(t->ty) };
+			diamond(tc, (row->shape == SkillShape::Circle ? row->radius : 0) + 0.5f, util::MulA(col, 0.22f), util::MulA(col, 0.9f), 2.5f);
+		}
+	}
+	else if (row->target == SkillTarget::Direction && row->dash > 0)
+	{
+		int dx = 0, dy = 0;
+		if (me->faceRight) { dx = me->faceBack ? 0 : 1; dy = me->faceBack ? -1 : 0; }
+		else { dx = me->faceBack ? -1 : 0; dy = me->faceBack ? 0 : 1; }
+		if (row->id == 16) { dx = -dx; dy = -dy; }
+		for (int i = 1; i <= row->dash; ++i)
+			gfx::Diamond(c.x + dx * i, c.y + dy * i, 0.8f, util::MulA(col, 0.12f + 0.06f * i));
+	}
+}
+
 void Game::DrawNpcs()
 {
-	Entity* me = Self();
-	for (const auto& npc : WorldData::kNpcs)
+	for (auto& [nid, v] : m_npcView)
 	{
+		if (!v.row) continue;
 		actors::Pose pose;
-		pose.base = gfx::IsoPx(npc.x, npc.y);
-		pose.time = m_time + npc.id * 1.7f;
-		pose.seed = npc.id;
-		pose.faceRight = npc.facing == 1 || npc.facing == 2;
-		pose.faceBack = npc.facing >= 2;
-		if (me && Cheb(static_cast<int>(me->pos.x + 0.5f), static_cast<int>(me->pos.y + 0.5f), npc.x, npc.y) <= 5)
-		{
-			// 가까이 오면 플레이어 쪽을 돌아본다
-			const float dx = me->pos.x - npc.x, dy = me->pos.y - npc.y;
-			const float sx = dx - dy, sy = dx + dy;
-			if (std::fabs(sx) > 0.3f) pose.faceRight = sx > 0;
-			pose.faceBack = sy < -0.3f;
-		}
+		pose.base = TileToIso(v.pos);
+		if (v.hopT >= 0.f) pose.base.y -= std::sin(util::kPi * v.hopT) * (WorldData::IsAnimal(v.row->kind) ? 10.f : 6.f);
+		pose.time = m_time + nid * 1.7f;
+		pose.seed = nid;
+		pose.walk = v.walkPhase;
+		pose.moving = v.moving;
+		pose.faceRight = v.faceRight;
+		pose.faceBack = v.faceBack;
 		gfx::ResetMod();
-		gfx::SetDepth(static_cast<float>(npc.x + npc.y));
-		if (npc.id == m_hoverNpc) gfx::SetFlash(0.12f);
-		actors::DrawNpc(pose, npc);
+		gfx::SetDepth(v.pos.x + v.pos.y + 0.003f * (nid % 7));
+		if (nid == m_hoverNpc) gfx::SetFlash(0.12f);
+		actors::DrawNpc(pose, *v.row);
 	}
 	gfx::ResetMod();
 }
@@ -345,26 +433,86 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 	st.outline = 1.6f;
 	st.outlineColor = Color{ 0, 0, 0, 200 };
 
-	// NPC
-	for (const auto& npc : WorldData::kNpcs)
+	// NPC — 이름(가까이·가리킬 때), 역할, 말풍선. [F]는 F를 누르면 말을 걸 NPC 하나에만.
+	uint16_t interactNpc = 0;
 	{
-		const Vector2 head = GetWorldToScreen2D(util::Add(gfx::IsoPx(npc.x, npc.y, 0.f), Vector2{ 0, -actors::NpcHeight(npc) - 8.f }), cam);
-		if (head.x < -100 || head.y < -50 || head.x > m_screenW + 100 || head.y > m_screenH + 50) continue;
-		st.size = 15.f;
-		st.color = Rgb(0xB8F08A);
-		ui::Fonts().DrawCentered(npc.name, head, st);
+		int bestD = WorldData::kNpcInteractRange + 1;
+		for (const auto& [nid, v] : m_npcView)
+		{
+			const int d = Cheb(m_predX, m_predY, v.tx, v.ty);
+			if (d < bestD) { bestD = d; interactNpc = nid; }
+		}
+	}
+	for (const auto& [nid, v] : m_npcView)
+	{
+		if (!v.row) continue;
+		const auto& npc = *v.row;
+		const bool animal = WorldData::IsAnimal(npc.kind);
+		const float lift = v.hopT >= 0.f ? std::sin(util::kPi * v.hopT) * 8.f : 0.f;
+		const Vector2 head = GetWorldToScreen2D(util::Add(TileToIso(v.pos), Vector2{ 0, -actors::NpcHeight(npc) - 8.f - lift }), cam);
+		if (head.x < -120 || head.y < -80 || head.x > m_screenW + 120 || head.y > m_screenH + 60) continue;
+		const int d = Cheb(m_predX, m_predY, v.tx, v.ty);
+		const bool hovered = nid == m_hoverNpc;
+		float y = head.y;
 		const char* role = npc.kind == WorldData::NpcKind::eMerchant ? "잡화 상점" : npc.kind == WorldData::NpcKind::eWeaponSmith ? "무기 상점"
-			: npc.kind == WorldData::NpcKind::eTeleporter ? "텔레포트" : "";
+			: npc.kind == WorldData::NpcKind::eTeleporter ? "텔레포트" : npc.kind == WorldData::NpcKind::ePriest ? "치유의 기도"
+			: npc.kind == WorldData::NpcKind::eInnkeeper ? "여관 · 수프" : "";
+		if (!animal || hovered || alt || d <= 3)
+		{
+			st.size = animal ? 13.f : 15.f;
+			st.color = animal ? Rgb(0xF0E0C0) : Rgb(0xB8F08A);
+			ui::Fonts().DrawCentered(npc.name, Vector2{ head.x, y }, st);
+			y -= 15.f;
+		}
 		if (role[0])
 		{
 			st.size = 12.f;
 			st.color = Rgb(0xE8D8A0);
-			ui::Fonts().DrawCentered(role, Vector2{ head.x, head.y - 15.f }, st);
-			if (npc.id == m_hoverNpc)
-			{
-				const float bob = std::sin(m_time * 5.f) * 3.f;
-				DrawTriangle(Vector2{ head.x - 6, head.y - 34 + bob }, Vector2{ head.x, head.y - 26 + bob }, Vector2{ head.x + 6, head.y - 34 + bob }, Rgb(0xFFE08A));
-			}
+			ui::Fonts().DrawCentered(role, Vector2{ head.x, y }, st);
+			y -= 14.f;
+		}
+		// 말을 걸 수 있을 만큼 가까우면 [F] 표시
+		if (nid == interactNpc && !m_dead && m_dialogNpc == 0)
+		{
+			const float bob = std::sin(m_time * 5.f) * 2.f;
+			const Rectangle k{ head.x - 11.f, y - 20.f + bob, 22.f, 18.f };
+			DrawRectangleRounded(k, 0.3f, 6, Color{ 20, 16, 12, 210 });
+			DrawRectangleRoundedLinesEx(k, 0.3f, 6, 1.2f, Rgb(0xFFE08A));
+			ui::Text("F", Vector2{ head.x, k.y + 1.f }, 13.f, Rgb(0xFFE08A), ui::Align::Center);
+			y -= 22.f;
+		}
+		else if (hovered && !animal)
+		{
+			const float bob = std::sin(m_time * 5.f) * 3.f;
+			DrawTriangle(Vector2{ head.x - 6, y - 12 + bob }, Vector2{ head.x, y - 4 + bob }, Vector2{ head.x + 6, y - 12 + bob }, Rgb(0xFFE08A));
+			y -= 12.f;
+		}
+		// 말풍선(혼잣말·인사)
+		if (v.barkT > 0.f && !v.bark.empty())
+		{
+			const float a = util::Clamp01(v.barkT / 0.4f) * util::Clamp01((v.barkLife - v.barkT) / 0.12f + 0.3f);
+			const float size = 14.f;
+			const float maxW = 200.f;
+			const float tw = ui::Fonts().Measure(v.bark, size).x;
+			const int lines = std::max(1, static_cast<int>(std::ceil(tw / maxW)));
+			const float w = std::min(tw, maxW) + 18.f;
+			const float bh = lines * (size + 4.f) + 10.f;
+			const Rectangle b{ head.x - w * 0.5f, y - bh - 8.f, w, bh };
+			DrawRectangleRounded(Rectangle{ b.x + 2, b.y + 3, b.width, b.height }, 0.3f, 6, util::MulA(Color{ 0, 0, 0, 80 }, a));
+			DrawRectangleRounded(b, 0.3f, 6, util::MulA(Color{ 252, 246, 232, 236 }, a));
+			DrawTriangle(Vector2{ head.x - 6, b.y + b.height - 1 }, Vector2{ head.x, b.y + b.height + 7 }, Vector2{ head.x + 6, b.y + b.height - 1 }, util::MulA(Color{ 252, 246, 232, 236 }, a));
+			ui::TextWrapped(v.bark, Rectangle{ b.x + 9, b.y + 5, maxW, bh }, size, util::MulA(Color{ 50, 36, 24, 255 }, a), 4.f);
+		}
+		// 쓰다듬은 동물: 하트가 떠오른다
+		if (v.heartT >= 0.f)
+		{
+			const float u = v.heartT / 1.6f;
+			ui::TextStyle hs;
+			hs.size = 18.f + 6.f * util::Pulse(std::min(1.f, u * 3.f));
+			hs.color = util::MulA(Rgb(0xFF6A8A), 1.f - u);
+			hs.outline = 1.5f;
+			hs.outlineColor = util::MulA(Color{ 90, 10, 30, 200 }, 1.f - u);
+			ui::Fonts().DrawCentered("♥", Vector2{ head.x + std::sin(u * 9.f) * 4.f, y - 10.f - u * 30.f }, hs);
 		}
 	}
 
@@ -447,9 +595,8 @@ void Game::DrawCursor()
 		if (m_enchant.stage == 1) kind = Enchant;
 		else if (Entity* e = Find(m_hover))
 		{
-			if (e->kind == EntityKind::Monster) kind = Attack;
-			else if (e->kind == EntityKind::Item) kind = Pickup;
-			else if (e->kind == EntityKind::Player && (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))) kind = Attack;
+			// 전투는 키보드 — 몬스터 위에서도 공격 커서를 띄우지 않는다
+			if (e->kind == EntityKind::Item) kind = Pickup;
 		}
 		else if (m_hoverNpc) kind = Talk;
 	}

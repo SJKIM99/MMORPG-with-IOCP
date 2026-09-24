@@ -113,6 +113,14 @@ enum class EffectId : uint16_t
 	PlayerKill,       // subject=PK한 플레이어
 	Restart,          // 마을에서 다시 시작
 	BossSpawn,        // subject=보스
+	// V2
+	DiscoverRegion,   // param=지역(zoneId) — 새 지역 발견(본인에게)
+	RuneExplosion,    // x/y=중심 — 공간 도약이 남긴 룬 폭발
+	SteamBurst,       // x/y=중심 — 증발 폭발
+	Counter,          // subject=반격한 기사
+	WallSlam,         // x/y=부딪힌 칸
+	PoisonBurst,      // subject=대상
+	PriestHeal,       // subject=치유받은 플레이어, param=회복량
 };
 
 // WORLD_NOTICE_INF의 code — 전 서버(확장 세션)에 띄우는 공지.
@@ -201,6 +209,23 @@ enum class PacketType : uint16_t
 	USER_MOVE_EX_REQ,         // C→S 순번 달린 이동(토큰 버킷 검증)
 	USER_MOVE_EX_ACK,         // S→C 이동 결과(순번·확정 좌표) — 거절도 즉시 응답
 	SERVER_CONFIG_INF,        // S→C 시야 범위·기본 걸음 시간 등 서버 설정
+	// 전투 V2(직업·스킬·상태이상)
+	SKILL_CAST_REQ,           // C→S 스킬/기본 공격 시전
+	SKILL_RESULT_ACK,         // S→C 시전 결과(쿨다운·MP) — 시전자에게
+	SKILL_CAST_NFY,           // S→C 시전 알림(모션·예고·이펙트) — 주변에
+	STATUS_NFY,               // S→C 상태이상 걸림/풀림 — 주변에
+	USER_STATS_INF,           // S→C 내 직업·능력치·전투 능력치
+	USER_RESOURCE_INF,        // S→C 내 HP/MP
+	STAT_ALLOC_REQ,           // C→S 능력치 포인트 분배
+	MONSTER_TELEGRAPH_NFY,    // S→C 몬스터 강공격 예고(모양·시간) — 피할 수 있다
+	// 살아 있는 마을(서버가 배회시키는 NPC · 대화 · 서비스)
+	NPC_LIST_NFY,             // S→C 마을 NPC 전체 위치/상태(마을에 들어올 때)
+	NPC_STATE_NFY,            // S→C NPC 한 걸음 · 멈춤 · 대화 상태
+	NPC_BARK_NFY,             // S→C NPC 혼잣말/인사(말풍선) — 모두가 같은 말을 본다
+	NPC_TALK_REQ,             // C→S NPC에게 말 걸기(거리 확인 → NPC가 멈춰서 바라본다)
+	NPC_TALK_ACK,             // S→C 말 걸기 결과
+	NPC_SERVICE_REQ,          // C→S 사제의 치유 기도 · 여관 수프
+	NPC_SERVICE_ACK,          // S→C 서비스 결과
 };
 
 #pragma pack (push, 1)
@@ -328,6 +353,7 @@ struct USER_LOGIN_EX_REQ_PACKET
 	char           name[NAME_SIZE];
 	char           password[PASSWORD_SIZE];
 	uint16_t       version;   // PROTOCOL_EX_VERSION
+	uint8_t        classId;   // 새 캐릭터를 만들 때의 직업(ClassId). 기존 캐릭터면 무시된다.
 };
 
 // 사망 상태일 때만 유효. 마을 부활 지점에서 HP를 채워 다시 시작한다.
@@ -709,6 +735,8 @@ struct SUBJECT_INFO_EX_NFY_PACKET
 	uint8_t  enchant;      // 장착 무기(또는 필드 아이템)의 강화 수치
 	uint16_t hp;
 	uint16_t maxhp;
+	uint8_t  classId;      // ClassId (V2)
+	uint8_t  weaponGrade;  // 장착 무기 인스턴스 등급(V2, 외형 발광)
 };
 
 struct ITEM_LIST_EX_ACK_PACKET
@@ -728,7 +756,7 @@ struct ITEM_SLOT_EX_INF_PACKET
 	ITEM_SLOT_EX_DATA slot;
 };
 
-enum class AdenaReason : uint8_t { Pickup, ShopBuy, ShopSell, Teleport, Init };
+enum class AdenaReason : uint8_t { Pickup, ShopBuy, ShopSell, Teleport, Init, Service };
 
 struct ADENA_INF_PACKET
 {
@@ -792,6 +820,20 @@ enum SubjectDamageFlag : uint8_t
 	DAMAGE_KILLED     = 1 << 2,
 	DAMAGE_PVP        = 1 << 3,
 	DAMAGE_BOSS_SKILL = 1 << 4,
+	DAMAGE_COMBO      = 1 << 5,   // V2: 연계 성공(comboId 참고)
+	DAMAGE_DOT        = 1 << 6,   // V2: 지속 피해(화상/중독)
+	DAMAGE_KNOCKBACK  = 1 << 7,   // V2: 넉백됨
+};
+
+// SUBJECT_DAMAGE_NFY.flags2 (V2)
+enum SubjectDamageFlag2 : uint8_t
+{
+	DAMAGE2_EVADE     = 1 << 0,   // 피함(피해 0)
+	DAMAGE2_GUARD     = 1 << 1,   // 철벽 태세로 경감
+	DAMAGE2_COUNTER   = 1 << 2,   // 반격
+	DAMAGE2_WALL      = 1 << 3,   // 넉백이 벽에 부딪힘
+	DAMAGE2_BACKSTAB  = 1 << 4,   // 급소/기습
+	DAMAGE2_HEAVY     = 1 << 5,   // 강타(큰 히트스톱)
 };
 
 // 레거시 USER_ATTACK_ACK(공격자에게만)/SUBJECT_ATTACK_NFY(피해 수치 없음)를 대신해
@@ -807,6 +849,11 @@ struct SUBJECT_DAMAGE_NFY_PACKET
 	int32_t  maxhp;
 	int32_t  damage;
 	uint8_t  flags;    // SubjectDamageFlag
+	// ── V2 ──
+	uint16_t skillId;  // 0 = 기본/몬스터 평타
+	uint8_t  comboId;  // ComboTable (DAMAGE_COMBO일 때)
+	uint8_t  flags2;   // SubjectDamageFlag2
+	uint8_t  hitIndex; // 연타 중 몇 번째(0부터)
 };
 
 struct EFFECT_NFY_PACKET

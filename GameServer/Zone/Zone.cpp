@@ -2,6 +2,7 @@
 #include "Zone.h"
 #include "ServerGlobal.h"
 #include "Monster/MonsterHelper.h"
+#include "Npc/NpcHelper.h"
 
 Zone::Zone(ZoneId id)
 	: _id(id)
@@ -28,6 +29,8 @@ void Zone::Run()
 	// GetRandomPosition이 GSector 범위 안에서만 좌표를 뽑으므로
 	// 메인 스레드(GSector=nullptr)에서 호출하면 크래시가 발생했던 문제를 해결한다.
 	MonsterHelper::InitForZone(_id);
+	// 마을 Zone이면 NPC 배회 틱을 이 스레드에서 건다(이후 틱도 이 Zone으로 온다).
+	NpcHelper::InitForZone(static_cast<uint16_t>(_id));
 
 	_logicThread.Run();
 }

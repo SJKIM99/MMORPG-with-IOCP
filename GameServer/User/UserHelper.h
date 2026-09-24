@@ -46,7 +46,8 @@ namespace UserHelper
 	// 반영된 값)에 편차/치명타를 굴린 값을, 스킬은 CombatRule::SkillDamage를 넘긴다.
 	// 과거처럼 기본 인자에 기대면 장비 보너스를 깜빡 빠뜨리기 쉬워서 일부러 없앴다.
 	// damageFlags(SubjectDamageFlag)는 확장 세션에 보내는 SUBJECT_DAMAGE_NFY 표시용.
-	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage, uint8_t damageFlags = 0);
+	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage, uint8_t damageFlags,
+		uint16_t skillId = 0, uint8_t comboId = 0, uint8_t flags2 = 0, uint8_t hitIndex = 0);
 	void SkillAttack(ObjID& playerId);
 	void HandleAttack(Subject::SharedPtr attacker, uint8_t facing);
 	void BroadcastChat(Subject::SharedPtr sender, const char mess[]);
@@ -78,7 +79,8 @@ namespace UserHelper
 	// 확장 코드용 시스템 메시지(레거시 세션이면 보내지 않는다)
 	void SendSystemEx(const shared_ptr<User>& user, SystemMessageCode code, int32_t param1 = 0, int32_t param2 = 0);
 	// victim을 볼 수 있는 확장 세션 모두에게 피해를 알린다.
-	void BroadcastDamage(const Subject::SharedPtr& victim, const ObjID& attackerId, int32_t damage, uint8_t flags);
+	void BroadcastDamage(const Subject::SharedPtr& victim, const ObjID& attackerId, int32_t damage, uint8_t flags,
+		uint16_t skillId = 0, uint8_t comboId = 0, uint8_t flags2 = 0, uint8_t hitIndex = 0);
 	// (x, y)를 볼 수 있는 확장 세션 모두에게 이펙트를 알린다. center는 섹터 탐색 기준.
 	void BroadcastEffect(const Subject::SharedPtr& center, const ObjID& subjectId, EffectId effect, short x, short y, int32_t param);
 	// 모든 Zone의 확장 세션에 공지(보스 출현 등). 드물게 일어나는 일이라 세션 목록을 훑는다.
@@ -86,6 +88,9 @@ namespace UserHelper
 	void BroadcastWorldChat(const shared_ptr<User>& sender, const char mess[]);
 
 	void HandleLoginFail(const shared_ptr<GameSession>& session);
-	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items);
+	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items,
+		const std::vector<uint8_t>& progress);
+	// V2 진행 데이터(직업·포인트·퀘스트…) 저장 요청
+	void SaveProgress(const shared_ptr<User>& user);
 	void HandleAddUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo);
 }

@@ -11,6 +11,9 @@
 #include "Item/ItemHelper.h"
 #include "Item/ItemTable.h"
 #include "Content/ContentHelper.h"
+#include "Combat/CombatHelper.h"
+#include "Combat/SkillHelper.h"
+#include "Npc/NpcHelper.h"
 #include "Data/LevelTable.h"
 
 namespace Route
@@ -48,6 +51,7 @@ namespace Route
 			::strncpy_s(password, p->password, PASSWORD_SIZE);
 
 			session->SetExtended(true);
+			session->SetNewClassId(ClassTable::IsValid(p->classId) ? p->classId : 0);
 			GDBThread->RequestLogin(session, name, password);
 			break;
 		}
@@ -96,6 +100,27 @@ namespace Route
 				break;
 			auto* p = reinterpret_cast<const USER_MOVE_EX_REQ_PACKET*>(packet);
 			UserHelper::HandleMoveEx(client, p->dir, p->seq);
+			break;
+		}
+		case PacketType::SKILL_CAST_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			SkillHelper::HandleCast(client, *reinterpret_cast<const SKILL_CAST_REQ_PACKET*>(packet));
+			break;
+		}
+		case PacketType::STAT_ALLOC_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			auto* p = reinterpret_cast<const STAT_ALLOC_REQ_PACKET*>(packet);
+			CombatHelper::HandleStatAlloc(client, p->stat, p->amount);
 			break;
 		}
 		case PacketType::USER_ATTACK_REQ:
@@ -396,6 +421,27 @@ namespace Route
 				break;
 			auto* p = reinterpret_cast<const NPC_TELEPORT_REQ_PACKET*>(packet);
 			ContentHelper::HandleNpcTeleport(client, p->npcId, p->destIndex, p->seq);
+			break;
+		}
+		case PacketType::NPC_TALK_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			NpcHelper::HandleTalk(client, reinterpret_cast<const NPC_TALK_REQ_PACKET*>(packet)->npcId);
+			break;
+		}
+		case PacketType::NPC_SERVICE_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			auto* p = reinterpret_cast<const NPC_SERVICE_REQ_PACKET*>(packet);
+			NpcHelper::HandleService(client, p->npcId, p->service);
 			break;
 		}
 		case PacketType::CS_CHAT:

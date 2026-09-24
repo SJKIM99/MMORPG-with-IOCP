@@ -28,6 +28,7 @@ namespace icons
 			case 10: return 8; case 11: return 9; case 12: return 10; case 13: return 11;
 			case 14: return 12; case 15: return 13; case 16: return 14; case 17: return 15;
 			case 18: return 16;
+			case 40: return 18; case 41: return 19;
 			case 20: return 4; case 21: return 5; case 22: return 6; case 23: return 7;
 			case 30: return 17;
 			default: return 31;
@@ -38,7 +39,7 @@ namespace icons
 		{
 			float len = 38.f, width = 7.f, grip = 11.f, guard = 16.f;
 			Color blade{}, edge{}, guardCol{}, grip2{};
-			int style = 0;   // 0 곧은 검, 1 카타나, 2 단검, 3 목검, 4 대검, 5 화염검, 6 집행검
+			int style = 0;   // 0 곧은 검, 1 카타나, 2 단검, 3 목검, 4 대검, 5 화염검, 6 집행검, 7 지팡이
 			Color glow{ 0, 0, 0, 0 };
 		};
 
@@ -56,6 +57,8 @@ namespace icons
 			case 16: s = { 47.f, 5.f, 15.f, 10.f, Rgb(0xE2E8F0), Rgb(0xFFFFFF), Rgb(0x2A2A2A), Rgb(0x3A3A6A), 1 }; break;
 			case 17: s = { 48.f, 8.f, 12.f, 20.f, Rgb(0x2A2226), Rgb(0xFF6A20), Rgb(0x6A6A70), Rgb(0x1A1A1E), 5, Rgb(0xFF5A1A, 180) }; break;
 			case 18: s = { 52.f, 14.f, 14.f, 22.f, Rgb(0x8A929C), Rgb(0xE8ECF2), Rgb(0x3A3A40), Rgb(0x4A2020), 6, Rgb(0xB02030, 80) }; break;
+			case 19: s = { 46.f, 4.f, 16.f, 8.f, Rgb(0x7A5634), Rgb(0x6AD8FF), Rgb(0xC8A060), Rgb(0x5A3A22), 7, Rgb(0x6AD8FF, 90) }; break;
+			case 20: s = { 22.f, 5.5f, 9.f, 10.f, Rgb(0x9098A8), Rgb(0xE8E4F8), Rgb(0x3A3440), Rgb(0x2A2226), 2, Rgb(0xB88AFF, 40) }; break;
 			default: s = { 34.f, 6.f, 10.f, 14.f, Rgb(0xB0B6C0), Rgb(0xE0E4EA), Rgb(0x5A5A5A), Rgb(0x5A3A26), 0 }; break;
 			}
 			return s;
@@ -268,6 +271,26 @@ namespace icons
 		// 칼날
 		switch (s.style)
 		{
+		case 7:  // 지팡이 — 나무 자루 + 끝의 룬 수정
+		{
+			const float sw = std::max(1.5f, w * 1.1f);
+			gfx::Line(P(hilt, d, n, -grip, 0), P(base, d, n, len * 0.92f, 0), sw * 1.5f, s.blade);
+			gfx::Line(P(hilt, d, n, -grip, -sw * 0.3f), P(base, d, n, len * 0.9f, -sw * 0.3f), std::max(1.f, sw * 0.5f), Shade(s.blade, 1.35f));
+			// 감긴 끈
+			for (int i = 0; i < 3; ++i)
+				gfx::Line(P(base, d, n, len * (0.55f + i * 0.08f), -sw), P(base, d, n, len * (0.6f + i * 0.08f), sw), std::max(1.f, scale * 1.4f), s.guardCol);
+			// 갈래 머리 + 수정
+			const Vector2 top = P(base, d, n, len, 0);
+			gfx::Line(P(base, d, n, len * 0.9f, 0), P(base, d, n, len * 1.02f, -sw * 2.2f), sw, Shade(s.blade, 0.9f));
+			gfx::Line(P(base, d, n, len * 0.9f, 0), P(base, d, n, len * 1.02f, sw * 2.2f), sw, Shade(s.blade, 0.9f));
+			const float cr = std::max(2.f, scale * 4.5f);
+			const float pulse = 0.8f + 0.2f * std::sin(time * 4.f);
+			gfx::CircleGrad(top, cr * 2.6f * pulse, util::MulA(s.edge, 0.45f), util::WithA(s.edge, 0.f));
+			const Vector2 q[4] = { P(top, d, n, cr * 1.4f, 0), P(top, d, n, 0, cr), P(top, d, n, -cr * 1.1f, 0), P(top, d, n, 0, -cr) };
+			gfx::Quad(q[0], q[1], q[2], q[3], s.edge);
+			gfx::Tri(q[0], q[1], q[2], Shade(s.edge, 1.35f));
+			return;
+		}
 		case 1:  // 카타나 — 가늘고 살짝 휜 날
 		{
 			const int seg = 8;

@@ -37,6 +37,9 @@ namespace ItemTableData
 		inline constexpr ItemTableId Katana          = 16;
 		inline constexpr ItemTableId DkFlameSword    = 17;
 		inline constexpr ItemTableId Executioner     = 18;
+		// V2 — 직업별 초보자 무기
+		inline constexpr ItemTableId ApprenticeStaff = 19;
+		inline constexpr ItemTableId HunterDagger    = 20;
 	}
 
 	// { id, type, maxStack, name, grade, attackBonus, healAmount,
@@ -64,6 +67,8 @@ namespace ItemTableData
 		{ 16, ItemType::eEquipment,      1, "Katana",            ItemGrade::eEpic,      16,   0, ItemEffect::eNone,            0,     0,  2500, "일본도",                  16 },
 		{ 17, ItemType::eEquipment,      1, "DK Flame Sword",    ItemGrade::eUnique,    30,   0, ItemEffect::eNone,            0,     0, 12000, "데스나이트의 불검",       17 },
 		{ 18, ItemType::eEquipment,      1, "Executioner Sword", ItemGrade::eLegendary, 55,   0, ItemEffect::eNone,            0,     0, 50000, "파멸의 집행검",           18 },
+		{ 19, ItemType::eEquipment,      1, "Apprentice Staff",  ItemGrade::eNone,       3,   0, ItemEffect::eNone,            0,   100,    30, "견습생의 지팡이",         40 },
+		{ 20, ItemType::eEquipment,      1, "Hunter Dagger",     ItemGrade::eNone,       3,   0, ItemEffect::eNone,            0,   100,    30, "사냥꾼의 단검",           41 },
 	};
 
 	inline constexpr size_t kRowCount = sizeof(kRows) / sizeof(kRows[0]);
@@ -81,5 +86,11 @@ namespace ItemTableData
 	{
 		const ItemTableRow* row = Find(id);
 		return row != nullptr && row->type == ItemType::eEquipment;
+	}
+
+	// 지팡이(마법 무기) — 공격력 보너스가 마법 공격력으로 들어간다.
+	[[nodiscard]] constexpr bool IsStaff(ItemTableId id) noexcept
+	{
+		return id == Id::ApprenticeStaff;
 	}
 }

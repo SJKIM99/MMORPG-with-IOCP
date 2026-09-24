@@ -7,6 +7,7 @@
 #include "ConsumableItem.h"
 #include "EquipmentItem.h"
 #include "ItemTable.h"
+#include "ItemTableData.h"
 #include "Thread/DBThread.h"
 #include "User.h"
 #include "UserHelper.h"
@@ -106,10 +107,33 @@ void Inventory::FillSlotEx(uint16_t slotIndex, ITEM_SLOT_EX_DATA& out) const noe
 	out.enchant  = (equipment != nullptr) ? equipment->GetEnchant() : 0;
 }
 
+void Inventory::CollectGearBonus(GearBonus& out) const
+{
+	const ItemTableId equippedId = GetEquippedItemId();
+	if (equippedId == ITEM_TABLE_ID_NONE)
+		return;
+	const ItemTableRow* row = ItemTable::Find(equippedId);
+	if (row == nullptr)
+		return;
+	const uint16_t bonus = static_cast<uint16_t>(row->attackBonus + EnchantRule::AttackBonus(GetEquippedEnchant()));
+	// 지팡이는 마법 공격력, 나머지 무기는 물리 공격력
+	if (ItemTableData::IsStaff(equippedId))
+		out.weaponMagic = static_cast<uint16_t>(out.weaponMagic + bonus);
+	else
+		out.weaponAttack = static_cast<uint16_t>(out.weaponAttack + bonus);
+}
+
 void Inventory::RecomputeOffensive() const
 {
 	auto owner = _owner.lock();
 	ASSERT_CRASH(owner != nullptr);
+
+	// 확장 세션(V2)은 직업·능력치·장비를 모두 반영한 계산으로 넘긴다.
+	if (owner->IsExtended())
+	{
+		owner->RecomputeStats(false);
+		return;
+	}
 
 	uint16_t attackBonus = 0;
 	if (const ItemTableId equippedId = GetEquippedItemId(); equippedId != ITEM_TABLE_ID_NONE)
@@ -507,7 +531,7 @@ uint32_t Inventory::AddAdena(uint32_t amount, AdenaReason reason) noexcept
 	// DB 컬럼이 INT(부호 있음)라 그 범위를 넘지 않게 자른다.
 	constexpr uint32_t kMaxAdena = 2'000'000'000u;
 	const uint32_t room  = (_adena < kMaxAdena) ? (kMaxAdena - _adena) : 0;
-	const uint32_t added = std::min(amount, room);
+	const uint32_t added = (std::min)(amount, room);
 	if (added == 0)
 		return 0;
 
@@ -732,7 +756,7 @@ ShopResult Inventory::TrySell(uint16_t slotIndex, uint16_t count, uint32_t* outG
 		unit = unit * (10 + equipment->GetEnchant()) / 10;
 	const uint64_t gain64 = unit * count;
 	constexpr uint32_t kMaxAdena = 2'000'000'000u;
-	if (gain64 > kMaxAdena - std::min(_adena, kMaxAdena))
+	if (gain64 > kMaxAdena - (std::min)(_adena, kMaxAdena))
 		return ShopResult::InvalidCount;  // 지갑 상한 초과 — 거래를 거절한다(버리지 않는다)
 	const uint32_t gain = static_cast<uint32_t>(gain64);
 

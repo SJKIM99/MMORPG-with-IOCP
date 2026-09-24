@@ -17,6 +17,9 @@ namespace ContentHelper
 	// ── 전투 ──
 	// USER_TARGET_ATTACK_REQ. 대상이 몬스터면 사냥, 플레이어면 PK 규칙(보라돌이/카오틱).
 	void HandleTargetAttack(const shared_ptr<User>& attacker, const ObjID& targetId);
+	// V2 스킬의 PvP 피해(보라돌이/카오틱 규칙·방어·회피·철벽 태세 포함)
+	void ApplyPvpDamage(const shared_ptr<User>& attacker, const shared_ptr<User>& victim, uint32_t damage, uint8_t flags,
+		uint16_t skillId, uint8_t comboId, uint8_t flags2, uint8_t hitIndex);
 
 	// 플레이어 사망 공통 처리(몬스터에게든 PK든): 사망 알림, 섹터 제거, 경험치 페널티,
 	// 카오틱 아이템 드롭, 부활 타이머 예약.

@@ -1,8 +1,11 @@
 #pragma once
+#include <array>
+#include <vector>
 
 #include "Subject.h"
 #include "Item/Inventory.h"
 #include "Data/LevelTable.h"
+#include "Data/CombatData.h"
 
 class User : public Subject
 {
@@ -30,6 +33,24 @@ public:
 
 	// ── V2 이동(토큰 버킷, Data/MoveRule.h) ───────────────────────────────────
 	uint32_t m_moveClock         = 0;   // 마지막으로 허용한 걸음이 "끝나는" 가상 시각
+
+	// ── V2 전투(직업·능력치·스킬) — Data/CombatData.h, Combat/* ────────────────
+	ClassId      m_classId       = ClassId::Knight;
+	BaseStats    m_alloc{};                 // 내가 찍은 능력치 포인트
+	GearBonus    m_gear{};                  // 장비 보너스(RecomputeStats가 채움)
+	DerivedStats m_derived{};               // 전투 능력치(RecomputeStats가 채움)
+	uint16_t     m_mp            = 0;
+	std::array<uint32_t, 6> m_skillReadyAt{};   // 슬롯별 다시 쓸 수 있는 시각(GetNowTime)
+	uint32_t     m_lastCounterAt = 0;           // 철벽 태세 반격 간격
+	uint32_t     m_lastCombatAt  = 0;           // 마지막 전투 시각(비전투 회복)
+	struct PendingImpact { uint32_t seq; uint16_t skillId; ObjID target; short x, y; };
+	std::vector<PendingImpact> m_pendingImpacts; // 예고 뒤 판정할 스킬(혜성·처형·룬 폭발)
+	uint32_t     m_impactSeq     = 0;
+
+	// ── V2 마을 NPC(Npc/NpcHelper) ─────────────────────────────────────────────
+	uint32_t     m_npcSeenTick   = 0;   // 마지막으로 NPC 틱이 이 사용자를 마을에서 본 번호(새로 오면 목록을 보낸다)
+	uint32_t     m_npcHealReadyAt = 0;  // 사제 기도 재사용
+	uint32_t     m_npcSoupReadyAt = 0;  // 여관 수프 재사용
 
 private:
 	shared_ptr<GameSession> m_session;
@@ -78,4 +99,14 @@ public:
 	// 현재 레벨에 맞춰 최대 HP/기본 공격력을 다시 계산한다(레벨업·로그인 복원 시).
 	// fullHeal이면 HP를 최대치로 채운다.
 	void ApplyLevelStats(bool fullHeal);
+
+	// V2: 직업·레벨·포인트·장비로 전투 능력치를 다시 계산한다. 확장 세션이 아니면
+	// 예전 공식(LevelTable)을 그대로 쓴다 — 레거시 봇의 수치는 바뀌지 않는다.
+	// 바뀌었으면 true.
+	bool RecomputeStats(bool fullHeal);
+	[[nodiscard]] uint16_t FreePoints() const noexcept;
+	// V2 진행 데이터 직렬화(DB PlayerProgress). 알 수 없는 버전/깨진 데이터는 기본값으로 둔다.
+	[[nodiscard]] std::vector<uint8_t> SerializeProgress() const;
+	bool DeserializeProgress(const std::vector<uint8_t>& data);   // false = V2 기록 없음(기존 캐릭터의 첫 V2 접속)
+	[[nodiscard]] BaseStats TotalBase() const noexcept;
 };

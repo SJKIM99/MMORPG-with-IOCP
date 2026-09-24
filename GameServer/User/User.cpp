@@ -33,6 +33,11 @@ bool User::IsExtended() const noexcept
 
 void User::ApplyLevelStats(bool fullHeal)
 {
+	if (IsExtended())
+	{
+		RecomputeStats(fullHeal);
+		return;
+	}
 	const uint8_t level = GetStat()->GetLevel();
 	const uint16_t maxHp = LevelTable::MaxHp(level);
 	GetStat()->SetMaxHp(maxHp);
@@ -51,4 +56,93 @@ uint32_t User::GetMoveSpeedPercent(uint32_t now) const noexcept
 	if (IsHasted(now))
 		speed += MoveRule::kHasteBonusPercent;
 	return MoveRule::ClampSpeed(speed);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V2 능력치
+// ─────────────────────────────────────────────────────────────────────────────
+BaseStats User::TotalBase() const noexcept
+{
+	BaseStats b = ClassTable::BaseAt(m_classId, GetStatConst()->GetLevel());
+	for (int i = 0; i < 6; ++i)
+		b.v[i] = static_cast<int16_t>(b.v[i] + m_alloc.v[i]);
+	return b;
+}
+
+uint16_t User::FreePoints() const noexcept
+{
+	// 레벨업마다 1포인트(2레벨부터). 찍은 만큼 뺀다.
+	const int earned = GetStatConst()->GetLevel() > 1 ? GetStatConst()->GetLevel() - 1 : 0;
+	int spent = 0;
+	for (int i = 0; i < 6; ++i) spent += m_alloc.v[i];
+	return static_cast<uint16_t>(earned > spent ? earned - spent : 0);
+}
+
+bool User::RecomputeStats(bool fullHeal)
+{
+	if (!IsExtended())
+	{
+		// 레거시 공식 그대로
+		const uint8_t level = GetStat()->GetLevel();
+		const uint16_t maxHp = LevelTable::MaxHp(level);
+		GetStat()->SetMaxHp(maxHp);
+		if (fullHeal || GetStat()->GetHp() > maxHp)
+			GetStat()->SetHp(maxHp);
+		if (m_inventory != nullptr)
+			m_inventory->RecomputeOffensive();
+		return false;
+	}
+
+	// 장비 보너스 — 지금은 무기(+강화). 방어구/장신구/옵션은 아이템 확장에서 더한다.
+	GearBonus gear{};
+	if (m_inventory != nullptr)
+		m_inventory->CollectGearBonus(gear);
+
+	const DerivedStats before = m_derived;
+	m_gear = gear;
+	m_derived = StatRule::Compute(m_classId, GetStat()->GetLevel(), TotalBase(), gear);
+
+	GetStat()->SetMaxHp(m_derived.maxHp);
+	if (fullHeal || GetStat()->GetHp() > m_derived.maxHp)
+		GetStat()->SetHp(m_derived.maxHp);
+	// 레거시 경로(공격력 하나)도 같은 값을 보게 한다.
+	GetStat()->SetOffensive(m_classId == ClassId::RuneCaster ? m_derived.magicAttack : m_derived.attack);
+	if (fullHeal || m_mp > m_derived.maxMp)
+		m_mp = m_derived.maxMp;
+
+	return std::memcmp(&before, &m_derived, sizeof(DerivedStats)) != 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V2 진행 데이터: 'P' '2' version | classId | alloc[6](int16 LE) | (확장 필드…)
+// ─────────────────────────────────────────────────────────────────────────────
+namespace
+{
+	constexpr uint8_t kProgressVersion = 1;
+	void Put16(std::vector<uint8_t>& out, int v) { out.push_back(static_cast<uint8_t>(v & 0xFF)); out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF)); }
+	int Get16(const std::vector<uint8_t>& in, size_t at) { return static_cast<int16_t>(in[at] | (in[at + 1] << 8)); }
+}
+
+std::vector<uint8_t> User::SerializeProgress() const
+{
+	std::vector<uint8_t> out;
+	out.reserve(64);
+	out.push_back('P');
+	out.push_back('2');
+	out.push_back(kProgressVersion);
+	out.push_back(static_cast<uint8_t>(m_classId));
+	for (int i = 0; i < 6; ++i)
+		Put16(out, m_alloc.v[i]);
+	return out;
+}
+
+bool User::DeserializeProgress(const std::vector<uint8_t>& in)
+{
+	if (in.size() < 4 + 12 || in[0] != 'P' || in[1] != '2' || in[2] < 1)
+		return false;
+	if (ClassTable::IsValid(in[3]))
+		m_classId = static_cast<ClassId>(in[3]);
+	for (int i = 0; i < 6; ++i)
+		m_alloc.v[i] = static_cast<int16_t>(std::clamp(Get16(in, 4 + i * 2), 0, 999));
+	return true;
 }

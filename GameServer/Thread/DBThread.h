@@ -57,6 +57,7 @@ public:
 	void RequestSaveAdena(int playerId, uint32_t adena);
 	void RequestShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot);
 	void RequestSaveAlignment(int playerId, int16_t alignment, uint16_t pkCount);
+	void RequestSaveProgress(int playerId, std::vector<uint8_t> data);
 
 	[[nodiscard]] static Clock::time_point Now() noexcept { return Clock::now(); }
 

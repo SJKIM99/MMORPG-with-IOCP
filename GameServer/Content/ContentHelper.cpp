@@ -1,5 +1,7 @@
 #include "pch.h"
+#include "Npc/NpcHelper.h"
 #include "ContentHelper.h"
+#include "Combat/CombatHelper.h"
 
 #include "User.h"
 #include "Monster.h"
@@ -24,6 +26,9 @@
 
 namespace
 {
+	void ApplyPvpHit(const shared_ptr<User>& attacker, const shared_ptr<User>& victim, uint32_t rawDamage, uint8_t baseFlags,
+		uint16_t skillId, uint8_t comboId, uint8_t flags2, uint8_t hitIndex, bool victimInnocent);
+
 	// me와 같은 Zone의 이웃 섹터에서 id를 찾는다. 전역 GameObjectManager가 아니라
 	// 섹터 격자로 찾는 이유: 섹터 격자는 Zone마다 따로 있으므로, 여기서 찾은 대상은
 	// "지금 이 Zone 스레드가 소유한 오브젝트"임이 구조적으로 보장된다(다른 Zone의
@@ -64,6 +69,7 @@ namespace
 		SectorHelper::NotifyPlayerEnteredWorld(playerId, true);
 		UserHelper::BroadcastEffect(player, playerId, EffectId::Restart, player->GetX(), player->GetY(), 0);
 		UserHelper::SendUSER_INFO_EX_INF(player);
+		CombatHelper::SendResource(player);
 		GTimerThread->ScheduleAfter(playerId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 	}
 
@@ -102,10 +108,61 @@ namespace
 		// PvP는 평타의 70% — 한두 대에 끝나지 않게.
 		bool crit = false;
 		const uint32_t raw = CombatRule::RollDamage(attacker->GetStat()->GetOffensive(), LRng() % 1001, LRng() % 100, crit);
-		const uint16_t damage = static_cast<uint16_t>(std::clamp<uint32_t>(raw * 7 / 10, 1, 65535));
+		ApplyPvpHit(attacker, victim, raw * 7 / 10, crit ? DAMAGE_CRIT : 0, 0, 0, 0, 0, victimInnocent);
+	}
+}
+
+namespace ContentHelper
+{
+	void ApplyPvpDamage(const shared_ptr<User>& attacker, const shared_ptr<User>& victim, uint32_t damage, uint8_t flags,
+		uint16_t skillId, uint8_t comboId, uint8_t flags2, uint8_t hitIndex)
+	{
+		if (!attacker || !victim || victim->GetStat()->IsDead() || victim->IsTransferring())
+			return;
+		if (WorldData::IsSafeZone(victim->GetX(), victim->GetY()))
+		{
+			UserHelper::SendSystemEx(attacker, SystemMessageCode::SafeZoneNoCombat);
+			return;
+		}
+		const uint32_t now = GetNowTime();
+		const bool victimInnocent = !victim->IsPurple(now) && victim->GetAlignment() >= 0;
+		if (victimInnocent)
+		{
+			const bool wasPurple = attacker->IsPurple(now);
+			attacker->m_purpleUntil = now + AlignmentRule::kPurpleDurationMs;
+			GTimerThread->ScheduleAfter(attacker->GetObjID(), std::chrono::milliseconds(AlignmentRule::kPurpleDurationMs + 50), TIMER_EVENT_TYPE::EV_PURPLE_EXPIRE);
+			if (!wasPurple)
+			{
+				UserHelper::SendSystemEx(attacker, SystemMessageCode::BecamePurple, static_cast<int32_t>(AlignmentRule::kPurpleDurationMs));
+				UserHelper::BroadcastInfoEx(attacker);
+			}
+		}
+		// V2 방어 적용
+		if (victim->IsExtended())
+			damage = StatRule::Mitigate(damage, victim->m_derived.defense, attacker->m_derived.penetration);
+		if (victim->Status().Has(StatusId::Evade, now))
+		{
+			UserHelper::BroadcastDamage(victim, attacker->GetObjID(), 0, static_cast<uint8_t>(flags | DAMAGE_PVP), skillId, 0, static_cast<uint8_t>(flags2 | DAMAGE2_EVADE), hitIndex);
+			return;
+		}
+		if (victim->Status().Has(StatusId::Guard, now))
+		{
+			damage = std::max<uint32_t>(1, damage / 2);
+			flags2 |= DAMAGE2_GUARD;
+		}
+		ApplyPvpHit(attacker, victim, damage, flags, skillId, comboId, flags2, hitIndex, victimInnocent);
+	}
+}
+
+namespace
+{
+	void ApplyPvpHit(const shared_ptr<User>& attacker, const shared_ptr<User>& victim, uint32_t rawDamage, uint8_t baseFlags,
+		uint16_t skillId, uint8_t comboId, uint8_t flags2, uint8_t hitIndex, bool victimInnocent)
+	{
+		const uint16_t damage = static_cast<uint16_t>(std::clamp<uint32_t>(rawDamage, 1, 65535));
 		victim->GetStat()->TakeDamage(damage);
 
-		const uint8_t flags = static_cast<uint8_t>(DAMAGE_PVP | (crit ? DAMAGE_CRIT : 0) | (victim->GetStat()->IsDead() ? DAMAGE_KILLED : 0));
+		const uint8_t flags = static_cast<uint8_t>(DAMAGE_PVP | baseFlags | (victim->GetStat()->IsDead() ? DAMAGE_KILLED : 0));
 
 		// 레거시 세션(봇)도 자기 HP가 깎인 걸 알 수 있게 기존 SUBJECT_ATTACK_NFY도 보낸다.
 		const ObjID victimId = victim->GetObjID();
@@ -120,7 +177,7 @@ namespace
 			if (!session || session->m_state != SOCKET_STATE::ST_INGAME) return;
 			UserHelper::SendSUBJECT_ATTACK_NFY(viewer, victimId, attackerId, victimHp);
 		});
-		UserHelper::BroadcastDamage(victim, attackerId, damage, flags);
+		UserHelper::BroadcastDamage(victim, attackerId, damage, flags, skillId, comboId, flags2, hitIndex);
 
 		if (!victim->GetStat()->IsDead())
 			return;
@@ -299,6 +356,10 @@ namespace ContentHelper
 		++player->m_deathSeq;  // 대기 중인 부활 타이머 무효화
 		player->GetStat()->SetDead(false);
 		player->GetStat()->SetHp(player->GetStat()->GetMaxHp());
+		player->Status().Clear();
+		player->m_pendingImpacts.clear();
+		player->m_mp = player->m_derived.maxMp;
+		player->m_moveClock = 0;
 
 		const ObjID playerId = player->GetObjID();
 		const ZoneId townZone = ZoneLayout::GetZoneIdByWorld(spawn.x, spawn.y);
@@ -481,8 +542,10 @@ namespace ContentHelper
 		using namespace ItemTableData::Id;
 		auto inventory = player->GetInventory();
 
+		// 직업별 초보자 무기(기사 나무 검 / 룬술사 지팡이 / 사냥꾼 단검)
 		std::vector<uint16_t> touched;
-		if (inventory->TryAddItem(WoodenSword, 1, &touched) && !touched.empty())
+		const ItemTableId weapon = player->IsExtended() ? ClassTable::Get(player->m_classId).starterWeapon : WoodenSword;
+		if (inventory->TryAddItem(weapon, 1, &touched) && !touched.empty())
 			(void)inventory->TryEquip(touched.front());
 
 		(void)inventory->TryAddItem(HealthPotion, 20);
@@ -520,7 +583,7 @@ namespace ContentHelper
 		const WorldData::NpcRow* npc = WorldData::FindNpc(npcId);
 		if (npc == nullptr)
 			return reply(ShopResult::InvalidNpc, 0);
-		if (!WorldData::IsNearNpc(*npc, player->GetX(), player->GetY()))
+		if (!NpcHelper::IsNear(npc->id, player->GetX(), player->GetY()))
 			return reply(ShopResult::TooFar, 0);
 		if (!WorldData::ShopSells(npcId, itemId))
 			return reply(ShopResult::InvalidItem, 0);
@@ -569,7 +632,7 @@ namespace ContentHelper
 		const WorldData::NpcRow* npc = WorldData::FindNpc(npcId);
 		if (npc == nullptr || !WorldData::NpcBuysItems(*npc))
 			return reply(ShopResult::InvalidNpc, 0);
-		if (!WorldData::IsNearNpc(*npc, player->GetX(), player->GetY()))
+		if (!NpcHelper::IsNear(npc->id, player->GetX(), player->GetY()))
 			return reply(ShopResult::TooFar, 0);
 
 		uint32_t gain = 0;
@@ -592,7 +655,7 @@ namespace ContentHelper
 		const WorldData::NpcRow* npc = WorldData::FindNpc(npcId);
 		if (npc == nullptr || npc->kind != WorldData::NpcKind::eTeleporter)
 			return reply(ShopResult::InvalidNpc, 0);
-		if (!WorldData::IsNearNpc(*npc, player->GetX(), player->GetY()))
+		if (!NpcHelper::IsNear(npc->id, player->GetX(), player->GetY()))
 			return reply(ShopResult::TooFar, 0);
 
 		const WorldData::RegionRow* region = WorldData::FindRegion(destZone);

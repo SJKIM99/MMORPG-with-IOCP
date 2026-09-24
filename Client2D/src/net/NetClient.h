@@ -41,9 +41,13 @@ namespace net
 		[[nodiscard]] uint32_t PacketsIn() const noexcept { return m_packetsIn; }
 
 		// ── 요청 ──
-		void SendLoginEx(const std::string& name, const std::string& password);
+		void SendLoginEx(const std::string& name, const std::string& password, uint8_t classId);
 		void SendMove(int direction);
 		void SendMoveEx(int direction, uint16_t seq);   // V2 순번 이동(예측/보정)
+		void SendSkillCast(uint16_t skillId, const ObjID& target, int x, int y, uint16_t seq);
+		void SendStatAlloc(uint8_t stat, uint8_t amount);
+		void SendNpcTalk(uint16_t npcId);
+		void SendNpcService(uint16_t npcId, uint8_t service);
 		void SendAttackFacing(bool facingLeft);
 		void SendTargetAttack(const ObjID& target);
 		void SendSkill();

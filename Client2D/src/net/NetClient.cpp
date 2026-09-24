@@ -153,12 +153,13 @@ namespace net
 		}
 	}
 
-	void NetClient::SendLoginEx(const std::string& name, const std::string& password)
+	void NetClient::SendLoginEx(const std::string& name, const std::string& password, uint8_t classId)
 	{
 		USER_LOGIN_EX_REQ_PACKET p{};
 		CopyFixed(p.name, NAME_SIZE, name);
 		CopyFixed(p.password, PASSWORD_SIZE, password);
 		p.version = PROTOCOL_EX_VERSION;
+		p.classId = classId;
 		Queue(p, PacketType::USER_LOGIN_EX_REQ);
 	}
 
@@ -177,6 +178,40 @@ namespace net
 		p.dir = static_cast<uint8_t>(direction);
 		p.seq = seq;
 		Queue(p, PacketType::USER_MOVE_EX_REQ);
+	}
+
+	void NetClient::SendSkillCast(uint16_t skillId, const ObjID& target, int x, int y, uint16_t seq)
+	{
+		SKILL_CAST_REQ_PACKET p{};
+		p.skillId = skillId;
+		p.targetId = target;
+		p.x = static_cast<short>(x);
+		p.y = static_cast<short>(y);
+		p.seq = seq;
+		Queue(p, PacketType::SKILL_CAST_REQ);
+	}
+
+	void NetClient::SendStatAlloc(uint8_t stat, uint8_t amount)
+	{
+		STAT_ALLOC_REQ_PACKET p{};
+		p.stat = stat;
+		p.amount = amount;
+		Queue(p, PacketType::STAT_ALLOC_REQ);
+	}
+
+	void NetClient::SendNpcTalk(uint16_t npcId)
+	{
+		NPC_TALK_REQ_PACKET p{};
+		p.npcId = npcId;
+		Queue(p, PacketType::NPC_TALK_REQ);
+	}
+
+	void NetClient::SendNpcService(uint16_t npcId, uint8_t service)
+	{
+		NPC_SERVICE_REQ_PACKET p{};
+		p.npcId = npcId;
+		p.service = service;
+		Queue(p, PacketType::NPC_SERVICE_REQ);
 	}
 
 	void NetClient::SendAttackFacing(bool facingLeft)

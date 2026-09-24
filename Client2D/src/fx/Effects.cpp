@@ -116,6 +116,7 @@ namespace fx
 		m_hitStop = std::max(0.f, m_hitStop - dt);
 		const float sdt = dt * TimeScale();
 		Age(m_damage, dt);
+		for (auto& d : m_damage) d.punch = std::max(0.f, d.punch - dt * 6.f);
 		Age(m_floats, dt);
 		Age(m_rings, sdt);
 		Age(m_beams, sdt);
@@ -128,13 +129,35 @@ namespace fx
 	}
 
 	// ── 기본 요소 ─────────────────────────────────────────────────────────────
-	void Effects::Damage(Vector2 iso, float height, int amount, DamageStyle style)
+	void Effects::Damage(Vector2 iso, float height, int amount, DamageStyle style, uint64_t stackKey)
 	{
+		const bool critLike = style == DamageStyle::Crit || style == DamageStyle::TakenCrit;
+		if (stackKey != 0)
+		{
+			for (auto& d : m_damage)
+			{
+				if (d.key != stackKey || d.t > 0.55f)
+					continue;
+				// 같은 대상·같은 기술: 합계로 키운다. 치명타가 섞이면 치명타 모양으로 올린다.
+				d.total += amount;
+				d.hits += 1;
+				if (critLike && d.style != style) d.style = style;
+				d.text = std::to_string(d.total);
+				d.t = std::min(d.t, 0.06f);
+				d.life = std::max(d.life, critLike ? 1.25f : 1.05f);
+				d.punch = 1.f;
+				d.iso = iso;
+				return;
+			}
+		}
 		std::string text = std::to_string(amount);
 		if (style == DamageStyle::Heal) text = "+" + text;
 		if (style == DamageStyle::Exp) text = "+" + text + " EXP";
-		const float life = (style == DamageStyle::Crit || style == DamageStyle::TakenCrit) ? 1.25f : 0.95f;
-		m_damage.push_back({ iso, height, text, style, 0.f, life, RandF(-18.f, 18.f) });
+		const float life = critLike ? 1.25f : (style == DamageStyle::DotBurn || style == DamageStyle::DotPoison ? 0.8f : 0.95f);
+		DamageNum n{ iso, height, text, style, 0.f, life, RandF(-18.f, 18.f) };
+		n.key = stackKey;
+		n.total = amount;
+		m_damage.push_back(n);
 	}
 
 	void Effects::FloatText(Vector2 iso, float height, const std::string& text, Color color, float size, float life)
@@ -697,7 +720,13 @@ namespace fx
 			case DamageStyle::Heal: size = 22.f; fill = Rgb(0x7AFF8A); line = Rgb(0x0A3A10); break;
 			case DamageStyle::Other: size = 18.f; fill = Rgb(0xD8D8D8); break;
 			case DamageStyle::Exp: size = 18.f; fill = Rgb(0xC8A0FF); line = Rgb(0x2A1040); break;
+			case DamageStyle::DotBurn: size = 17.f; fill = Rgb(0xFFA85A); line = Rgb(0x3A1400); break;
+			case DamageStyle::DotPoison: size = 17.f; fill = Rgb(0xA8F07A); line = Rgb(0x0E2A08); break;
+			case DamageStyle::Guarded: size = 20.f; fill = Rgb(0xFFD890); line = Rgb(0x3A2400); break;
 			}
+			// 합쳐진 숫자는 타수만큼 조금씩 커진다(최대 +45%) + 합쳐지는 순간 튄다
+			if (d.hits > 1) size *= 1.f + std::min(0.45f, (d.hits - 1) * 0.09f);
+			size *= 1.f + d.punch * 0.35f;
 			// 튀어나옴(오버슈트) → 위로 떠오르며 감속 → 사라짐
 			const float pop = u < 0.12f ? util::EaseOutBack(u / 0.12f, 3.f) : 1.f + 0.15f * (1.f - util::Clamp01((u - 0.12f) * 5.f));
 			const float rise = util::EaseOutCubic(u) * (d.style == DamageStyle::Crit ? 70.f : 55.f);
@@ -708,6 +737,8 @@ namespace fx
 			DrawNumber(d.text, Vector2{ s.x + shake, s.y }, size * pop, fill, line, a);
 			if (d.style == DamageStyle::Crit || d.style == DamageStyle::TakenCrit)
 				DrawNumber("치명타!", Vector2{ s.x, s.y - size * 0.9f }, 15.f * pop, Rgb(0xFFF0C0), line, a);
+			if (d.hits > 1)
+				DrawNumber(std::to_string(d.hits) + " HIT", Vector2{ s.x + size * 0.9f + 18.f, s.y + size * 0.3f }, 13.f * pop, Rgb(0xFFE8B0), line, a * 0.9f);
 		}
 	}
 

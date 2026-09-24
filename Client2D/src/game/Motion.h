@@ -48,6 +48,10 @@ namespace motion
 		void OnAck(uint16_t seq, int x, int y, MoveResult result, uint16_t stepMs, double now);
 		// 본인에 대한 SUBJECT_MOVE_NFY(존 이동 메아리·순간이동·부활). 순간이동이면 true.
 		bool OnServerPosition(int x, int y, double now);
+		// 기술 이동(돌진·잔상 회피·그림자 돌진·공간 도약) — 서버가 정한 도착 칸으로
+		// duration초 동안 빠르게 옮긴다(0이면 순간이동). 기술을 쓰는 동안은 걸음을 보내지
+		// 않으므로(Game의 행동 잠금) 미응답 입력이 없다.
+		void Dash(int x, int y, double now, double duration);
 
 		// 논리/표시 위치 갱신. visualDt는 히트스톱이 반영된 시간(멈춤 연출).
 		void Update(double now, float visualDt);
@@ -95,7 +99,8 @@ namespace motion
 	};
 
 	// 다른 개체의 한 걸음(서버 알림). durationSec <= 0 이거나 너무 멀면 스냅.
-	void RemoteStep(Entity& e, int x, int y, float durationSec);
+	// allowFar: 돌진·도약처럼 여러 칸을 한 번에 가는 이동(멀어도 보간한다).
+	void RemoteStep(Entity& e, int x, int y, float durationSec, bool allowFar = false);
 	// 다른 개체의 논리/표시 위치·걷기 애니메이션 갱신
 	void UpdateRemote(Entity& e, float dt, float visualDt);
 	// 걷기 위상/속도(애니메이션) — 표시 위치가 움직인 거리 기준

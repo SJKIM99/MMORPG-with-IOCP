@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Combat/CombatHelper.h"
 #include "MonsterHelper.h"
 #include "User.h"
 #include "UserHelper.h"
@@ -183,7 +184,137 @@ namespace
 
 	std::chrono::milliseconds MoveDelay(const shared_ptr<Monster>& monster)
 	{
-		return std::chrono::milliseconds(monster->GetMoveIntervalMs());
+		// V2: 둔화면 느려진다
+		const uint32_t slow = monster->Status().SlowPercent(GetNowTime());
+		return std::chrono::milliseconds(monster->GetMoveIntervalMs() * (100u + slow) / 100u);
+	}
+
+	// V2: 기절/빙결이면 행동 대신 잠깐 뒤에 다시 판단한다. true면 이번 행동을 건너뛴다.
+	bool WaitIfDisabled(const shared_ptr<Monster>& monster, bool forMove, TIMER_EVENT_TYPE ev, const ObjID& target)
+	{
+		const uint32_t now = GetNowTime();
+		const bool blocked = forMove ? monster->Status().BlocksMove(now) : monster->Status().BlocksAttack(now);
+		if (!blocked)
+			return false;
+		uint32_t wait = 0;
+		for (auto& slot : monster->Status().Slots())
+			if (slot.stacks > 0 && now < slot.until)
+			{
+				const StatusRow& row = StatusTable::Get(slot.id);
+				if ((forMove && row.blocksMove) || (!forMove && row.blocksAttack))
+					wait = (std::max)(wait, slot.until - now);
+			}
+		wait = std::clamp<uint32_t>(wait + 30, 60, 1500);
+		GTimerThread->ScheduleAfter(monster->GetObjID(), std::chrono::milliseconds(wait), ev, target);
+		return true;
+	}
+
+	// ── V2 강공격 패턴 ────────────────────────────────────────────────────────
+	void SendTelegraph(const shared_ptr<Monster>& monster, TelegraphShape shape, short x, short y, short fromX, short fromY, uint8_t radius, uint16_t durationMs, MonsterPattern pattern)
+	{
+		if (monster->GetSectorX() < 0)
+			return;
+		MONSTER_TELEGRAPH_NFY_PACKET packet{};
+		packet.size = sizeof(packet);
+		packet.type = static_cast<char>(PacketType::MONSTER_TELEGRAPH_NFY);
+		packet.monsterId = monster->GetObjID();
+		packet.shape = static_cast<uint8_t>(shape);
+		packet.x = x; packet.y = y;
+		packet.fromX = fromX; packet.fromY = fromY;
+		packet.radius = radius;
+		packet.durationMs = durationMs;
+		packet.pattern = static_cast<uint8_t>(pattern);
+		GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
+		{
+			if (object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
+				return;
+			auto viewer = static_pointer_cast<User>(object);
+			auto session = viewer->GetGameSession();
+			if (!session || session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				return;
+			if (!SubjectHelper::CanSee(object, monster))
+				return;
+			session->PostSend(packet);
+		});
+	}
+
+	int SignOf(int v) { return (v > 0) - (v < 0); }
+
+	bool TryStartPattern(const shared_ptr<Monster>& monster, const shared_ptr<User>& target)
+	{
+		const MonsterTableRow* row = monster->GetSpecies();
+		if (row == nullptr || monster->m_pattern.pending)
+			return false;
+		const MonsterPattern pattern = MonsterTable::PatternOf(*row);
+		const uint32_t now = GetNowTime();
+		if (pattern == MonsterPattern::None || now < monster->m_patternReadyAt)
+			return false;
+		if (monster->Status().BlocksAttack(now) || monster->Status().BlocksMove(now))
+			return false;
+
+		const int mx = monster->GetX(), my = monster->GetY();
+		const int tx = target->GetX(), ty = target->GetY();
+		const int dist = (std::max)(std::abs(tx - mx), std::abs(ty - my));
+		Monster::PatternState st;
+		st.type = pattern;
+		st.fromX = static_cast<short>(mx);
+		st.fromY = static_cast<short>(my);
+		TelegraphShape shape = TelegraphShape::Circle;
+		uint16_t windup = 800;
+
+		switch (pattern)
+		{
+		case MonsterPattern::Charge:
+		{
+			if (dist < 2 || dist > 4) return false;
+			st.dx = static_cast<int8_t>(SignOf(tx - mx));
+			st.dy = static_cast<int8_t>(SignOf(ty - my));
+			// 돌진 끝점: 그 방향으로 4칸(막히면 그 앞까지)
+			int ex = mx, ey = my;
+			for (int i = 0; i < 4; ++i)
+			{
+				const int nx = ex + st.dx, ny = ey + st.dy;
+				if (!ZoneLayout::IsValidWorldPosition(static_cast<short>(nx), static_cast<short>(ny)) || isCollision(static_cast<short>(nx), static_cast<short>(ny))
+					|| WorldData::IsSafeZone(nx, ny) || ZoneLayout::GetZoneIdByWorld(static_cast<short>(nx), static_cast<short>(ny)) != monster->GetZoneId())
+					break;
+				ex = nx; ey = ny;
+			}
+			if (ex == mx && ey == my) return false;
+			st.cx = static_cast<short>(ex); st.cy = static_cast<short>(ey);
+			shape = TelegraphShape::Line;
+			windup = 650;
+			break;
+		}
+		case MonsterPattern::Slam:
+			if (dist > 1) return false;
+			st.cx = static_cast<short>(mx); st.cy = static_cast<short>(my);
+			st.radius = 1;
+			windup = 850;
+			break;
+		case MonsterPattern::Ranged:
+			if (dist < 2 || dist > 5) return false;
+			st.cx = static_cast<short>(tx); st.cy = static_cast<short>(ty);
+			st.radius = 0;
+			windup = 750;
+			break;
+		case MonsterPattern::Leap:
+			if (dist < 2 || dist > 4) return false;
+			st.cx = static_cast<short>(tx); st.cy = static_cast<short>(ty);
+			st.radius = 1;
+			windup = 700;
+			break;
+		default:
+			return false;
+		}
+
+		st.pending = true;
+		monster->m_pattern = st;
+		monster->m_busyUntil = now + windup + 350;
+		monster->m_patternReadyAt = now + windup + 4500 + static_cast<uint32_t>(LRng() % 2500);
+		monster->UpdateFacing(tx - mx);
+		SendTelegraph(monster, shape, st.cx, st.cy, st.fromX, st.fromY, st.radius, windup, pattern);
+		GTimerThread->ScheduleAfter(monster->GetObjID(), std::chrono::milliseconds(windup), TIMER_EVENT_TYPE::EV_MONSTER_PATTERN, target->GetObjID());
+		return true;
 	}
 
 	void StartBossSkillLoopIfNeeded(const shared_ptr<Monster>& monster)
@@ -355,6 +486,8 @@ namespace MonsterHelper
 		auto monster = ::GetGameObject<Monster>(monsterId);
 		if (monster == nullptr || monster->GetStat()->IsDead())
 			return;
+		if (WaitIfDisabled(monster, true, TIMER_EVENT_TYPE::EV_RANOM_MOVE, ObjID{}))
+			return;
 
 		// 맞아서 화가 난 상태면 배회 루프를 추격 루프로 갈아탄다.
 		if (monster->IsProvoked())
@@ -376,7 +509,7 @@ namespace MonsterHelper
 			if (!SubjectHelper::CanSee(monster, user)) return;
 
 			hasNearbyPlayer = true;
-			if (SubjectHelper::CanAttack(monster, user) && !WorldData::IsSafeZone(user->GetX(), user->GetY()))
+			if (CombatHelper::MonsterCanReach(monster, user) && !WorldData::IsSafeZone(user->GetX(), user->GetY()))
 				attackTargetId = id;
 		});
 
@@ -451,6 +584,13 @@ namespace MonsterHelper
 		auto monster = ::GetGameObject<Monster>(monsterId);
 		if (monster == nullptr || monster->GetStat()->IsDead())
 			return;
+		if (WaitIfDisabled(monster, true, TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId))
+			return;
+		if (const uint32_t now = GetNowTime(); now < monster->m_busyUntil)
+		{
+			GTimerThread->ScheduleAfter(monsterId, std::chrono::milliseconds(monster->m_busyUntil - now + 10), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			return;
+		}
 
 		// ── Target validation ─────────────────────────────────────────────────
 		auto target = ::GetGameObject<User>(targetId);
@@ -524,8 +664,15 @@ namespace MonsterHelper
 			monster->UpdateFacing(target->GetX() - monster->GetX());
 
 		// ── Within attack range: stop pathfinding, attack only ────────────────
-		if (SubjectHelper::CanAttack(monster, target))
+		if (CombatHelper::MonsterCanReach(monster, target))
 		{
+			monster->UpdateFacing(target->GetX() - monster->GetX());
+			// V2: 강공격 패턴(돌진·내려찍기·원거리…)을 쓸지 먼저 본다
+			if (target->IsExtended() && TryStartPattern(monster, target))
+			{
+				GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+				return;
+			}
 			if (!monster->IsAttacking())
 				GTimerThread->ScheduleNow(monsterId, TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, targetId);
 
@@ -533,6 +680,13 @@ namespace MonsterHelper
 			return;
 		}
 		// ─────────────────────────────────────────────────────────────────────
+
+		// ── V2: 거리가 있을 때 쓰는 패턴(돌진·원거리·도약) ────────────────────
+		if (target->IsExtended() && TryStartPattern(monster, target))
+		{
+			GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, targetId);
+			return;
+		}
 
 		// ── A* chase: target is > 1 tile away ────────────────────────────────
 		(void)TryAdvanceTowardGoal(monster, monsterId, target->GetX(), target->GetY());
@@ -559,15 +713,48 @@ namespace MonsterHelper
 		monster->SetAttack(true);
 
 		auto victimSession = victim->GetGameSession();
+		const bool extendedVictim = victimSession && victimSession->IsExtended();
 		if (!victimSession || victimSession->m_state != SOCKET_STATE::ST_INGAME
 			|| victim->GetStat()->IsDead()
-			|| !SubjectHelper::IsAdjacent(monster, victim)
+			|| !(extendedVictim ? CombatHelper::MonsterCanReach(monster, victim) : SubjectHelper::IsAdjacent(monster, victim))
 			|| monster->GetStat()->IsDead()
 			|| victim->GetZoneId() != monster->GetZoneId()
 			|| WorldData::IsSafeZone(victim->GetX(), victim->GetY()))
 		{
 			monster->ClearPath();
 			monster->SetAttack(false);
+			return;
+		}
+
+		// V2: 기절이면 치지 못한다(풀리면 다시 판단). 강공격 예고 중이면 평타를 쉬었다가.
+		if (WaitIfDisabled(monster, false, TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, playerId))
+			return;
+		if (const uint32_t now = GetNowTime(); now < monster->m_busyUntil)
+		{
+			GTimerThread->ScheduleAfter(monsterId, std::chrono::milliseconds(monster->m_busyUntil - now + 10), TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, playerId);
+			return;
+		}
+
+		if (extendedVictim)
+		{
+			// V2 대상: 회피·방어·철벽 태세·반격까지 CombatHelper가 처리
+			const bool died = CombatHelper::HitPlayerFromMonster(monster, victim, RollMonsterDamage(monster), 0);
+			if (!died)
+			{
+				// 빙결된 몬스터는 공격이 느리다
+				const uint32_t interval = monster->GetAttackIntervalMs() * (monster->Status().Has(StatusId::Freeze, GetNowTime()) ? 2u : 1u);
+				if (CombatHelper::MonsterCanReach(monster, victim))
+					GTimerThread->ScheduleAfter(monsterId, std::chrono::milliseconds(interval), TIMER_EVENT_TYPE::EV_MONSTER_ATTACK_TO_USER, playerId);
+				else
+				{
+					monster->ClearPath();
+					monster->SetAttack(false);
+				}
+				return;
+			}
+			monster->SetAttack(false);
+			Deactivate(monster);
+			ContentHelper::HandlePlayerDeath(victim, monsterId, false);
 			return;
 		}
 
@@ -717,5 +904,114 @@ namespace MonsterHelper
 		cout << "[Zone " << zoneId << "] Monster Init Success ("
 		     << (MAX_MONSTER / stride) << " monsters"
 		     << ((region != nullptr && region->bossSpecies != 0) ? " + boss" : "") << ")\n";
+	}
+
+	void HandlePatternImpact(const ObjID& monsterId, const ObjID& targetId)
+	{
+		auto monster = ::GetGameObject<Monster>(monsterId);
+		if (monster == nullptr || monster->GetStat()->IsDead() || !monster->m_pattern.pending || monster->GetSectorX() < 0)
+		{
+			if (monster) monster->m_pattern.pending = false;
+			return;
+		}
+		Monster::PatternState st = monster->m_pattern;
+		monster->m_pattern.pending = false;
+		const uint32_t now = GetNowTime();
+		// 예고 중에 기절/빙결시키면 끊긴다 — 방패 강타·빙결 인장으로 받아칠 수 있다.
+		if (monster->Status().BlocksAttack(now) || monster->Status().BlocksMove(now))
+		{
+			SendTelegraph(monster, TelegraphShape::Circle, st.cx, st.cy, st.fromX, st.fromY, 0, 0, st.type);   // 취소
+			monster->m_busyUntil = now;
+			return;
+		}
+
+		std::vector<shared_ptr<User>> victims;
+		auto collect = [&](auto&& inside)
+		{
+			GSector->ForEachNeighborObject(monster->GetSectorX(), monster->GetSectorY(), [&](const shared_ptr<Subject>& object)
+			{
+				if (object->GetObjID().GetCategory<EnumCategory>() != EnumCategory::eUser)
+					return;
+				auto user = static_pointer_cast<User>(object);
+				if (user->GetStat()->IsDead() || !user->IsExtended() || WorldData::IsSafeZone(user->GetX(), user->GetY()))
+					return;
+				if (inside(user->GetX(), user->GetY()))
+					victims.push_back(user);
+			});
+		};
+
+		uint32_t percent = 150;
+		switch (st.type)
+		{
+		case MonsterPattern::Charge:
+		{
+			// 선 위의 칸들을 달려간다. 지나간 칸에 서 있던 대상이 맞는다.
+			std::vector<std::pair<int, int>> line;
+			int x = st.fromX, y = st.fromY;
+			while (x != st.cx || y != st.cy)
+			{
+				x += st.dx; y += st.dy;
+				line.emplace_back(x, y);
+				if (line.size() > 6) break;
+			}
+			collect([&](int ux, int uy)
+			{
+				for (auto& [lx, ly] : line) if (lx == ux && ly == uy) return true;
+				return false;
+			});
+			// 몬스터는 막히기 전 칸까지 이동(대상에 부딪히면 그 앞에서 멈춤)
+			for (auto& [lx, ly] : line)
+			{
+				bool occupied = false;
+				for (auto& v : victims) if (v->GetX() == lx && v->GetY() == ly) occupied = true;
+				if (occupied) break;
+				ObjID id = monsterId;
+				monster->SetLastStepMs(70);
+				MonsterHelper::AStarMove(id, static_cast<short>(lx), static_cast<short>(ly));
+			}
+			monster->ClearPath();
+			percent = 160;
+			break;
+		}
+		case MonsterPattern::Slam:
+			collect([&](int ux, int uy) { return std::abs(ux - st.cx) <= st.radius && std::abs(uy - st.cy) <= st.radius; });
+			percent = 180;
+			break;
+		case MonsterPattern::Ranged:
+			collect([&](int ux, int uy) { return ux == st.cx && uy == st.cy; });
+			percent = 130;
+			break;
+		case MonsterPattern::Leap:
+		{
+			// 목표 칸(또는 그 옆 빈 칸)으로 뛰어든다
+			short lx = st.cx, ly = st.cy;
+			if (isCollision(lx, ly) || WorldData::IsSafeZone(lx, ly) || ZoneLayout::GetZoneIdByWorld(lx, ly) != monster->GetZoneId())
+			{
+				lx = monster->GetX(); ly = monster->GetY();
+			}
+			collect([&](int ux, int uy) { return std::abs(ux - st.cx) <= st.radius && std::abs(uy - st.cy) <= st.radius; });
+			if (lx != monster->GetX() || ly != monster->GetY())
+			{
+				ObjID id = monsterId;
+				monster->SetLastStepMs(0);
+				MonsterHelper::AStarMove(id, lx, ly);
+				monster->ClearPath();
+			}
+			percent = 140;
+			break;
+		}
+		default:
+			return;
+		}
+
+		for (auto& v : victims)
+		{
+			const uint32_t raw = static_cast<uint32_t>(RollMonsterDamage(monster)) * percent / 100u;
+			if (CombatHelper::HitPlayerFromMonster(monster, v, raw, DAMAGE_BOSS_SKILL))
+				ContentHelper::HandlePlayerDeath(v, monsterId, false);
+			else if (st.type == MonsterPattern::Charge)
+				CombatHelper::ApplyStatus(v, StatusId::Slow, 1500, 1, monsterId);
+		}
+		(void)targetId;
 	}
 }

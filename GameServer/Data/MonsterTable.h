@@ -30,6 +30,16 @@ enum class MonsterArchetype : uint8_t
 	eSkeleton,    // 해골/망령 기사
 };
 
+// V2: 몬스터 강공격 패턴 — 모두 예고(telegraph) 뒤에 판정되어 피할 수 있다.
+enum class MonsterPattern : uint8_t
+{
+	None,     // 평타만
+	Charge,   // 거리 2~4에서 직선 예고 → 돌진(선 위 대상 피해 + 둔화)
+	Slam,     // 붙어 있을 때 주변 원 예고 → 내려찍기
+	Ranged,   // 거리 3~5에서 대상 칸 예고 → 투척/주문
+	Leap,     // 거리 2~4에서 대상 주변 원 예고 → 도약
+};
+
 enum class MonsterVariant : uint8_t
 {
 	eNormal,
@@ -167,4 +177,30 @@ namespace MonsterTable
 	}
 
 	static_assert(Detail::Validate(), "MonsterTable: id는 1부터 연속, 이름은 19바이트 이하여야 합니다.");
+
+	// 종족 → 패턴. 초반 몬스터(초록 젤리·고블린)는 평타만 — 처음엔 쉽게, 뒤로 갈수록 읽어야 한다.
+	[[nodiscard]] constexpr MonsterPattern PatternOf(const MonsterTableRow& row) noexcept
+	{
+		if (row.boss)
+			return MonsterPattern::None;   // 보스는 전용 광역기 루프
+		switch (row.id)
+		{
+		case 1: case 2: case 13: case 20: return MonsterPattern::None;
+		case 7: return MonsterPattern::Leap;        // 푸른 젤리: 통통 튀어 덮친다
+		case 8: return MonsterPattern::Ranged;      // 코볼트: 창 던지기
+		case 12: return MonsterPattern::Slam;       // 오크 전사
+		default: break;
+		}
+		switch (row.archetype)
+		{
+		case MonsterArchetype::eQuadruped: return MonsterPattern::Charge;
+		case MonsterArchetype::eGolem:     return MonsterPattern::Slam;
+		case MonsterArchetype::eDemon:     return MonsterPattern::Slam;
+		case MonsterArchetype::eMushroom:  return MonsterPattern::Slam;
+		case MonsterArchetype::eInsect:    return MonsterPattern::Leap;
+		case MonsterArchetype::eDragon:    return MonsterPattern::Ranged;
+		case MonsterArchetype::eGhost:     return MonsterPattern::Ranged;
+		default:                           return MonsterPattern::None;
+		}
+	}
 }

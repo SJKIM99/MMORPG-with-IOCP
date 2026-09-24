@@ -176,6 +176,27 @@ namespace motion
 		return true;
 	}
 
+	void LocalMover::Dash(int x, int y, double now, double duration)
+	{
+		m_pending.clear();
+		m_srvX = m_predX = x;
+		m_srvY = m_predY = y;
+		const Vector2 target = V(x, y);
+		if (duration <= 0.0)
+		{
+			// 순간이동형(공간 도약·그림자 돌진): 몸은 바로 옮기고 카메라는 미끄러지게 둔다
+			m_segFrom = m_segTo = m_logical = m_visual = target;
+			m_segT0 = m_segT1 = now;
+			m_velocity = Vector2{ 0, 0 };
+			return;
+		}
+		m_segFrom = LogicalAt(now);
+		m_segTo = target;
+		m_segT0 = now;
+		m_segT1 = now + duration;
+		m_nextStepAt = std::max(m_nextStepAt, m_segT1 - 0.02);
+	}
+
 	Vector2 LocalMover::LogicalAt(double now) const
 	{
 		if (now >= m_segT1 || m_segT1 <= m_segT0)
@@ -218,11 +239,23 @@ namespace motion
 	// ─────────────────────────────────────────────────────────────────────────
 	// 다른 개체
 	// ─────────────────────────────────────────────────────────────────────────
-	void RemoteStep(Entity& e, int x, int y, float durationSec)
+	void RemoteStep(Entity& e, int x, int y, float durationSec, bool allowFar)
 	{
 		const Vector2 target = V(x, y);
 		const Vector2 lastQueued = e.stepQN > 0 ? e.stepQ[e.stepQN - 1].to : e.to;
 		const float far = Dist(lastQueued, target);
+		if (far < 0.01f)
+			return;   // 이미 그 칸에 있거나 가는 중(기술 이동을 먼저 보간해 둔 경우)
+		if (allowFar && durationSec > 0.f && far < 8.f)
+		{
+			// 여러 칸 이동(돌진·도약): 밀린 걸음을 버리고 지금 위치에서 곧장 간다
+			e.stepQN = 0;
+			e.from = e.logPos;
+			e.to = target;
+			e.moveT = 0.f;
+			e.moveDur = durationSec;
+			return;
+		}
 		if (durationSec <= 0.f || far > 2.6f)
 		{
 			// 순간이동/재배치/시야 밖에서 한참 이동 — 스냅

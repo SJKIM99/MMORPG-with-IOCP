@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #define WIN32_LEAN_AND_MEAN
 
@@ -32,6 +32,10 @@
 #include <vector>
 
 // ── Windows / Winsock ─────────────────────────────────────────────────────────
+// windows.h의 min/max 매크로가 std::min/std::max(템플릿 인자 없이 쓴 호출)를 망가뜨리지 않게 한다.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <mswsock.h>
 #include <ws2tcpip.h>
@@ -205,6 +209,13 @@ struct DB_ALIGNMENT_SAVE_EVENT : DB_EVENT_BASE
 	uint16_t pkCount   = 0;
 };
 
+// V2 캐릭터 진행 데이터(직업·포인트·퀘스트…) 저장 — 인벤토리와 같은 playerId 샤드
+struct DB_PROGRESS_SAVE_EVENT : DB_EVENT_BASE
+{
+	int                  playerId = 0;
+	std::vector<uint8_t> data;
+};
+
 // ── Timer event types ────────────────────────────────────────────────────────
 enum TIMER_EVENT_TYPE
 {
@@ -221,6 +232,12 @@ enum TIMER_EVENT_TYPE
 	EV_BOSS_SKILL_IMPACT,     // 보스 광역기 적중(예고 1.2초 뒤)
 	EV_PURPLE_EXPIRE,         // 보라돌이 해제 확인
 	EV_HASTE_EXPIRE,          // 가속 해제 확인
+	// V2 전투
+	EV_SKILL_IMPACT,          // 예고 뒤 스킬 판정(targetId.DatabaseID = 예약 번호)
+	EV_STATUS_TICK,           // 지속 피해 틱
+	EV_MONSTER_PATTERN,       // 몬스터 강공격 판정(예고 뒤)
+	// 살아 있는 마을
+	EV_NPC_TICK,              // 마을 NPC 배회·혼잣말(마을 Zone 스레드, 0.25초마다)
 };
 
 struct TIMER_EVENT

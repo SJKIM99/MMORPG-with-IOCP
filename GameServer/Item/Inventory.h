@@ -108,6 +108,8 @@ public:
 	// 경로 끝에서 호출한다 — "언제 호출을 빠뜨렸는지" 따지는 대신, 항상 최종 상태를
 	// 그대로 다시 계산하므로 항상 정확하다. (레벨업 경로에서도 불러야 해서 public)
 	void RecomputeOffensive() const;
+	// V2: 장착 장비의 능력치 보너스를 모은다(User::RecomputeStats가 부른다).
+	void CollectGearBonus(struct GearBonus& out) const;
 
 	// ── 리니지풍 컨텐츠 확장 ────────────────────────────────────────────────
 	// 지갑(아데나). 리니지에서는 아데나도 인벤토리 안의 물건이라, 슬롯과 같은 곳에서

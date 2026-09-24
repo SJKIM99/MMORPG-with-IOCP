@@ -11,7 +11,8 @@
 //     --screenshot out.png --after 8  지정 시간 뒤 스크린샷 저장 후 종료
 //     --hour 22                       게임 시각 고정
 //     --lag 120 --jitter 60           인공 네트워크 지연(한쪽 방향 ms)·지터 — 조작감 검증용
-//     --script hunt|town|inventory|map|help|enchant|chat
+//     --class 0|1|2                   새 캐릭터 직업(0 황혼의 기사 · 1 룬술사 · 2 그림자 사냥꾼)
+//     --script hunt|town|inventory|map|help|enchant|chat|combat|charwin
 // ─────────────────────────────────────────────────────────────────────────────
 #include "raylib.h"
 #include "rlgl.h"
@@ -163,6 +164,7 @@ int main(int argc, char** argv)
 		else if (a == "--trace-move") opts.traceMove = next("move.csv");
 		else if (a == "--jitter") opts.jitterMs = std::atoi(next("0").c_str());
 		else if (a == "--gallery") gallery = true;
+		else if (a == "--class") opts.classId = std::clamp(std::atoi(next("0").c_str()), 0, 2);
 		else if (a == "--size")
 		{
 			const std::string s = next("1280x720");

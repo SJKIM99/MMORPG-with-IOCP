@@ -17,6 +17,14 @@ namespace sfx
 		BossRoar, Slam, SlamWarn,
 		Step, Notice, Chat,
 		AmbBird, AmbCricket, AmbWind, AmbBubble, AmbCrackle, AmbWave, AmbCrow,
+		// V2 전투(직업 기술·연계·상태이상)
+		ShieldBash, Whirl, Dash, GuardUp, ChargeUp, Execute,
+		RuneBolt, FrostSeal, FireRing, Blink, Thunder, MeteorFall, MeteorImpact,
+		Stab, ShadowStep, PoisonSlash, Evade, Backstab, MoonDance,
+		ComboSting, SkillReady, NoMana, Counter, WallSlam, PoisonBurst, SteamBurst,
+		TeleWarn, Interrupt, StatUp, DotTick, Miss, Freeze, Stun,
+		// 살아 있는 마을
+		Voice, DogBark, CatMeow, Cluck, Lute, Pet,
 		Count
 	};
 
@@ -26,6 +34,8 @@ namespace sfx
 
 	// volume 0~1, pitchVar: ±비율(0.05 = ±5%), pan: 0 왼쪽 ~ 1 오른쪽(0.5 가운데)
 	void Play(Id id, float volume = 1.f, float pitchVar = 0.04f, float pan = 0.5f);
+	// 음높이를 정해서(목소리: 아이는 높게, 노인은 낮게)
+	void PlayPitched(Id id, float volume, float pitch, float pan = 0.5f);
 	void SetMasterVolume(float v);
 	[[nodiscard]] float MasterVolume();
 }

@@ -12,6 +12,8 @@
 // 필드를 읽지 않는다.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include "Data/CombatData.h"
+
 #pragma pack (push, 1)
 
 // ── 이동 ─────────────────────────────────────────────────────────────────────
@@ -57,11 +59,206 @@ struct SERVER_CONFIG_INF_PACKET
 	uint16_t       moveSpeedPercent;  // 지금 내 이동속도(%)
 };
 
+// ── 전투 ─────────────────────────────────────────────────────────────────────
+// 스킬/기본 공격 시전. 대상 규칙은 SkillTable(Data/CombatData.h)의 target:
+//   Enemy → targetId, Ground → x/y(지점), Direction → x/y(바라보는 칸), Self → 무시
+struct SKILL_CAST_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       skillId;
+	ObjID          targetId;
+	short          x, y;
+	uint16_t       seq;
+};
+
+enum class SkillResult : uint8_t
+{
+	Ok,
+	Cooldown,        // param = 남은 ms
+	NoMana,
+	OutOfRange,
+	InvalidTarget,
+	Locked,          // 레벨이 모자람(param = 필요 레벨)
+	Busy,            // 사망·존 이동 중
+	SafeZone,        // 마을 안
+	Stunned,         // 기절 중
+	Blocked,         // 이동/도약할 칸이 없음
+	WrongClass,
+};
+
+struct SKILL_RESULT_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       seq;
+	uint16_t       skillId;
+	uint8_t        result;       // SkillResult
+	uint32_t       cooldownMs;   // 성공이면 이번 쿨다운, 실패(Cooldown)면 남은 시간
+	uint16_t       mp;           // 현재 MP
+};
+
+// 주변에 보내는 시전 알림 — 모션·예고·투사체·돌진 연출용. 판정 결과(피해)는
+// SUBJECT_DAMAGE_NFY로 따로 온다.
+struct SKILL_CAST_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	ObjID          casterId;
+	uint16_t       skillId;
+	ObjID          targetId;
+	short          fromX, fromY;  // 시전 위치
+	short          x, y;          // 목표 지점(돌진·도약이면 도착 칸)
+	uint16_t       castMs;        // 예고 시간(이만큼 뒤에 판정)
+	uint8_t        flags;         // 예약
+};
+
+struct STATUS_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	ObjID          subjectId;
+	uint8_t        status;       // StatusId
+	uint8_t        stacks;       // 0 = 풀림
+	uint32_t       durationMs;   // 남은 시간
+	ObjID          sourceId;
+};
+
+// 내 직업·능력치·전투 능력치(로그인·레벨업·장비 변경·포인트 분배 때)
+struct USER_STATS_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        classId;
+	uint8_t        level;
+	BaseStats      base;          // 직업 성장분
+	BaseStats      alloc;         // 내가 찍은 포인트
+	BaseStats      gear;          // 장비 보너스
+	uint16_t       freePoints;
+	DerivedStats   stats;
+	uint16_t       mp;
+};
+
+struct USER_RESOURCE_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       hp, maxhp;
+	uint16_t       mp, maxmp;
+};
+
+struct STAT_ALLOC_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        stat;        // StatKind
+	uint8_t        amount;      // 1~10
+};
+
+// 몬스터 강공격 예고 — 클라이언트는 duration 동안 모양을 채워 가며 그린다.
+enum class TelegraphShape : uint8_t { Circle, Line, Cone };
+struct MONSTER_TELEGRAPH_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	ObjID          monsterId;
+	uint8_t        shape;        // TelegraphShape
+	short          x, y;         // 중심(원) 또는 끝점(선)
+	short          fromX, fromY; // 시작점(선/부채꼴)
+	uint8_t        radius;       // 칸
+	uint16_t       durationMs;
+	uint8_t        pattern;      // MonsterPattern
+};
+
+// ── 살아 있는 마을(NPC) ───────────────────────────────────────────────────────
+// 마을 NPC는 서버(마을 Zone 스레드)가 배회시킨다. Sector 오브젝트가 아니라서 레거시
+// 세션에는 아무것도 가지 않고, 확장 세션에만 아래 패킷이 간다.
+enum class NpcActState : uint8_t { Idle, Walk, Talk };
+
+struct NPC_ENTRY
+{
+	uint16_t npcId;
+	short    x, y;
+	uint8_t  state;        // NpcActState
+	int8_t   faceX, faceY; // 바라보는 방향(타일, -1~1)
+};
+
+inline constexpr int kNpcListMax = 24;
+struct NPC_LIST_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        count;
+	NPC_ENTRY      npcs[kNpcListMax];
+};
+
+struct NPC_STATE_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	NPC_ENTRY      npc;
+	uint16_t       stepMs;    // 걸음이면 그 걸음 시간(보간), 아니면 0
+	ObjID          talkTo;    // 대화 중이면 상대
+};
+
+// line: Data/NpcTalk.h barks 번호. 0xFF = 인사(NpcRow.greeting)
+inline constexpr uint8_t kNpcGreetLine = 0xFF;
+struct NPC_BARK_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       npcId;
+	uint8_t        line;
+	ObjID          toUser;    // 인사/대답 상대(없으면 빈 ObjID)
+};
+
+struct NPC_TALK_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       npcId;
+};
+
+enum class NpcTalkResult : uint8_t { Ok, TooFar, Unknown, Busy };
+struct NPC_TALK_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       npcId;
+	uint8_t        result;    // NpcTalkResult
+};
+
+struct NPC_SERVICE_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       npcId;
+	uint8_t        service;   // WorldData::NpcService
+};
+
+enum class NpcServiceResult : uint8_t { Ok, TooFar, Cooldown, NoAdena, Full, Invalid };
+struct NPC_SERVICE_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       npcId;
+	uint8_t        service;
+	uint8_t        result;      // NpcServiceResult
+	uint32_t       cooldownMs;  // 다시 받을 수 있을 때까지(성공/쿨다운)
+};
+
+static_assert(sizeof(USER_STATS_INF_PACKET) <= 255, "STRESS_TEST 수신 버퍼(255)를 넘으면 안 된다");
+static_assert(sizeof(NPC_LIST_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
+
 #pragma pack (pop)
 
 // ── Client → Server 최대 크기(수신 버퍼) ─────────────────────────────────────
 namespace ClientPacketSizeDetailV2
 {
 	constexpr size_t v01 = ProtocolConstMaxSize(MAX_CLIENT_PACKET_SIZE_V1, sizeof(USER_MOVE_EX_REQ_PACKET));
+	constexpr size_t v02 = ProtocolConstMaxSize(v01, sizeof(SKILL_CAST_REQ_PACKET));
+	constexpr size_t v03 = ProtocolConstMaxSize(v02, sizeof(STAT_ALLOC_REQ_PACKET));
+	constexpr size_t v04 = ProtocolConstMaxSize(v03, sizeof(NPC_TALK_REQ_PACKET));
+	constexpr size_t v05 = ProtocolConstMaxSize(v04, sizeof(NPC_SERVICE_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v01;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v05;
