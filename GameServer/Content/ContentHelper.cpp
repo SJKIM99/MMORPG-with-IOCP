@@ -548,6 +548,17 @@ namespace ContentHelper
 		if (inventory->TryAddItem(weapon, 1, &touched) && !touched.empty())
 			(void)inventory->TryEquip(touched.front());
 
+		// V2: 누빔 갑옷 + 가죽 장화를 입혀서 시작한다(장비가 몸에 보이는 게임 — 첫 장비 교체의 기쁨은 곧 온다).
+		if (player->IsExtended())
+		{
+			for (const ItemTableId armor : { PaddedArmor, LeatherBoots })
+			{
+				touched.clear();
+				if (inventory->TryAddItem(armor, 1, &touched) && !touched.empty())
+					(void)inventory->TryEquip(touched.front());
+			}
+		}
+
 		(void)inventory->TryAddItem(HealthPotion, 20);
 		(void)inventory->TryAddItem(ReturnScroll, 3);
 		(void)inventory->TryAddItem(TeleportScroll, 2);

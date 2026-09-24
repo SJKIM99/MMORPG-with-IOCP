@@ -41,10 +41,25 @@ namespace actors
 		Color    armor{ 150, 160, 176, 255 };
 		Color    cloth{ 60, 90, 170, 255 };   // 망토/깃털
 		Color    trim{ 200, 170, 90, 255 };
+		// ── V2 착용 장비 외형(ApplyGear) ──
+		uint8_t  weaponRarity = 0;            // Rarity — 영웅 이상은 무기에 희귀도 빛
+		int8_t   helmStyle = -1;              // -1 직업 기본 · 0 두건 · 1 철모 · 2 기사 투구 · 3 날개 투구 · 4 별빛 두건
+		Color    helmMain{}, helmTrim{}, helmAccent{};
+		int8_t   bodyStyle = -1;              // -1 직업 기본 · 0 누빔 · 1 사슬 · 2 판금 · 3 로브 · 4 가죽 · 5 여명 판금 · 6 별빛 로브
+		Color    bodyMain{}, bodyTrim{}, bodyAccent{};
+		bool     hasCloak = false;
+		Color    cloakMain{}, cloakTrim{};
+		bool     hasGloves = false;
+		Color    gloveMain{};
+		bool     hasBoots = false;
+		Color    bootMain{};
+		uint8_t  auraRarity = 0;              // 가장 높은 방어구 희귀도(발밑 빛)
 	};
 
 	// 캐릭터 외형 기본색(이름 해시로 망토 색 등을 고른다)
 	PlayerLook LookForPlayer(uint32_t nameHash, uint16_t weaponId, int enchant, uint8_t cls = 0);
+	// 착용 장비(EquipSlot - 1 순서의 아이템 id · 희귀도)를 외형에 반영한다.
+	void ApplyGear(PlayerLook& look, const uint16_t* items, const uint8_t* rarity, int count);
 
 	void DrawShadow(Vector2 base, float rx, float alpha);
 	void DrawPlayer(const Pose& pose, const PlayerLook& look);

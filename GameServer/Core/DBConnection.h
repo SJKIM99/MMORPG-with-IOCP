@@ -34,7 +34,7 @@ public:
 	// playerId는 로그인/계정생성 시 확보해 User에 캐싱해둔 정수 PK를 그대로 쓴다 —
 	// name(NVARCHAR) 기반 조회/조인이 DB 쪽에서 완전히 사라진다.
 	vector<DB_ITEM_INFO> ExtractInventory(int playerId);
-	bool			SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant);
+	bool			SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant, uint64_t extra = 0);
 	bool			DeleteInventorySlot(int playerId, uint16_t slotIndex);
 
 	// ── 리니지풍 컨텐츠 확장 ──

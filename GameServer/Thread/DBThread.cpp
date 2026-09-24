@@ -93,7 +93,7 @@ void DBThread::RequestSaveUser(const ObjID& subjectId, const DB_USER_INFO& info)
 	ScheduleOnShard(std::move(event), shardIndex);
 }
 
-void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant)
+void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant, uint64_t extra)
 {
 	auto event        = std::make_shared<DB_ITEM_SAVE_EVENT>();
 	event->wakeupTime = Now();
@@ -103,6 +103,7 @@ void DBThread::RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId
 	event->count      = count;
 	event->equipped   = equipped;
 	event->enchant    = enchant;
+	event->extra      = extra;
 	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
 }
 
@@ -234,7 +235,7 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 	}
 	else if (const auto e = std::dynamic_pointer_cast<DB_ITEM_SAVE_EVENT>(event))
 	{
-		connection->SaveInventorySlot(e->playerId, e->slotIndex, e->itemId, e->count, e->equipped, e->enchant);
+		connection->SaveInventorySlot(e->playerId, e->slotIndex, e->itemId, e->count, e->equipped, e->enchant, e->extra);
 	}
 	else if (const auto e = std::dynamic_pointer_cast<DB_ITEM_DELETE_EVENT>(event))
 	{

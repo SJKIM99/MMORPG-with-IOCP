@@ -682,6 +682,71 @@ namespace sfx
 					Tone(b, i * 0.07f, 0.3f, Osc::Sine, Const(n[i]), 0.5f, 0.003f, 9.f);
 				Load(Id::Pet, b, 0.3f);
 			}
+
+			// ── 희귀도별 획득음(높을수록 길고 넓게) ──
+			{
+				// 희귀: 맑은 종 두 번
+				Buf b(0.8f);
+				const float n[] = { 1318.5f, 1975.5f };
+				for (int i = 0; i < 2; ++i)
+				{
+					Tone(b, i * 0.09f, 0.6f, Osc::Sine, Const(n[i]), 0.6f, 0.002f, 5.f);
+					Tone(b, i * 0.09f, 0.4f, Osc::Sine, Const(n[i] * 2.76f), 0.14f, 0.002f, 9.f);
+				}
+				for (int i = 0; i < 5; ++i)
+					Tone(b, 0.15f + i * 0.05f, 0.15f, Osc::Sine, Const(Rand(3500.f, 6000.f)), 0.08f, 0.002f, 20.f);
+				Load(Id::LootRare, b, 0.45f);
+			}
+			{
+				// 영웅: 올라가는 아르페지오 + 반짝임
+				Buf b(1.2f);
+				const float n[] = { 1046.5f, 1318.5f, 1568.f, 2093.f };
+				for (int i = 0; i < 4; ++i)
+				{
+					Tone(b, i * 0.075f, 0.9f, Osc::Tri, Const(n[i]), 0.5f, 0.003f, 4.f);
+					Tone(b, i * 0.075f, 0.6f, Osc::Sine, Const(n[i] * 2.f), 0.2f, 0.003f, 6.f);
+				}
+				for (int i = 0; i < 9; ++i)
+					Tone(b, 0.3f + i * 0.055f, 0.2f, Osc::Sine, Const(Rand(3000.f, 6500.f)), 0.1f, 0.002f, 16.f);
+				Load(Id::LootHeroic, b, 0.5f);
+			}
+			{
+				// 전설: 낮게 부풀었다가 큰 화음이 울리고 반짝임이 쏟아진다
+				Buf b(2.0f);
+				Tone(b, 0, 0.45f, Osc::Sine, ExpSweep(55, 110), 0.7f, 0.3f, 3.f);
+				Noise(b, 0, 0.45f, ExpSweep(300, 4000), 0.25f, 0.35f, 4.f, 300.f);
+				const float n[] = { 523.25f, 659.25f, 783.99f, 1046.5f, 1318.5f };
+				for (int i = 0; i < 5; ++i)
+				{
+					Tone(b, 0.38f + i * 0.02f, 1.5f, Osc::Sine, Const(n[i]), 0.5f, 0.004f, 1.8f, 5.f, 0.004f);
+					Tone(b, 0.38f + i * 0.02f, 1.0f, Osc::Sine, Const(n[i] * 2.76f), 0.1f, 0.004f, 4.f);
+				}
+				Tone(b, 0.38f, 1.4f, Osc::Tri, Const(130.8f), 0.5f, 0.01f, 2.f);
+				for (int i = 0; i < 16; ++i)
+					Tone(b, 0.45f + i * 0.06f, 0.22f, Osc::Sine, Const(Rand(2800.f, 7000.f)), 0.1f, 0.002f, 14.f);
+				Load(Id::LootLegendary, b, 0.65f);
+			}
+			{
+				// 신화: 합창 같은 부풂(떨림 있는 사인 여러 겹) + 리디안 종 화음 + 깊은 울림
+				Buf b(2.6f);
+				const float pad[] = { 261.6f, 329.6f, 370.0f, 493.9f };
+				for (int i = 0; i < 4; ++i)
+				{
+					Tone(b, 0, 2.4f, Osc::Sine, Const(pad[i]), 0.35f, 0.7f, 1.1f, 5.5f, 0.006f);
+					Tone(b, 0.02f, 2.4f, Osc::Sine, Const(pad[i] * 1.004f), 0.25f, 0.7f, 1.1f, 6.1f, 0.006f);
+				}
+				Tone(b, 0.65f, 1.8f, Osc::Sine, ExpSweep(70, 40), 0.8f, 0.004f, 2.2f);
+				Noise(b, 0.62f, 0.5f, Sweep(4000, 600), 0.35f, 0.f, 6.f, 200.f);
+				const float bell[] = { 1046.5f, 1318.5f, 1480.f, 1975.5f, 2093.f };
+				for (int i = 0; i < 5; ++i)
+				{
+					Tone(b, 0.66f + i * 0.05f, 1.6f, Osc::Sine, Const(bell[i]), 0.4f, 0.003f, 2.f);
+					Tone(b, 0.66f + i * 0.05f, 1.0f, Osc::Sine, Const(bell[i] * 2.76f), 0.1f, 0.003f, 5.f);
+				}
+				for (int i = 0; i < 22; ++i)
+					Tone(b, 0.7f + i * 0.07f, 0.25f, Osc::Sine, Const(Rand(3000.f, 8000.f)), 0.09f, 0.002f, 12.f);
+				Load(Id::LootMythic, b, 0.7f);
+			}
 		}
 	}
 

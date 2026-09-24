@@ -41,6 +41,8 @@ namespace ui
 
 	// ── 입력 판정 ──
 	[[nodiscard]] Vector2 Mouse();
+	// 테스트 자동화: 실제 마우스 대신 이 위치를 쓴다(툴팁·호버 스크린샷)
+	void SetMouseOverride(bool on, Vector2 pos = Vector2{ 0, 0 });
 	[[nodiscard]] bool MouseOverUi();         // 직전 프레임 UI 영역 위에 마우스가 있는가
 	void Block(Rectangle r);                   // 이번 프레임 UI 영역 등록
 	[[nodiscard]] bool Hovered(Rectangle r);
@@ -67,8 +69,12 @@ namespace ui
 	void Gradient(Rectangle r, Color top, Color bottom);
 
 	// ── 툴팁(맨 위에 그림) ──
+	// text가 "---"인 줄은 구분선으로 그린다.
 	struct TooltipLine { std::string text; Color color; float size = 15.f; };
-	void Tooltip(std::vector<TooltipLine> lines, uint16_t iconItemId = 0);
+	// accent: 테두리·아이콘 칸 색(희귀도). a가 0이면 기본 테두리.
+	void Tooltip(std::vector<TooltipLine> lines, uint16_t iconItemId = 0, Color accent = Color{ 0, 0, 0, 0 });
+	// 비교 툴팁(착용 중인 장비) — 같은 프레임의 Tooltip 옆에 붙여 그린다. header는 위에 작은 띠("착용 중").
+	void TooltipCompare(std::vector<TooltipLine> lines, uint16_t iconItemId, Color accent, std::string_view header);
 
 	// ── 드래그 앤 드롭 ──
 	struct DragPayload

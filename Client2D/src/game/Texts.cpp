@@ -146,10 +146,88 @@ namespace texts
 		return "알 수 없는 알림";
 	}
 
+	const char* SlotName(EquipSlot slot)
+	{
+		switch (slot)
+		{
+		case EquipSlot::Weapon:   return "무기";
+		case EquipSlot::Helmet:   return "투구";
+		case EquipSlot::Armor:    return "갑옷";
+		case EquipSlot::Gloves:   return "장갑";
+		case EquipSlot::Boots:    return "신발";
+		case EquipSlot::Cloak:    return "망토";
+		case EquipSlot::Necklace: return "목걸이";
+		case EquipSlot::Ring:     return "반지";
+		default:                  return "";
+		}
+	}
+
+	const char* WeaponKindName(WeaponKind kind)
+	{
+		switch (kind)
+		{
+		case WeaponKind::Sword:      return "한손검";
+		case WeaponKind::Greatsword: return "양손검";
+		case WeaponKind::Katana:     return "도";
+		case WeaponKind::Dagger:     return "단검";
+		case WeaponKind::Staff:      return "지팡이";
+		default:                     return "무기";
+		}
+	}
+
+	std::string OptionText(const OptionRoll& o)
+	{
+		const auto& info = ItemRules::Option(o.kind);
+		if (o.kind == ItemOption::SkillBoost)
+		{
+			const SkillRow* sk = SkillTable::Find(ItemRules::SkillBoostSkill(o.value));
+			return Fmt("%s 피해 +%d%%", sk ? sk->name : "기술", ItemRules::SkillBoostPercent(o.value));
+		}
+		const int v = o.value * info.unit;
+		switch (info.display)
+		{
+		case 1: return Fmt("%s +%d%%", info.name, v);
+		case 2: return Fmt("%s +%d.%d%%", info.name, v / 10, v % 10);
+		default: return Fmt("%s +%d", info.name, v);
+		}
+	}
+
+	std::string ProcText(ItemProc p, int power)
+	{
+		const int c = ItemRules::ProcChance(p, power), v = ItemRules::ProcPower(p, power);
+		switch (p)
+		{
+		case ItemProc::Thunder:    return Fmt("적중 시 %d%% 확률로 벼락 — 공격력의 %d%% 마법 피해", c, v);
+		case ItemProc::Lifesteal:  return Fmt("준 피해의 %d%%만큼 HP를 흡수", v);
+		case ItemProc::FrostTouch: return power >= 2 ? Fmt("적중 시 %d%% 확률로 대상을 얼린다(1.2초)", c) : Fmt("적중 시 %d%% 확률로 대상을 둔화(2.5초)", c);
+		case ItemProc::Execution:  return Fmt("HP 30%% 이하인 적에게 피해 +%d%%", v);
+		case ItemProc::Echo:       return Fmt("기술 적중 시 %d%% 확률로 %d%% 위력의 메아리", c, v);
+		case ItemProc::Guardian:   return Fmt("맞을 때 %d%% 확률로 철벽 태세 %d초 (12초마다)", c, power >= 2 ? 4 : 3);
+		case ItemProc::Ember:      return Fmt("적중 시 %d%% 확률로 화상", c);
+		case ItemProc::Venom:      return Fmt("적중 시 %d%% 확률로 중독 1중첩", c);
+		default: return "";
+		}
+	}
+
+	std::string ItemNameFull(uint16_t itemId, int enchant, uint64_t extra)
+	{
+		std::string n = ItemNameEnchanted(itemId, enchant);
+		if (const ItemTableRow* row = ItemTableData::Find(itemId); row && row->type == ItemType::eEquipment)
+		{
+			const Rarity r = ItemRules::EffectiveRarity(*row, extra);
+			if (r == Rarity::Mythic) n = "◆ " + n + " ◆";
+			else if (r == Rarity::Legendary) n = "◆ " + n;
+		}
+		return n;
+	}
+
 	std::string WorldNotice(WorldNoticeCode code, int32_t p1, int32_t p2, const std::string& name)
 	{
 		switch (code)
 		{
+		case WorldNoticeCode::RareLoot:
+			return Josa(name, "이", "가") + " " + ItemRules::RarityName(static_cast<Rarity>(p2)) + " 등급 "
+				+ Josa(ItemName(static_cast<uint16_t>(p1)), "을", "를") + " 손에 넣었습니다!";
 		case WorldNoticeCode::BossSpawned:
 			return RegionName(p2) + "에 " + Josa(MonsterName(static_cast<uint16_t>(p1)), "이", "가") + " 나타났습니다!";
 		case WorldNoticeCode::BossKilled:

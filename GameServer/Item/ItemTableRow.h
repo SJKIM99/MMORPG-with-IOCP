@@ -47,6 +47,34 @@ enum class ItemGrade : uint8_t
 	eLegendary = 4,
 };
 
+// V2 장비 부위. 한 부위에는 장비 하나만 장착된다(Inventory::TryEquip).
+// 예전 행(무기만 있던 시절)은 equipSlot을 적지 않았으므로 None + eEquipment = 무기로 본다
+// (ItemTableData::SlotOf). 값은 서버·클라가 같은 표로 읽으므로 이미 배정된 값은 바꾸지 않는다.
+enum class EquipSlot : uint8_t
+{
+	None     = 0,
+	Weapon   = 1,
+	Helmet   = 2,
+	Armor    = 3,
+	Gloves   = 4,
+	Boots    = 5,
+	Cloak    = 6,
+	Necklace = 7,
+	Ring     = 8,
+	Count
+};
+
+// 무기 종류(표시·외형·공격력 종류). Staff는 공격력 보너스가 마법 공격력으로 들어간다.
+enum class WeaponKind : uint8_t
+{
+	None       = 0,
+	Sword      = 1,
+	Greatsword = 2,
+	Katana     = 3,
+	Dagger     = 4,
+	Staff      = 5,
+};
+
 // ContentID::KIND(uint16_t)에 그대로 실려서 아이템 인스턴스 ObjID, 인벤토리 슬롯,
 // DB 저장 데이터를 오가는 영구 식별자. ItemTable(아이템 테이블) 안의 한 행(row)을 가리킨다.
 // 0은 "빈 슬롯 / 없음"을 뜻하는 예약값이므로 실제 아이템에는 절대 배정하지 않는다.
@@ -83,4 +111,15 @@ struct ItemTableRow
 	// name[ITEM_NAME_SIZE]에 한글을 넣으면 20바이트 제한에 걸리는 이름이 많아서다.
 	const char*    displayName          = "";
 	uint8_t        iconId               = 0;   // 클라이언트 아이콘 모양 번호
+
+	// ── V2 장비 확장(부위 · 방어 · 단계 · 세트 · 직업 제한) ─────────────────────
+	// 예전 행은 전부 기본값이어도 뜻이 같다(무기 · 방어 0 · 제한 없음).
+	EquipSlot      equipSlot            = EquipSlot::None;   // 장비인데 None이면 무기(예전 행)
+	WeaponKind     weaponKind           = WeaponKind::None;
+	uint16_t       armorBonus           = 0;   // 방어력
+	uint16_t       magicArmorBonus      = 0;   // 마법 방어력
+	uint8_t        tier                 = 1;   // 1~5: 옵션 수치 단계 · 드롭 구간
+	uint8_t        setId                = 0;   // Data/ItemRules.h 세트 번호(0 = 없음)
+	uint8_t        classMask            = 0;   // 착용 가능 직업 비트(1 << ClassId), 0 = 모두
+	uint8_t        reqLevel             = 0;   // 착용 레벨(확장 세션만 검사)
 };

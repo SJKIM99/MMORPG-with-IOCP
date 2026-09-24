@@ -94,6 +94,7 @@ struct DB_ITEM_INFO
 	uint16_t _count     = 0;
 	bool     _equipped  = false;
 	uint8_t  _enchant   = 0;   // Inventory.enchant (무기 강화 수치)
+	uint64_t _extra     = 0;   // Inventory.extra (V2 희귀도·옵션 — Data/ItemRules.h ItemInstance)
 };
 
 // 슬롯 두 개를 한 SQL 트랜잭션으로 함께 반영하기 위한 단위 데이터(DBConnection::
@@ -107,6 +108,7 @@ struct DB_ITEM_SLOT_SAVE
 	uint16_t count     = 0;
 	bool     equipped  = false;
 	uint8_t  enchant   = 0;
+	uint64_t extra     = 0;   // V2 희귀도·옵션(ItemInstance)
 };
 
 // ── Core headers still in use ─────────────────────────────────────────────────
@@ -159,6 +161,7 @@ struct DB_ITEM_SAVE_EVENT : DB_EVENT_BASE
 	uint16_t count     = 0;
 	bool     equipped  = false;
 	uint8_t  enchant   = 0;
+	uint64_t extra     = 0;
 };
 
 struct DB_ITEM_DELETE_EVENT : DB_EVENT_BASE

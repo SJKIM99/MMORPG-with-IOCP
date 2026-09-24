@@ -52,7 +52,9 @@ void User::ApplyLevelStats(bool fullHeal)
 
 uint32_t User::GetMoveSpeedPercent(uint32_t now) const noexcept
 {
-	uint32_t speed = 100;
+	// 확장 세션은 능력치(DEX)·장비(이동 속도 옵션·세트)가 반영된 이동속도를 쓴다.
+	// 클라이언트는 USER_STATS_INF의 stats.moveSpeed로 같은 값을 받아 예측한다.
+	uint32_t speed = IsExtended() ? m_derived.moveSpeed : 100u;
 	if (IsHasted(now))
 		speed += MoveRule::kHasteBonusPercent;
 	return MoveRule::ClampSpeed(speed);
@@ -93,10 +95,12 @@ bool User::RecomputeStats(bool fullHeal)
 		return false;
 	}
 
-	// 장비 보너스 — 지금은 무기(+강화). 방어구/장신구/옵션은 아이템 확장에서 더한다.
+	// 장비 보너스 — 착용 중인 모든 부위(무기+강화 · 방어구 · 장신구 · 옵션 · 세트).
 	GearBonus gear{};
+	GearExtras extras{};
 	if (m_inventory != nullptr)
-		m_inventory->CollectGearBonus(gear);
+		m_inventory->CollectGearBonus(gear, &extras);
+	m_gearEx = extras;
 
 	const DerivedStats before = m_derived;
 	m_gear = gear;
@@ -118,7 +122,9 @@ bool User::RecomputeStats(bool fullHeal)
 // ─────────────────────────────────────────────────────────────────────────────
 namespace
 {
-	constexpr uint8_t kProgressVersion = 1;
+	// 1: classId + alloc[6]
+	// 2: + 드롭 천장 카운터(pityRare, pityHeroic)
+	constexpr uint8_t kProgressVersion = 2;
 	void Put16(std::vector<uint8_t>& out, int v) { out.push_back(static_cast<uint8_t>(v & 0xFF)); out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF)); }
 	int Get16(const std::vector<uint8_t>& in, size_t at) { return static_cast<int16_t>(in[at] | (in[at + 1] << 8)); }
 }
@@ -133,6 +139,8 @@ std::vector<uint8_t> User::SerializeProgress() const
 	out.push_back(static_cast<uint8_t>(m_classId));
 	for (int i = 0; i < 6; ++i)
 		Put16(out, m_alloc.v[i]);
+	Put16(out, m_pityRare);
+	Put16(out, m_pityHeroic);
 	return out;
 }
 
@@ -144,5 +152,10 @@ bool User::DeserializeProgress(const std::vector<uint8_t>& in)
 		m_classId = static_cast<ClassId>(in[3]);
 	for (int i = 0; i < 6; ++i)
 		m_alloc.v[i] = static_cast<int16_t>(std::clamp(Get16(in, 4 + i * 2), 0, 999));
+	if (in[2] >= 2 && in.size() >= 4 + 12 + 4)
+	{
+		m_pityRare   = static_cast<uint16_t>(std::clamp(Get16(in, 16), 0, 1000));
+		m_pityHeroic = static_cast<uint16_t>(std::clamp(Get16(in, 18), 0, 1000));
+	}
 	return true;
 }

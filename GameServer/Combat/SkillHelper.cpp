@@ -129,6 +129,17 @@ namespace
 		uint32_t damage = RollUserDamage(u, row.kind, spec.coeff, spec.forceCrit, crit);
 		damage = damage * (100u + bonus) / 100u;
 
+		// V2 장비: 기술 강화(그 기술 피해 +%) · 처형자(HP 30% 이하 대상 피해 +%)
+		const GearExtras& gx = u->m_gearEx;
+		if (row.id < sizeof(gx.skillBoost) && gx.skillBoost[row.id] > 0)
+			damage = damage * (100u + gx.skillBoost[row.id]) / 100u;
+		if (const uint8_t pw = gx.procPower[static_cast<size_t>(ItemProc::Execution)];
+			pw > 0 && IsMonster(target) && target->GetStat()->GetHp() * 100u <= target->GetStat()->GetMaxHp() * 30u)
+		{
+			damage = damage * static_cast<uint32_t>(100 + ItemRules::ProcPower(ItemProc::Execution, pw)) / 100u;
+			UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::ProcExecute, target->GetX(), target->GetY(), 0);
+		}
+
 		HitCtx ctx;
 		ctx.skillId = row.id;
 		ctx.comboId = comboId;
@@ -152,7 +163,11 @@ namespace
 		}
 
 		if (IsMonster(target))
-			HitMonster(u, static_pointer_cast<Monster>(target), damage, ctx);
+		{
+			const auto monster = static_pointer_cast<Monster>(target);
+			const uint32_t dealt = HitMonster(u, monster, damage, ctx);
+			ApplyGearProcs(u, row.id, row.slot == 0, row.kind, monster, dealt, spec.hitIndex);
+		}
 		else
 			ContentHelper::ApplyPvpDamage(u, static_pointer_cast<User>(target), damage * 7u / 10u, ctx.flags, ctx.skillId, ctx.comboId, ctx.flags2, ctx.hitIndex);
 

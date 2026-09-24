@@ -35,6 +35,16 @@ namespace
 	}
 
 	int Cheb(int ax, int ay, int bx, int by) { return std::max(std::abs(ax - bx), std::abs(ay - by)); }
+
+	// 바닥 장비의 희귀도: 서버가 알려 준 값(SUBJECT_INFO_EX_NFY)과 표의 바닥 중 높은 쪽
+	Rarity FieldRarity(const Entity& e)
+	{
+		const ItemTableRow* row = ItemTableData::Find(e.itemId);
+		if (!row || row->type != ItemType::eEquipment) return Rarity::Common;
+		const int sent = std::min<int>(e.weaponGrade, static_cast<int>(Rarity::Count) - 1);
+		const int floor = static_cast<int>(ItemRules::FloorRarity(*row));
+		return static_cast<Rarity>(std::max(sent, floor));
+	}
 }
 
 void Game::DrawGame()
@@ -173,8 +183,24 @@ void Game::DrawWorld(const Camera2D& cam)
 		}
 		if (e.kind == EntityKind::Item)
 		{
-			const ItemTableRow* row = ItemTableData::Find(e.itemId);
-			if (row && row->grade >= ItemGrade::eRare)
+			// 희귀도 바닥 빛: 높을수록 넓고 진하게, 영웅부터는 도는 고리
+			const Rarity rar = FieldRarity(e);
+			if (rar >= Rarity::Uncommon)
+			{
+				const int k = static_cast<int>(rar);
+				const Color rc = icons::RarityColor(rar);
+				gfx::EllipseGrad(base, 16.f + 4.f * k, 8.f + 2.f * k, util::MulA(rc, (0.3f + 0.08f * k) * alpha), util::WithA(rc, 0.f));
+				if (rar >= Rarity::Heroic)
+				{
+					const float a0 = t * (1.f + 0.3f * (k - 3));
+					for (int q = 0; q < 3; ++q)
+					{
+						const float a = a0 + q * 2.094f;
+						gfx::EllipseArc(base, 18.f + 2.f * k, 9.f + k, a, a + 1.1f, 2.f, util::MulA(rc, 0.75f * alpha));
+					}
+				}
+			}
+			else if (const ItemTableRow* row = ItemTableData::Find(e.itemId); row && row->grade >= ItemGrade::eRare && row->type != ItemType::eEquipment)
 				gfx::EllipseGrad(base, 22.f, 11.f, util::MulA(icons::GradeColor(row->grade), 0.5f), util::WithA(icons::GradeColor(row->grade), 0.f));
 		}
 	}
@@ -317,7 +343,7 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	switch (e.kind)
 	{
 	case EntityKind::Player:
-		actors::DrawPlayer(pose, actors::LookForPlayer(e.nameHash, e.itemId, e.enchant, e.classId));
+		actors::DrawPlayer(pose, LookOf(e));
 		if (e.id == m_selfId && m_light.Night() > 0.05f && !m_silhouetteDraw && !m_ghostDraw)
 			props::FrameLights().push_back({ pose.base, 170.f, Rgb(0xFFD8A0), 0.75f });
 		break;
@@ -345,12 +371,32 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 			z = 8.f + std::sin(u * util::kPi) * 40.f + u * 30.f;
 			size *= 1.f - u * 0.6f;
 		}
-		const ItemTableRow* row = ItemTableData::Find(e.itemId);
-		if (row && row->grade >= ItemGrade::eRare)
+		// 희귀도 빛기둥: 고급은 은은한 빛, 희귀부터 기둥 — 전설·신화는 멀리서도 보이게 높고 반짝인다
+		const Rarity rar = FieldRarity(e);
+		if (rar >= Rarity::Uncommon && e.flyT < 0.f)
 		{
+			const int k = static_cast<int>(rar);
+			const Color rc = icons::RarityColor(rar);
+			const float pulse = 0.75f + 0.25f * std::sin(m_time * 3.f + seed);
 			gfx::Additive(true);
-			gfx::TexQuad(assets::Get().glow, Vector2{ ground.x, ground.y - z }, Vector2{ size * 1.8f, size * 1.8f }, 0.f, util::MulA(icons::GradeColor(row->grade), 0.55f));
-			gfx::TexQuad(assets::Get().beam, Vector2{ ground.x, ground.y - 60.f }, Vector2{ 18.f, 120.f }, 0.f, util::MulA(icons::GradeColor(row->grade), 0.4f + 0.2f * std::sin(m_time * 3.f)));
+			gfx::TexQuad(assets::Get().glow, Vector2{ ground.x, ground.y - z }, Vector2{ size * (1.4f + 0.2f * k), size * (1.4f + 0.2f * k) }, 0.f, util::MulA(rc, 0.45f + 0.05f * k));
+			if (rar >= Rarity::Rare)
+			{
+				const float bh = 70.f + 50.f * (k - 2);
+				const float bw = 14.f + 4.f * (k - 2);
+				const float land = e.dropT < 1.f ? util::EaseInCubic(e.dropT) : 1.f;   // 떨어지는 동안은 기둥이 자라난다
+				gfx::TexQuad(assets::Get().beam, Vector2{ ground.x, ground.y - bh * 0.5f * land }, Vector2{ bw, bh * land }, 0.f, util::MulA(rc, (0.35f + 0.05f * k) * pulse));
+				if (rar >= Rarity::Legendary)
+				{
+					gfx::TexQuad(assets::Get().beam, Vector2{ ground.x, ground.y - bh * 0.55f * land }, Vector2{ bw * 0.4f, bh * 1.1f * land }, 0.f, util::MulA(util::Shade(rc, 1.5f), 0.55f * pulse));
+					for (int q = 0; q < (rar == Rarity::Mythic ? 6 : 4); ++q)
+					{
+						const float u = std::fmod(m_time * 0.45f + q * 0.23f + seed * 0.01f, 1.f);
+						const float sx = ground.x + std::sin(u * 9.f + q * 2.1f) * bw * 0.8f;
+						gfx::Star(Vector2{ sx, ground.y - 10.f - u * bh * land }, 0.8f, 4.f * (1.f - u * 0.6f), 4, m_time * 2.f + q, util::MulA(util::Shade(rc, 1.4f), 1.f - u));
+					}
+				}
+			}
 			gfx::Additive(false);
 		}
 		icons::DrawWorld(e.itemId, Vector2{ ground.x, ground.y - z - size * 0.3f }, size, rot, WHITE);
@@ -530,7 +576,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		{
 		case EntityKind::Player: showName = true; showBar = id != m_selfId && (e.hp < e.maxhp || targeted) && !e.dead; break;
 		case EntityKind::Monster: showName = e.IsBoss() || hovered || targeted || recentHit || alt; showBar = !e.dead && (e.hp < e.maxhp || hovered || targeted); break;
-		case EntityKind::Item: showName = hovered || alt; break;
+		case EntityKind::Item: showName = hovered || alt || FieldRarity(e) >= Rarity::Rare; break;
 		}
 		if (e.dead && e.kind == EntityKind::Monster) showName = false;
 

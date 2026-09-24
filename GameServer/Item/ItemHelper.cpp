@@ -141,8 +141,10 @@ namespace ItemHelper
 		// 강화된 무기를 버렸다가 다시 주우면 강화 수치가 그대로 따라온다.
 		const auto equipment = dynamic_pointer_cast<EquipmentItem>(target);
 		const uint8_t enchant = equipment != nullptr ? equipment->GetEnchant() : 0;
+		// V2 희귀도·옵션도 그대로 따라온다(버렸다 주워도 같은 물건)
+		const uint64_t extra = equipment != nullptr ? equipment->GetExtra() : 0;
 		std::vector<uint16_t> touchedSlots;
-		if (!player->GetInventory()->TryAddItem(target->GetItemTableId(), target->GetCount(), &touchedSlots, enchant))
+		if (!player->GetInventory()->TryAddItem(target->GetItemTableId(), target->GetCount(), &touchedSlots, enchant, extra))
 		{
 			UserHelper::SendITEM_PICKUP_ACK(player, false);
 			UserHelper::SendSYSTEM_MESSAGE_INF(player, SystemMessageCode::InventoryFull,
@@ -155,6 +157,17 @@ namespace ItemHelper
 		UserHelper::SendITEM_PICKUP_ACK(player, true);
 		for (uint16_t slotIndex : touchedSlots)
 			UserHelper::SendITEM_ACQUIRE_INF(player, slotIndex);
+
+		// 신화 등급을 주우면 서버 전체에 알린다(보상의 순간을 모두가 본다)
+		if (player->IsExtended() && equipment != nullptr)
+		{
+			if (const ItemTableRow* row = ItemTable::Find(target->GetItemTableId());
+				row != nullptr && ItemRules::EffectiveRarity(*row, extra) == Rarity::Mythic)
+			{
+				UserHelper::BroadcastWorldNotice(WorldNoticeCode::RareLoot, target->GetItemTableId(),
+					static_cast<int32_t>(Rarity::Mythic), player->GetName());
+			}
+		}
 	}
 
 	void HandleDespawn(const ObjID& itemId)

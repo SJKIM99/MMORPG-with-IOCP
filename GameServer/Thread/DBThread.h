@@ -44,7 +44,7 @@ public:
 	// 막지 않는 비동기 enqueue — 실제 ODBC 호출은 DB 워커 스레드가 처리한다.
 	// playerId는 로그인 시 User에 캐싱해둔 정수 PK를 그대로 넘긴다(name 조회 없음).
 	// 같은 playerId의 요청은 항상 같은 샤드로 가므로 넣은 순서대로 반영된다.
-	void RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant);
+	void RequestSaveItem(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant, uint64_t extra = 0);
 	void RequestDeleteItem(int playerId, uint16_t slotIndex);
 
 	// 두 슬롯을 하나의 트랜잭션으로 함께 반영한다(장착 시 이전 장비 자동 탈착,

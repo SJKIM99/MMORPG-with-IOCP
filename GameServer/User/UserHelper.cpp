@@ -17,6 +17,7 @@
 #include "Item/DropTable.h"
 #include "Item/ItemHelper.h"
 #include "Item/ItemTableData.h"
+#include "Data/ItemRules.h"
 #include "Data/LevelTable.h"
 #include "Data/MonsterTable.h"
 #include "Data/WorldData.h"
@@ -232,12 +233,21 @@ namespace UserHelper
 		if (session->IsExtended())
 		{
 			if (category == EnumCategory::eUser)
+			{
 				SendSUBJECT_INFO_EX_NFY(sender, target);
+				SendPLAYER_LOOK_NFY(sender, static_pointer_cast<User>(target));
+			}
 			else if (category == EnumCategory::eItem)
 			{
+				// 강화됐거나 희귀도가 일반보다 높은 장비는 바닥에서도 빛나야 한다(빛기둥 색).
 				const auto equipment = dynamic_pointer_cast<EquipmentItem>(target);
-				if (equipment != nullptr && equipment->GetEnchant() > 0)
-					SendSUBJECT_INFO_EX_NFY(sender, target);
+				if (equipment != nullptr)
+				{
+					const ItemTableRow* row = ItemTableData::Find(equipment->GetItemTableId());
+					const bool rare = row != nullptr && ItemRules::EffectiveRarity(*row, equipment->GetExtra()) != Rarity::Common;
+					if (equipment->GetEnchant() > 0 || rare)
+						SendSUBJECT_INFO_EX_NFY(sender, target);
+				}
 			}
 			else if (category == EnumCategory::eMonster)
 			{
@@ -282,7 +292,46 @@ namespace UserHelper
 				return;
 
 			SendSUBJECT_EQUIP_CHANGE_NFY(viewer, playerId, itemId);
+			// 확장 세션에는 전 부위 외형(방어구·망토·희귀도 빛)도 함께
+			if (session->IsExtended())
+				SendPLAYER_LOOK_NFY(viewer, player);
 		});
+
+		// 장비가 바뀌면 능력치(공격력·방어·최대 HP·이동속도…)도 바뀐다 — 본인에게 새 값.
+		if (player->IsExtended())
+		{
+			CombatHelper::SendStats(player);
+			CombatHelper::SendResource(player);
+		}
+	}
+
+	void SendPLAYER_LOOK_NFY(Subject::SharedPtr viewer, const shared_ptr<User>& player)
+	{
+		if (player == nullptr || !IsExtendedViewer(viewer))
+			return;
+		auto session = GetSession(viewer);
+		if (!session)
+			return;
+
+		PLAYER_LOOK_NFY_PACKET packet;
+		InitializePacket(packet, PacketType::PLAYER_LOOK_NFY);
+		packet.id = player->GetObjID();
+		auto inventory = player->GetInventory();
+		const auto& slots = inventory->GetSlots();
+		for (int part = 1; part <= kLookSlots; ++part)
+		{
+			const uint16_t slotIndex = inventory->FindEquipped(static_cast<EquipSlot>(part));
+			if (slotIndex >= MAX_INVENTORY_SLOTS)
+				continue;
+			const auto& item = slots.at(slotIndex);
+			const ItemTableRow* row = ItemTableData::Find(item->GetItemTableId());
+			if (row == nullptr)
+				continue;
+			packet.items[part - 1] = item->GetItemTableId();
+			packet.rarity[part - 1] = static_cast<uint8_t>(ItemRules::EffectiveRarity(*row, inventory->GetSlotExtra(slotIndex)));
+		}
+		packet.enchant = inventory->GetEquippedEnchant();
+		session->PostSend(packet);
 	}
 
 	void SendSUBJECT_REMOVE_NFY(Subject::SharedPtr sender, const ObjID& targetId)
@@ -722,7 +771,116 @@ namespace UserHelper
 
 		QueueUserSave(target, saveX, saveY);
 		ContentHelper::SaveAlignment(target, true);
+		if (target->IsExtended())
+			SaveProgress(target);   // 드롭 천장 카운터 등
 		return true;
+	}
+
+	// ── V2 드롭(확장 세션이 잡은 몬스터) ─────────────────────────────────────────
+	// 장비에는 희귀도·옵션을 굴려 붙이고(Data/ItemRules.h), 단계별로 방어구·장신구·
+	// 직업 무기를 한 번 더 굴린다. 레거시 세션(STRESS_TEST 봇)이 잡은 몬스터는 예전 표 그대로다.
+	namespace
+	{
+		struct GearPick { ItemTableId id; uint16_t weight; };
+		constexpr ItemTableId kClassWeapon = 0xFFFF;   // "잡은 사람 직업의 이 단계 무기" 자리표시
+
+		constexpr GearPick kGearT1[] = { { 29, 10 }, { 32, 10 }, { 37, 10 }, { 39, 10 }, { 41, 8 }, { 43, 6 }, { 45, 6 } };
+		constexpr GearPick kGearT2[] = { { 30, 10 }, { 33, 10 }, { 35, 8 }, { 37, 5 }, { 39, 5 }, { 41, 5 }, { 43, 5 }, { 45, 5 }, { kClassWeapon, 12 } };
+		constexpr GearPick kGearT3[] = { { 30, 6 }, { 33, 6 }, { 36, 8 }, { 38, 10 }, { 40, 10 }, { 42, 8 }, { 44, 6 }, { 46, 6 }, { kClassWeapon, 10 } };
+		constexpr GearPick kGearT4[] = { { 31, 8 }, { 34, 8 }, { 38, 6 }, { 40, 6 }, { 42, 6 }, { 44, 6 }, { 46, 6 },
+			{ 47, 2 }, { 48, 2 }, { 49, 2 }, { 50, 2 }, { 51, 2 }, { 52, 2 }, { 53, 2 }, { 54, 2 }, { 55, 2 }, { 56, 2 }, { 57, 2 }, { 58, 2 },
+			{ kClassWeapon, 8 } };
+		constexpr GearPick kGearT5[] = { { 31, 8 }, { 34, 8 }, { 42, 5 }, { 44, 6 }, { 46, 6 },
+			{ 47, 3 }, { 48, 3 }, { 49, 3 }, { 50, 3 }, { 51, 3 }, { 52, 3 }, { 53, 3 }, { 54, 3 }, { 55, 3 }, { 56, 3 }, { 57, 3 }, { 58, 3 },
+			{ kClassWeapon, 10 } };
+		constexpr GearPick kGearBoss[] = { { 31, 6 }, { 34, 6 },
+			{ 47, 5 }, { 48, 5 }, { 49, 5 }, { 50, 5 }, { 51, 5 }, { 52, 5 }, { 53, 5 }, { 54, 5 }, { 55, 5 }, { 56, 5 }, { 57, 5 }, { 58, 5 },
+			{ kClassWeapon, 12 } };
+		// 처치 한 번에 방어구·장신구·직업 무기가 하나 더 나올 확률(%) — 단계 0은 1단계와 같다
+		constexpr uint32_t kGearChance[6] = { 8, 8, 9, 10, 11, 12 };
+
+		ItemTableId ClassWeaponFor(ClassId cls, int tier)
+		{
+			const int t = std::clamp(tier, 1, 5);
+			switch (cls)
+			{
+			case ClassId::RuneCaster:
+			{
+				static constexpr ItemTableId kStaff[6] = { 19, 19, 21, 22, 23, 24 };
+				return kStaff[t];
+			}
+			case ClassId::ShadowHunter:
+			{
+				static constexpr ItemTableId kDagger[6] = { 20, 20, 25, 26, 27, 28 };
+				return kDagger[t];
+			}
+			default:
+			{
+				static constexpr ItemTableId kSwordA[6] = { 2, 2, 3, 4, 5, 6 };
+				static constexpr ItemTableId kSwordB[6] = { 2, 2, 3, 16, 17, 18 };
+				return (LRng() % 2u) ? kSwordA[t] : kSwordB[t];
+			}
+			}
+		}
+
+		// 예전 표가 굴린 무기가 내 직업 무기 종류가 아니면(룬술사에게 검 등) 60% 확률로
+		// 같은 단계의 직업 무기로 바꿔 준다 — "주울 만한 것"이 더 자주 떨어지게.
+		ItemTableId MaybeClassSwap(ItemTableId id, ClassId cls)
+		{
+			const ItemTableRow* row = ItemTableData::Find(id);
+			if (row == nullptr || ItemTableData::SlotOf(*row) != EquipSlot::Weapon)
+				return id;
+			const WeaponKind want = cls == ClassId::RuneCaster ? WeaponKind::Staff : (cls == ClassId::ShadowHunter ? WeaponKind::Dagger : WeaponKind::None);
+			if (want == WeaponKind::None || row->weaponKind == want)
+				return id;
+			return (LRng() % 100u) < 60u ? ClassWeaponFor(cls, row->tier) : id;
+		}
+
+		template <size_t N>
+		ItemTableId PickGear(const GearPick (&pool)[N], ClassId cls, int tier)
+		{
+			uint32_t total = 0;
+			for (const auto& g : pool) total += g.weight;
+			uint32_t roll = total > 0 ? static_cast<uint32_t>(LRng()) % total : 0;
+			for (const auto& g : pool)
+			{
+				if (roll < g.weight)
+					return g.id == kClassWeapon ? ClassWeaponFor(cls, tier) : g.id;
+				roll -= g.weight;
+			}
+			return pool[0].id;
+		}
+
+		ItemTableId PickGearForTier(int tier, bool boss, ClassId cls)
+		{
+			if (boss) return PickGear(kGearBoss, cls, 5);
+			switch (std::clamp(tier, 1, 5))
+			{
+			case 1: return PickGear(kGearT1, cls, 1);
+			case 2: return PickGear(kGearT2, cls, 2);
+			case 3: return PickGear(kGearT3, cls, 3);
+			case 4: return PickGear(kGearT4, cls, 4);
+			default: return PickGear(kGearT5, cls, 5);
+			}
+		}
+
+		// 장비라면 희귀도·옵션을 굴려 붙인다(잡은 사람의 희귀품 발견 · 천장 반영).
+		void RollInstanceFor(const shared_ptr<User>& finder, const Item::SharedPtr& item, int tier, bool boss)
+		{
+			const auto equipment = dynamic_pointer_cast<EquipmentItem>(item);
+			if (equipment == nullptr)
+				return;
+			const ItemTableRow* row = ItemTableData::Find(item->GetItemTableId());
+			if (row == nullptr)
+				return;
+			auto rng = []() { return static_cast<uint32_t>(LRng()); };
+			const Rarity rarity = ItemRules::RollRarity(*row, tier, boss, finder->m_gearEx.itemFind,
+				finder->m_pityRare, finder->m_pityHeroic, rng);
+			equipment->SetExtra(ItemRules::RollInstance(*row, rarity, finder->m_classId, rng).Pack());
+			// 천장 카운터가 0으로 돌아간 순간을 남긴다(그 사이 값은 로그아웃 때 저장)
+			if (static_cast<int>(rarity) >= static_cast<int>(Rarity::Rare))
+				SaveProgress(finder);
+		}
 	}
 
 	// 몬스터 처치 시 드롭을 굴려 몬스터가 죽은 자리 주변에 필드 아이템으로
@@ -748,11 +906,18 @@ namespace UserHelper
 			ItemHelper::SpawnFieldItem(item, dropX, dropY, attacker->GetObjID());
 		};
 
+		const bool v2 = attacker->IsExtended();
+		const int tier = species == nullptr ? 1 : (species->dropTable >= 1 && species->dropTable <= 5 ? species->dropTable : 5);
+		const bool boss = species != nullptr && species->boss;
+
 		// 아데나 — 리니지처럼 바닥에 떨어진 "물건"이고, 주우면 지갑으로 들어간다.
 		if (species != nullptr && species->adenaMax > 0 && (LRng() % 100) < species->adenaChance)
 		{
 			std::uniform_int_distribution<uint32_t> amountRoll(species->adenaMin, species->adenaMax);
-			const uint16_t amount = static_cast<uint16_t>(std::min<uint32_t>(amountRoll(LRng), 65535));
+			uint32_t rolled = amountRoll(LRng);
+			if (v2 && attacker->m_gearEx.adenaFind > 0)   // 장비 옵션 "아데나 획득"
+				rolled = rolled * (100u + attacker->m_gearEx.adenaFind) / 100u;
+			const uint16_t amount = static_cast<uint16_t>(std::min<uint32_t>(rolled, 65535));
 			if (amount > 0)
 			{
 				Item::SharedPtr adena = MakeNewItem(ItemTableData::Id::Adena, amount);
@@ -769,11 +934,27 @@ namespace UserHelper
 			if (!roll.hasItem)
 				continue;
 
-			Item::SharedPtr item = MakeNewItem(roll.itemId, roll.count);
+			const ItemTableId itemId = v2 ? MaybeClassSwap(roll.itemId, attacker->m_classId) : roll.itemId;
+			Item::SharedPtr item = MakeNewItem(itemId, roll.count);
 			// DropTable은 시작 시점에 ItemTable과 대조 검증을 마쳤으므로(DropTable.cpp의
 			// ValidateDropTable) 여기서 실패할 수 없다 — 실패한다면 그 자체가 불변조건 위반이다.
 			ASSERT_CRASH(item != nullptr);
+			if (v2)
+				RollInstanceFor(attacker, item, tier, boss);
 			spawnAtNextTile(item);
+		}
+
+		// V2: 방어구·장신구·직업 무기 추가 굴림(보스는 여러 개)
+		if (v2)
+		{
+			const int pieces = boss ? 3 : ((LRng() % 100u) < kGearChance[tier] ? 1 : 0);
+			for (int i = 0; i < pieces; ++i)
+			{
+				Item::SharedPtr item = MakeNewItem(PickGearForTier(tier, boss, attacker->m_classId), 1);
+				ASSERT_CRASH(item != nullptr);
+				RollInstanceFor(attacker, item, tier, boss);
+				spawnAtNextTile(item);
+			}
 		}
 	}
 
@@ -1247,6 +1428,14 @@ namespace UserHelper
 			packet.hp        = user->GetStat()->GetHp();
 			packet.maxhp     = user->GetStat()->GetMaxHp();
 			packet.classId   = static_cast<uint8_t>(user->m_classId);
+			// 장착 무기의 희귀도(무기 빛 색)
+			const auto inventory = user->GetInventory();
+			const uint16_t weaponSlot = inventory->FindEquipped(EquipSlot::Weapon);
+			if (weaponSlot < MAX_INVENTORY_SLOTS)
+			{
+				if (const ItemTableRow* row = ItemTableData::Find(inventory->GetEquippedItemId()))
+					packet.weaponGrade = static_cast<uint8_t>(ItemRules::EffectiveRarity(*row, inventory->GetSlotExtra(weaponSlot)));
+			}
 		}
 		else if (category == EnumCategory::eMonster)
 		{
@@ -1258,7 +1447,12 @@ namespace UserHelper
 		else if (category == EnumCategory::eItem)
 		{
 			if (const auto equipment = dynamic_pointer_cast<EquipmentItem>(target))
+			{
 				packet.enchant = equipment->GetEnchant();
+				// 필드 장비의 희귀도(빛기둥 색). 옵션은 주워야 보인다.
+				if (const ItemTableRow* row = ItemTableData::Find(equipment->GetItemTableId()))
+					packet.weaponGrade = static_cast<uint8_t>(ItemRules::EffectiveRarity(*row, equipment->GetExtra()));
+			}
 		}
 
 		session->PostSend(packet);
@@ -1308,6 +1502,40 @@ namespace UserHelper
 		packet.slotCount = slotCount;
 
 		session->PostSend(packet);
+
+		// V2: 희귀도·옵션이 있는 슬롯만 이어서 보낸다(클라는 스냅샷을 받을 때 전부 0으로 비운다).
+		for (const auto& [slotIndex, item] : user->GetInventory()->GetSlots())
+			if (user->GetInventory()->GetSlotExtra(slotIndex) != 0)
+				SendITEM_DETAIL_INF(user, slotIndex);
+	}
+
+	void SendITEM_DETAIL_INF(const shared_ptr<User>& user, uint16_t slotIndex)
+	{
+		if (user == nullptr || !user->IsExtended())
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+
+		ITEM_DETAIL_INF_PACKET packet;
+		InitializePacket(packet, PacketType::ITEM_DETAIL_INF);
+		packet.slotIndex = slotIndex;
+		const auto& slots = user->GetInventory()->GetSlots();
+		const auto it = slots.find(slotIndex);
+		packet.itemId = it != slots.end() ? it->second->GetItemTableId() : 0;
+		packet.extra = user->GetInventory()->GetSlotExtra(slotIndex);
+		session->PostSend(packet);
+	}
+
+	void HandleItemSort(const shared_ptr<User>& player)
+	{
+		if (player == nullptr || !player->IsExtended() || player->IsTransferring())
+			return;
+		const uint32_t now = GetNowTime();
+		if (now - player->m_lastSortAt < 800)
+			return;   // 도배 방지(정리는 수십 개의 슬롯 저장을 만든다)
+		player->m_lastSortAt = now;
+		(void)player->GetInventory()->TrySort();
 	}
 
 	void SendITEM_SLOT_EX_INF(const shared_ptr<User>& user, uint16_t slotIndex)

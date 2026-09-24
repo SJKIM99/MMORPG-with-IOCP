@@ -346,6 +346,9 @@
     <ClInclude Include="Data\NpcTalk.h">
       <Filter>Data</Filter>
     </ClInclude>
+    <ClInclude Include="Data\ItemRules.h">
+      <Filter>Data</Filter>
+    </ClInclude>
     <ClInclude Include="Combat\CombatHelper.h">
       <Filter>Combat</Filter>
     </ClInclude>

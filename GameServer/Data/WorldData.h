@@ -319,13 +319,14 @@ namespace WorldData
 	struct ShopRow
 	{
 		uint16_t npcId;
-		uint16_t items[8];   // 0 = 빈 칸
+		uint16_t items[12];  // 0 = 빈 칸
 	};
 
 	inline constexpr ShopRow kShops[] =
 	{
-		{ 1, { 1, 8, 9, 10, 11, 12, 13, 0 } },   // 물약/주문서
-		{ 2, { 2, 19, 20, 3, 15, 0, 0, 0 } },     // 무기(직업별 초보자 무기 포함)
+		{ 1, { 1, 8, 9, 10, 11, 12, 13, 0 } },                    // 물약/주문서
+		// 대장장이: 무기(직업별 초보자·직업 무기) + 기본 방어구(V2 장비 부위)
+		{ 2, { 2, 19, 20, 3, 15, 21, 25, 29, 32, 37, 39, 41 } },
 	};
 
 	[[nodiscard]] constexpr bool ShopSells(uint16_t npcId, uint16_t itemId) noexcept

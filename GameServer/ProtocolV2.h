@@ -247,7 +247,42 @@ struct NPC_SERVICE_ACK_PACKET
 	uint32_t       cooldownMs;  // 다시 받을 수 있을 때까지(성공/쿨다운)
 };
 
+// ── 아이템 성장 ─────────────────────────────────────────────────────────────
+// 슬롯 하나의 V2 인스턴스 값(Data/ItemRules.h ItemInstance::Pack). 슬롯이 바뀔 때마다
+// ITEM_SLOT_EX_INF 바로 뒤에 보낸다(빈 슬롯·소모품이면 extra = 0). 로그인 스냅샷
+// (ITEM_LIST_EX_ACK) 뒤에는 extra가 0이 아닌 슬롯만 이어서 보낸다.
+struct ITEM_DETAIL_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       slotIndex;
+	uint16_t       itemId;
+	uint64_t       extra;
+};
+
+// 주변 플레이어의 착용 외형. items/rarity는 EquipSlot - 1(무기 · 투구 · 갑옷 · 장갑 ·
+// 신발 · 망토 · 목걸이 · 반지) 순서. 시야에 들어올 때와 장착이 바뀔 때 보낸다.
+inline constexpr int kLookSlots = 8;
+struct PLAYER_LOOK_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	ObjID          id;
+	uint16_t       items[kLookSlots];
+	uint8_t        rarity[kLookSlots];
+	uint8_t        enchant;       // 무기 강화 수치
+};
+
+enum class SortMode : uint8_t { Default };
+struct ITEM_SORT_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        mode;          // SortMode
+};
+
 static_assert(sizeof(USER_STATS_INF_PACKET) <= 255, "STRESS_TEST 수신 버퍼(255)를 넘으면 안 된다");
+static_assert(sizeof(PLAYER_LOOK_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 static_assert(sizeof(NPC_LIST_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 
 #pragma pack (pop)
@@ -260,5 +295,6 @@ namespace ClientPacketSizeDetailV2
 	constexpr size_t v03 = ProtocolConstMaxSize(v02, sizeof(STAT_ALLOC_REQ_PACKET));
 	constexpr size_t v04 = ProtocolConstMaxSize(v03, sizeof(NPC_TALK_REQ_PACKET));
 	constexpr size_t v05 = ProtocolConstMaxSize(v04, sizeof(NPC_SERVICE_REQ_PACKET));
+	constexpr size_t v06 = ProtocolConstMaxSize(v05, sizeof(ITEM_SORT_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v05;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v06;

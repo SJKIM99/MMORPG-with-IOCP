@@ -332,7 +332,8 @@ vector<DB_ITEM_INFO> DBConnection::ExtractInventory(int playerId)
 	SQLSMALLINT slotIndex{}, itemId{}, count{};
 	SQLCHAR     equipped{};
 	SQLCHAR     enchant{};
-	SQLLEN cb_slot{}, cb_item{}, cb_count{}, cb_equipped{}, cb_enchant{};
+	SQLBIGINT   extra{};
+	SQLLEN cb_slot{}, cb_item{}, cb_count{}, cb_equipped{}, cb_enchant{}, cb_extra{};
 
 	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return items;
 	if (!Execute(query.c_str())) return items;
@@ -341,6 +342,8 @@ vector<DB_ITEM_INFO> DBConnection::ExtractInventory(int playerId)
 	if (!BindCol(3, SQL_SMALLINT, sizeof(count),     &count,     &cb_count))    return items;
 	if (!BindCol(4, SQL_BIT,      sizeof(equipped),  &equipped,  &cb_equipped)) return items;
 	if (!BindCol(5, SQL_TINYINT,  sizeof(enchant),   &enchant,   &cb_enchant))  return items;
+	// V2: 희귀도·옵션(Inventory.extra BIGINT). NULL이면(마이그레이션 직후 등) 0으로 본다.
+	if (!BindCol(6, SQL_C_SBIGINT, sizeof(extra),    &extra,     &cb_extra))    return items;
 
 	// GetInventory는 슬롯 개수만큼 여러 행을 반환하므로, 다른 Extract*와 달리
 	// Fetch()를 한 번이 아니라 SQL_NO_DATA가 나올 때까지 반복한다.
@@ -352,17 +355,18 @@ vector<DB_ITEM_INFO> DBConnection::ExtractInventory(int playerId)
 		info._count     = static_cast<uint16_t>(count);
 		info._equipped  = (equipped != 0);
 		info._enchant   = static_cast<uint8_t>(enchant);
+		info._extra     = (cb_extra == SQL_NULL_DATA || extra < 0) ? 0 : static_cast<uint64_t>(extra);
 		items.push_back(info);
 	}
 
 	return items;
 }
 
-bool DBConnection::SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant)
+bool DBConnection::SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t itemId, uint16_t count, bool equipped, uint8_t enchant, uint64_t extra)
 {
 	StatementCleanup cleanup(*this);
 
-	wstring query = L"EXEC SaveInventorySlot ?, ?, ?, ?, ?, ?";
+	wstring query = L"EXEC SaveInventorySlot ?, ?, ?, ?, ?, ?, ?";
 
 	SQLINTEGER  pid  = playerId;
 	SQLSMALLINT slot = static_cast<SQLSMALLINT>(slotIndex);
@@ -370,6 +374,7 @@ bool DBConnection::SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t 
 	SQLSMALLINT cnt  = static_cast<SQLSMALLINT>(count);
 	SQLCHAR     eq   = equipped ? 1 : 0;
 	SQLCHAR     enc  = enchant;
+	SQLBIGINT   ext  = static_cast<SQLBIGINT>(extra & 0x3FFFFFFFFFFFFFFFull);   // 상위 2비트는 항상 0(ItemInstance)
 
 	if (!BindParam(1, SQL_C_LONG,     SQL_INTEGER,  0, (SQLPOINTER)&pid,  nullptr)) return false;
 	if (!BindParam(2, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&slot, nullptr)) return false;
@@ -377,6 +382,7 @@ bool DBConnection::SaveInventorySlot(int playerId, uint16_t slotIndex, uint16_t 
 	if (!BindParam(4, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&cnt,  nullptr)) return false;
 	if (!BindParam(5, SQL_C_BIT,      SQL_BIT,      0, (SQLPOINTER)&eq,   nullptr)) return false;
 	if (!BindParam(6, SQL_C_UTINYINT, SQL_TINYINT,  0, (SQLPOINTER)&enc,  nullptr)) return false;
+	if (!BindParam(7, SQL_C_SBIGINT,  SQL_BIGINT,   0, (SQLPOINTER)&ext,  nullptr)) return false;
 	return Execute(query.c_str());
 }
 
@@ -398,7 +404,7 @@ bool DBConnection::SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& 
 {
 	StatementCleanup cleanup(*this);
 
-	wstring query = L"EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+	wstring query = L"EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
 
 	SQLINTEGER  pid    = playerId;
 	SQLSMALLINT slotA  = static_cast<SQLSMALLINT>(a.slotIndex);
@@ -413,6 +419,8 @@ bool DBConnection::SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& 
 	SQLCHAR     eqB    = b.equipped ? 1 : 0;
 	SQLCHAR     encA   = a.enchant;
 	SQLCHAR     encB   = b.enchant;
+	SQLBIGINT   extA   = static_cast<SQLBIGINT>(a.extra & 0x3FFFFFFFFFFFFFFFull);
+	SQLBIGINT   extB   = static_cast<SQLBIGINT>(b.extra & 0x3FFFFFFFFFFFFFFFull);
 
 	if (!BindParam(1,  SQL_C_LONG,  SQL_INTEGER,  0, (SQLPOINTER)&pid,   nullptr)) return false;
 	if (!BindParam(2,  SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&slotA, nullptr)) return false;
@@ -428,6 +436,9 @@ bool DBConnection::SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& 
 	// 강화 수치는 프로시저 끝 두 파라미터(@enchantA, @enchantB)로 붙였다.
 	if (!BindParam(12, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&encA, nullptr)) return false;
 	if (!BindParam(13, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&encB, nullptr)) return false;
+	// V2 희귀도·옵션은 그 뒤 두 파라미터(@extraA, @extraB)
+	if (!BindParam(14, SQL_C_SBIGINT,  SQL_BIGINT,  0, (SQLPOINTER)&extA, nullptr)) return false;
+	if (!BindParam(15, SQL_C_SBIGINT,  SQL_BIGINT,  0, (SQLPOINTER)&extB, nullptr)) return false;
 	return Execute(query.c_str());
 }
 

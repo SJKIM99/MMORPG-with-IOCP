@@ -48,6 +48,7 @@ namespace net
 		void SendStatAlloc(uint8_t stat, uint8_t amount);
 		void SendNpcTalk(uint16_t npcId);
 		void SendNpcService(uint16_t npcId, uint8_t service);
+		void SendItemSort();
 		void SendAttackFacing(bool facingLeft);
 		void SendTargetAttack(const ObjID& target);
 		void SendSkill();

@@ -252,6 +252,7 @@ void Game::OnPacket(const char* data, uint16_t size)
 		ITEM_LIST_EX_ACK_PACKET p{};
 		if (!As(data, size, p)) break;
 		for (auto& s : m_inv.slots) s = InvSlot{};
+		m_invBaselineAt = -1.0;   // 전체 스냅샷 — 획득 판정 기준을 버린다
 		const int n = std::min<int>(p.slotCount, MAX_INVENTORY_SLOTS);
 		for (int i = 0; i < n; ++i)
 			HandleSlot(p.items[i], false);
@@ -413,6 +414,18 @@ void Game::OnPacket(const char* data, uint16_t size)
 		if (As(data, size, p)) HandleEffect(p);
 		break;
 	}
+	case PacketType::ITEM_DETAIL_INF:
+	{
+		ITEM_DETAIL_INF_PACKET p{};
+		if (As(data, size, p)) HandleItemDetail(p);
+		break;
+	}
+	case PacketType::PLAYER_LOOK_NFY:
+	{
+		PLAYER_LOOK_NFY_PACKET p{};
+		if (As(data, size, p)) HandlePlayerLook(p);
+		break;
+	}
 	case PacketType::WORLD_NOTICE_INF:
 	{
 		WORLD_NOTICE_INF_PACKET p{};
@@ -426,6 +439,10 @@ void Game::OnPacket(const char* data, uint16_t size)
 		case WorldNoticeCode::BossKilled: c = Rgb(0xFFD070); sfx::Play(sfx::Id::Notice); break;
 		case WorldNoticeCode::EnchantSuccess: c = Rgb(0xA8D8FF); sfx::Play(sfx::Id::Notice, 0.7f); break;
 		case WorldNoticeCode::PlayerKilled: c = Rgb(0xFF4A4A); sfx::Play(sfx::Id::Notice, 0.6f); break;
+		case WorldNoticeCode::RareLoot:
+			c = icons::RarityColor(static_cast<Rarity>(std::clamp<int>(p.param2, 0, static_cast<int>(Rarity::Count) - 1)));
+			sfx::Play(sfx::Id::LootMythic, 0.45f);
+			break;
 		}
 		AddBanner(text, c);
 		AddChat("[공지] " + text, c);
@@ -893,6 +910,42 @@ void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 		skillfx::OnServerEffect(id, subj ? TileToIso(subj->pos) : iso, p.param);
 		PlayAt(static_cast<int>(sfx::Id::PoisonBurst), tile, 0.9f, 0.05f);
 		break;
+	// ── 장비 특수 효과(모양은 skillfx, 소리·숫자는 여기) ──
+	case EffectId::ProcThunder:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::Thunder), tile, 0.55f, 0.08f);
+		if (self) m_cam.AddTrauma(0.08f);
+		break;
+	case EffectId::ProcLifesteal:
+		skillfx::OnServerEffect(id, subj ? TileToIso(subj->pos) : iso, p.param);
+		if (self && p.param > 0)
+			fx::Fx().Damage(subj ? TileToIso(subj->pos) : iso, actors::PlayerHeight() + 2.f, p.param, fx::DamageStyle::Heal, 0x11FE00u);
+		break;
+	case EffectId::ProcFrost:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::Freeze), tile, 0.4f, 0.08f);
+		break;
+	case EffectId::ProcExecute:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::Execute), tile, 0.35f, 0.08f);
+		break;
+	case EffectId::ProcEcho:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::ComboSting), tile, 0.35f, 0.12f);
+		break;
+	case EffectId::ProcGuardian:
+		skillfx::OnServerEffect(id, subj ? TileToIso(subj->pos) : iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::GuardUp), tile, 0.6f);
+		if (self) AddCenter("수호의 맹세 — 철벽 태세!", Rgb(0xFFD870));
+		break;
+	case EffectId::ProcEmber:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::FireRing), tile, 0.25f, 0.1f);
+		break;
+	case EffectId::ProcVenom:
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::PoisonSlash), tile, 0.3f, 0.1f);
+		break;
 	case EffectId::PriestHeal:
 		// 사제의 기도: 금빛 기둥 + 회복 숫자
 		fx::Fx().Beam(subj ? TileToIso(subj->pos) : iso, 46.f, 200.f, 0.9f, Rgb(0xFFE8A0, 200));
@@ -910,13 +963,24 @@ void Game::HandleSlot(const ITEM_SLOT_EX_DATA& s, bool announce)
 {
 	if (s.slotIndex >= MAX_INVENTORY_SLOTS) return;
 	const uint16_t itemId = s.count > 0 ? s.itemId : 0;
-	const int before = itemId ? m_inv.CountOf(itemId) : 0;
+	// 획득 판정의 기준점: 이번 변경 묶음의 첫 알림 직전 상태(TickLoot가 잠깐 뒤 비교한다)
+	if (announce && m_invBaselineAt < 0.0)
+	{
+		m_invBaseline = m_inv.slots;
+		m_invBaselineAt = m_now;
+	}
 	InvSlot& slot = m_inv.slots[s.slotIndex];
 	const uint16_t oldItem = slot.itemId;
 	slot.itemId = itemId;
 	slot.count = itemId ? s.count : 0;
 	slot.equipped = itemId && s.equipped;
 	slot.enchant = itemId ? s.enchant : 0;
+	// 인스턴스 값(희귀도·옵션)은 바로 뒤의 ITEM_DETAIL_INF가 채운다
+	if (itemId != oldItem || itemId == 0)
+	{
+		slot.extra = 0;
+		slot.newAt = -100.f;
+	}
 
 	// 내 무기 외형 갱신
 	if (Entity* me = Self())
@@ -926,16 +990,7 @@ void Game::HandleSlot(const ITEM_SLOT_EX_DATA& s, bool announce)
 		me->enchant = eq >= 0 ? m_inv.slots[eq].enchant : 0;
 	}
 
-	// 획득 알림: 그 아이템의 "총 개수"가 늘었을 때만(교환/이동은 제외)
-	if (announce && itemId != 0)
-	{
-		const int after = m_inv.CountOf(itemId);
-		if (after > before)
-		{
-			const int gained = after - before;
-			AddToast(itemId, texts::ItemNameEnchanted(itemId, slot.enchant) + (gained > 1 ? " ×" + std::to_string(gained) : ""), icons::ItemNameColor(itemId));
-		}
-	}
+	// 획득 알림은 TickLoot가 한다(교환·정리로 옮겨진 물건을 새로 얻은 것으로 착각하지 않게)
 	// 강화 창이 보던 슬롯이 사라지면 정리
 	if (m_enchant.stage == 2 && (s.slotIndex == m_enchant.targetSlot || s.slotIndex == m_enchant.scrollSlot) && oldItem != itemId)
 		m_enchant = EnchantFlow{};
@@ -1016,6 +1071,23 @@ void Game::HandleSubjectInfoEx(const SUBJECT_INFO_EX_NFY_PACKET& p)
 	{
 		e->classId = ClassTable::IsValid(p.classId) ? p.classId : 0;
 		e->weaponGrade = p.weaponGrade;
+	}
+	else if (e->kind == EntityKind::Item)
+	{
+		// 필드 장비의 희귀도(빛기둥 색). 막 떨어지는 중이면 희귀도에 맞는 소리로 알린다.
+		const uint8_t before = e->weaponGrade;
+		e->weaponGrade = p.weaponGrade;
+		if (e->dropT < 1.f && p.weaponGrade > before && p.weaponGrade >= static_cast<uint8_t>(Rarity::Rare))
+		{
+			const Vector2 tile{ static_cast<float>(e->tx), static_cast<float>(e->ty) };
+			switch (static_cast<Rarity>(p.weaponGrade))
+			{
+			case Rarity::Rare:      PlayAt(static_cast<int>(sfx::Id::LootRare), tile, 0.45f); break;
+			case Rarity::Heroic:    PlayAt(static_cast<int>(sfx::Id::LootHeroic), tile, 0.6f); break;
+			case Rarity::Legendary: PlayAt(static_cast<int>(sfx::Id::LootLegendary), tile, 0.75f); m_cam.AddTrauma(0.12f); break;
+			default:                PlayAt(static_cast<int>(sfx::Id::LootMythic), tile, 0.85f); m_cam.AddTrauma(0.2f); break;
+			}
+		}
 	}
 	if (p.maxhp > 0)
 	{

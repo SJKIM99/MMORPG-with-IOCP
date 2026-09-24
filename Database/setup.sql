@@ -217,6 +217,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Players')
     ALTER TABLE Players ADD pkCount SMALLINT NOT NULL CONSTRAINT DF_Players_pkCount DEFAULT 0;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Inventory') AND name = N'enchant')
     ALTER TABLE Inventory ADD enchant TINYINT NOT NULL CONSTRAINT DF_Inventory_enchant DEFAULT 0;
+-- V2: 장비 인스턴스 값(희귀도 · 옵션 4줄 · 특수 효과 — 서버 Data/ItemRules.h ItemInstance).
+-- 0 = 굴린 적 없는 예전 아이템/소모품(표의 기본 희귀도로 보인다). 상위 2비트는 항상 0이라 음수가 되지 않는다.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Inventory') AND name = N'extra')
+    ALTER TABLE Inventory ADD extra BIGINT NOT NULL CONSTRAINT DF_Inventory_extra DEFAULT 0;
 GO
 
 -- 예전 이름으로 만들어졌던 프로시저가 남아있으면 정리한다(위에서 새 이름으로
@@ -391,7 +395,7 @@ GO
 -- GetInventory
 --   호출: EXEC GetInventory ?
 --   파라미터: @playerId (서버가 로그인 시 확보해 캐싱해둔 정수 PK — name 조회 없음)
---   반환: slotIndex, itemId, count, equipped, enchant (행마다 슬롯 하나)
+--   반환: slotIndex, itemId, count, equipped, enchant, extra (행마다 슬롯 하나)
 --
 --   DBConnection::ExtractInventory() 에서 호출
 --   로그인 시 인벤토리 전체 로드
@@ -406,7 +410,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT slotIndex, itemId, count, equipped, enchant
+    SELECT slotIndex, itemId, count, equipped, enchant, extra
     FROM Inventory
     WHERE playerId = @playerId;
 END
@@ -414,8 +418,8 @@ GO
 
 -- ----------------------------------------
 -- SaveInventorySlot
---   호출: EXEC SaveInventorySlot ?, ?, ?, ?, ?, ?
---   파라미터: @playerId, @slotIndex, @itemId, @count, @equipped, @enchant
+--   호출: EXEC SaveInventorySlot ?, ?, ?, ?, ?, ?, ?
+--   파라미터: @playerId, @slotIndex, @itemId, @count, @equipped, @enchant, @extra
 --   반환: 없음
 --
 --   DBConnection::SaveInventorySlot() 에서 호출
@@ -434,7 +438,8 @@ CREATE PROCEDURE SaveInventorySlot
     @itemId    SMALLINT,
     @count     SMALLINT,
     @equipped  BIT,
-    @enchant   TINYINT = 0
+    @enchant   TINYINT = 0,
+    @extra     BIGINT  = 0
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -449,13 +454,13 @@ BEGIN
     -- 하나가 끝난 뒤에야 다음 게 실행되어, 이전의 "IF EXISTS ... ELSE INSERT"
     -- 방식이 갖고 있던 이중 INSERT/유실 갱신(lost update) 경쟁 상태가 사라진다.
     UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
-    SET itemId = @itemId, count = @count, equipped = @equipped, enchant = @enchant
+    SET itemId = @itemId, count = @count, equipped = @equipped, enchant = @enchant, extra = @extra
     WHERE playerId = @playerId AND slotIndex = @slotIndex;
 
     IF @@ROWCOUNT = 0
     BEGIN
-        INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
-        VALUES (@playerId, @slotIndex, @itemId, @count, @equipped, @enchant);
+        INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant, extra)
+        VALUES (@playerId, @slotIndex, @itemId, @count, @equipped, @enchant, @extra);
     END
 
     COMMIT TRAN;
@@ -489,11 +494,12 @@ GO
 
 -- ----------------------------------------
 -- SaveTwoInventorySlots
---   호출: EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+--   호출: EXEC SaveTwoInventorySlots ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 --   파라미터: @playerId,
 --             @slotIndexA, @hasA, @itemIdA, @countA, @equippedA,
 --             @slotIndexB, @hasB, @itemIdB, @countB, @equippedB,
 --             @enchantA, @enchantB   (강화 수치 — 기존 호출 순서를 깨지 않도록 끝에 붙였다)
+--             @extraA, @extraB       (V2 희귀도·옵션 — 같은 이유로 그 뒤에 붙였다)
 --   반환: 없음
 --
 --   DBConnection::SaveTwoInventorySlots() 에서 호출
@@ -528,7 +534,9 @@ CREATE PROCEDURE SaveTwoInventorySlots
     @countB     SMALLINT,
     @equippedB  BIT,
     @enchantA   TINYINT = 0,
-    @enchantB   TINYINT = 0
+    @enchantB   TINYINT = 0,
+    @extraA     BIGINT  = 0,
+    @extraB     BIGINT  = 0
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -539,28 +547,31 @@ BEGIN
     -- has/itemId/count/equipped도 짝을 맞춰 함께 바꿔야 한다.
     IF @slotIndexA > @slotIndexB
     BEGIN
-        DECLARE @tmpSlot SMALLINT, @tmpHas BIT, @tmpItemId SMALLINT, @tmpCount SMALLINT, @tmpEquipped BIT, @tmpEnchant TINYINT;
+        DECLARE @tmpSlot SMALLINT, @tmpHas BIT, @tmpItemId SMALLINT, @tmpCount SMALLINT, @tmpEquipped BIT, @tmpEnchant TINYINT, @tmpExtra BIGINT;
 
         SELECT @tmpSlot     = @slotIndexA,
                @tmpHas      = @hasA,
                @tmpItemId   = @itemIdA,
                @tmpCount    = @countA,
                @tmpEquipped = @equippedA,
-               @tmpEnchant  = @enchantA;
+               @tmpEnchant  = @enchantA,
+               @tmpExtra    = @extraA;
 
         SELECT @slotIndexA = @slotIndexB,
                @hasA       = @hasB,
                @itemIdA    = @itemIdB,
                @countA     = @countB,
                @equippedA  = @equippedB,
-               @enchantA   = @enchantB;
+               @enchantA   = @enchantB,
+               @extraA     = @extraB;
 
         SELECT @slotIndexB = @tmpSlot,
                @hasB       = @tmpHas,
                @itemIdB    = @tmpItemId,
                @countB     = @tmpCount,
                @equippedB  = @tmpEquipped,
-               @enchantB   = @tmpEnchant;
+               @enchantB   = @tmpEnchant,
+               @extraB     = @tmpExtra;
     END
 
     BEGIN TRAN;
@@ -568,12 +579,12 @@ BEGIN
     IF @hasA = 1
     BEGIN
         UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
-        SET itemId = @itemIdA, count = @countA, equipped = @equippedA, enchant = @enchantA
+        SET itemId = @itemIdA, count = @countA, equipped = @equippedA, enchant = @enchantA, extra = @extraA
         WHERE playerId = @playerId AND slotIndex = @slotIndexA;
 
         IF @@ROWCOUNT = 0
-            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
-            VALUES (@playerId, @slotIndexA, @itemIdA, @countA, @equippedA, @enchantA);
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant, extra)
+            VALUES (@playerId, @slotIndexA, @itemIdA, @countA, @equippedA, @enchantA, @extraA);
     END
     ELSE
     BEGIN
@@ -583,12 +594,12 @@ BEGIN
     IF @hasB = 1
     BEGIN
         UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
-        SET itemId = @itemIdB, count = @countB, equipped = @equippedB, enchant = @enchantB
+        SET itemId = @itemIdB, count = @countB, equipped = @equippedB, enchant = @enchantB, extra = @extraB
         WHERE playerId = @playerId AND slotIndex = @slotIndexB;
 
         IF @@ROWCOUNT = 0
-            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
-            VALUES (@playerId, @slotIndexB, @itemIdB, @countB, @equippedB, @enchantB);
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant, extra)
+            VALUES (@playerId, @slotIndexB, @itemIdB, @countB, @equippedB, @enchantB, @extraB);
     END
     ELSE
     BEGIN
@@ -684,13 +695,14 @@ BEGIN
 
     IF @hasItem = 1
     BEGIN
+        -- 상점 거래 슬롯은 굴린 적 없는 물건(소모품·새 장비)이거나 남은 스택이라 extra는 항상 0이다.
         UPDATE Inventory WITH (UPDLOCK, HOLDLOCK)
-        SET itemId = @itemId, count = @count, equipped = @equipped, enchant = @enchant
+        SET itemId = @itemId, count = @count, equipped = @equipped, enchant = @enchant, extra = 0
         WHERE playerId = @playerId AND slotIndex = @slotIndex;
 
         IF @@ROWCOUNT = 0
-            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant)
-            VALUES (@playerId, @slotIndex, @itemId, @count, @equipped, @enchant);
+            INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant, extra)
+            VALUES (@playerId, @slotIndex, @itemId, @count, @equipped, @enchant, 0);
     END
     ELSE
     BEGIN

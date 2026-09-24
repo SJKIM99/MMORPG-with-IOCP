@@ -13,6 +13,7 @@
 #include "UserHelper.h"
 #include "Zone/ZoneManager.h"
 #include "Data/LevelTable.h"
+#include "Data/ItemRules.h"
 
 void Inventory::Attach(const std::shared_ptr<User>& owner) noexcept
 {
@@ -45,8 +46,9 @@ void Inventory::SaveSlotToDB(uint16_t slotIndex) const
 	const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
 	const bool equipped = (equipment != nullptr) && equipment->IsEquipped();
 	const uint8_t enchant = (equipment != nullptr) ? equipment->GetEnchant() : 0;
+	const uint64_t extra = (equipment != nullptr) ? equipment->GetExtra() : 0;
 
-	GDBThread->RequestSaveItem(owner->GetPlayerId(), slotIndex, item->GetItemTableId(), item->GetCount(), equipped, enchant);
+	GDBThread->RequestSaveItem(owner->GetPlayerId(), slotIndex, item->GetItemTableId(), item->GetCount(), equipped, enchant, extra);
 	NotifySlotChanged(slotIndex);
 }
 
@@ -70,6 +72,7 @@ DB_ITEM_SLOT_SAVE Inventory::DescribeSlot(uint16_t slotIndex) const
 	save.count    = item->GetCount();
 	save.equipped = (equipment != nullptr) && equipment->IsEquipped();
 	save.enchant  = (equipment != nullptr) ? equipment->GetEnchant() : 0;
+	save.extra    = (equipment != nullptr) ? equipment->GetExtra() : 0;
 	return save;
 }
 
@@ -89,6 +92,30 @@ void Inventory::NotifySlotChanged(uint16_t slotIndex) const
 	if (owner == nullptr || !owner->IsExtended())
 		return;
 	UserHelper::SendITEM_SLOT_EX_INF(owner, slotIndex);
+	// V2: 희귀도·옵션은 바로 뒤에 따로 보낸다(슬롯 포맷은 레거시 크기 그대로 둔다).
+	UserHelper::SendITEM_DETAIL_INF(owner, slotIndex);
+}
+
+uint64_t Inventory::GetSlotExtra(uint16_t slotIndex) const noexcept
+{
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+		return 0;
+	const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(it->second);
+	return equipment != nullptr ? equipment->GetExtra() : 0;
+}
+
+uint16_t Inventory::FindEquipped(EquipSlot slot) const noexcept
+{
+	for (const auto& [slotIndex, item] : _slots)
+	{
+		const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
+		if (equipment == nullptr || !equipment->IsEquipped())
+			continue;
+		if (ItemTableData::SlotOf(item->GetItemTableId()) == slot)
+			return slotIndex;
+	}
+	return MAX_INVENTORY_SLOTS;
 }
 
 void Inventory::FillSlotEx(uint16_t slotIndex, ITEM_SLOT_EX_DATA& out) const noexcept
@@ -107,20 +134,26 @@ void Inventory::FillSlotEx(uint16_t slotIndex, ITEM_SLOT_EX_DATA& out) const noe
 	out.enchant  = (equipment != nullptr) ? equipment->GetEnchant() : 0;
 }
 
-void Inventory::CollectGearBonus(GearBonus& out) const
+void Inventory::CollectGearBonus(GearBonus& out, GearExtras* outExtras) const
 {
-	const ItemTableId equippedId = GetEquippedItemId();
-	if (equippedId == ITEM_TABLE_ID_NONE)
-		return;
-	const ItemTableRow* row = ItemTable::Find(equippedId);
-	if (row == nullptr)
-		return;
-	const uint16_t bonus = static_cast<uint16_t>(row->attackBonus + EnchantRule::AttackBonus(GetEquippedEnchant()));
-	// 지팡이는 마법 공격력, 나머지 무기는 물리 공격력
-	if (ItemTableData::IsStaff(equippedId))
-		out.weaponMagic = static_cast<uint16_t>(out.weaponMagic + bonus);
-	else
-		out.weaponAttack = static_cast<uint16_t>(out.weaponAttack + bonus);
+	// 착용 중인 장비 전부(무기 · 방어구 · 장신구) → 공용 규칙(Data/ItemRules.h)으로 합산한다.
+	// 클라이언트의 비교 툴팁도 같은 함수를 부르므로 "보이는 숫자 = 서버 숫자"가 된다.
+	EquippedPiece pieces[static_cast<size_t>(EquipSlot::Count)];
+	int count = 0;
+	for (const auto& [slotIndex, item] : _slots)
+	{
+		const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item);
+		if (equipment == nullptr || !equipment->IsEquipped())
+			continue;
+		const ItemTableRow* row = ItemTable::Find(item->GetItemTableId());
+		if (row == nullptr || count >= static_cast<int>(EquipSlot::Count))
+			continue;
+		pieces[count++] = EquippedPiece{ row, equipment->GetExtra(), equipment->GetEnchant() };
+	}
+	GearExtras extras{};
+	ItemRules::Accumulate(pieces, count, out, extras);
+	if (outExtras != nullptr)
+		*outExtras = extras;
 }
 
 void Inventory::RecomputeOffensive() const
@@ -175,6 +208,7 @@ void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 				equipment->Equip();
 			// 테이블 상한보다 큰 값이 DB에 있어도(수동 수정 등) 방어적으로 잘라낸다.
 			equipment->SetEnchant(std::min<uint8_t>(info._enchant, EnchantRule::kMaxLevel));
+			equipment->SetExtra(info._extra);
 		}
 
 		_slots[info._slotIndex] = std::move(item);
@@ -185,7 +219,7 @@ void Inventory::LoadFromDB(const std::vector<DB_ITEM_INFO>& items) noexcept
 	RecomputeOffensive();
 }
 
-bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots, uint8_t enchant) noexcept
+bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots, uint8_t enchant, uint64_t extra) noexcept
 {
 	AssertOwnedByCurrentZone();
 
@@ -261,7 +295,10 @@ bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint1
 		ASSERT_CRASH(newItem != nullptr);
 		newItem->SetOwnerID(owner->GetObjID());
 		if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(newItem))
+		{
 			equipment->SetEnchant(std::min<uint8_t>(enchant, EnchantRule::kMaxLevel));
+			equipment->SetExtra(extra);
+		}
 		_slots.emplace(i, std::move(newItem));
 		touchedSlots.push_back(i);
 		remaining -= added;
@@ -350,22 +387,21 @@ Item::SharedPtr Inventory::TryExtractItem(uint16_t slotIndex, uint16_t count) no
 
 ItemTableId Inventory::GetEquippedItemId() const noexcept
 {
-	for (const auto& [slotIndex, item] : _slots)
-	{
-		if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item); equipment != nullptr && equipment->IsEquipped())
-			return item->GetItemTableId();
-	}
-	return ITEM_TABLE_ID_NONE;
+	// "장착 무기" — V2부터 방어구·장신구도 장착되므로 무기 부위만 본다
+	// (레거시 공격력 계산 · 외형 패킷이 이 값을 쓴다).
+	const uint16_t slotIndex = FindEquipped(EquipSlot::Weapon);
+	if (slotIndex >= MAX_INVENTORY_SLOTS)
+		return ITEM_TABLE_ID_NONE;
+	return _slots.at(slotIndex)->GetItemTableId();
 }
 
 uint8_t Inventory::GetEquippedEnchant() const noexcept
 {
-	for (const auto& [slotIndex, item] : _slots)
-	{
-		if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(item); equipment != nullptr && equipment->IsEquipped())
-			return equipment->GetEnchant();
-	}
-	return 0;
+	const uint16_t slotIndex = FindEquipped(EquipSlot::Weapon);
+	if (slotIndex >= MAX_INVENTORY_SLOTS)
+		return 0;
+	const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(_slots.at(slotIndex));
+	return equipment != nullptr ? equipment->GetEnchant() : 0;
 }
 
 bool Inventory::TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot) noexcept
@@ -383,8 +419,23 @@ bool Inventory::TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot) noexcept
 	if (equipment == nullptr || equipment->IsEquipped())
 		return false;
 
+	const ItemTableRow* row = ItemTable::Find(equipment->GetItemTableId());
+	if (row == nullptr)
+		return false;
+	const EquipSlot part = ItemTableData::SlotOf(*row);
+
+	// V2(확장 세션): 직업 전용 무기 · 착용 레벨. 레거시 세션은 예전처럼 제한 없이 입는다.
+	if (const auto owner = _owner.lock(); owner != nullptr && owner->IsExtended())
+	{
+		if (!ItemTableData::ClassCanUse(*row, static_cast<uint8_t>(owner->m_classId)))
+			return false;
+		if (row->reqLevel > owner->GetStat()->GetLevel())
+			return false;
+	}
+
 	// 이 시점 이후로는 실패할 수 없다(단순 플래그 플립 + 비동기 DB enqueue뿐) —
 	// 그래서 TryAddItem처럼 별도 드라이런 단계 없이도 "확인 -> 반영"이 이미 원자적이다.
+	// 같은 부위에 이미 입고 있던 장비만 벗는다(부위마다 하나 — 불변조건).
 	uint16_t previousSlot = 0;
 	bool hadPrevious = false;
 	for (auto& [otherSlotIndex, otherItem] : _slots)
@@ -393,9 +444,9 @@ bool Inventory::TryEquip(uint16_t slotIndex, uint16_t* outPreviousSlot) noexcept
 			continue;
 
 		if (auto otherEquipment = std::dynamic_pointer_cast<EquipmentItem>(otherItem);
-			otherEquipment != nullptr && otherEquipment->IsEquipped())
+			otherEquipment != nullptr && otherEquipment->IsEquipped()
+			&& ItemTableData::SlotOf(otherEquipment->GetItemTableId()) == part)
 		{
-			// 불변조건상(TryEquip이 항상 이렇게 지켜왔으므로) 장착된 건 최대 하나뿐이다.
 			otherEquipment->Unequip();
 			previousSlot = otherSlotIndex;
 			hadPrevious = true;
@@ -612,8 +663,8 @@ Inventory::EnchantOutcome Inventory::TryEnchant(uint16_t scrollSlot, uint16_t ta
 		return outcome;
 
 	const auto weapon = std::dynamic_pointer_cast<EquipmentItem>(targetIt->second);
-	if (weapon == nullptr)
-		return outcome;
+	if (weapon == nullptr || !ItemTableData::IsWeapon(weapon->GetItemTableId()))
+		return outcome;   // 무기 강화 주문서는 무기에만(방어구·장신구는 대상이 아니다)
 
 	const uint8_t before = weapon->GetEnchant();
 	if (before >= EnchantRule::kMaxLevel)
@@ -750,10 +801,11 @@ ShopResult Inventory::TrySell(uint16_t slotIndex, uint16_t count, uint32_t* outG
 	if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(it->second); equipment != nullptr && equipment->IsEquipped())
 		return ShopResult::EquippedItem;
 
-	// 강화된 무기는 조금 더 받는다(+1당 10%) — 표시는 클라이언트가 같은 식으로 계산한다.
+	// 강화된 무기(+1당 10%)와 희귀도 높은 장비는 더 받는다 — 표시는 클라이언트가
+	// 같은 함수(ItemRules::SellPrice)로 계산한다.
 	uint64_t unit = row->sellPrice;
 	if (const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(it->second))
-		unit = unit * (10 + equipment->GetEnchant()) / 10;
+		unit = ItemRules::SellPrice(*row, equipment->GetExtra(), equipment->GetEnchant());
 	const uint64_t gain64 = unit * count;
 	constexpr uint32_t kMaxAdena = 2'000'000'000u;
 	if (gain64 > kMaxAdena - (std::min)(_adena, kMaxAdena))
@@ -775,6 +827,98 @@ ShopResult Inventory::TrySell(uint16_t slotIndex, uint16_t count, uint32_t* outG
 	if (outGain != nullptr)
 		*outGain = gain;
 	return ShopResult::Success;
+}
+
+int Inventory::TrySort() noexcept
+{
+	AssertOwnedByCurrentZone();
+
+	int changes = 0;
+
+	// 1) 같은 물건 스택 합치기(앞 칸으로 모은다). 두 칸이 함께 바뀌므로 한 트랜잭션.
+	std::vector<uint16_t> order;
+	order.reserve(_slots.size());
+	for (const auto& [slotIndex, item] : _slots)
+		order.push_back(slotIndex);
+	std::sort(order.begin(), order.end());
+	for (size_t a = 0; a < order.size(); ++a)
+	{
+		auto ita = _slots.find(order[a]);
+		if (ita == _slots.end())
+			continue;
+		const ItemTableRow* row = ItemTable::Find(ita->second->GetItemTableId());
+		if (row == nullptr || row->maxStack <= 1)
+			continue;
+		for (size_t b = a + 1; b < order.size(); ++b)
+		{
+			ita = _slots.find(order[a]);
+			if (ita == _slots.end() || ita->second->GetCount() >= row->maxStack)
+				break;
+			const auto itb = _slots.find(order[b]);
+			if (itb == _slots.end() || itb->second->GetItemTableId() != row->id)
+				continue;
+			const uint16_t move = (std::min)(static_cast<uint16_t>(row->maxStack - ita->second->GetCount()), itb->second->GetCount());
+			if (move == 0)
+				continue;
+			ita->second->AddCount(move);
+			itb->second->RemoveCount(move);
+			if (itb->second->GetCount() == 0)
+				_slots.erase(itb);
+			SaveTwoSlotsToDB(order[a], order[b]);
+			++changes;
+		}
+	}
+
+	// 2) 원하는 순서
+	struct Entry { Item::SharedPtr item; int group, part, rarity, tier, effect, id, enchant, count; };
+	std::vector<Entry> entries;
+	entries.reserve(_slots.size());
+	for (const auto& [slotIndex, item] : _slots)
+	{
+		const ItemTableRow* row = ItemTable::Find(item->GetItemTableId());
+		if (row == nullptr)
+			continue;
+		const auto eq = std::dynamic_pointer_cast<EquipmentItem>(item);
+		Entry e{};
+		e.item = item;
+		e.group = (eq != nullptr && eq->IsEquipped()) ? 0 : (row->type == ItemType::eEquipment ? 1 : (row->type == ItemType::eConsumable ? 2 : 3));
+		e.part = static_cast<int>(ItemTableData::SlotOf(*row));
+		e.rarity = eq != nullptr ? static_cast<int>(ItemRules::EffectiveRarity(*row, eq->GetExtra())) : 0;
+		e.tier = row->tier;
+		e.effect = static_cast<int>(row->effect);
+		e.id = row->id;
+		e.enchant = eq != nullptr ? eq->GetEnchant() : 0;
+		e.count = item->GetCount();
+		entries.push_back(std::move(e));
+	}
+	std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b)
+	{
+		if (a.group != b.group) return a.group < b.group;
+		if (a.part != b.part) return a.part < b.part;
+		if (a.rarity != b.rarity) return a.rarity > b.rarity;
+		if (a.tier != b.tier) return a.tier > b.tier;
+		if (a.effect != b.effect) return a.effect < b.effect;
+		if (a.id != b.id) return a.id < b.id;
+		if (a.enchant != b.enchant) return a.enchant > b.enchant;
+		return a.count > b.count;
+	});
+
+	// 3) 앞 칸부터 제자리로(각 교환이 한 트랜잭션)
+	for (size_t t = 0; t < entries.size() && t < MAX_INVENTORY_SLOTS; ++t)
+	{
+		const uint16_t target = static_cast<uint16_t>(t);
+		const auto here = _slots.find(target);
+		if (here != _slots.end() && here->second == entries[t].item)
+			continue;
+		uint16_t from = MAX_INVENTORY_SLOTS;
+		for (const auto& [slotIndex, item] : _slots)
+			if (item == entries[t].item) { from = slotIndex; break; }
+		if (from >= MAX_INVENTORY_SLOTS)
+			continue;
+		if (TrySwapSlots(from, target))
+			++changes;
+	}
+	return changes;
 }
 
 Item::SharedPtr Inventory::TryTakeRandomItem(uint32_t roll) noexcept

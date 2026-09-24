@@ -268,6 +268,7 @@
     <ClInclude Include="Data\MoveRule.h" />
     <ClInclude Include="Data\CombatData.h" />
     <ClInclude Include="Data\NpcTalk.h" />
+    <ClInclude Include="Data\ItemRules.h" />
     <ClInclude Include="Data\MonsterTable.h" />
     <ClInclude Include="Data\WorldData.h" />
     <ClInclude Include="Item\ItemTableData.h" />

@@ -32,8 +32,11 @@ namespace CombatHelper
 	// 유저 공격 피해 굴림(±10%, 치명타). forceCrit이면 확정 치명타.
 	[[nodiscard]] uint32_t RollUserDamage(const std::shared_ptr<User>& u, DamageKind kind, uint32_t coeffPercent, bool forceCrit, bool& outCrit);
 
-	// 플레이어 → 몬스터(방어 적용 후 UserHelper::AttackMonster로 처치·보상까지)
-	void HitMonster(const std::shared_ptr<User>& attacker, const std::shared_ptr<Monster>& monster, uint32_t damage, const HitCtx& ctx);
+	// 플레이어 → 몬스터(방어 적용 후 UserHelper::AttackMonster로 처치·보상까지). 방어 적용 후 피해를 돌려준다.
+	uint32_t HitMonster(const std::shared_ptr<User>& attacker, const std::shared_ptr<Monster>& monster, uint32_t damage, const HitCtx& ctx);
+	// V2 장비 특수 효과(Data/ItemRules.h) — 기술 적중 뒤(피의 갈증·천둥·메아리·서리·잔불·맹독)
+	void ApplyGearProcs(const std::shared_ptr<User>& attacker, uint16_t skillId, bool basic, DamageKind kind,
+		const std::shared_ptr<Monster>& monster, uint32_t dealt, uint8_t hitIndex);
 	// 몬스터 → 확장 세션 플레이어(회피·방어·철벽 태세·반격). 죽었으면 true.
 	bool HitPlayerFromMonster(const std::shared_ptr<Monster>& monster, const std::shared_ptr<User>& victim, uint32_t raw, uint8_t flags);
 

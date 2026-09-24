@@ -685,184 +685,7 @@ void Game::DrawChat()
 // ─────────────────────────────────────────────────────────────────────────────
 // 소지품
 // ─────────────────────────────────────────────────────────────────────────────
-void Game::DrawItemTooltip(uint16_t itemId, uint8_t enchant, int count, bool equipped, bool forSell)
-{
-	const ItemTableRow* row = ItemTableData::Find(itemId);
-	if (!row) return;
-	std::vector<ui::TooltipLine> lines;
-	lines.push_back({ texts::ItemNameEnchanted(itemId, enchant), icons::ItemNameColor(itemId), 18.f });
-	const char* grade = "";
-	switch (row->grade)
-	{
-	case ItemGrade::eRare: grade = " · 레어"; break;
-	case ItemGrade::eEpic: grade = " · 에픽"; break;
-	case ItemGrade::eUnique: grade = " · 유니크"; break;
-	case ItemGrade::eLegendary: grade = " · 전설"; break;
-	default: break;
-	}
-	switch (row->type)
-	{
-	case ItemType::eEquipment:
-		lines.push_back({ std::string("한손검") + grade, ui::theme::kTextDim, 14.f });
-		lines.push_back({ Fmt("공격력 +%d", row->attackBonus), Rgb(0xF2D8A0), 15.f });
-		if (enchant > 0) lines.push_back({ Fmt("강화 보너스 +%d", EnchantRule::AttackBonus(enchant)), Rgb(0x9AD8FF), 15.f });
-		break;
-	case ItemType::eConsumable:
-		lines.push_back({ "소모품", ui::theme::kTextDim, 14.f });
-		switch (row->effect)
-		{
-		case ItemEffect::eHeal: lines.push_back({ Fmt("HP %d 회복 (재사용 5초)", row->healAmount), Rgb(0x8AFF9A), 15.f }); break;
-		case ItemEffect::eReturnTown: lines.push_back({ std::string(WorldData::kTownName) + "(으)로 귀환", Rgb(0x9AD8FF), 15.f }); break;
-		case ItemEffect::eTeleportRandom: lines.push_back({ "지금 있는 지역의 아무 곳으로 순간이동", Rgb(0xC8A0FF), 15.f }); break;
-		case ItemEffect::eHaste: lines.push_back({ Fmt("%d초 동안 이동 속도 증가", row->effectValue), Rgb(0x8AFF9A), 15.f }); break;
-		case ItemEffect::eEnchantWeapon:
-			lines.push_back({ row->effectValue ? "무기 강화 (축복: 더 크게 오를 수 있음)" : "무기 강화 (+6까지 안전)", Rgb(0xFFE08A), 15.f });
-			break;
-		default: break;
-		}
-		break;
-	case ItemType::eCurrency:
-		lines.push_back({ "화폐", ui::theme::kTextDim, 14.f });
-		break;
-	default:
-		break;
-	}
-	if (count > 1) lines.push_back({ Fmt("수량 %d", count), ui::theme::kText, 14.f });
-	if (equipped) lines.push_back({ "착용 중", ui::theme::kGold, 14.f });
-	if (row->sellPrice > 0)
-	{
-		const uint32_t unit = row->type == ItemType::eEquipment ? row->sellPrice * (10u + enchant) / 10u : row->sellPrice;
-		lines.push_back({ Fmt("상점 매입가 %s 아데나", texts::Number(unit).c_str()), forSell ? Rgb(0xFFD84A) : ui::theme::kTextDim, 14.f });
-	}
-	if (!forSell)
-	{
-		if (row->type == ItemType::eEquipment) lines.push_back({ "더블클릭/우클릭: 착용·해제", Color{ 150, 140, 120, 255 }, 13.f });
-		else if (row->type == ItemType::eConsumable) lines.push_back({ "더블클릭/우클릭: 사용 · 퀵슬롯으로 끌기", Color{ 150, 140, 120, 255 }, 13.f });
-	}
-	ui::Tooltip(std::move(lines), itemId);
-}
-
-void Game::DrawInventory()
-{
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const float slot = 54.f, gap = 4.f;
-	const float w = 6 * (slot + gap) + 20.f, h = 5 * (slot + gap) + 110.f;
-	Rectangle r{ W - w - 14.f, 258.f, w, h };
-	if (r.y + r.height > H - 110.f) r.y = std::max(12.f, H - 110.f - r.height);
-	m_invRect = r;
-	ui::Window(r, "소지품", &m_invOpen);
-	if (m_enchant.stage == 1)
-	{
-		const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 6.f);
-		DrawRectangleRoundedLinesEx(Rectangle{ r.x - 3, r.y - 3, r.width + 6, r.height + 6 }, 0.03f, 6, 2.f, Color{ 255, 220, 120, static_cast<unsigned char>(120 + 120 * pulse) });
-		ui::Text("강화할 무기를 고르세요 (Esc 취소)", Vector2{ r.x + r.width * 0.5f, r.y + r.height - 22 }, 14.f, Rgb(0xFFE08A), Align::Center, true);
-	}
-
-	const float x0 = r.x + 12.f, y0 = r.y + 44.f;
-	m_invHover = -1;
-	for (int i = 0; i < MAX_INVENTORY_SLOTS; ++i)
-	{
-		const Rectangle s{ x0 + (i % 6) * (slot + gap), y0 + (i / 6) * (slot + gap), slot, slot };
-		const InvSlot& it = m_inv.slots[i];
-		const bool hover = ui::Hovered(s);
-		if (hover) m_invHover = i;
-		bool selectable = true;
-		if (m_enchant.stage == 1)
-			selectable = !it.Empty() && ItemTableData::IsWeapon(it.itemId);
-		ui::SlotFrame(s, hover && selectable, m_sellSlot == i || m_enchant.targetSlot == i, it.equipped ? ui::theme::kGold : ui::theme::kBorder);
-		if (!it.Empty())
-		{
-			const bool dragged = ui::Dragging() && ui::Drag().kind == 1 && ui::Drag().index == i;
-			const Color tint = (!selectable || dragged) ? Color{ 255, 255, 255, 80 } : WHITE;
-			if (it.equipped)
-			{
-				DrawRectangleRounded(Rectangle{ s.x + 2, s.y + 2, s.width - 4, s.height - 4 }, 0.14f, 4, Color{ 255, 200, 80, 30 });
-				DrawRectangleRoundedLinesEx(s, 0.14f, 4, 2.f, ui::theme::kGold);
-			}
-			const Color glow = icons::EnchantGlow(it.enchant);
-			if (glow.a > 0)
-				DrawCircleGradient(static_cast<int>(s.x + slot * 0.5f), static_cast<int>(s.y + slot * 0.5f), slot * 0.5f, util::MulA(glow, 0.8f), util::WithA(glow, 0.f));
-			icons::Draw(it.itemId, Rectangle{ s.x + 4, s.y + 4, slot - 8, slot - 8 }, tint);
-			if (it.count > 1)
-				ui::Text(std::to_string(it.count), Vector2{ s.x + slot - 4, s.y + slot - 18 }, 14.f, WHITE, Align::Right, true);
-			if (it.enchant > 0)
-				ui::Text("+" + std::to_string(it.enchant), Vector2{ s.x + 4, s.y + 2 }, 14.f, it.enchant >= 7 ? Rgb(0xE08AFF) : Rgb(0x9AD8FF), Align::Left, true);
-			if (it.equipped)
-				ui::Text("E", Vector2{ s.x + slot - 5, s.y + 2 }, 13.f, ui::theme::kGold, Align::Right, true);
-			if (hover && !ui::Dragging())
-				DrawItemTooltip(it.itemId, it.enchant, it.count, it.equipped, m_shopMode == ShopMode::Sell);
-		}
-
-		// ── 입력 ──
-		if (m_enchant.stage == 1)
-		{
-			if (ui::Clicked(s) && selectable)
-			{
-				m_enchant.targetSlot = i;
-				m_enchant.itemId = it.itemId;
-				m_enchant.before = it.enchant;
-				m_enchant.stage = 2;
-				sfx::Play(sfx::Id::Click);
-			}
-			continue;
-		}
-		if (it.Empty())
-		{
-			if (ui::DragReleased() && hover && ui::Drag().kind == 1 && ui::Drag().index != i)
-			{
-				m_net.SendSwap(static_cast<uint16_t>(ui::Drag().index), static_cast<uint16_t>(i));
-				ui::EndDrag();
-			}
-			continue;
-		}
-		if (m_shopMode == ShopMode::Sell)
-		{
-			if (ui::Clicked(s))
-			{
-				const ItemTableRow* row = ItemTableData::Find(it.itemId);
-				if (row && row->sellPrice > 0 && !it.equipped) { m_sellSlot = i; m_sellCount = it.count; sfx::Play(sfx::Id::Click, 0.6f); }
-				else { AddCenter(it.equipped ? "착용 중인 장비는 팔 수 없습니다." : "그 물건은 팔 수 없습니다.", Rgb(0xFF8A7A)); sfx::Play(sfx::Id::Error, 0.5f); }
-			}
-			continue;
-		}
-		if (ui::DoubleClicked(s) || ui::Pressed(s, MOUSE_BUTTON_RIGHT))
-		{
-			UseSlot(i);
-			ui::ConsumeMouse();
-			m_pressKind = 0;
-			continue;
-		}
-		if (ui::Pressed(s))
-		{
-			m_pressKind = 1; m_pressIndex = i; m_pressPos = ui::Mouse();
-			ui::ConsumeMouse();
-		}
-		if (m_pressKind == 1 && m_pressIndex == i && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !ui::Dragging()
-			&& util::Len(util::Sub(ui::Mouse(), m_pressPos)) > 6.f)
-		{
-			ui::BeginDrag(ui::DragPayload{ 1, i, it.itemId });
-			m_pressKind = 0;
-		}
-		if (ui::DragReleased() && hover && ui::Drag().kind == 1 && ui::Drag().index != i)
-		{
-			m_net.SendSwap(static_cast<uint16_t>(ui::Drag().index), static_cast<uint16_t>(i));
-			ui::EndDrag();
-		}
-	}
-	// 창 안(슬롯 밖)에 떨어뜨리면 취소
-	if (ui::DragReleased() && ui::Hovered(r))
-		ui::EndDrag();
-	if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressKind == 1)
-		m_pressKind = 0;
-
-	// 아래 정보
-	const float fy = r.y + r.height - (m_enchant.stage == 1 ? 58.f : 48.f);
-	ui::Divider(r.x + 12, r.x + r.width - 12, fy - 6);
-	CoinIcon(Vector2{ r.x + 22, fy + 12 }, 8.f);
-	ui::Text(texts::Number(m_inv.adena), Vector2{ r.x + 36, fy + 3 }, 17.f, Rgb(0xFFD84A));
-	ui::Text(Fmt("빈 칸 %d/%d", m_inv.FreeSlots(), MAX_INVENTORY_SLOTS), Vector2{ r.x + r.width - 14, fy + 4 }, 14.f, ui::theme::kTextDim, Align::Right);
-	ui::Text(Fmt("공격력 %d", m_attack), Vector2{ r.x + r.width * 0.5f + 20.f, fy + 4 }, 14.f, Rgb(0xF2D8A0), Align::Center);
-}
+// 아이템 툴팁 · 소지품 · 장비창은 GameItems.cpp
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NPC · 상점 · 텔레포트
@@ -985,33 +808,46 @@ void Game::DrawShop()
 		if (shop.npcId == npc->id)
 			for (uint16_t id : shop.items) if (id) items.push_back(id);
 
-	float y = r.y + 46;
+	// 물건이 많으면 두 줄로 — 한 칸에 아이콘 · 이름 · 한 줄 설명 · 가격
+	const bool twoCols = items.size() > 7;
+	const float cardW = twoCols ? (r.width - 24.f - 8.f) * 0.5f : r.width - 24.f;
+	int idx = 0;
 	for (uint16_t id : items)
 	{
 		const ItemTableRow* row = ItemTableData::Find(id);
 		if (!row) continue;
-		const Rectangle it{ r.x + 12, y, r.width - 24, 44 };
+		const int col = twoCols ? idx % 2 : 0, line = twoCols ? idx / 2 : idx;
+		++idx;
+		const Rectangle it{ r.x + 12 + col * (cardW + 8.f), r.y + 46 + line * 47.f, cardW, 44 };
 		const bool hover = ui::Hovered(it), sel = m_buyItem == id;
 		DrawRectangleRounded(it, 0.12f, 6, sel ? Color{ 90, 70, 40, 220 } : (hover ? Color{ 60, 50, 44, 200 } : Color{ 30, 26, 30, 200 }));
 		if (sel) DrawRectangleRoundedLinesEx(it, 0.12f, 6, 1.5f, ui::theme::kBorderHi);
 		ui::SlotFrame(Rectangle{ it.x + 6, it.y + 4, 36, 36 }, false, false);
 		icons::Draw(id, Rectangle{ it.x + 8, it.y + 6, 32, 32 });
-		ui::TextShadow(row->displayName, Vector2{ it.x + 54, it.y + 4 }, 16.f, icons::ItemNameColor(id));
+		ui::TextShadow(row->displayName, Vector2{ it.x + 50, it.y + 4 }, twoCols ? 14.f : 16.f, icons::ItemNameColor(id));
 		std::string desc;
-		if (row->type == ItemType::eEquipment) desc = Fmt("공격력 +%d", row->attackBonus);
+		if (row->type == ItemType::eEquipment)
+		{
+			const EquipSlot part = ItemTableData::SlotOf(*row);
+			if (part == EquipSlot::Weapon) desc = Fmt(row->weaponKind == WeaponKind::Staff ? "마공 +%d" : "공격 +%d", row->attackBonus);
+			else if (row->armorBonus > 0) desc = Fmt("%s · 방어 +%d", texts::SlotName(part), row->armorBonus);
+			else desc = Fmt("%s · 마방 +%d", texts::SlotName(part), row->magicArmorBonus);
+			if (row->classMask != 0)
+				for (int c = 0; c < static_cast<int>(ClassId::Count); ++c)
+					if (row->classMask & (1u << c)) { desc += std::string(" · ") + ClassTable::Get(static_cast<ClassId>(c)).name; break; }
+		}
 		else if (row->effect == ItemEffect::eHeal) desc = Fmt("HP %d 회복", row->healAmount);
 		else if (row->effect == ItemEffect::eHaste) desc = Fmt("%d초 가속", row->effectValue);
 		else if (row->effect == ItemEffect::eReturnTown) desc = "마을로 귀환";
 		else if (row->effect == ItemEffect::eTeleportRandom) desc = "지역 내 순간이동";
 		else if (row->effect == ItemEffect::eEnchantWeapon) desc = "무기 강화";
-		ui::Text(desc, Vector2{ it.x + 54, it.y + 25 }, 13.f, ui::theme::kTextDim);
+		ui::Text(desc, Vector2{ it.x + 50, it.y + 25 }, twoCols ? 12.f : 13.f, ui::theme::kTextDim);
 		const bool affordable = m_inv.adena >= row->buyPrice;
-		CoinIcon(Vector2{ it.x + it.width - 110, it.y + 22 }, 6.f);
-		ui::Text(texts::Number(row->buyPrice), Vector2{ it.x + it.width - 10, it.y + 13 }, 16.f, affordable ? Rgb(0xFFD84A) : ui::theme::kBad, Align::Right);
+		if (!twoCols) CoinIcon(Vector2{ it.x + it.width - 110, it.y + 22 }, 6.f);
+		ui::Text(texts::Number(row->buyPrice), Vector2{ it.x + it.width - 8, it.y + (twoCols ? 4.f : 13.f) }, twoCols ? 14.f : 16.f, affordable ? Rgb(0xFFD84A) : ui::theme::kBad, Align::Right);
 		ui::Block(it);
 		if (ui::Clicked(it)) { m_buyItem = id; m_buyCount = 1; sfx::Play(sfx::Id::Click, 0.6f); }
 		if (hover) DrawItemTooltip(id, 0, 1, false, false);
-		y += 47;
 	}
 
 	// 수량/합계/구매
@@ -1036,7 +872,7 @@ void Game::DrawShop()
 	const bool can = sel && total <= m_inv.adena;
 	if (ui::Button(Rectangle{ r.x + r.width - 144, fy + 48, 130, 42 }, "구매하기", ButtonKind::Primary, can, 18.f))
 		m_lastShopSeq = m_net.SendShopBuy(npc->id, m_buyItem, static_cast<uint16_t>(m_buyCount));
-	if (ui::Button(Rectangle{ r.x + r.width - 144, fy + 4, 130, 32 }, "뒤로"))
+	if (ui::Button(Rectangle{ r.x + r.width - 236, fy + 48, 84, 42 }, "뒤로"))
 		m_shopMode = ShopMode::None;
 }
 
@@ -1060,11 +896,15 @@ void Game::DrawSell()
 	{
 		const InvSlot& s = m_inv.slots[m_sellSlot];
 		const ItemTableRow* row = ItemTableData::Find(s.itemId);
-		const uint32_t unit = row ? (row->type == ItemType::eEquipment ? row->sellPrice * (10u + s.enchant) / 10u : row->sellPrice) : 0;
-		ui::SlotFrame(Rectangle{ r.x + 20, r.y + 52, 64, 64 }, false, true);
+		// 희귀도가 높을수록 비싸게 산다(서버와 같은 식 — ItemRules::SellPrice)
+		const uint32_t unit = row ? ItemRules::SellPrice(*row, s.extra, s.enchant) : 0;
+		const Rarity rar = SlotRarity(s);
+		ui::SlotFrame(Rectangle{ r.x + 20, r.y + 52, 64, 64 }, false, true, rar != Rarity::Common ? icons::RarityColor(rar) : ui::theme::kBorder);
 		icons::Draw(s.itemId, Rectangle{ r.x + 24, r.y + 56, 56, 56 });
-		ui::TextShadow(texts::ItemNameEnchanted(s.itemId, s.enchant), Vector2{ r.x + 98, r.y + 58 }, 18.f, icons::ItemNameColor(s.itemId));
-		ui::Text("개당 " + texts::Number(unit) + " 아데나", Vector2{ r.x + 98, r.y + 86 }, 15.f, Rgb(0xFFD84A));
+		ui::TextShadow(texts::ItemNameFull(s.itemId, s.enchant, s.extra), Vector2{ r.x + 98, r.y + 58 }, 18.f, icons::ItemNameColor(s.itemId, s.extra));
+		ui::Text("개당 " + texts::Number(unit) + " 아데나" + (row && row->type == ItemType::eEquipment && rar > Rarity::Common
+			? Fmt("  (%s ×%.1f)", ItemRules::RarityName(rar), ItemRules::kSellPercent[ItemRules::Idx(rar)] / 100.f) : std::string()),
+			Vector2{ r.x + 98, r.y + 86 }, 15.f, Rgb(0xFFD84A));
 		m_sellCount = std::clamp(m_sellCount, 1, static_cast<int>(s.count));
 		const float fy = r.y + 136;
 		ui::Text("수량", Vector2{ r.x + 20, fy + 8 }, 15.f, ui::theme::kTextDim);
@@ -1236,12 +1076,15 @@ void Game::DrawDiscard()
 	ui::Panel(r);
 	ui::TextShadow("버리기", Vector2{ r.x + r.width * 0.5f, r.y + 14 }, 19.f, ui::theme::kTitle, Align::Center);
 	icons::Draw(s.itemId, Rectangle{ r.x + 20, r.y + 50, 48, 48 });
-	ui::TextShadow(texts::ItemNameEnchanted(s.itemId, s.enchant), Vector2{ r.x + 80, r.y + 56 }, 17.f, icons::ItemNameColor(s.itemId));
+	ui::TextShadow(texts::ItemNameFull(s.itemId, s.enchant, s.extra), Vector2{ r.x + 80, r.y + 50 }, 17.f, icons::ItemNameColor(s.itemId, s.extra));
+	if (s.equipped || SlotRarity(s) >= Rarity::Rare || s.enchant > 0)
+		ui::Text(s.equipped ? "착용 중인 장비입니다. 정말 버릴까요?" : std::string(ItemRules::RarityName(SlotRarity(s))) + " 등급 장비입니다. 정말 버릴까요?",
+			Vector2{ r.x + 80, r.y + 72 }, 13.f, Rgb(0xFF9A8A));
 	m_discard.count = std::clamp(m_discard.count, 1, static_cast<int>(s.count));
-	if (ui::Button(Rectangle{ r.x + 80, r.y + 84, 34, 30 }, "-")) m_discard.count = std::max(1, m_discard.count - 1);
-	ui::Text(std::to_string(m_discard.count) + " / " + std::to_string(s.count), Vector2{ r.x + 160, r.y + 89 }, 16.f, WHITE, Align::Center);
-	if (ui::Button(Rectangle{ r.x + 206, r.y + 84, 34, 30 }, "+")) m_discard.count = std::min(static_cast<int>(s.count), m_discard.count + 1);
-	if (ui::Button(Rectangle{ r.x + 246, r.y + 84, 60, 30 }, "전부")) m_discard.count = s.count;
+	if (ui::Button(Rectangle{ r.x + 80, r.y + 96, 34, 30 }, "-")) m_discard.count = std::max(1, m_discard.count - 1);
+	ui::Text(std::to_string(m_discard.count) + " / " + std::to_string(s.count), Vector2{ r.x + 160, r.y + 101 }, 16.f, WHITE, Align::Center);
+	if (ui::Button(Rectangle{ r.x + 206, r.y + 96, 34, 30 }, "+")) m_discard.count = std::min(static_cast<int>(s.count), m_discard.count + 1);
+	if (ui::Button(Rectangle{ r.x + 246, r.y + 96, 60, 30 }, "전부")) m_discard.count = s.count;
 	if (ui::Button(Rectangle{ r.x + 30, r.y + r.height - 56, 140, 42 }, "버리기", ButtonKind::Danger))
 	{
 		m_net.SendDiscard(static_cast<uint16_t>(m_discard.slot), static_cast<uint16_t>(m_discard.count));
@@ -1429,11 +1272,15 @@ void Game::DrawSkillTooltip(const SkillRow& row)
 	if (row.range > 0) cost += Fmt(" · 사거리 %d칸", row.range);
 	if (row.castMs > 0) cost += Fmt(" · 예고 %.1f초", row.castMs / 1000.f);
 	lines.push_back({ cost, Rgb(0x9AC8FF), 14.f });
+	const GearExtras gx = MyGearExtras();
+	const int boost = row.id < sizeof(gx.skillBoost) ? gx.skillBoost[row.id] : 0;
 	if (row.coeff > 0)
 	{
-		const int each = power * row.coeff / 100;
+		const int each = power * row.coeff / 100 * (100 + boost) / 100;
 		lines.push_back({ row.hits > 1 ? Fmt("피해 약 %d × %d회 (%s)", each, row.hits, magic ? "마법" : "물리") : Fmt("피해 약 %d (%s)", each, magic ? "마법" : "물리"), Rgb(0xFFD8A0), 14.f });
 	}
+	if (boost > 0)
+		lines.push_back({ Fmt("◈ 장비 기술 강화 +%d%%", boost), Rgb(0xFFD870), 14.f });
 	lines.push_back({ row.desc, ui::theme::kText, 14.f });
 	if (row.combo && row.combo[0])
 		lines.push_back({ std::string("연계: ") + row.combo, Rgb(0xFFD25A), 14.f });
@@ -1611,7 +1458,7 @@ void Game::DrawComboCounter()
 void Game::DrawCharacter()
 {
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Rectangle r{ std::max(20.f, W * 0.5f - 470.f), std::max(20.f, H * 0.5f - 250.f), 600.f, 470.f };
+	const Rectangle r{ std::max(20.f, W * 0.5f - 470.f), std::max(12.f, H * 0.5f - 290.f), 600.f, std::min(H - 120.f, 560.f) };
 	ui::Window(r, "캐릭터", &m_charOpen);
 	const ClassRow& cls = ClassTable::Get(m_classId);
 	const Color cc = ClassColor(m_classId);
@@ -1689,6 +1536,45 @@ void Game::DrawCharacter()
 		ui::Text(ln.value, Vector2{ r.x + r.width - 20.f, y }, 15.f, ui::theme::kText, Align::Right);
 		if (hover) ui::Tooltip({ { ln.name, ui::theme::kTitle, 15.f }, { ln.help, ui::theme::kText, 14.f } });
 		y += 24.f;
+	}
+
+	// 왼쪽 아래: 장비 효과(능력치 표에 드러나지 않는 것 — 특수 효과 · 기술 강화 · 획득 보너스 · 세트)
+	{
+		const GearExtras ex = MyGearExtras();
+		struct Fx { std::string text; Color color; };
+		std::vector<Fx> list;
+		for (int p = 1; p < static_cast<int>(ItemProc::Count); ++p)
+			if (ex.procPower[p] > 0)
+				list.push_back({ std::string("★ ") + ItemRules::Proc(static_cast<ItemProc>(p)).name + (ex.procPower[p] >= 2 ? " (강화)" : ""),
+					Rgb(ItemRules::Proc(static_cast<ItemProc>(p)).color) });
+		for (int sk = 1; sk < static_cast<int>(sizeof(ex.skillBoost)); ++sk)
+			if (ex.skillBoost[sk] > 0)
+				if (const SkillRow* row = SkillTable::Find(static_cast<uint16_t>(sk)))
+					list.push_back({ Fmt("◈ %s +%d%%", row->name, ex.skillBoost[sk]), Rgb(0xFFD870) });
+		if (ex.itemFind > 0) list.push_back({ Fmt("희귀품 발견 +%d%%", ex.itemFind), Rgb(0x8AC8FF) });
+		if (ex.adenaFind > 0) list.push_back({ Fmt("아데나 획득 +%d%%", ex.adenaFind), Rgb(0xFFD84A) });
+		for (const auto& set : ItemRules::kSets)
+			if (ex.setCount[set.id] >= 2)
+				list.push_back({ Fmt("%s %d/4%s", set.name, ex.setCount[set.id], ex.setCount[set.id] >= 4 ? " 완성" : ""), Rgb(set.color) });
+
+		float yy = r.y + 454.f;
+		if (yy + 40.f < r.y + r.height)
+		{
+			ui::Divider(r.x + 18.f, r.x + 282.f, yy);
+			ui::TextShadow("장비 효과", Vector2{ r.x + 20.f, yy + 8.f }, 15.f, ui::theme::kTitle);
+			yy += 32.f;
+			if (list.empty())
+				ui::TextWrapped("특수 효과는 전설·신화 장비에, 기술 강화는 전설 이상 무기·목걸이에 붙는다.", Rectangle{ r.x + 20.f, yy, 262.f, 60.f }, 13.f, ui::theme::kTextDim, 3.f);
+			float xx = r.x + 20.f;
+			for (const auto& f : list)
+			{
+				const float w = ui::Fonts().Measure(f.text, 13.f).x + 14.f;
+				if (xx + w > r.x + 284.f) { xx = r.x + 20.f; yy += 20.f; }
+				if (yy + 16.f > r.y + r.height - 6.f) break;
+				ui::Text(f.text, Vector2{ xx, yy }, 13.f, f.color);
+				xx += w;
+			}
+		}
 	}
 }
 

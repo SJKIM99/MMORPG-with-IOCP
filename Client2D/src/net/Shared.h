@@ -25,6 +25,7 @@ using USHORT = unsigned short;
 #include "Data/MonsterTable.h"        // 몬스터 종족 표
 #include "Data/WorldData.h"           // 지역/마을/NPC/상점/충돌
 #include "Data/LevelTable.h"          // 레벨/강화/성향치 규칙
+#include "Data/ItemRules.h"           // 희귀도·옵션·세트(아이템 성장)
 #include "Zone/ZoneLayout.h"          // Zone(=지역) 좌표 계산
 
 namespace net

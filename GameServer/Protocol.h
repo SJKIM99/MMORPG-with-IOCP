@@ -121,6 +121,15 @@ enum class EffectId : uint16_t
 	WallSlam,         // x/y=부딪힌 칸
 	PoisonBurst,      // subject=대상
 	PriestHeal,       // subject=치유받은 플레이어, param=회복량
+	// V2 아이템 특수 효과(Data/ItemRules.h ItemProc) — subject=장비 주인, x/y=효과 위치
+	ProcThunder,      // 천둥의 일격(벼락이 떨어진 칸)
+	ProcLifesteal,    // 피의 갈증(param=회복량)
+	ProcFrost,        // 서리 손길(x/y=대상)
+	ProcExecute,      // 처형자(x/y=대상)
+	ProcEcho,         // 메아리(x/y=대상)
+	ProcGuardian,     // 수호의 맹세(주인)
+	ProcEmber,        // 잔불(x/y=대상)
+	ProcVenom,        // 맹독(x/y=대상)
 };
 
 // WORLD_NOTICE_INF의 code — 전 서버(확장 세션)에 띄우는 공지.
@@ -130,6 +139,7 @@ enum class WorldNoticeCode : uint16_t
 	BossKilled,       // param1=보스 종족 id, param2=지역, name=막타 플레이어
 	EnchantSuccess,   // param1=ItemTableId, param2=강화 수치, name=플레이어
 	PlayerKilled,     // param1=지역, name=PK한 플레이어
+	RareLoot,         // V2: param1=ItemTableId, param2=희귀도(Rarity), name=주운 플레이어 — 신화 획득
 };
 
 enum class PacketType : uint16_t
@@ -226,6 +236,10 @@ enum class PacketType : uint16_t
 	NPC_TALK_ACK,             // S→C 말 걸기 결과
 	NPC_SERVICE_REQ,          // C→S 사제의 치유 기도 · 여관 수프
 	NPC_SERVICE_ACK,          // S→C 서비스 결과
+	// 아이템 성장(희귀도 · 옵션 · 세트 · 외형)
+	ITEM_DETAIL_INF,          // S→C 슬롯 하나의 인스턴스 값(희귀도·옵션) — ITEM_SLOT_EX_INF 바로 뒤에
+	PLAYER_LOOK_NFY,          // S→C 주변 플레이어의 착용 외형(부위별 아이템·희귀도)
+	ITEM_SORT_REQ,            // C→S 소지품 정리
 };
 
 #pragma pack (push, 1)
@@ -834,6 +848,7 @@ enum SubjectDamageFlag2 : uint8_t
 	DAMAGE2_WALL      = 1 << 3,   // 넉백이 벽에 부딪힘
 	DAMAGE2_BACKSTAB  = 1 << 4,   // 급소/기습
 	DAMAGE2_HEAVY     = 1 << 5,   // 강타(큰 히트스톱)
+	DAMAGE2_PROC      = 1 << 6,   // 장비 특수 효과로 생긴 피해(벼락·메아리)
 };
 
 // 레거시 USER_ATTACK_ACK(공격자에게만)/SUBJECT_ATTACK_NFY(피해 수치 없음)를 대신해

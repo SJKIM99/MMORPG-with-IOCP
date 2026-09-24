@@ -123,10 +123,10 @@ namespace CombatHelper
 		return static_cast<uint32_t>(std::min<uint64_t>(dmg, 60000));
 	}
 
-	void HitMonster(const shared_ptr<User>& attacker, const shared_ptr<Monster>& monster, uint32_t damage, const HitCtx& ctx)
+	uint32_t HitMonster(const shared_ptr<User>& attacker, const shared_ptr<Monster>& monster, uint32_t damage, const HitCtx& ctx)
 	{
 		if (!attacker || !monster || monster->GetStat()->IsDead())
-			return;
+			return 0;
 		const int level = monster->GetSpecies() ? monster->GetSpecies()->level : monster->GetStat()->GetLevel();
 		const uint32_t mitigated = StatRule::Mitigate(damage, StatRule::MonsterDefense(level), attacker->m_derived.penetration);
 		ObjID monsterId = monster->GetObjID();
@@ -137,6 +137,94 @@ namespace CombatHelper
 			flags |= DAMAGE_SKILL;
 		UserHelper::AttackMonster(monsterId, attackerId, static_cast<int>(mitigated), flags,
 			ctx.skillId, ctx.comboId, ctx.flags2, ctx.hitIndex);
+		return mitigated;
+	}
+
+	void ApplyGearProcs(const shared_ptr<User>& u, uint16_t skillId, bool basic, DamageKind kind,
+		const shared_ptr<Monster>& m, uint32_t dealt, uint8_t hitIndex)
+	{
+		if (!u || !m)
+			return;
+		const GearExtras& gx = u->m_gearEx;
+		auto power = [&](ItemProc p) { return gx.procPower[static_cast<size_t>(p)]; };
+		auto fires = [&](ItemProc p)
+		{
+			const uint8_t pw = power(p);
+			return pw > 0 && static_cast<int>(LRng() % 100u) < ItemRules::ProcChance(p, pw);
+		};
+		const uint32_t now = GetNowTime();
+
+		// 피의 갈증 — 준 피해의 일부를 HP로(쓰러뜨린 한 방도 포함)
+		if (const uint8_t pw = power(ItemProc::Lifesteal); pw > 0 && dealt > 0 && u->GetStat()->GetHp() < u->GetStat()->GetMaxHp())
+		{
+			const uint32_t heal = std::max<uint32_t>(1, dealt * static_cast<uint32_t>(ItemRules::ProcPower(ItemProc::Lifesteal, pw)) / 100u);
+			u->GetStat()->HealHp(static_cast<uint16_t>(std::min<uint32_t>(heal, 65535)), u->GetStat()->GetMaxHp());
+			SendResource(u);
+			if (now - u->m_lifestealFxAt >= 700)
+			{
+				u->m_lifestealFxAt = now;
+				UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::ProcLifesteal, u->GetX(), u->GetY(), static_cast<int32_t>(heal));
+			}
+		}
+		if (m->GetStat()->IsDead())
+			return;
+
+		const DerivedStats& d = u->m_derived;
+		const uint32_t atk = kind == DamageKind::Magic ? d.magicAttack : d.attack;
+
+		// 천둥의 일격 — 벼락(마법 피해)
+		if (fires(ItemProc::Thunder))
+		{
+			const uint32_t base = std::max<uint32_t>(d.attack, d.magicAttack);
+			const uint32_t dmg = std::max<uint32_t>(1, base * static_cast<uint32_t>(ItemRules::ProcPower(ItemProc::Thunder, power(ItemProc::Thunder))) / 100u
+				* (90u + static_cast<uint32_t>(LRng() % 21u)) / 100u);
+			UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::ProcThunder, m->GetX(), m->GetY(), 0);
+			HitCtx ctx;
+			ctx.flags = DAMAGE_SKILL;
+			ctx.flags2 = DAMAGE2_PROC;
+			ctx.hitIndex = static_cast<uint8_t>(hitIndex + 1);
+			HitMonster(u, m, dmg, ctx);
+			if (m->GetStat()->IsDead())
+				return;
+		}
+		// 메아리 — 기술(기본 공격 제외)이 한 번 더
+		if (!basic && dealt > 0 && fires(ItemProc::Echo))
+		{
+			const uint32_t dmg = std::max<uint32_t>(1, dealt * static_cast<uint32_t>(ItemRules::ProcPower(ItemProc::Echo, power(ItemProc::Echo))) / 100u);
+			UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::ProcEcho, m->GetX(), m->GetY(), 0);
+			HitCtx ctx;
+			ctx.skillId = skillId;
+			ctx.flags = DAMAGE_SKILL;
+			ctx.flags2 = DAMAGE2_PROC;
+			ctx.hitIndex = static_cast<uint8_t>(hitIndex + 2);
+			// 이미 방어가 적용된 값을 다시 방어에 넣지 않도록 관통 없이 그대로(조금 약해지는 건 의도)
+			HitMonster(u, m, dmg, ctx);
+			if (m->GetStat()->IsDead())
+				return;
+		}
+		// 서리 손길 — 둔화(신화: 빙결)
+		if (fires(ItemProc::FrostTouch))
+		{
+			if (power(ItemProc::FrostTouch) >= 2)
+				ApplyStatus(m, StatusId::Freeze, 1200, 1, u->GetObjID());
+			else
+				ApplyStatus(m, StatusId::Slow, 2500, 1, u->GetObjID());
+			UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::ProcFrost, m->GetX(), m->GetY(), 0);
+		}
+		// 잔불 — 화상
+		if (fires(ItemProc::Ember))
+		{
+			const uint16_t tick = static_cast<uint16_t>(std::max<uint32_t>(1, atk * StatusTable::Get(StatusId::Burn).tickPercent / 100u));
+			ApplyStatus(m, StatusId::Burn, 3000, 1, u->GetObjID(), tick);
+			UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::ProcEmber, m->GetX(), m->GetY(), 0);
+		}
+		// 맹독 — 중독 1중첩
+		if (fires(ItemProc::Venom))
+		{
+			const uint16_t tick = static_cast<uint16_t>(std::max<uint32_t>(1, atk * StatusTable::Get(StatusId::Poison).tickPercent / 100u));
+			ApplyStatus(m, StatusId::Poison, 5000, 1, u->GetObjID(), tick);
+			UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::ProcVenom, m->GetX(), m->GetY(), 0);
+		}
 	}
 
 	bool HitPlayerFromMonster(const shared_ptr<Monster>& monster, const shared_ptr<User>& victim, uint32_t raw, uint8_t flags)
@@ -171,6 +259,18 @@ namespace CombatHelper
 		victim->GetStat()->TakeDamage(static_cast<uint16_t>(std::min<uint32_t>(damage, 65535)));
 		const bool dead = victim->GetStat()->IsDead();
 		UserHelper::BroadcastDamage(victim, monsterId, static_cast<int32_t>(damage), static_cast<uint8_t>(flags | (dead ? DAMAGE_KILLED : 0)), 0, 0, flags2);
+
+		// 수호의 맹세(장비 특수 효과) — 맞을 때 확률로 철벽 태세(재발동 대기 있음)
+		if (!dead && !guarding)
+		{
+			const uint8_t pw = victim->m_gearEx.procPower[static_cast<size_t>(ItemProc::Guardian)];
+			if (pw > 0 && now >= victim->m_guardianReadyAt && static_cast<int>(LRng() % 100u) < ItemRules::ProcChance(ItemProc::Guardian, pw))
+			{
+				victim->m_guardianReadyAt = now + ItemRules::kGuardianCooldownMs;
+				ApplyStatus(victim, StatusId::Guard, pw >= 2 ? 4000u : 3000u, 1, victim->GetObjID());
+				UserHelper::BroadcastEffect(victim, victim->GetObjID(), EffectId::ProcGuardian, victim->GetX(), victim->GetY(), 0);
+			}
+		}
 
 		// 철벽 태세 반격 — 살아 있고, 간격이 지났으면 때린 몬스터에게 되돌려 준다.
 		if (!dead && guarding && now - victim->m_lastCounterAt >= kCounterIntervalMs && !monster->GetStat()->IsDead())

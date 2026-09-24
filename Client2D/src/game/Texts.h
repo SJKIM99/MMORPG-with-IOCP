@@ -25,6 +25,14 @@ namespace texts
 	std::string WorldNotice(WorldNoticeCode code, int32_t p1, int32_t p2, const std::string& name);
 	std::string ShopResultText(ShopKind kind, ShopResult result);
 
+	// ── V2 아이템 성장 ──
+	const char* SlotName(EquipSlot slot);            // "무기", "투구" ...
+	const char* WeaponKindName(WeaponKind kind);     // "한손검", "지팡이" ...
+	std::string OptionText(const OptionRoll& o);     // "치명타 확률 +1.2%", "방패 강타 피해 +30%"
+	std::string ProcText(ItemProc p, int power);     // 특수 효과 설명(확률·수치 포함)
+	// 이름(희귀도 접두 없이) — 신화·전설은 이름 앞에 ◆
+	std::string ItemNameFull(uint16_t itemId, int enchant, uint64_t extra);
+
 	std::string Number(long long v);          // 1,234
 	std::string Stars(int tier);              // ★★★☆☆
 }

@@ -6,6 +6,7 @@
 #include "Item/Inventory.h"
 #include "Data/LevelTable.h"
 #include "Data/CombatData.h"
+#include "Data/ItemRules.h"
 
 class User : public Subject
 {
@@ -46,6 +47,14 @@ public:
 	struct PendingImpact { uint32_t seq; uint16_t skillId; ObjID target; short x, y; };
 	std::vector<PendingImpact> m_pendingImpacts; // 예고 뒤 판정할 스킬(혜성·처형·룬 폭발)
 	uint32_t     m_impactSeq     = 0;
+
+	// ── V2 아이템 성장(Data/ItemRules.h) ───────────────────────────────────────
+	GearExtras   m_gearEx{};                // 착용 장비의 특수 효과·기술 강화·획득 보너스(RecomputeStats가 채움)
+	uint16_t     m_pityRare      = 0;       // "희귀 이상"을 못 본 장비 드롭 수(천장)
+	uint16_t     m_pityHeroic    = 0;       // "영웅 이상"을 못 본 장비 드롭 수
+	uint32_t     m_lastSortAt    = 0;       // 소지품 정리 도배 방지
+	uint32_t     m_guardianReadyAt = 0;     // 수호의 맹세(특수 효과) 재발동 시각
+	uint32_t     m_lifestealFxAt = 0;       // 피의 갈증 연출 간격
 
 	// ── V2 마을 NPC(Npc/NpcHelper) ─────────────────────────────────────────────
 	uint32_t     m_npcSeenTick   = 0;   // 마지막으로 NPC 틱이 이 사용자를 마을에서 본 번호(새로 오면 목록을 보낸다)

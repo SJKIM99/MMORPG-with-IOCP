@@ -561,6 +561,9 @@ void Game::HandleStats(const USER_STATS_INF_PACKET& p)
 	m_mp = p.mp;
 	m_maxmp = p.stats.maxMp;
 	m_attack = m_classId == ClassId::RuneCaster ? p.stats.magicAttack : p.stats.attack;
+	// 서버는 확장 세션의 이동속도를 능력치·장비로 계산한다(가속은 따로 더한다) — 예측도 같은 값으로
+	if (p.stats.moveSpeed > 0)
+		m_baseSpeedPercent = p.stats.moveSpeed;
 	if (Entity* me = Self())
 		me->classId = p.classId;
 	if (!first && p.freePoints > m_prevFreePoints)

@@ -214,6 +214,13 @@ namespace net
 		Queue(p, PacketType::NPC_SERVICE_REQ);
 	}
 
+	void NetClient::SendItemSort()
+	{
+		ITEM_SORT_REQ_PACKET p{};
+		p.mode = static_cast<uint8_t>(SortMode::Default);
+		Queue(p, PacketType::ITEM_SORT_REQ);
+	}
+
 	void NetClient::SendAttackFacing(bool facingLeft)
 	{
 		USER_ATTACK_REQ_PACKET p{};

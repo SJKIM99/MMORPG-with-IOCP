@@ -73,6 +73,10 @@ namespace UserHelper
 	void BroadcastInfoEx(const shared_ptr<User>& player);
 	void SendITEM_LIST_EX_ACK(const shared_ptr<User>& user);
 	void SendITEM_SLOT_EX_INF(const shared_ptr<User>& user, uint16_t slotIndex);
+	// V2 아이템 성장: 슬롯 인스턴스 값(희귀도·옵션), 주변 플레이어 외형, 소지품 정리
+	void SendITEM_DETAIL_INF(const shared_ptr<User>& user, uint16_t slotIndex);
+	void SendPLAYER_LOOK_NFY(Subject::SharedPtr viewer, const shared_ptr<User>& player);
+	void HandleItemSort(const shared_ptr<User>& player);
 	void SendADENA_INF(const shared_ptr<User>& user, int32_t delta, AdenaReason reason);
 	void SendENCHANT_RESULT_ACK(const shared_ptr<User>& user, EnchantResult result, uint16_t targetSlot, uint16_t itemId, uint8_t before, uint8_t after);
 	void SendSHOP_RESULT_ACK(const shared_ptr<User>& user, ShopKind kind, ShopResult result, uint32_t seq, uint16_t itemId, uint16_t count, int32_t adenaDelta);

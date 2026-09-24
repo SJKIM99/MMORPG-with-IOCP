@@ -47,7 +47,11 @@ struct Entity
 	uint8_t  flags = 0;              // SubjectExFlag
 	uint32_t nameHash = 0;
 	uint8_t  classId = 0;            // 플레이어 직업(ClassId)
-	uint8_t  weaponGrade = 0;
+	uint8_t  weaponGrade = 0;        // 플레이어: 무기 희귀도 / 아이템: 그 장비의 희귀도(Rarity)
+	// V2 착용 외형(PLAYER_LOOK_NFY) — EquipSlot - 1 순서(무기·투구·갑옷·장갑·신발·망토·목걸이·반지)
+	std::array<uint16_t, 8> gear{};
+	std::array<uint8_t, 8>  gearRarity{};
+	bool     gearKnown = false;
 
 	// 상태이상(표시용) — STATUS_NFY로 갱신, 만료는 클라 시계로
 	struct StatusFx { uint8_t id = 0; uint8_t stacks = 0; float until = 0.f; };
@@ -107,6 +111,8 @@ struct InvSlot
 	uint16_t count = 0;
 	bool     equipped = false;
 	uint8_t  enchant = 0;
+	uint64_t extra = 0;          // V2 희귀도·옵션(ITEM_DETAIL_INF, Data/ItemRules.h ItemInstance)
+	float    newAt = -100.f;     // 방금 들어온 좋은 물건(반짝임, 마우스를 올리면 꺼진다)
 	[[nodiscard]] bool Empty() const { return itemId == 0 || count == 0; }
 };
 
@@ -126,9 +132,12 @@ struct ClientInventory
 		for (int i = 0; i < MAX_INVENTORY_SLOTS; ++i) if (slots[i].itemId == itemId && slots[i].count > 0) return i;
 		return -1;
 	}
-	[[nodiscard]] int EquippedSlot() const
+	// 무기 부위에 장착 중인 슬롯(V2부터 방어구도 장착되므로 부위를 본다)
+	[[nodiscard]] int EquippedSlot() const { return EquippedIn(EquipSlot::Weapon); }
+	[[nodiscard]] int EquippedIn(EquipSlot part) const
 	{
-		for (int i = 0; i < MAX_INVENTORY_SLOTS; ++i) if (slots[i].equipped && !slots[i].Empty()) return i;
+		for (int i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+			if (slots[i].equipped && !slots[i].Empty() && ItemTableData::SlotOf(slots[i].itemId) == part) return i;
 		return -1;
 	}
 	[[nodiscard]] int FreeSlots() const

@@ -619,6 +619,56 @@ namespace skillfx
 			fxs.Ring(iso, 6.f, 50.f + param * 12.f, 0.4f, Rgb(0x9AF06A, 230), 6.f);
 			for (int i = 0; i < 8 + param * 3; ++i) Ember(iso, 20.f, Rgb(0xC8FF8A), Rgb(0x2A8A20, 0), 18.f, RandF(0.4f, 0.8f));
 			break;
+		// ── 장비 특수 효과 ──
+		case EffectId::ProcThunder:
+			// 하늘에서 떨어지는 벼락 + 바닥 번쩍임
+			Bolt(Vector2{ iso.x + RandF(-18.f, 18.f), iso.y }, 230.f, iso, 18.f, Rgb(0xBFE8FF), 0.28f);
+			Bolt(Vector2{ iso.x + RandF(-30.f, 30.f), iso.y }, 200.f, iso, 24.f, Rgb(0x8AC8FF), 0.22f);
+			fxs.Ring(iso, 4.f, 58.f, 0.3f, Rgb(0xD8F0FF, 240), 5.f);
+			Glow(iso, 20.f, 30.f, 90.f, Rgb(0x9AD8FF, 220), 0.28f);
+			for (int i = 0; i < 10; ++i) Spark(iso, 18.f, RandF(120.f, 260.f), RandF(0.f, 6.28f), Rgb(0xFFFFFF), Rgb(0x6AB8FF, 0), 0.3f, 5.f);
+			break;
+		case EffectId::ProcLifesteal:
+			// 붉은 기운이 주인에게 스며든다
+			for (int i = 0; i < 8; ++i)
+			{
+				Particle& p = P();
+				const float a = RandF(0.f, 6.28f), r = RandF(14.f, 26.f);
+				p.pos = { iso.x + std::cos(a) * r, iso.y + std::sin(a) * r * 0.5f };
+				p.z = RandF(10.f, 50.f);
+				p.vel = { -std::cos(a) * r * 1.6f, -std::sin(a) * r * 0.8f };
+				p.vz = RandF(10.f, 30.f);
+				p.life = p.maxLife = RandF(0.4f, 0.6f);
+				p.size0 = RandF(3.f, 5.f); p.size1 = 0.5f;
+				p.c0 = Rgb(0xFF6A7A, 230); p.c1 = Rgb(0xC02040, 0);
+			}
+			break;
+		case EffectId::ProcFrost:
+			fxs.Ring(iso, 4.f, 44.f, 0.35f, Rgb(0xC8F0FF, 220), 4.f);
+			for (int i = 0; i < 8; ++i) Shard(iso, RandF(10.f, 40.f), Rgb(0xE0F8FF, 230), RandF(60.f, 140.f), 4.f, 0.5f);
+			break;
+		case EffectId::ProcExecute:
+			fxs.Ring(iso, 4.f, 52.f, 0.28f, Rgb(0xFF7A3A, 240), 6.f);
+			for (int i = 0; i < 10; ++i) Spark(iso, 30.f, RandF(140.f, 280.f), RandF(0.f, 6.28f), Rgb(0xFFE0A0), Rgb(0xFF3A10, 0), 0.32f, 6.f);
+			break;
+		case EffectId::ProcEcho:
+			fxs.Ring(iso, 4.f, 40.f, 0.3f, Rgb(0xD8C0FF, 220), 3.f);
+			fxs.Ring(iso, 4.f, 64.f, 0.45f, Rgb(0xB090FF, 160), 2.f);
+			Glow(iso, 30.f, 16.f, 60.f, Rgb(0xC8A8FF, 180), 0.3f);
+			break;
+		case EffectId::ProcGuardian:
+			fxs.Ring(iso, 10.f, 46.f, 0.5f, Rgb(0xFFE08A, 230), 5.f);
+			Glow(iso, 34.f, 40.f, 70.f, Rgb(0xFFD870, 160), 0.5f);
+			for (int i = 0; i < 10; ++i) Ember(iso, RandF(10.f, 60.f), Rgb(0xFFF0B0), Rgb(0xFFB030, 0), 22.f, RandF(0.5f, 0.8f));
+			break;
+		case EffectId::ProcEmber:
+			for (int i = 0; i < 10; ++i) Ember(iso, RandF(10.f, 40.f), Rgb(0xFFC050), Rgb(0xFF3A10, 0), 16.f, RandF(0.35f, 0.6f));
+			fxs.Ring(iso, 4.f, 34.f, 0.3f, Rgb(0xFF8A3A, 200), 3.f);
+			break;
+		case EffectId::ProcVenom:
+			fxs.Ring(iso, 4.f, 34.f, 0.3f, Rgb(0x9AF06A, 200), 3.f);
+			for (int i = 0; i < 8; ++i) Ember(iso, RandF(10.f, 40.f), Rgb(0xC8FF8A), Rgb(0x2A8A20, 0), 14.f, RandF(0.4f, 0.7f));
+			break;
 		default:
 			break;
 		}

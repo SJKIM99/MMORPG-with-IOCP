@@ -444,6 +444,16 @@ namespace Route
 			NpcHelper::HandleService(client, p->npcId, p->service);
 			break;
 		}
+		case PacketType::ITEM_SORT_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr || client->IsTransferring())
+				break;
+			UserHelper::HandleItemSort(client);
+			break;
+		}
 		case PacketType::CS_CHAT:
 		{
 			if (session->m_state != SOCKET_STATE::ST_INGAME)

@@ -25,6 +25,13 @@ namespace icons
 
 	Color GradeColor(ItemGrade grade);
 	Color ItemNameColor(uint16_t itemId);
+	// V2: 인스턴스 희귀도까지 반영한 이름 색(장비), 희귀도 색
+	Color ItemNameColor(uint16_t itemId, uint64_t extra);
+	Color RarityColor(Rarity r);
+	// 무기의 빛 색(지팡이 수정 · 칼날 끝) — 캐릭터가 든 지팡이를 같은 색으로 그린다
+	Color WeaponAccent(uint16_t itemId);
+	// 방어구·장신구의 모양 번호와 색(아이콘과 캐릭터 외형이 같은 색을 쓰게). 없으면 false.
+	bool GearStyle(uint16_t itemId, int& style, Color& main, Color& trim, Color& accent);
 	// 강화 수치에 따른 칼날 빛(0이면 투명)
 	Color EnchantGlow(int enchant);
 }

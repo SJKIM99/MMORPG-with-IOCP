@@ -312,6 +312,13 @@ Color Game::NameColor(const Entity& e) const
 		if (diff <= -8) return Rgb(0x9A9A9A);
 		return Rgb(0xF2EEDC);
 	}
+	// 바닥 장비는 희귀도 색(서버가 알려 준 희귀도 — 옵션은 주워야 보인다)
+	if (const ItemTableRow* row = ItemTableData::Find(e.itemId); row && row->type == ItemType::eEquipment)
+	{
+		const int floor = static_cast<int>(ItemRules::FloorRarity(*row));
+		const int sent = std::min<int>(e.weaponGrade, static_cast<int>(Rarity::Count) - 1);
+		return icons::RarityColor(static_cast<Rarity>(std::max(floor, sent)));
+	}
 	return icons::ItemNameColor(e.itemId);
 }
 
@@ -333,6 +340,7 @@ void Game::UpdateGame(float dt)
 	TickMovement();
 	RunScript(dt);
 	TickCombat(dt);
+	TickLoot();
 	UpdateNpcs(sdt);
 
 	// ── 이동(내 캐릭터: 예측·보정·스무딩 / 다른 개체: 걸음 시간대로 보간) ──
@@ -631,14 +639,15 @@ void Game::HandleWorldInput()
 	const bool overUi = ui::MouseOverUi() || ui::MouseConsumed();
 	const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 
-	// 인벤토리에서 끌어다 월드에 놓으면 버리기
-	if (ui::Dragging() && ui::DragReleased() && !overUi && ui::Drag().kind == 1)
+	// 인벤토리(또는 장비창)에서 끌어다 월드에 놓으면 버리기 — 여러 개이거나 희귀 이상·착용 중이면 한 번 묻는다
+	if (ui::Dragging() && ui::DragReleased() && !overUi && (ui::Drag().kind == 1 || ui::Drag().kind == 3))
 	{
 		const int slot = ui::Drag().index;
 		const InvSlot& s = m_inv.slots[slot];
 		if (!s.Empty())
 		{
-			if (s.count > 1)
+			const bool precious = s.equipped || SlotRarity(s) >= Rarity::Rare || s.enchant > 0;
+			if (s.count > 1 || precious)
 				m_discard = Discard{ true, slot, s.count };
 			else
 				m_net.SendDiscard(static_cast<uint16_t>(slot), 1);
@@ -1340,7 +1349,7 @@ void Game::RunScript(float dt)
 			if (m_hp * 2 < m_maxhp) UseQuickSlot(0);
 		}
 	}
-	else if (s == "skill" || s == "combat")
+	else if (s == "skill" || s == "combat" || s == "loot")
 	{
 		// 마을 밖으로 나가 가까운 몬스터에게 직업 기술을 돌려 가며 쓴다(연계 순서대로).
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
@@ -1352,6 +1361,19 @@ void Game::RunScript(float dt)
 			m_scriptStep = 2;
 		else if (m_scriptStep == 2)
 		{
+			// loot: 떨어진 물건이 가까이 있으면 먼저 줍는다(희귀도 빛기둥 · 획득 연출 확인용)
+			if (s == "loot" && (m_goal.kind == GoalKind::None || m_goal.kind == GoalKind::Move))
+			{
+				const Entity* best = nullptr;
+				int bestD = 99;
+				for (auto& [id, e] : m_ents)
+				{
+					if (e.kind != EntityKind::Item || e.removing || e.flyT >= 0.f) continue;
+					const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
+					if (d < bestD && d <= 7) { bestD = d; best = &e; }
+				}
+				if (best) SetGoal(Goal{ GoalKind::Pickup, best->id, best->tx, best->ty });
+			}
 			if (m_goal.kind == GoalKind::None)
 			{
 				bool any = false;
@@ -1382,9 +1404,95 @@ void Game::RunScript(float dt)
 			if (m_hp * 2 < m_maxhp) UseQuickSlot(0);
 		}
 	}
+	else if (s == "gear" || s == "gearsort")
+	{
+		// 장비창·툴팁·비교를 차례로 비춘다(스크린샷 간격 2초에 맞춤)
+		auto hoverGrid = [&](int idx)
+		{
+			ui::SetMouseOverride(true, Vector2{ m_invGridPos.x + (idx % 6) * 58.f + 27.f, m_invGridPos.y + (idx / 6) * 58.f + 27.f });
+		};
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_invOpen = true; m_scriptStep = 1; }
+		if (m_scriptStep >= 1)
+		{
+			const float t = m_scriptT;
+			if (s == "gearsort")
+			{
+				if (m_scriptStep == 1 && t > 2.5f) { m_invSearch.text = "치명"; m_scriptStep = 2; }
+				else if (m_scriptStep == 2 && t > 5.0f) { m_invSearch.text.clear(); m_net.SendItemSort(); m_sortSentAt = m_now; m_scriptStep = 3; }
+				ui::SetMouseOverride(true, Vector2{ 20.f, static_cast<float>(m_screenH) - 20.f });
+			}
+			else
+			{
+				// 가방에서 첫 번째로 "입지 않은 장비"를 골라 비교 툴팁, 그다음 장비칸 무기
+				int unequipped[3] = { -1, -1, -1 };
+				int n = 0;
+				for (int i = 0; i < MAX_INVENTORY_SLOTS && n < 3; ++i)
+					if (!m_inv.slots[i].Empty() && !m_inv.slots[i].equipped && ItemTableData::SlotOf(m_inv.slots[i].itemId) != EquipSlot::None)
+						unequipped[n++] = i;
+				if (t < 2.f) ui::SetMouseOverride(true, Vector2{ 20.f, static_cast<float>(m_screenH) - 20.f });
+				else if (t < 4.f && unequipped[0] >= 0) hoverGrid(unequipped[0]);
+				else if (t < 6.f && unequipped[1] >= 0) hoverGrid(unequipped[1]);
+				else if (t < 8.f && unequipped[2] >= 0) hoverGrid(unequipped[2]);
+				else if (t < 10.f)
+				{
+					const Rectangle& r = m_equipRects[static_cast<size_t>(EquipSlot::Weapon)];
+					ui::SetMouseOverride(true, Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f });
+				}
+				else ui::SetMouseOverride(true, Vector2{ 20.f, static_cast<float>(m_screenH) - 20.f });
+			}
+		}
+	}
+	else if (s == "lootshow")
+	{
+		// 가방의 장비를 한 칸씩 옮겨 가며 바닥에 내려놓는다 — 희귀도별 빛기둥 확인용
+		const int bx = WorldData::kTownX0 + 16, by = WorldData::kTownY0 + 27;
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { SetGoal(Goal{ GoalKind::Move, ObjID{}, bx, by }); m_scriptStep = 1; }
+		else if (m_scriptStep >= 1 && m_scriptStep < 7 && m_goal.kind == GoalKind::None && m_now >= m_actionLockUntil)
+		{
+			const int k = m_scriptStep - 1;
+			if (m_predX == bx + k && m_predY == by)
+			{
+				// 가장 희귀한 "입지 않은 장비"부터
+				int best = -1;
+				for (int i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+				{
+					const InvSlot& it = m_inv.slots[i];
+					if (it.Empty() || it.equipped || ItemTableData::SlotOf(it.itemId) == EquipSlot::None) continue;
+					if (best < 0 || SlotRarity(it) > SlotRarity(m_inv.slots[best])) best = i;
+				}
+				if (best >= 0) m_net.SendDiscard(static_cast<uint16_t>(best), 1);
+				m_scriptStep += 1;
+				SetGoal(Goal{ GoalKind::Move, ObjID{}, bx + k + 1, by });
+			}
+			else
+				SetGoal(Goal{ GoalKind::Move, ObjID{}, bx + k, by });
+		}
+		else if (m_scriptStep == 7 && m_goal.kind == GoalKind::None)
+		{
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, bx + 2, by + 3 });
+			m_scriptStep = 8;
+		}
+	}
+	else if (s == "smith")
+	{
+		// 대장장이(2)의 구매 창(두 줄 목록)
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, 2 }); m_scriptStep = 1; }
+		else if (m_scriptStep == 1 && m_dialogNpc != 0) { m_shopMode = ShopMode::Buy; m_buyItem = ItemTableData::Id::PaddedArmor; m_scriptStep = 2; }
+	}
 	else if (s == "charwin")
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.5f) { m_charOpen = true; m_scriptStep = 1; }
+	}
+	else if (s == "stand")
+	{
+		// 이름마다 다른 칸에 서 있는다(여러 클라이언트로 외형 비교)
+		if (m_scriptStep == 0 && m_scriptT > 1.0f)
+		{
+			uint32_t h = 2166136261u;
+			for (char c : m_playerName) h = (h ^ static_cast<uint8_t>(c)) * 16777619u;
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 17 + static_cast<int>(h % 6u), WorldData::kTownY0 + 25 + static_cast<int>((h / 6u) % 2u) * 2 });
+			m_scriptStep = 1;
+		}
 	}
 	else if (s == "plaza")
 	{

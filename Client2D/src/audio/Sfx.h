@@ -25,6 +25,8 @@ namespace sfx
 		TeleWarn, Interrupt, StatUp, DotTick, Miss, Freeze, Stun,
 		// 살아 있는 마을
 		Voice, DogBark, CatMeow, Cluck, Lute, Pet,
+		// 아이템 성장: 희귀도별 획득음
+		LootRare, LootHeroic, LootLegendary, LootMythic,
 		Count
 	};
 

@@ -8,6 +8,7 @@
 #include "render/GameCamera.h"
 #include "render/Terrain.h"
 #include "render/Lighting.h"
+#include "render/Actors.h"
 #include "ui/Ui.h"
 
 #include <array>
@@ -80,6 +81,9 @@ private:
 		double start = 0.0;
 	};
 	struct Discard { bool open = false; int slot = -1; int count = 1; };
+	// 아이템 툴팁 모드(무엇을 덧붙일지: 비교 · 착용 안내 · 판매가)
+	enum class TipMode { Inventory, Equipped, Shop, Sell };
+
 
 	// ── 프레임 ──
 	void UpdateLogin(float dt);
@@ -106,6 +110,23 @@ private:
 	void HandleSubjectInfoEx(const SUBJECT_INFO_EX_NFY_PACKET& p);
 	void HandleMoveAck(const USER_MOVE_EX_ACK_PACKET& p);
 	void HandleServerConfig(const SERVER_CONFIG_INF_PACKET& p);
+	// ── 아이템 성장(GameItems.cpp) ──
+	void HandleItemDetail(const ITEM_DETAIL_INF_PACKET& p);
+	void HandlePlayerLook(const PLAYER_LOOK_NFY_PACKET& p);
+	void AnnounceLoot(int slot, int gained);
+	void TickLoot();
+	[[nodiscard]] actors::PlayerLook LookOf(const Entity& e) const;
+	[[nodiscard]] Rarity SlotRarity(const InvSlot& s) const;
+	// 지금 장비에서 invSlot 장비를 입었을 때(같은 부위는 벗는다)의 전투 능력치. invSlot < 0이면 지금 그대로.
+	// unequip이 true면 그 슬롯 장비를 벗었을 때.
+	[[nodiscard]] DerivedStats StatsIf(int invSlot, bool unequip = false) const;
+	[[nodiscard]] int UpgradeScore(int invSlot) const;   // > 0 이면 갈아입을 만하다(▲)
+	[[nodiscard]] GearExtras MyGearExtras() const;       // 지금 입은 장비의 특수 효과·기술 강화·세트(서버와 같은 계산)
+	[[nodiscard]] bool CanWear(const ItemTableRow& row, std::string* why = nullptr) const;
+	void BuildItemTip(std::vector<ui::TooltipLine>& out, const InvSlot& s, TipMode mode, int invSlot) const;
+	void DrawItemTooltip(const InvSlot& s, TipMode mode, int invSlot = -1);
+	void DrawEquipPanel(Rectangle area);
+	void TryEquipFromUi(int invSlot, EquipSlot target);
 	// ── 전투 V2(GameCombat.cpp) ──
 	void HandleStats(const USER_STATS_INF_PACKET& p);
 	void HandleResource(const USER_RESOURCE_INF_PACKET& p);
@@ -210,7 +231,7 @@ private:
 	void DrawToasts();
 	void DrawHelp();
 	void DrawWorldMap();
-	void DrawItemTooltip(uint16_t itemId, uint8_t enchant, int count, bool equipped, bool forSell);
+	void DrawItemTooltip(uint16_t itemId, uint8_t enchant, int count, bool equipped, bool forSell);   // 상점 등(인스턴스 없음)
 	void DrawCursor();
 
 	// ── 도우미 ──
@@ -361,6 +382,16 @@ private:
 	EnchantFlow      m_enchant;
 	Discard          m_discard;
 	int              m_invHover = -1;
+	// ── 아이템 성장 UI ──
+	ui::TextField    m_invSearch;
+	// 획득 판정: 슬롯 알림이 몰려 오는 동안(교환·정리는 여러 칸이 한꺼번에 바뀐다) 처음 상태를
+	// 기억해 두었다가, 잠깐 뒤 "처음에 없던 물건"만 획득으로 알린다.
+	std::array<InvSlot, MAX_INVENTORY_SLOTS> m_invBaseline{};
+	double           m_invBaselineAt = -1.0;
+	double           m_sortSentAt = -10.0;
+	int              m_equipHover = -1;           // 장비칸(EquipSlot) 위 마우스
+	Vector2          m_invGridPos{};              // 가방 첫 칸 위치(테스트 스크립트·안내용)
+	std::array<Rectangle, 9> m_equipRects{};      // EquipSlot별 장비칸 위치
 	Rectangle        m_invRect{};
 	double           m_ambNext = 0.0;
 	bool             m_ghostDraw = false;

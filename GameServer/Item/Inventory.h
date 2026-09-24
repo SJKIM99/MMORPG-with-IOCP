@@ -50,8 +50,8 @@ public:
 	// 슬롯 인덱스들을 담아준다(스택이 여러 슬롯에 걸쳐 나뉘어 채워지면 2개 이상일
 	// 수 있다) — 호출자가 어떤 슬롯이 바뀌었는지 알아야(예: 클라이언트에 알림)
 	// 할 때 GetSlots() 전체를 다시 비교하지 않도록 하기 위함.
-	// enchant는 장비에만 의미가 있다(강화된 무기를 바닥에서 다시 주울 때 수치 유지).
-	[[nodiscard]] bool TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots = nullptr, uint8_t enchant = 0) noexcept;
+	// enchant/extra는 장비에만 의미가 있다(강화 수치 · V2 희귀도·옵션 — 바닥에서 다시 주울 때 유지).
+	[[nodiscard]] bool TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint16_t>* outTouchedSlots = nullptr, uint8_t enchant = 0, uint64_t extra = 0) noexcept;
 
 	// slotIndex에 아이템이 없거나, count보다 적게 들어있으면 false.
 	[[nodiscard]] bool TryRemoveItem(uint16_t slotIndex, uint16_t count) noexcept;
@@ -63,6 +63,8 @@ public:
 	[[nodiscard]] Item::SharedPtr TryExtractItem(uint16_t slotIndex, uint16_t count) noexcept;
 
 	// slotIndex가 비어있거나, 장비 아이템이 아니거나, 이미 장착 중이면 false.
+	// V2: 장비는 부위(EquipSlot)마다 하나씩 장착된다 — 아래의 "이전 장비"는 같은 부위의 장비다.
+	// 확장 세션은 직업 전용 · 착용 레벨도 검사한다(레거시 세션은 예전처럼 무기만 다룬다).
 	// 이 인벤토리에 이미 장착 중이던 "다른" 장비가 있었다면, 그 장비를 탈착하는
 	// 것과 새 장비를 장착하는 것이 하나의 원자적 동작으로 함께 일어난다(둘 다
 	// 장착된 상태나 둘 다 미장착인 상태가 잠깐이라도 관측되지 않는다 — 메모리
@@ -96,10 +98,14 @@ public:
 	// 슬롯 인덱스 -> Item. 빈 슬롯은 키 자체가 존재하지 않는다(부재 = 빈 슬롯).
 	[[nodiscard]] const std::unordered_map<uint16_t, Item::SharedPtr>& GetSlots() const noexcept { return _slots; }
 
-	// 지금 장착 중인 장비의 ItemTableId(없으면 ITEM_TABLE_ID_NONE). TryEquip이
-	// "새로 장착하면 이전 장비는 자동으로 탈착"을 원자적으로 보장하므로 실제로는
-	// 항상 0개 또는 1개만 장착 상태다 — 순회 중 처음 발견한 것을 돌려준다.
+	// 지금 장착 중인 "무기"의 ItemTableId(없으면 ITEM_TABLE_ID_NONE). TryEquip이
+	// "새로 장착하면 같은 부위의 이전 장비는 자동으로 탈착"을 원자적으로 보장하므로
+	// 부위마다 0개 또는 1개만 장착 상태다.
 	[[nodiscard]] ItemTableId GetEquippedItemId() const noexcept;
+	// 그 부위에 장착 중인 슬롯(없으면 MAX_INVENTORY_SLOTS)
+	[[nodiscard]] uint16_t FindEquipped(EquipSlot slot) const noexcept;
+	// 슬롯의 V2 인스턴스 값(희귀도·옵션). 비었거나 장비가 아니면 0.
+	[[nodiscard]] uint64_t GetSlotExtra(uint16_t slotIndex) const noexcept;
 	// 장착 중인 무기의 강화 수치(장착한 게 없으면 0)
 	[[nodiscard]] uint8_t GetEquippedEnchant() const noexcept;
 
@@ -108,8 +114,13 @@ public:
 	// 경로 끝에서 호출한다 — "언제 호출을 빠뜨렸는지" 따지는 대신, 항상 최종 상태를
 	// 그대로 다시 계산하므로 항상 정확하다. (레벨업 경로에서도 불러야 해서 public)
 	void RecomputeOffensive() const;
-	// V2: 장착 장비의 능력치 보너스를 모은다(User::RecomputeStats가 부른다).
-	void CollectGearBonus(struct GearBonus& out) const;
+	// V2: 장착 장비(전 부위)의 능력치 보너스 · 특수 효과를 모은다(User::RecomputeStats가 부른다).
+	void CollectGearBonus(struct GearBonus& out, struct GearExtras* outExtras = nullptr) const;
+
+	// V2: 소지품 정리 — 같은 물건 스택을 합치고, 착용 중 → 장비(부위·희귀도 순) → 소모품 순으로
+	// 슬롯을 다시 놓는다. 모든 이동은 두 칸짜리 교환(한 DB 트랜잭션)의 연속이라 도중에 서버가
+	// 죽어도 아이템이 사라지거나 복제되지 않는다. 바뀐 칸 수를 돌려준다.
+	int TrySort() noexcept;
 
 	// ── 리니지풍 컨텐츠 확장 ────────────────────────────────────────────────
 	// 지갑(아데나). 리니지에서는 아데나도 인벤토리 안의 물건이라, 슬롯과 같은 곳에서

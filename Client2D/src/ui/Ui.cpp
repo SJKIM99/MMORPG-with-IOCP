@@ -23,7 +23,70 @@ namespace ui
 
 		std::vector<TooltipLine> g_tip;
 		uint16_t g_tipIcon = 0;
+		Color g_tipAccent{ 0, 0, 0, 0 };
 		bool g_hasTip = false;
+		std::vector<TooltipLine> g_cmp;
+		uint16_t g_cmpIcon = 0;
+		Color g_cmpAccent{ 0, 0, 0, 0 };
+		std::string g_cmpHeader;
+		bool g_hasCmp = false;
+
+		Vector2 MeasureTip(const std::vector<TooltipLine>& lines, uint16_t icon)
+		{
+			float w = 0.f, h = 12.f;
+			for (const auto& l : lines)
+			{
+				if (l.text == "---") { h += 9.f; continue; }
+				const Vector2 m = Fonts().Measure(l.text, l.size);
+				w = std::max(w, m.x);
+				h += l.size + 5.f;
+			}
+			const float iconW = icon ? 52.f : 0.f;
+			w += 24.f + iconW;
+			h = std::max(h + 4.f, icon ? 64.f : 0.f);
+			return Vector2{ std::max(w, 120.f), h };
+		}
+
+		void DrawTip(const std::vector<TooltipLine>& lines, uint16_t icon, Color accent, Rectangle r, std::string_view header)
+		{
+			DrawRectangleRounded(Rectangle{ r.x + 3, r.y + 4, r.width, r.height }, 0.08f, 6, Color{ 0, 0, 0, 110 });
+			Panel(r, 1.f, false);
+			if (accent.a > 0)
+			{
+				DrawRectangleRoundedLinesEx(r, 0.06f, 6, 1.6f, util::MulA(accent, 0.85f));
+				// 위쪽 희귀도 띠
+				DrawRectangleGradientV(static_cast<int>(r.x + 2), static_cast<int>(r.y + 2), static_cast<int>(r.width - 4), 18, util::MulA(accent, 0.28f), util::MulA(accent, 0.f));
+			}
+			if (!header.empty())
+			{
+				const Vector2 hm = Fonts().Measure(header, 12.f);
+				const Rectangle hr{ r.x + 10, r.y - 16, hm.x + 16, 18 };
+				DrawRectangleRounded(hr, 0.4f, 6, Color{ 40, 34, 30, 240 });
+				DrawRectangleRoundedLinesEx(hr, 0.4f, 6, 1.f, theme::kBorder);
+				TextShadow(header, Vector2{ hr.x + 8, hr.y + 2 }, 12.f, theme::kTextDim);
+			}
+			const float iconW = icon ? 52.f : 0.f;
+			if (icon)
+			{
+				const Rectangle ir{ r.x + 10, r.y + 10, 44, 44 };
+				if (accent.a > 0)
+					DrawCircleGradient(static_cast<int>(ir.x + 22), static_cast<int>(ir.y + 22), 26.f, util::MulA(accent, 0.45f), util::MulA(accent, 0.f));
+				SlotFrame(ir, false, false, accent.a > 0 ? accent : theme::kBorder);
+				icons::Draw(icon, Rectangle{ ir.x + 2, ir.y + 2, 40, 40 });
+			}
+			float ty = r.y + 10.f;
+			for (const auto& l : lines)
+			{
+				if (l.text == "---")
+				{
+					Divider(r.x + 12.f + iconW * 0.f, r.x + r.width - 12.f, ty + 3.f);
+					ty += 9.f;
+					continue;
+				}
+				TextShadow(l.text, Vector2{ r.x + 12.f + iconW, ty }, l.size, l.color);
+				ty += l.size + 5.f;
+			}
+		}
 
 		DragPayload g_drag{};
 		bool g_dragging = false;
@@ -35,6 +98,8 @@ namespace ui
 		std::vector<int> g_chars;
 
 		Rectangle g_lastHoverButton{};
+		bool g_mouseOverride = false;
+		Vector2 g_mouseOverridePos{};
 
 		bool Contains(Rectangle r, Vector2 p)
 		{
@@ -49,7 +114,7 @@ namespace ui
 	void BeginFrame(float dt)
 	{
 		g_time += dt;
-		g_mouse = GetMousePosition();
+		g_mouse = g_mouseOverride ? g_mouseOverridePos : GetMousePosition();
 		g_blockPrev.swap(g_blockNow);
 		g_blockNow.clear();
 		g_consumed = false;
@@ -85,37 +150,37 @@ namespace ui
 			g_focus = nullptr;
 		ime::SetEnabled(g_focus != nullptr && !g_focus->asciiOnly && !g_focus->password);
 
-		// 툴팁
+		// 툴팁(+ 비교 툴팁)
 		if (g_hasTip && !g_dragging)
 		{
-			float w = 0.f, h = 12.f;
-			for (const auto& l : g_tip)
-			{
-				const Vector2 m = Fonts().Measure(l.text, l.size);
-				w = std::max(w, m.x);
-				h += l.size + 5.f;
-			}
-			const float iconW = g_tipIcon ? 52.f : 0.f;
-			w += 24.f + iconW;
-			h = std::max(h + 4.f, g_tipIcon ? 64.f : 0.f);
+			const float SW = static_cast<float>(GetScreenWidth()), SH = static_cast<float>(GetScreenHeight());
+			const Vector2 sz = MeasureTip(g_tip, g_tipIcon);
+			const Vector2 csz = g_hasCmp ? MeasureTip(g_cmp, g_cmpIcon) : Vector2{ 0, 0 };
 			float x = g_mouse.x + 18.f, y = g_mouse.y + 14.f;
-			if (x + w > GetScreenWidth() - 4) x = g_mouse.x - w - 12.f;
-			if (y + h > GetScreenHeight() - 4) y = GetScreenHeight() - h - 4.f;
-			const Rectangle r{ x, y, w, h };
-			DrawRectangleRounded(Rectangle{ r.x + 3, r.y + 4, r.width, r.height }, 0.08f, 6, Color{ 0, 0, 0, 110 });
-			Panel(r, 1.f, false);
-			if (g_tipIcon)
+			if (x + sz.x > SW - 4) x = g_mouse.x - sz.x - 12.f;
+			if (y + sz.y > SH - 4) y = SH - sz.y - 4.f;
+			y = std::max(4.f, y);
+			float cx = 0.f;
+			if (g_hasCmp)
 			{
-				SlotFrame(Rectangle{ x + 10, y + 10, 44, 44 }, false, false);
-				icons::Draw(g_tipIcon, Rectangle{ x + 12, y + 12, 40, 40 });
+				// 비교 툴팁은 주 툴팁 옆(마우스 반대쪽)에
+				cx = x - csz.x - 8.f;
+				if (cx < 4.f)
+				{
+					cx = x + sz.x + 8.f;
+					if (cx + csz.x > SW - 4.f) { x = std::max(4.f, SW - 4.f - sz.x - csz.x - 8.f); cx = x + sz.x + 8.f; }
+				}
 			}
-			float ty = y + 10.f;
-			for (const auto& l : g_tip)
+			const Rectangle r{ x, y, sz.x, sz.y };
+			DrawTip(g_tip, g_tipIcon, g_tipAccent, r, {});
+			if (g_hasCmp)
 			{
-				TextShadow(l.text, Vector2{ x + 12.f + iconW, ty }, l.size, l.color);
-				ty += l.size + 5.f;
+				float cy = std::max(22.f, y + 18.f);
+				if (cy + csz.y > SH - 4) cy = SH - csz.y - 4.f;
+				DrawTip(g_cmp, g_cmpIcon, g_cmpAccent, Rectangle{ cx, cy, csz.x, csz.y }, g_cmpHeader);
 			}
 		}
+		g_hasCmp = false;
 
 		// 드래그 아이콘
 		if (g_dragging && g_dragDrawer)
@@ -127,6 +192,7 @@ namespace ui
 	}
 
 	Vector2 Mouse() { return g_mouse; }
+	void SetMouseOverride(bool on, Vector2 pos) { g_mouseOverride = on; g_mouseOverridePos = pos; }
 
 	bool MouseOverUi()
 	{
@@ -369,11 +435,22 @@ namespace ui
 		DrawLineEx(Vector2{ x0, y }, Vector2{ x1, y }, 1.f, Color{ 214, 176, 104, 90 });
 	}
 
-	void Tooltip(std::vector<TooltipLine> lines, uint16_t iconItemId)
+	void Tooltip(std::vector<TooltipLine> lines, uint16_t iconItemId, Color accent)
 	{
 		g_tip = std::move(lines);
 		g_tipIcon = iconItemId;
+		g_tipAccent = accent;
 		g_hasTip = true;
+		g_hasCmp = false;
+	}
+
+	void TooltipCompare(std::vector<TooltipLine> lines, uint16_t iconItemId, Color accent, std::string_view header)
+	{
+		g_cmp = std::move(lines);
+		g_cmpIcon = iconItemId;
+		g_cmpAccent = accent;
+		g_cmpHeader = std::string(header);
+		g_hasCmp = true;
 	}
 
 	// ── 드래그 ──

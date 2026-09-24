@@ -139,13 +139,35 @@ namespace actors
 		}
 
 		// 무기(로컬 각도 → 화면 각도 변환 포함)
-		void Weapon(const Rig& g, uint16_t itemId, float hx, float hy, float localAngle, float scale, float time, int enchant)
+		void Weapon(const Rig& g, uint16_t itemId, float hx, float hy, float localAngle, float scale, float time, int enchant, int rarity = 0)
 		{
 			if (itemId == 0) return;
 			const Vector2 hilt = g.P(hx, hy);
 			// 로컬 방향 벡터를 리그 변환으로 돌려 화면 각도를 구한다
 			const Vector2 tip = g.P(hx + std::cos(localAngle) * 10.f, hy + std::sin(localAngle) * 10.f);
 			const float ang = std::atan2(tip.y - hilt.y, tip.x - hilt.x);
+			// 영웅 이상: 희귀도 빛(전설은 더 크게, 신화는 반짝임까지)
+			if (rarity >= static_cast<int>(Rarity::Heroic))
+			{
+				const Color rc = Rgb(ItemRules::RarityColor(static_cast<Rarity>(rarity)));
+				const float len = icons::WeaponLength(itemId) * scale * g.s;
+				const float pulse = 0.7f + 0.3f * std::sin(time * 3.2f);
+				const float k = rarity >= static_cast<int>(Rarity::Legendary) ? 1.4f : 1.f;
+				const Vector2 d{ std::cos(ang), std::sin(ang) };
+				gfx::Additive(true);
+				gfx::LineGrad(Vector2{ hilt.x + d.x * len * 0.15f, hilt.y + d.y * len * 0.15f }, Vector2{ hilt.x + d.x * len * 1.1f, hilt.y + d.y * len * 1.1f },
+					g.R(9.f * k) * scale, g.R(3.f * k) * scale, WithA(rc, 0.35f * pulse), WithA(rc, 0.05f));
+				if (rarity >= static_cast<int>(Rarity::Mythic))
+				{
+					for (int i = 0; i < 3; ++i)
+					{
+						const float u = std::fmod(time * 0.9f + i * 0.33f, 1.f);
+						const Vector2 sp{ hilt.x + d.x * len * (0.3f + 0.7f * u), hilt.y + d.y * len * (0.3f + 0.7f * u) - g.R(4.f) * std::sin(u * kPi) };
+						gfx::Star(sp, g.R(0.6f), g.R(2.8f) * (1.f - u * 0.5f), 4, time * 2.f + i, WithA(Shade(rc, 1.4f), 0.9f * (1.f - u)));
+					}
+				}
+				gfx::Additive(false);
+			}
 			const Color glow = icons::EnchantGlow(enchant);
 			if (glow.a > 0)
 			{
@@ -281,6 +303,52 @@ namespace actors
 		return look;
 	}
 
+	void ApplyGear(PlayerLook& look, const uint16_t* items, const uint8_t* rarity, int count)
+	{
+		for (int i = 0; i < count; ++i)
+		{
+			const uint16_t id = items[i];
+			if (id == 0) continue;
+			int style = 0;
+			Color m{}, t{}, a{};
+			const EquipSlot part = static_cast<EquipSlot>(i + 1);
+			if (part == EquipSlot::Weapon)
+			{
+				look.weaponRarity = rarity[i];
+				continue;
+			}
+			if (rarity[i] > look.auraRarity && part != EquipSlot::Ring && part != EquipSlot::Necklace)
+				look.auraRarity = rarity[i];
+			if (!icons::GearStyle(id, style, m, t, a))
+				continue;
+			switch (part)
+			{
+			case EquipSlot::Helmet:
+				look.helmStyle = static_cast<int8_t>(style); look.helmMain = m; look.helmTrim = t; look.helmAccent = a;
+				break;
+			case EquipSlot::Armor:
+				look.bodyStyle = static_cast<int8_t>(style); look.bodyMain = m; look.bodyTrim = t; look.bodyAccent = a;
+				// 직업별 기본 색 자리에 갑옷 색을 앉힌다(로브는 옷자락, 나머지는 갑옷/조끼)
+				if (look.cls == 1 && (style == 3 || style == 6)) look.cloth = m;
+				else if (look.cls == 1) look.armor = m;
+				else { look.armor = m; if (style == 3 || style == 6) look.trim = Shade(m, 0.8f); }
+				break;
+			case EquipSlot::Cloak:
+				look.hasCloak = true; look.cloakMain = m; look.cloakTrim = t;
+				if (look.cls == 0) look.cloth = m;   // 기사는 원래 망토를 두른다 — 색만 바뀐다
+				break;
+			case EquipSlot::Gloves:
+				look.hasGloves = true; look.gloveMain = m;
+				break;
+			case EquipSlot::Boots:
+				look.hasBoots = true; look.bootMain = m;
+				break;
+			default:
+				break;
+			}
+		}
+	}
+
 	void DrawShadow(Vector2 base, float rx, float alpha)
 	{
 		gfx::EllipseGrad(base, rx, rx * 0.45f, Rgb(0x000000, static_cast<uint8_t>(110 * alpha)), Rgb(0x000000, 0));
@@ -316,6 +384,92 @@ namespace actors
 			if (c < 0.f) g.dir = -g.dir;
 			g.sx = std::max(0.28f, std::fabs(c));
 		}
+
+		// ── V2 장비 외형 ────────────────────────────────────────────────────────
+		// 투구: 직업 기본 머리 위에 덮는다(얼굴은 그늘 속 — 두건은 눈빛만 보인다).
+		void HelmOverlay(const Rig& g, float cx, float cy, float r, const PlayerLook& look, const Pose& p, bool back)
+		{
+			if (look.helmStyle < 0) return;
+			const Color m = look.helmMain, t = look.helmTrim, a = look.helmAccent;
+			switch (look.helmStyle)
+			{
+			case 0: case 4:   // 두건
+			{
+				Ball(g, cx, cy, r + 1.2f, m);
+				Tri(g, cx - r + 1.f, cy - 5.f, cx - 1.f, cy - r - 2.f, cx - r - 6.f, cy + 4.f, Shade(m, 0.78f));
+				if (!back)
+				{
+					Ell(g, cx + 4.f, cy + 2.f, r * 0.58f, r * 0.62f, Rgb(0x16121C));
+					gfx::Additive(true);
+					Circ(g, cx + 3.f, cy + 1.f, 1.1f, look.helmStyle == 4 ? Shade(t, 1.3f) : Rgb(0xE8D8B0, 200));
+					Circ(g, cx + 6.5f, cy + 1.f, 1.f, look.helmStyle == 4 ? Shade(t, 1.3f) : Rgb(0xE8D8B0, 200));
+					gfx::Additive(false);
+				}
+				if (look.helmStyle == 4)
+				{
+					gfx::Additive(true);
+					for (int i = 0; i < 3; ++i)
+						gfx::Star(g.P(cx - 5.f + i * 4.f, cy - r * 0.55f + (i % 2) * 3.f), g.R(0.4f), g.R(1.9f), 4, p.time + i, WithA(a, 0.85f));
+					gfx::Additive(false);
+				}
+				break;
+			}
+			case 1:   // 철모: 챙 + 코가리개
+				Ball(g, cx, cy - 1.f, r + 0.6f, m);
+				Ell(g, cx, cy + 3.f, r + 3.f, 2.2f, Shade(m, 0.75f));
+				if (!back) Seg(g, cx + 6.f, cy - 3.f, cx + 6.5f, cy + 5.f, 1.6f, t);
+				break;
+			case 2: case 3:   // 닫힌 투구(면갑) + 깃털 / 날개
+			{
+				Ball(g, cx, cy, r + 0.8f, m);
+				if (!back)
+				{
+					Quad(g, cx + 1.f, cy - 3.f, cx + r + 1.f, cy - 2.f, cx + r, cy + 6.f, cx + 1.f, cy + 7.f, Shade(m, 0.85f));
+					Seg(g, cx + 3.f, cy + 0.5f, cx + r, cy + 0.5f, 1.6f, Rgb(0x14121A));
+				}
+				Seg(g, cx - r * 0.2f, cy - r - 0.5f, cx - r * 0.2f, cy + r * 0.3f, 1.2f, t);
+				const float f = std::sin(p.time * 2.5f + p.walk * 0.5f) * 1.5f;
+				if (look.helmStyle == 2)
+				{
+					SegG(g, cx - 1.f, cy - r - 1.f, cx - 10.f + f, cy - r - 4.f, 4.f, 1.5f, a, Shade(a, 0.7f));
+					SegG(g, cx - 3.f, cy - r, cx - 12.f + f, cy - r + 3.f, 3.f, 1.f, Shade(a, 0.9f), Shade(a, 0.6f));
+				}
+				else
+				{
+					for (int s = -1; s <= 1; s += 2)
+						Tri(g, cx + s * (r - 1.f), cy - 3.f, cx + s * (r - 1.f), cy + 2.f, cx + s * (r + 7.f), cy - 9.f + f * 0.3f, a);
+					gfx::Additive(true);
+					Glow(g, cx, cy - 2.f, r + 6.f, WithA(a, 0.22f));
+					gfx::Additive(false);
+				}
+				break;
+			}
+			default: break;
+			}
+		}
+
+		// 가슴 갑옷(로브를 입는 룬술사가 판금·사슬·가죽을 입었을 때 로브 위에)
+		void ChestOverlay(const Rig& g, float b, const PlayerLook& look, bool back)
+		{
+			if (look.bodyStyle < 0 || look.bodyStyle == 3 || look.bodyStyle == 6) return;
+			const Color m = look.bodyMain, t = look.bodyTrim;
+			Quad4(g, -9, -44 + b, 9, -44 + b, 8, -28 + b, -8, -28 + b, Shade(m, 1.12f), Shade(m, 0.85f), Shade(m, 0.7f), Shade(m, 0.95f));
+			if (!back) Seg(g, 1, -43 + b, 1, -30 + b, 1.1f, Shade(t, 0.9f));
+			Ball(g, -8, -43 + b, 3.8f, Shade(m, 0.9f));
+		}
+
+		// 방어구 희귀도(영웅 이상) — 발밑에 은은한 빛
+		void GearAura(const Rig& g, const Pose& p, const PlayerLook& look)
+		{
+			if (look.auraRarity < static_cast<uint8_t>(Rarity::Heroic) || p.dead > 0.f) return;
+			const Color rc = Rgb(ItemRules::RarityColor(static_cast<Rarity>(look.auraRarity)));
+			const float pulse = 0.6f + 0.4f * std::sin(p.time * 2.2f);
+			gfx::Additive(true);
+			gfx::EllipseGrad(g.P(0, -1), g.R(19.f), g.R(6.5f), WithA(rc, 0.24f * pulse), WithA(rc, 0.f));
+			gfx::Additive(false);
+		}
+
+		Color HandColor(const PlayerLook& look, Color skin) { return look.hasGloves ? look.gloveMain : skin; }
 
 		// ── 황혼의 기사 ─────────────────────────────────────────────────────────
 		Arms KnightArms(const Pose& p)
@@ -409,7 +563,9 @@ namespace actors
 			g.ox += a.lean * 0.6f;
 			g.oy += a.crouch;
 			const Color armor = look.armor, cloth = look.cloth;
-			const Color skin = Rgb(0xE8B890);
+			const Color skin = HandColor(look, Rgb(0xE8B890));
+			const Color bootCol = look.hasBoots ? look.bootMain : Rgb(0x3A2A1E);
+			GearAura(g, p, look);
 			const bool back = p.faceBack;
 			const float armSwing = (a.offFront ? 0.f : -w.sw * 5.f);
 			const float sx = a.fx + armSwing, sy = a.fy + w.bob;
@@ -428,12 +584,13 @@ namespace actors
 					Limb(g, -7, -41 + w.bob, sx, sy, 3.f, Shade(armor, 0.75f));
 					Shield(g, sx, sy, Shade(cloth, 0.8f), Shade(armor, 0.7f), false);
 				}
-				Legs(g, w, Rgb(0x4A4038), Rgb(0x3A2A1E));
+				Legs(g, w, Rgb(0x4A4038), bootCol);
 				Torso(g, w, armor, look.trim, false);
 				Head(g, w, p, armor, cloth, false);
+				HelmOverlay(g, 0.f, -53.f + w.bob, 9.f, look, p, false);
 				Limb(g, 7, -41 + w.bob, a.hx, a.hy + w.bob, 3.2f, armor);
 				Circ(g, a.hx, a.hy + w.bob, 3.f, skin);
-				Weapon(g, look.weaponId, a.hx, a.hy + w.bob, a.ang, 0.78f, p.time, look.enchant);
+				Weapon(g, look.weaponId, a.hx, a.hy + w.bob, a.ang, 0.78f, p.time, look.enchant, look.weaponRarity);
 				Circ(g, 7, -42 + w.bob, 4.5f, Shade(armor, 1.05f));
 				if (a.offFront)
 				{
@@ -445,10 +602,11 @@ namespace actors
 			else
 			{
 				Limb(g, 7, -41 + w.bob, a.hx, a.hy + w.bob, 3.2f, Shade(armor, 0.75f));
-				Weapon(g, look.weaponId, a.hx, a.hy + w.bob, a.ang, 0.78f, p.time, look.enchant);
-				Legs(g, w, Rgb(0x4A4038), Rgb(0x3A2A1E));
+				Weapon(g, look.weaponId, a.hx, a.hy + w.bob, a.ang, 0.78f, p.time, look.enchant, look.weaponRarity);
+				Legs(g, w, Rgb(0x4A4038), bootCol);
 				Torso(g, w, armor, look.trim, true);
 				Head(g, w, p, armor, cloth, true);
+				HelmOverlay(g, 0.f, -53.f + w.bob, 9.f, look, p, true);
 				Cape(g, p, cloth, true);
 				Limb(g, -7, -41 + w.bob, sx, sy, 3.f, armor);
 				Shield(g, sx, sy, cloth, Shade(armor, 0.9f), true);
@@ -512,9 +670,11 @@ namespace actors
 		{
 			if (look.weaponId != 0 && !ItemTableData::IsStaff(look.weaponId))
 			{
-				Weapon(g, look.weaponId, hx, hy, ang, 0.72f, time, look.enchant);   // 지팡이가 아니면 그 무기를 든다
+				Weapon(g, look.weaponId, hx, hy, ang, 0.72f, time, look.enchant, look.weaponRarity);   // 지팡이가 아니면 그 무기를 든다
 				return;
 			}
+			// 초보자 지팡이는 주인의 룬 색, 다른 지팡이는 그 지팡이의 수정 색
+			const Color crystal = (look.weaponId != 0 && look.weaponId != ItemTableData::Id::ApprenticeStaff) ? icons::WeaponAccent(look.weaponId) : look.trim;
 			// 지팡이: 손 아래로 조금, 위로 길게. 끝에 룬 수정.
 			const float c = std::cos(ang), sn = std::sin(ang);
 			const float x0 = hx - c * 13.f, y0 = hy - sn * 13.f;
@@ -525,12 +685,25 @@ namespace actors
 			const float pulse = 0.75f + 0.25f * std::sin(time * 4.f);
 			const float gk = std::max(glow, 0.25f + look.enchant * 0.05f);
 			gfx::Additive(true);
-			Glow(g, x1 + c * 4.f, y1 + sn * 4.f, (12.f + 14.f * gk) * pulse, WithA(look.trim, 0.55f + 0.35f * gk));
+			Glow(g, x1 + c * 4.f, y1 + sn * 4.f, (12.f + 14.f * gk) * pulse, WithA(crystal, 0.55f + 0.35f * gk));
 			gfx::Additive(false);
 			const float cx = x1 + c * 4.f, cy = y1 + sn * 4.f;
-			Tri(g, cx - 3.f, cy, cx + 3.f, cy, cx, cy - 8.f, Shade(look.trim, 1.3f));
-			Tri(g, cx - 3.f, cy, cx + 3.f, cy, cx, cy + 5.f, Shade(look.trim, 0.8f));
+			Tri(g, cx - 3.f, cy, cx + 3.f, cy, cx, cy - 8.f, Shade(crystal, 1.3f));
+			Tri(g, cx - 3.f, cy, cx + 3.f, cy, cx, cy + 5.f, Shade(crystal, 0.8f));
 			Circ(g, cx, cy - 1.f, 1.3f, Rgb(0xFFFFFF, 230));
+			if (look.weaponRarity >= static_cast<uint8_t>(Rarity::Heroic))
+			{
+				const Color rc = Rgb(ItemRules::RarityColor(static_cast<Rarity>(look.weaponRarity)));
+				gfx::Additive(true);
+				Glow(g, cx, cy, 16.f + 6.f * pulse, WithA(rc, 0.35f));
+				if (look.weaponRarity >= static_cast<uint8_t>(Rarity::Mythic))
+					for (int i = 0; i < 3; ++i)
+					{
+						const float ang2 = time * 2.4f + i * kPi * 2.f / 3.f;
+						gfx::Star(g.P(cx + std::cos(ang2) * 8.f, cy + std::sin(ang2) * 5.f), g.R(0.5f), g.R(2.4f), 4, time * 3.f, WithA(Shade(rc, 1.4f), 0.9f));
+					}
+				gfx::Additive(false);
+			}
 		}
 
 		void DrawRuneCaster(const Pose& p, const PlayerLook& look)
@@ -542,9 +715,10 @@ namespace actors
 			g.oy += a.crouch;
 			const float b = w.bob;
 			const Color robe = look.cloth, rune = look.trim, leather = look.armor;
-			const Color skin = Rgb(0xE8C0A0);
+			const Color skin = HandColor(look, Rgb(0xE8C0A0));
 			const bool back = p.faceBack;
 			const float sway = std::sin(p.walk) * 2.2f * p.moving + std::sin(p.time * 1.7f) * 0.6f;
+			GearAura(g, p, look);
 
 			auto offHand = [&](bool front)
 			{
@@ -560,8 +734,9 @@ namespace actors
 			};
 			auto boots = [&]()
 			{
-				Ell(g, -3 - w.sw * 5.f, -1.5f - w.lift1, 4.f, 2.2f, Rgb(0x2A2018));
-				Ell(g, 4 + w.sw * 5.f, -1.5f - w.lift0, 4.2f, 2.3f, Rgb(0x3A2A1E));
+				const Color bc = look.hasBoots ? look.bootMain : Rgb(0x3A2A1E);
+				Ell(g, -3 - w.sw * 5.f, -1.5f - w.lift1, 4.f, 2.2f, Shade(bc, 0.8f));
+				Ell(g, 4 + w.sw * 5.f, -1.5f - w.lift0, 4.2f, 2.3f, bc);
 			};
 			auto body = [&]()
 			{
@@ -618,10 +793,13 @@ namespace actors
 
 			if (!back)
 			{
+				if (look.hasCloak) Cape(g, p, look.cloakMain, false);
 				if (!a.offFront) offHand(false);
 				boots();
 				body();
+				ChestOverlay(g, b, look, false);
 				head();
+				HelmOverlay(g, 0.f, -52.f + b, 9.5f, look, p, false);
 				Limb(g, 6, -41 + b, a.hx, a.hy + b, 2.9f, robe);
 				Circ(g, a.hx, a.hy + b, 2.8f, skin);
 				Staff(g, look, a.hx, a.hy + b, a.ang, p.time, a.glow);
@@ -633,7 +811,10 @@ namespace actors
 				Limb(g, 6, -41 + b, a.hx, a.hy + b, 2.9f, Shade(robe, 0.8f));
 				boots();
 				body();
+				ChestOverlay(g, b, look, true);
 				head();
+				HelmOverlay(g, 0.f, -52.f + b, 9.5f, look, p, true);
+				if (look.hasCloak) Cape(g, p, look.cloakMain, true);
 				offHand(true);
 			}
 		}
@@ -720,10 +901,11 @@ namespace actors
 			g.oy += a.crouch;
 			const float b = w.bob;
 			const Color leather = look.armor, scarf = look.cloth, eye = look.trim;
-			const Color skin = Rgb(0xD8A888);
+			const Color skin = HandColor(look, Rgb(0xD8A888));
 			const bool back = p.faceBack;
 			const float flut = std::sin(p.time * 5.f + p.walk) * (1.5f + p.moving * 3.f);
 			const float trail = p.moving * 7.f + std::fabs(a.lean) * 0.8f;
+			GearAura(g, p, look);
 
 			auto scarfTail = [&]()
 			{
@@ -733,12 +915,12 @@ namespace actors
 			auto dagger = [&](float x, float y, float ang, bool front)
 			{
 				Circ(g, x, y, 2.6f, front ? skin : Shade(skin, 0.8f));
-				Weapon(g, look.weaponId != 0 ? look.weaponId : static_cast<uint16_t>(ItemTableData::Id::HunterDagger), x, y, ang, 0.62f, p.time, look.enchant);
+				Weapon(g, look.weaponId != 0 ? look.weaponId : static_cast<uint16_t>(ItemTableData::Id::HunterDagger), x, y, ang, 0.62f, p.time, look.enchant, look.weaponRarity);
 			};
 			auto body = [&]()
 			{
 				// 다리: 가늘고 날렵하게
-				Legs(g, w, Rgb(0x2A2628), Rgb(0x151214), 0.9f);
+				Legs(g, w, Rgb(0x2A2628), look.hasBoots ? look.bootMain : Rgb(0x151214), 0.9f);
 				// 가죽 조끼 + X자 끈
 				Quad4(g, -8, -43 + b, 8, -43 + b, 7, -22 + b, -7, -22 + b, Shade(leather, 1.25f), Shade(leather, 0.9f), Shade(leather, 0.75f), Shade(leather, 1.0f));
 				if (!back)
@@ -778,6 +960,7 @@ namespace actors
 
 			if (!back)
 			{
+				if (look.hasCloak) Cape(g, p, look.cloakMain, false);
 				scarfTail();
 				if (!a.offFront)
 				{
@@ -786,6 +969,7 @@ namespace actors
 				}
 				body();
 				head();
+				HelmOverlay(g, 0.f, -51.f + b, 8.5f, look, p, false);
 				Limb(g, 6, -41 + b, a.hx, a.hy + b, 2.8f, leather);
 				dagger(a.hx, a.hy + b, a.ang, true);
 				if (a.offFront)
@@ -800,6 +984,8 @@ namespace actors
 				dagger(a.hx, a.hy + b, a.ang, false);
 				body();
 				head();
+				HelmOverlay(g, 0.f, -51.f + b, 8.5f, look, p, true);
+				if (look.hasCloak) Cape(g, p, look.cloakMain, true);
 				scarfTail();
 				Limb(g, -6, -41 + b, a.fx, a.fy + b, 2.6f, leather);
 				dagger(a.fx, a.fy + b, a.ang2, true);
