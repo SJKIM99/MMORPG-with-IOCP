@@ -61,6 +61,11 @@ namespace UserHelper
 
 	// ── 확장 프로토콜 송신(확장 세션에만 보낸다 — 내부에서 확인) ─────────────────
 	void SendUSER_INFO_EX_INF(const shared_ptr<User>& user);
+
+	// ── V2 ──
+	void SendUSER_MOVE_EX_ACK(const shared_ptr<User>& user, uint16_t seq, MoveResult result, uint32_t stepMs);
+	void SendSERVER_CONFIG_INF(const shared_ptr<User>& user);
+	void HandleMoveEx(const shared_ptr<User>& player, uint8_t dir, uint16_t seq);
 	void SendSUBJECT_INFO_EX_NFY(Subject::SharedPtr viewer, Subject::SharedPtr target);
 	// player의 확장 정보가 바뀌었을 때(레벨/성향치/보라돌이/가속/무기 강화) 본인과
 	// 주변의 확장 세션에 다시 알린다.

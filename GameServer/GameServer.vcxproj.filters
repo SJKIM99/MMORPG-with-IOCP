@@ -288,6 +288,9 @@
     <ClInclude Include="Protocol.h">
       <Filter>Utils</Filter>
     </ClInclude>
+    <ClInclude Include="ProtocolV2.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
     <ClInclude Include="pch.h">
       <Filter>Utils</Filter>
     </ClInclude>
@@ -317,6 +320,9 @@
       <Filter>Content</Filter>
     </ClInclude>
     <ClInclude Include="Data\LevelTable.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\MoveRule.h">
       <Filter>Data</Filter>
     </ClInclude>
     <ClInclude Include="Data\MonsterTable.h">

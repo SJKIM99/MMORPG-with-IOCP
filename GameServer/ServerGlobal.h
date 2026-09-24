@@ -24,3 +24,8 @@ extern std::shared_ptr<class GameSessionManager> GSessionManager;
 // Previously defined in Core/CoreGlobal.cpp (removed with Core library)
 extern std::shared_ptr<class ThreadManager>    GThreadManager;
 extern std::shared_ptr<class DBConnectionPool> GDBConnectionPool;
+
+// 시야 범위(체비셰프 칸). 예전 상수 VIEW_RANGE(5)를 대신한다 — 기본 9(원거리 직업·탐험),
+// 부하 테스트 조건을 재현할 때는 GameServer.exe --view-range 5.
+// 섹터(10칸) 3×3 이웃 탐색 안에 들어가야 하므로 SECTOR_RANGE를 넘지 않게 제한한다.
+extern int GViewRange;

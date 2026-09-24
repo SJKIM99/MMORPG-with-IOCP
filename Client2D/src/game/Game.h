@@ -4,12 +4,14 @@
 #include "net/NetClient.h"
 #include "game/Entity.h"
 #include "game/Path.h"
+#include "game/Motion.h"
 #include "render/GameCamera.h"
 #include "render/Terrain.h"
 #include "render/Lighting.h"
 #include "ui/Ui.h"
 
 #include <array>
+#include <cstdio>
 #include <deque>
 #include <string>
 #include <unordered_map>
@@ -37,6 +39,9 @@ public:
 		float       hour = -1.f;        // 테스트: 시각 고정(0~24)
 		std::string script;             // 테스트: 자동 조작 시나리오 이름
 		bool        mute = false;
+		std::string traceMove;          // 테스트: 내 이동(논리/표시 위치)을 프레임마다 CSV로 기록
+		int         lagMs = 0;          // 테스트: 인공 지연(한쪽 방향, ms)
+		int         jitterMs = 0;
 	};
 
 	bool Init(const Options& opts);
@@ -97,6 +102,8 @@ private:
 	void HandleSystemMessage(const SYSTEM_MESSAGE_INF_PACKET& p);
 	void HandleInfoEx(const USER_INFO_EX_INF_PACKET& p);
 	void HandleSubjectInfoEx(const SUBJECT_INFO_EX_NFY_PACKET& p);
+	void HandleMoveAck(const USER_MOVE_EX_ACK_PACKET& p);
+	void HandleServerConfig(const SERVER_CONFIG_INF_PACKET& p);
 	void HandleChat(const ObjID& sender, const std::string& senderName, const std::string& text, ChatChannel channel);
 
 	// ── 행동 ──
@@ -105,7 +112,9 @@ private:
 	void TickMovement();
 	void TickGoal();
 	bool StepToward(int gx, int gy, int stopWithin);
-	void SendStep(int dir);
+	bool SendStep(int dir);
+	int  PickMoveDir(int dx, int dy) const;   // 막히면 가장 가까운 열린 방향(미끄러짐)
+	void SyncMover();
 	void TryAttackTarget(Entity& target);
 	void UseSlot(int slot);
 	void UseQuickSlot(int index);
@@ -199,15 +208,14 @@ private:
 	double           m_deadAt = 0.0;
 	bool             m_restartSent = false;
 
-	// 이동 예측
+	// 이동 예측(game/Motion.h). m_srv*/m_pred*는 mover 값을 매 프레임 비춰 둔 사본.
+	motion::LocalMover m_mover;
 	int              m_srvX = 0, m_srvY = 0;
-	bool             m_pending = false;
-	double           m_pendingAt = 0.0;
 	int              m_predX = 0, m_predY = 0;
-	double           m_nextMoveAt = 0.0;
 	std::vector<path::Step> m_path;
 	double           m_repathAt = 0.0;
-	int              m_lastDir = 1;
+	int              m_viewRange = 9;          // 서버 설정(SERVER_CONFIG_INF)
+	uint32_t         m_baseSpeedPercent = 100; // 서버가 알려 준 내 이동속도(가속 제외)
 
 	// 목표/대상
 	Goal             m_goal;
@@ -269,4 +277,6 @@ private:
 	int              m_shotIndex = 0;
 	int              m_scriptStep = 0;
 	float            m_scriptT = 0.f;
+	int              m_scriptKeyX = 0, m_scriptKeyY = 0;   // 스크립트가 누른 WASD(화면 방향)
+	std::FILE*       m_traceFile = nullptr;
 };

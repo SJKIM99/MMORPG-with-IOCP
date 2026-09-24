@@ -267,6 +267,7 @@ namespace MonsterHelper
 		}
 
 		monster->UpdateFacing(x - prevX);
+		monster->SetLastStepMs(monster->GetMoveIntervalMs());
 		SectorHelper::UpdatePosition(monsterId, x, y);
 
 		auto newList = SectorHelper::CollectUsers(monsterId);
@@ -283,6 +284,7 @@ namespace MonsterHelper
 		// 캐시된 viewList를 oldList로 사용 — CollectUsers 첫 번째 호출 제거
 		const vector<ObjID> oldList = monster->GetViewList();
 
+		monster->SetLastStepMs(monster->GetMoveIntervalMs());
 		SectorHelper::UpdatePosition(monsterId, nextX, nextY);
 
 		auto newList = SectorHelper::CollectUsers(monsterId);

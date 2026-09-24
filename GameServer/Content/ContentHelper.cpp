@@ -349,7 +349,9 @@ namespace ContentHelper
 		const bool crossZone = destZone != player->GetZoneId();
 
 		// 같은 Zone이면 시야 갱신(REMOVE/ADD)까지, 다른 Zone이면 Zone Transfer까지
-		// 기존 이동 처리 함수가 그대로 해 준다.
+		// 기존 이동 처리 함수가 그대로 해 준다. 걸음 시간 0 = 보간 없이 바로 옮김.
+		player->SetLastStepMs(0);
+		player->m_moveClock = 0;
 		SectorHelper::HandlePlayerMove(player, x, y);
 
 		if (crossZone)

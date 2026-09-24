@@ -15,6 +15,7 @@ shared_ptr<GameLogicThread>    GGameLogicThread = nullptr;
 shared_ptr<ZoneManager>        GZoneManager = nullptr;
 shared_ptr<WorkerThread>       GWorkerThread = nullptr;
 shared_ptr<TimerThread>        GTimerThread = nullptr;
+int                            GViewRange = 9;
 shared_ptr<GameSessionManager> GSessionManager = nullptr;
 shared_ptr<GameObjectManager>  GGameObjectManager = nullptr;
 

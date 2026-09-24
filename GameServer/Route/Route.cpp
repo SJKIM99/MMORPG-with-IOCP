@@ -17,7 +17,8 @@ namespace Route
 {
 	void Dispatch(const shared_ptr<GameSession>& session, const char* packet)
 	{
-		switch (static_cast<PacketType>(packet[2]))
+		// 타입은 1바이트. char로 읽으면 128 이상에서 음수가 되므로 부호 없이 읽는다.
+		switch (static_cast<PacketType>(static_cast<uint8_t>(packet[2])))
 		{
 		case PacketType::USER_LOGIN_REQ:
 		{
@@ -68,6 +69,8 @@ namespace Route
 			const uint32_t now = GetNowTime();
 			if (now > client->m_lastMoveTime + client->GetMoveCooldown(now))
 			{
+				const uint32_t sinceLast = now - client->m_lastMoveTime;
+				client->SetLastStepMs(sinceLast < 1000u ? sinceLast : 1000u);
 				client->m_lastMoveTime = now;
 
 				short x = client->GetX();
@@ -82,6 +85,17 @@ namespace Route
 
 				SectorHelper::HandlePlayerMove(client, x, y);
 			}
+			break;
+		}
+		case PacketType::USER_MOVE_EX_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			auto* p = reinterpret_cast<const USER_MOVE_EX_REQ_PACKET*>(packet);
+			UserHelper::HandleMoveEx(client, p->dir, p->seq);
 			break;
 		}
 		case PacketType::USER_ATTACK_REQ:

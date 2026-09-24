@@ -39,7 +39,7 @@ constexpr int W_HEIGHT = 2000;
 
 constexpr int SECTOR_RANGE = 10;
 
-constexpr int VIEW_RANGE            = 5;
+constexpr int VIEW_RANGE            = 5;   // 레거시 기본값(참고용). 실제 시야는 런타임 값 GViewRange(ServerGlobal.h)
 constexpr int ATTACK_RANGE          = 1;
 constexpr int WAKE_RANGE            = 3;   // aggro monster wakes up when player is within this many tiles
 constexpr int ZONE_BOUNDARY_MARGIN  = 3;   // aggro monster turns back when within this many tiles of zone boundary
@@ -92,7 +92,7 @@ enum class SystemMessageCode : uint16_t
 };
 
 // 확장 프로토콜 버전. 새 클라이언트는 USER_LOGIN_EX_REQ에 이 값을 실어 보낸다.
-constexpr uint16_t PROTOCOL_EX_VERSION = 1;
+constexpr uint16_t PROTOCOL_EX_VERSION = 2;
 
 // EFFECT_NFY의 effectId. "서버는 무슨 일이 일어났는지(어디서 누가)만 알리고,
 // 파티클/사운드/흔들림 같은 표현은 전부 클라이언트가 정한다" — 서버가 이펙트의
@@ -195,6 +195,12 @@ enum class PacketType : uint16_t
 	EFFECT_NFY,               // 이펙트 트리거(EffectId)
 	WORLD_NOTICE_INF,         // 전 서버 공지(보스 출현/처치, 고강화 성공)
 	SC_CHAT_EX,               // 채널 채팅(전체 채팅 등 — 보낸 사람 이름 포함)
+
+	// ── V2: Dark Fantasy Storybook 고도화(ProtocolV2.h) ──────────────────────────
+	// 여기도 끝에만 추가한다. 패킷 타입은 헤더의 1바이트(uint8_t로 읽는다)라 255까지 쓸 수 있다.
+	USER_MOVE_EX_REQ,         // C→S 순번 달린 이동(토큰 버킷 검증)
+	USER_MOVE_EX_ACK,         // S→C 이동 결과(순번·확정 좌표) — 거절도 즉시 응답
+	SERVER_CONFIG_INF,        // S→C 시야 범위·기본 걸음 시간 등 서버 설정
 };
 
 #pragma pack (push, 1)
@@ -407,7 +413,8 @@ namespace ClientPacketSizeDetail
 	constexpr size_t s19 = ProtocolConstMaxSize(s18, sizeof(SHOP_SELL_REQ_PACKET));
 	constexpr size_t s20 = ProtocolConstMaxSize(s19, sizeof(NPC_TELEPORT_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetail::s20;
+// V2 패킷까지 포함한 최종 최댓값(MAX_CLIENT_PACKET_SIZE)은 ProtocolV2.h에서 정한다.
+constexpr size_t MAX_CLIENT_PACKET_SIZE_V1 = ClientPacketSizeDetail::s20;
 
 struct USER_LOGIN_ACK_PACKET
 {
@@ -839,3 +846,6 @@ struct SC_CHAT_EX_PACKET
 static_assert(sizeof(ITEM_LIST_EX_ACK_PACKET) <= 255, "STRESS_TEST 수신 버퍼(255)를 넘으면 안 된다");
 static_assert(sizeof(SC_CHAT_EX_PACKET) <= 255, "STRESS_TEST 수신 버퍼(255)를 넘으면 안 된다");
 #pragma pack (pop)
+
+#include "ProtocolV2.h"
+

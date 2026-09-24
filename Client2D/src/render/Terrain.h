@@ -18,6 +18,9 @@ public:
 
 	// 시야 밖 어둡게(셰이더와 같은 식) — 캐릭터/소품 색에 곱할 값
 	static Color FogTint(float tileX, float tileY, Vector2 playerTile, bool fog);
+	// 서버 시야(체비셰프 칸)에 맞춰 안개 시작/끝을 정한다(SERVER_CONFIG_INF).
+	static void SetViewRange(float range);
+	static float FogStart() { return s_fogStart; }
 
 	[[nodiscard]] bool Ready() const { return m_shader.id != 0; }
 
@@ -25,7 +28,8 @@ private:
 	Shader    m_shader{};
 	Texture2D m_town{};
 	int m_locScreen = -1, m_locCamTarget = -1, m_locCamOffset = -1, m_locZoom = -1, m_locRot = -1;
-	int m_locTime = -1, m_locPlayer = -1, m_locFog = -1, m_locGrid = -1;
+	int m_locTime = -1, m_locPlayer = -1, m_locFog = -1, m_locGrid = -1, m_locFogRange = -1;
+	static inline float s_fogStart = 5.8f, s_fogEnd = 10.5f;
 	int m_locPalA = -1, m_locPalB = -1, m_locPalC = -1;
 	int m_locTown = -1, m_locNoise = -1, m_locTownOrigin = -1, m_locTownSize = -1;
 };

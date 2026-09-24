@@ -238,6 +238,7 @@
     <ClInclude Include="ObjID\ObjID.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Protocol.h" />
+    <ClInclude Include="ProtocolV2.h" />
     <ClInclude Include="Route\Route.h" />
     <ClInclude Include="ServerGlobal.h" />
     <ClInclude Include="Stat\Stat.h" />
@@ -257,6 +258,7 @@
     <ClInclude Include="Zone\ZoneTypes.h" />
     <ClInclude Include="Content\ContentHelper.h" />
     <ClInclude Include="Data\LevelTable.h" />
+    <ClInclude Include="Data\MoveRule.h" />
     <ClInclude Include="Data\MonsterTable.h" />
     <ClInclude Include="Data\WorldData.h" />
     <ClInclude Include="Item\ItemTableData.h" />

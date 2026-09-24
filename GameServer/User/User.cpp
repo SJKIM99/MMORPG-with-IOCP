@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Data/MoveRule.h"
 #include "User.h"
 #include "TimerThread.h"
 
@@ -42,4 +43,12 @@ void User::ApplyLevelStats(bool fullHeal)
 	// Inventory가 한 곳에서 한다(장착/탈착/강화 때도 같은 함수가 불린다).
 	if (m_inventory != nullptr)
 		m_inventory->RecomputeOffensive();
+}
+
+uint32_t User::GetMoveSpeedPercent(uint32_t now) const noexcept
+{
+	uint32_t speed = 100;
+	if (IsHasted(now))
+		speed += MoveRule::kHasteBonusPercent;
+	return MoveRule::ClampSpeed(speed);
 }

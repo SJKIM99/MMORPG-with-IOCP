@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Data/MoveRule.h"
 #include "UserHelper.h"
 #include "GameObjectManager.h"
 #include "Subject.h"
@@ -173,6 +174,8 @@ namespace UserHelper
 		packet.id = target->GetObjID();
 		packet.x = target->GetX();
 		packet.y = target->GetY();
+		// 예전엔 항상 0이던 필드 — 이 걸음에 걸린 시간(ms, 0 = 순간이동). 봇은 읽지 않는다.
+		packet.move_time = target->GetLastStepMs();
 
 		session->PostSend(packet);
 	}
@@ -1081,6 +1084,7 @@ namespace UserHelper
 		SendITEM_LIST_ACK(player);
 		if (player->IsExtended())
 		{
+			SendSERVER_CONFIG_INF(player);
 			SendITEM_LIST_EX_ACK(player);
 			SendUSER_INFO_EX_INF(player);
 			SendADENA_INF(player, 0, AdenaReason::Init);
@@ -1127,6 +1131,7 @@ namespace UserHelper
 		SendUSER_LOGIN_ACK(player);
 		if (extended)
 		{
+			SendSERVER_CONFIG_INF(player);
 			SendITEM_LIST_EX_ACK(player);
 			// 리니지의 "초보자 지원" — 물약/주문서/무기/아데나를 쥐여 준다.
 			ContentHelper::GiveStarterKit(player);
@@ -1382,7 +1387,7 @@ namespace UserHelper
 		{
 			if (!IsExtendedViewer(object))
 				return;
-			if (abs(object->GetX() - x) > VIEW_RANGE || abs(object->GetY() - y) > VIEW_RANGE)
+			if (abs(object->GetX() - x) > GViewRange || abs(object->GetY() - y) > GViewRange)
 				return;
 			if (auto session = GetSession(object))
 				session->PostSend(packet);
@@ -1430,5 +1435,78 @@ namespace UserHelper
 				continue;
 			session->PostSend(packet);
 		}
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// V2 이동 — 순번 이동 + 토큰 버킷 검증(Data/MoveRule.h)
+	// ─────────────────────────────────────────────────────────────────────────
+	void SendUSER_MOVE_EX_ACK(const shared_ptr<User>& user, uint16_t seq, MoveResult result, uint32_t stepMs)
+	{
+		if (user == nullptr)
+			return;
+		auto session = user->GetGameSession();
+		if (!session)
+			return;
+		USER_MOVE_EX_ACK_PACKET packet;
+		InitializePacket(packet, PacketType::USER_MOVE_EX_ACK);
+		packet.seq = seq;
+		packet.x = user->GetX();
+		packet.y = user->GetY();
+		packet.result = static_cast<uint8_t>(result);
+		packet.stepMs = static_cast<uint16_t>(stepMs > 65535u ? 65535u : stepMs);
+		session->PostSend(packet);
+	}
+
+	void SendSERVER_CONFIG_INF(const shared_ptr<User>& user)
+	{
+		if (user == nullptr)
+			return;
+		auto session = user->GetGameSession();
+		if (!session || !session->IsExtended())
+			return;
+		SERVER_CONFIG_INF_PACKET packet;
+		InitializePacket(packet, PacketType::SERVER_CONFIG_INF);
+		packet.protocolVersion = PROTOCOL_EX_VERSION;
+		packet.viewRange = static_cast<uint8_t>(GViewRange);
+		packet.baseStepMs = static_cast<uint16_t>(MoveRule::kBaseStepMs);
+		packet.diagPermille = static_cast<uint16_t>(MoveRule::kDiagPermille);
+		packet.moveSpeedPercent = static_cast<uint16_t>(user->GetMoveSpeedPercent(GetNowTime()));
+		session->PostSend(packet);
+	}
+
+	void HandleMoveEx(const shared_ptr<User>& player, uint8_t dir, uint16_t seq)
+	{
+		if (player == nullptr)
+			return;
+		if (!MoveRule::IsValidDir(dir) || player->GetStat()->IsDead() || player->IsTransferring())
+		{
+			SendUSER_MOVE_EX_ACK(player, seq, MoveResult::Busy, 0);
+			return;
+		}
+
+		const uint32_t now = GetNowTime();
+		const uint32_t cost = MoveRule::StepMs(dir, player->GetMoveSpeedPercent(now));
+
+		// 토큰 버킷: 늦게 온 패킷이 잃은 시간은 kCatchupMs까지 되찾고, kSlackMs까지는
+		// 일찍 와도 받아 준다. 그보다 빠르면(속도 핵/시계 조작) 거절하고 좌표를 되돌린다.
+		const uint32_t earliest = now > MoveRule::kCatchupMs ? now - MoveRule::kCatchupMs : 0;
+		const uint32_t start = std::max(player->m_moveClock, earliest);
+		if (start > now + MoveRule::kSlackMs)
+		{
+			SendUSER_MOVE_EX_ACK(player, seq, MoveResult::TooFast, cost);
+			return;
+		}
+		player->m_moveClock = start + cost;
+		player->m_lastMoveTime = now;
+
+		short x = player->GetX();
+		short y = player->GetY();
+		SubjectHelper::MovePositionByDirection(x, y, static_cast<char>(dir));
+		if (dir == 2 || dir == 4 || dir == 6) player->SetFacingLeft(true);
+		else if (dir == 3 || dir == 5 || dir == 7) player->SetFacingLeft(false);
+
+		player->SetLastStepMs(cost);
+		SectorHelper::HandlePlayerMove(player, x, y, false);
+		SendUSER_MOVE_EX_ACK(player, seq, MoveResult::Ok, cost);
 	}
 }

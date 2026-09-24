@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "render/Terrain.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "fx/Particles.h"
@@ -233,6 +234,18 @@ void Game::OnPacket(const char* data, uint16_t size)
 		if (As(data, size, p)) HandleSubjectInfoEx(p);
 		break;
 	}
+	case PacketType::USER_MOVE_EX_ACK:
+	{
+		USER_MOVE_EX_ACK_PACKET p{};
+		if (As(data, size, p)) HandleMoveAck(p);
+		break;
+	}
+	case PacketType::SERVER_CONFIG_INF:
+	{
+		SERVER_CONFIG_INF_PACKET p{};
+		if (As(data, size, p)) HandleServerConfig(p);
+		break;
+	}
 	case PacketType::ITEM_LIST_EX_ACK:
 	{
 		ITEM_LIST_EX_ACK_PACKET p{};
@@ -373,8 +386,8 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 	m_exp = p.exp;
 	m_expToNext = LevelTable::ExpToNext(p.level);
 	m_attack = LevelTable::BaseAttack(p.level);
-	m_srvX = m_predX = p.x;
-	m_srvY = m_predY = p.y;
+	m_mover.Reset(p.x, p.y);
+	SyncMover();
 	m_hpShown = m_hpLag = m_maxhp > 0 ? static_cast<float>(m_hp) / m_maxhp : 1.f;
 
 	Entity me;
@@ -383,7 +396,7 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 	me.name = m_playerName;
 	me.nameHash = HashName(m_playerName);
 	me.tx = p.x; me.ty = p.y;
-	me.pos = me.from = me.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+	me.pos = me.logPos = me.from = me.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
 	me.hp = p.hp; me.maxhp = p.maxhp; me.level = p.level;
 	me.spawnT = 0.f;
 	m_ents[p.id] = me;
@@ -410,18 +423,14 @@ void Game::HandleSubjectAdd(const SUBJECT_ADD_NFY_PACKET& p)
 	e.removeT = 0.f;
 	if (!existed)
 	{
-		e.pos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+		e.pos = e.logPos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
 		e.moveT = 1.f;
+		e.stepQN = 0;
 		e.spawnT = 0.f;
 		e.faceRight = util::RandI(0, 1) == 1;
 	}
 	else
-	{
-		e.from = e.pos;
-		e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
-		e.moveT = 0.f;
-		e.moveDur = 0.25f;
-	}
+		motion::RemoteStep(e, p.x, p.y, 0.25f);
 	e.dead = false;
 	e.deadT = 0.f;
 
@@ -500,71 +509,51 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 {
 	if (p.id == m_selfId)
 	{
-		Entity* me = Self();
-		m_srvX = p.x;
-		m_srvY = p.y;
-		if (!me) return;
-		me->tx = p.x;
-		me->ty = p.y;
-		const Vector2 target{ static_cast<float>(p.x), static_cast<float>(p.y) };
-		if (m_pending)
+		// 확장 세션의 보통 걸음은 USER_MOVE_EX_ACK로 온다. 여기로 오는 건 존 이동 메아리
+		// (예측 경로 위의 칸 → 무시)이거나 순간이동/재배치다.
+		if (m_mover.OnServerPosition(p.x, p.y, m_now))
 		{
-			m_pending = false;
-			if (p.x != m_predX || p.y != m_predY)
+			SyncMover();
+			if (Entity* me = Self())
 			{
-				// 서버가 다르게 판정했다(드묾) — 부드럽게 서버 위치로
-				m_predX = p.x;
-				m_predY = p.y;
-				me->from = me->pos;
-				me->to = target;
-				me->moveT = 0.f;
-				me->moveDur = 0.18f;
-				m_path.clear();
+				me->pos = me->logPos = me->from = me->to = m_mover.Visual();
+				me->moveT = 1.f;
 			}
-			return;
-		}
-		// 요청하지 않은 이동: 순간이동/존 이동/늦게 도착한 응답
-		const int d = Cheb(p.x, p.y, m_predX, m_predY);
-		m_predX = p.x;
-		m_predY = p.y;
-		if (d > 2)
-		{
-			me->pos = me->from = me->to = target;
-			me->moveT = 1.f;
-			m_cam.SnapTo(TileToIso(target, 0.6f));
+			m_cam.SnapTo(TileToIso(m_mover.Visual(), 0.6f));
 			ClearGoal();
 			m_mouseHeld = false;
-		}
-		else if (d > 0)
-		{
-			me->from = me->pos;
-			me->to = target;
-			me->moveT = 0.f;
-			me->moveDur = 0.18f;
 		}
 		return;
 	}
 
 	Entity* e = Find(p.id);
 	if (!e) return;
-	const int d = Cheb(p.x, p.y, e->tx, e->ty);
 	FaceToward(*e, p.x, p.y);
 	e->tx = p.x;
 	e->ty = p.y;
-	const Vector2 target{ static_cast<float>(p.x), static_cast<float>(p.y) };
-	if (d > 2)
-	{
-		e->pos = e->from = e->to = target;
-		e->moveT = 1.f;
-		return;
-	}
-	e->from = e->pos;
-	e->to = target;
-	e->moveT = 0.f;
-	if (e->kind == EntityKind::Monster && e->row)
-		e->moveDur = std::max(0.25f, e->row->moveIntervalMs / 1000.f * 0.95f);
-	else
-		e->moveDur = 0.5f;
+	// 서버가 실어 준 걸음 시간(ms)대로 보간. 0이면 순간이동 → 스냅.
+	float dur = p.move_time / 1000.f;
+	if (p.move_time == 0 && e->kind == EntityKind::Monster && e->row)
+		dur = 0.f;
+	motion::RemoteStep(*e, p.x, p.y, dur);
+}
+
+void Game::HandleMoveAck(const USER_MOVE_EX_ACK_PACKET& p)
+{
+	m_mover.OnAck(p.seq, p.x, p.y, static_cast<MoveResult>(p.result), p.stepMs, m_now);
+	SyncMover();
+	if (static_cast<MoveResult>(p.result) != MoveResult::Ok)
+		m_path.clear();
+}
+
+void Game::HandleServerConfig(const SERVER_CONFIG_INF_PACKET& p)
+{
+	m_viewRange = std::clamp<int>(p.viewRange, 3, 10);
+	m_mover.SetConfig(p.baseStepMs, p.diagPermille);
+	m_baseSpeedPercent = p.moveSpeedPercent > 0 ? p.moveSpeedPercent : 100u;
+	if (m_hasteUntil > m_now && m_baseSpeedPercent > MoveRule::kHasteBonusPercent)
+		m_baseSpeedPercent -= MoveRule::kHasteBonusPercent;   // 가속 중 로그인이면 가속분은 따로 더한다
+	Terrain::SetViewRange(static_cast<float>(m_viewRange));
 }
 
 void Game::HandleSubjectRemove(const SUBJECT_REMOVE_NFY_PACKET& p)
@@ -640,16 +629,15 @@ void Game::HandleSubjectRespawn(const SUBJECT_RESPAWN_NFY_PACKET& p)
 		keep.dead = false;
 		keep.deadT = 0.f;
 		keep.tx = p.x; keep.ty = p.y;
-		keep.pos = keep.from = keep.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+		keep.pos = keep.logPos = keep.from = keep.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
 		keep.moveT = 1.f;
 		keep.hp = p.hp;
 		keep.spawnT = 0.f;
 		m_ents[m_selfId] = keep;
 		m_dead = false;
 		m_hp = p.hp;
-		m_srvX = m_predX = p.x;
-		m_srvY = m_predY = p.y;
-		m_pending = false;
+		m_mover.Reset(p.x, p.y);
+		SyncMover();
 		m_path.clear();
 		m_goal = Goal{};
 		m_cam.SnapTo(TileToIso(keep.pos, 0.6f));
@@ -663,8 +651,9 @@ void Game::HandleSubjectRespawn(const SUBJECT_RESPAWN_NFY_PACKET& p)
 	Entity& e = m_ents[p.id];
 	e.id = p.id;
 	e.tx = p.x; e.ty = p.y;
-	e.pos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+	e.pos = e.logPos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
 	e.moveT = 1.f;
+	e.stepQN = 0;
 	e.dead = false;
 	e.deadT = 0.f;
 	e.removing = false;

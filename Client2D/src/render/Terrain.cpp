@@ -55,6 +55,7 @@ bool Terrain::Init()
 	m_locTime = Loc(m_shader, "uTime");
 	m_locPlayer = Loc(m_shader, "uPlayer");
 	m_locFog = Loc(m_shader, "uFog");
+	m_locFogRange = Loc(m_shader, "uFogRange");
 	m_locGrid = Loc(m_shader, "uGrid");
 	m_locPalA = Loc(m_shader, "uPalA");
 	m_locPalB = Loc(m_shader, "uPalB");
@@ -117,11 +118,18 @@ void Terrain::Shutdown()
 	m_town = Texture2D{};
 }
 
+void Terrain::SetViewRange(float range)
+{
+	// 서버가 보내 주는 마지막 칸(range)보다 조금 바깥에서 어두워지기 시작한다.
+	s_fogStart = range + 0.8f;
+	s_fogEnd = range + 5.5f;
+}
+
 Color Terrain::FogTint(float tileX, float tileY, Vector2 playerTile, bool fog)
 {
 	if (!fog) return WHITE;
 	const float d = std::max(std::fabs(tileX - playerTile.x), std::fabs(tileY - playerTile.y));
-	const float f = util::Clamp01((d - 5.8f) / (10.5f - 5.8f));
+	const float f = util::Clamp01((d - s_fogStart) / (s_fogEnd - s_fogStart));
 	const float s = f * f * (3.f - 2.f * f) * 0.9f;
 	return util::Mix(WHITE, Color{ 138, 144, 166, 255 }, s);
 }
@@ -148,6 +156,8 @@ void Terrain::DrawGround(const Camera2D& cam, int screenW, int screenH, Vector2 
 	SetShaderValue(m_shader, m_locTime, &time, SHADER_UNIFORM_FLOAT);
 	SetShaderValue(m_shader, m_locPlayer, player, SHADER_UNIFORM_VEC2);
 	SetShaderValue(m_shader, m_locFog, &fogOn, SHADER_UNIFORM_FLOAT);
+	const float fogRange[2] = { s_fogStart, s_fogEnd };
+	SetShaderValue(m_shader, m_locFogRange, fogRange, SHADER_UNIFORM_VEC2);
 	SetShaderValue(m_shader, m_locGrid, &grid, SHADER_UNIFORM_FLOAT);
 
 	BeginShaderMode(m_shader);

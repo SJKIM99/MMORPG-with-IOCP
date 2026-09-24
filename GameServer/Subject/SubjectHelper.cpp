@@ -37,8 +37,8 @@ namespace SubjectHelper
 	bool CanSee(const Subject::SharedPtr& a, const Subject::SharedPtr& b)
 	{
 		if (!a || !b) return false;
-		if (abs(a->GetX() - b->GetX()) > VIEW_RANGE) return false;
-		return abs(a->GetY() - b->GetY()) <= VIEW_RANGE;
+		if (abs(a->GetX() - b->GetX()) > GViewRange) return false;
+		return abs(a->GetY() - b->GetY()) <= GViewRange;
 	}
 
 	bool IsAdjacent(const Subject::SharedPtr& a, const Subject::SharedPtr& b)

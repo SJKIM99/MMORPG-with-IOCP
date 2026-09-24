@@ -202,12 +202,13 @@ void Game::DrawWorld(const Camera2D& cam)
 		if (IsTranslucent(e))
 			DrawEntity(e, true);
 	// 가속 잔상
-	if (me && m_hasteUntil > m_now && me->moveT < 1.f)
+	if (me && m_hasteUntil > m_now && me->speed > 1.f)
 	{
+		const Vector2 v = m_mover.Velocity();
 		for (int k = 1; k <= 2; ++k)
 		{
 			Entity ghost = *me;
-			ghost.pos = util::LerpV(me->pos, me->from, 0.35f * k);
+			ghost.pos = Vector2{ me->pos.x - v.x * 0.07f * k, me->pos.y - v.y * 0.07f * k };
 			m_ghostDraw = true;
 			DrawEntity(ghost, true);
 			m_ghostDraw = false;

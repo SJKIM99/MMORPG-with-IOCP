@@ -25,6 +25,7 @@ uniform float uRot;
 uniform float uTime;
 uniform vec2  uPlayer;
 uniform float uFog;
+uniform vec2 uFogRange;
 uniform float uGrid;
 uniform vec4  uPalA[16];   // rgb = base, a = style
 uniform vec3  uPalB[16];
@@ -336,7 +337,7 @@ void main()
     if (uFog > 0.0)
     {
         float dist = max(abs(uv.x - uPlayer.x), abs(uv.y - uPlayer.y));
-        float f = smoothstep(5.8, 10.5, dist) * uFog * 0.9;
+        float f = smoothstep(uFogRange.x, uFogRange.y, dist) * uFog * 0.9;
         float lum = dot(col, vec3(0.3, 0.59, 0.11));
         vec3 dim = mix(vec3(lum), col, 0.55) * 0.56 + vec3(0.02, 0.025, 0.05);
         col = mix(col, dim, f);

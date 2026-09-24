@@ -22,10 +22,7 @@ using util::Rgb;
 
 namespace
 {
-	constexpr float kMoveInterval = 0.54f;       // 서버 이동 쿨타임 500ms + 여유
-	constexpr float kHasteMoveInterval = 0.36f;  // 가속 330ms + 여유
 	constexpr float kAttackInterval = 0.62f;     // 서버 공격 쿨타임 500ms + 여유
-	constexpr float kPendingTimeout = 1.0f;      // 이동 응답이 이만큼 안 오면 거절된 것으로 보고 되돌린다
 
 	int Cheb(int ax, int ay, int bx, int by) { return std::max(std::abs(ax - bx), std::abs(ay - by)); }
 
@@ -74,6 +71,7 @@ bool Game::Init(const Options& opts)
 
 void Game::Shutdown()
 {
+	if (m_traceFile) { std::fclose(m_traceFile); m_traceFile = nullptr; }
 	SaveQuickSlots();
 	m_net.Disconnect();
 	m_terrain.Shutdown();
@@ -82,6 +80,7 @@ void Game::Shutdown()
 
 void Game::BeginConnect()
 {
+	m_net.SetSimulatedLag(m_opts.lagMs, m_opts.jitterMs);
 	std::string name = m_fName.text;
 	if (name.size() < 2)
 	{
@@ -118,7 +117,7 @@ void Game::ResetWorld()
 	m_hasSelf = false;
 	m_selfId = ObjID{};
 	m_dead = false;
-	m_pending = false;
+	m_mover.Reset(0, 0);
 	m_path.clear();
 	m_goal = Goal{};
 	m_target = ObjID{};
@@ -182,6 +181,10 @@ void Game::Frame()
 		{
 			m_shotTaken = true;
 			m_quit = true;
+			const auto& st = m_mover.GetStats();
+			std::printf("[move-stats] steps=%d acks=%d rejects=%d corrections=%d maxCorr=%.2f maxPending=%d teleports=%d\n",
+				st.steps, st.acks, st.rejects, st.corrections, st.maxCorrection, st.maxPending, st.teleports);
+			std::fflush(stdout);
 		}
 	}
 	EndDrawing();
@@ -325,33 +328,61 @@ void Game::UpdateGame(float dt)
 	TickMovement();
 	RunScript(dt);
 
+	// ── 이동(내 캐릭터: 예측·보정·스무딩 / 다른 개체: 걸음 시간대로 보간) ──
+	// 서버 걸음을 재생하는 시간은 프레임 시간 상한(0.05초)에 묶이면 안 된다 — FPS가 낮을 때
+	// 다른 개체가 느려지고 밀린다. 실제 경과 시간(히트스톱만 반영)을 쓴다.
+	const float netDt = std::min(GetFrameTime(), 0.25f) * fx::Fx().TimeScale();
+	m_mover.SetSpeedPercent(m_baseSpeedPercent + (m_hasteUntil > m_now ? MoveRule::kHasteBonusPercent : 0u));
+	m_mover.Update(m_now, sdt);
+	SyncMover();
+	if (!m_opts.traceMove.empty())
+	{
+		if (!m_traceFile)
+		{
+			m_traceFile = std::fopen(m_opts.traceMove.c_str(), "w");
+			if (m_traceFile) std::fprintf(m_traceFile, "t,lx,ly,vx,vy,speed,pending,keyx,keyy,rx,ry\n");
+		}
+		if (m_traceFile)
+		{
+			const Vector2 l = m_mover.Logical(), v = m_mover.Visual();
+			// 다른 플레이어 하나(원격 보간 확인용)
+			Vector2 r{ -1, -1 };
+			for (const auto& [oid, o] : m_ents)
+				if (oid != m_selfId && o.kind == EntityKind::Player) { r = o.pos; break; }
+			std::fprintf(m_traceFile, "%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%d,%d,%d,%.4f,%.4f\n", m_now, l.x, l.y, v.x, v.y, m_mover.Speed(), m_mover.PendingCount(), m_scriptKeyX, m_scriptKeyY, r.x, r.y);
+		}
+	}
+
 	// ── 엔티티 애니메이션 ──
 	std::vector<ObjID> dead;
 	for (auto& [id, e] : m_ents)
 	{
-		if (e.moveT < 1.f)
+		if (id == m_selfId)
 		{
-			e.moveT = std::min(1.f, e.moveT + sdt / std::max(0.05f, e.moveDur));
-			e.pos = util::LerpV(e.from, e.to, e.moveT);
-			e.walkPhase += sdt * util::kPi / std::max(0.2f, e.moveDur);
-			e.moving = util::Damp(e.moving, 1.f, 14.f, sdt);
-			// 발소리/먼지(가끔)
-			if (e.kind != EntityKind::Item && (e.walkPhase - e.lastStepDust) > util::kPi)
+			const Vector2 prev = e.pos;
+			e.pos = m_mover.Visual();
+			e.logPos = m_mover.Logical();
+			motion::Animate(e, prev, sdt);
+		}
+		else
+			motion::UpdateRemote(e, netDt, sdt);
+
+		if (e.kind != EntityKind::Item && e.moving > 0.2f)
+		{
+			// 발소리/먼지 — 한 걸음(위상 π)마다
+			if ((e.walkPhase - e.lastStepDust) > util::kPi)
 			{
 				e.lastStepDust = e.walkPhase;
 				if (e.row == nullptr || e.row->archetype != MonsterArchetype::eGhost)
-					fx::Fx().Dust(TileToIso(e.pos), id == m_selfId ? 1.f : 0.5f);
+					fx::Fx().Dust(TileToIso(e.pos), (id == m_selfId ? 0.8f : 0.4f) * (1.f + e.run));
 				if (id == m_selfId)
-					sfx::Play(sfx::Id::Step, 0.5f, 0.15f);
+					sfx::Play(sfx::Id::Step, 0.42f + 0.15f * e.run, 0.15f);
 			}
 			if (id == m_selfId && m_hasteUntil > m_now)
 				fx::Fx().HasteTrail(TileToIso(e.pos));
 		}
 		else
-		{
-			e.pos = e.to;
-			e.moving = util::Damp(e.moving, 0.f, 8.f, sdt);
-		}
+			e.lastStepDust = e.walkPhase - util::kPi * 0.5f;   // 다시 걸을 때 반 걸음 뒤 첫 발소리
 		if (e.attackT >= 0.f) { e.attackT += sdt; if (e.attackT > 0.6f) e.attackT = -1.f; }
 		if (e.castT >= 0.f) { e.castT += sdt; if (e.castT > 0.7f) e.castT = -1.f; }
 		e.hurtT = std::max(0.f, e.hurtT - sdt * 5.f);
@@ -403,14 +434,16 @@ void Game::UpdateGame(float dt)
 	if (Entity* me = Self())
 	{
 		m_cam.Follow(TileToIso(me->pos, 0.6f));
-		// 이동 방향으로 살짝 앞을 보여 준다
+		// 이동 방향으로 살짝 앞을 보여 준다(속도에 비례, 멈추면 천천히 돌아옴)
+		const Vector2 v = m_mover.Velocity();
+		const Vector2 isoV{ (v.x - v.y) * gfx::kHalfW, (v.x + v.y) * gfx::kHalfH };
+		const float len = std::sqrt(isoV.x * isoV.x + isoV.y * isoV.y);
 		Vector2 lead{ 0, 0 };
-		if (me->moveT < 1.f)
-		{
-			const Vector2 d = util::Sub(TileToIso(me->to), TileToIso(me->from));
-			lead = util::Mul(util::Norm(d), 26.f);
-		}
+		if (len > 1.f)
+			lead = util::Mul(util::Norm(isoV), 34.f * util::Clamp01(len / 160.f));
 		m_cam.SetLead(lead);
+		if (m_mover.Snapped())
+			m_cam.SnapTo(TileToIso(me->pos, 0.6f));
 	}
 	if (!ui::TextFocused() && !ui::MouseOverUi())
 	{
@@ -659,32 +692,68 @@ void Game::ClearGoal()
 	m_path.clear();
 }
 
-void Game::SendStep(int dir)
+void Game::SyncMover()
 {
-	Entity* me = Self();
-	if (!me) return;
-	int dx, dy;
-	path::DeltaOf(dir, dx, dy);
-	if (!path::CanStep(m_predX, m_predY, dx, dy))
+	m_srvX = m_mover.SrvX();
+	m_srvY = m_mover.SrvY();
+	m_predX = m_mover.PredX();
+	m_predY = m_mover.PredY();
+	if (Entity* me = Self())
+	{
+		me->tx = m_srvX;
+		me->ty = m_srvY;
+	}
+}
+
+bool Game::SendStep(int dir)
+{
+	uint16_t seq = 0;
+	if (!m_mover.Step(m_now, dir, seq))
 	{
 		m_path.clear();
-		return;
+		return false;
 	}
-	m_net.SendMove(dir);
-	m_pending = true;
-	m_pendingAt = m_now;
-	m_predX += dx;
-	m_predY += dy;
-	const float interval = (m_hasteUntil > m_now) ? kHasteMoveInterval : kMoveInterval;
-	m_nextMoveAt = m_now + interval;
-	me->from = me->pos;
-	me->to = Vector2{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
-	me->moveT = 0.f;
-	me->moveDur = interval;
-	const int sx = dx - dy, sy = dx + dy;
-	if (sx != 0) me->faceRight = sx > 0;
-	if (sy != 0) me->faceBack = sy < 0;
-	m_lastDir = dir;
+	m_net.SendMoveEx(dir, seq);
+	SyncMover();
+	return true;
+}
+
+int Game::PickMoveDir(int dx, int dy) const
+{
+	const int want = MoveRule::DirOf(dx, dy);
+	if (want < 0)
+		return -1;
+	if (m_mover.WouldMove(want))
+	{
+		// 대각선인데 한 축만 움직인다(벽을 따라 미끄러짐) → 그 축 방향 걸음으로 보낸다.
+		// 대각선 비용(√2)을 내고 한 칸만 가면 벽 옆에서 느려지기 때문.
+		int x = m_predX, y = m_predY;
+		MoveRule::Apply(x, y, want);
+		const int straight = MoveRule::DirOf(x - m_predX, y - m_predY);
+		return straight >= 0 ? straight : want;
+	}
+	// 막혔다 — 원하는 방향과 가장 가까운(45° 안쪽) 열린 방향으로 미끄러진다.
+	const float wl = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+	int best = -1;
+	float bestDot = 0.55f;
+	for (int d = 0; d < 8; ++d)
+	{
+		if (d == want)
+			continue;
+		int x = m_predX, y = m_predY;
+		MoveRule::Apply(x, y, d);
+		const int mx = x - m_predX, my = y - m_predY;
+		if (mx == 0 && my == 0)
+			continue;
+		const float ml = std::sqrt(static_cast<float>(mx * mx + my * my));
+		const float dot = (mx * dx + my * dy) / (ml * wl);
+		if (dot > bestDot)
+		{
+			bestDot = dot;
+			best = d;
+		}
+	}
+	return best;
 }
 
 bool Game::StepToward(int gx, int gy, int stopWithin)
@@ -699,14 +768,24 @@ bool Game::StepToward(int gx, int gy, int stopWithin)
 			return false;
 	}
 	const path::Step next = m_path.front();
-	const int dir = path::DirectionOf(next.x - m_predX, next.y - m_predY);
-	if (dir < 0)
+	const int dir = MoveRule::DirOf(next.x - m_predX, next.y - m_predY);
+	if (dir < 0 || std::abs(next.x - m_predX) > 1 || std::abs(next.y - m_predY) > 1)
 	{
 		m_path.clear();
 		return false;
 	}
+	// 경로의 다음 칸이 서버 규칙으로도 정확히 그 칸이어야 한다(대각선 모서리 등)
+	int x = m_predX, y = m_predY;
+	MoveRule::Apply(x, y, dir);
+	if (x != next.x || y != next.y)
+	{
+		m_path.clear();
+		m_repathAt = 0.0;
+		return false;
+	}
+	if (!SendStep(dir))
+		return false;
 	m_path.erase(m_path.begin());
-	SendStep(dir);
 	return true;
 }
 
@@ -716,48 +795,43 @@ void Game::TickMovement()
 	if (!me || m_dead)
 		return;
 
-	// 응답이 너무 늦으면(쿨타임/존 이동 중 거절) 서버 위치로 되돌린다
-	if (m_pending && m_now - m_pendingAt > kPendingTimeout)
-	{
-		m_pending = false;
-		m_predX = m_srvX;
-		m_predY = m_srvY;
-		me->from = me->pos;
-		me->to = Vector2{ static_cast<float>(m_srvX), static_cast<float>(m_srvY) };
-		me->moveT = 0.f;
-		me->moveDur = 0.15f;
-		m_path.clear();
-	}
-	if (m_pending || m_now < m_nextMoveAt)
-		return;
-
-	// 1) 키보드(화면 방향 기준 WASD/방향키)
+	// 1) 키보드 8방향(화면 기준 WASD/방향키) — 누르는 동안은 경로/자동 목표보다 우선
 	if (!ui::TextFocused())
 	{
-		const int sx = (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1 : 0) - (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT) ? 1 : 0);
-		const int sy = (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1 : 0) - (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) ? 1 : 0);
+		int sx = (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1 : 0) - (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT) ? 1 : 0);
+		int sy = (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1 : 0) - (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) ? 1 : 0);
+		if (sx == 0 && sy == 0) { sx = m_scriptKeyX; sy = m_scriptKeyY; }
 		if (sx != 0 || sy != 0)
 		{
+			if (m_goal.kind != GoalKind::None)
+				ClearGoal();
+			m_mouseHeld = false;
+			if (!m_mover.CanStep(m_now))
+				return;
 			// 화면 오른쪽 = 타일(+1,-1), 화면 아래 = 타일(+1,+1)
 			const int dx = std::clamp(sx + sy, -1, 1), dy = std::clamp(sy - sx, -1, 1);
-			ClearGoal();
-			m_mouseHeld = false;
-			if (path::CanStep(m_predX, m_predY, dx, dy))
-				SendStep(path::DirectionOf(dx, dy));
-			else if (dx != 0 && dy != 0 && path::CanStep(m_predX, m_predY, dx, 0))
-				SendStep(path::DirectionOf(dx, 0));
-			else if (dx != 0 && dy != 0 && path::CanStep(m_predX, m_predY, 0, dy))
-				SendStep(path::DirectionOf(0, dy));
+			const int dir = PickMoveDir(dx, dy);
+			if (dir >= 0)
+				SendStep(dir);
 			return;
 		}
 	}
+
+	if (!m_mover.CanStep(m_now))
+		return;
 
 	// 2) 목표를 향한 경로
 	switch (m_goal.kind)
 	{
 	case GoalKind::Move:
-		if (!StepToward(m_goal.x, m_goal.y, 0) && !m_mouseHeld)
-			ClearGoal();
+		if (!StepToward(m_goal.x, m_goal.y, 0) && !m_mouseHeld && m_path.empty())
+		{
+			if (m_predX == m_goal.x && m_predY == m_goal.y)
+				break;
+			// 경로가 막혔으면 한 번 더 찾아보고 그래도 없으면 포기
+			if (m_now > m_repathAt)
+				ClearGoal();
+		}
 		break;
 	case GoalKind::Attack:
 		if (Entity* t = Find(m_goal.target))
@@ -779,6 +853,9 @@ void Game::TickGoal()
 {
 	if (m_dead)
 		return;
+	// 목표 행동(공격·줍기·대화)은 예측 칸에 **도착한 뒤**에 한다. 서버는 이동과 행동을
+	// 받은 순서대로 처리하므로 ACK를 기다릴 필요는 없다.
+	const bool arrived = !m_mover.IsWalking(m_now);
 	switch (m_goal.kind)
 	{
 	case GoalKind::Attack:
@@ -796,7 +873,7 @@ void Game::TickGoal()
 			if (Cheb(last.x, last.y, t->tx, t->ty) > 1)
 				m_path.clear();
 		}
-		if (!m_pending && Cheb(m_srvX, m_srvY, t->tx, t->ty) <= 1)
+		if (arrived && Cheb(m_predX, m_predY, t->tx, t->ty) <= 1)
 		{
 			m_path.clear();
 			TryAttackTarget(*t);
@@ -811,7 +888,7 @@ void Game::TickGoal()
 			ClearGoal();
 			return;
 		}
-		if (!m_pending && m_srvX == item->tx && m_srvY == item->ty)
+		if (arrived && m_predX == item->tx && m_predY == item->ty)
 		{
 			PickupHere();
 			ClearGoal();
@@ -822,7 +899,7 @@ void Game::TickGoal()
 	{
 		const auto* npc = WorldData::FindNpc(m_goal.npc);
 		if (!npc) { ClearGoal(); return; }
-		if (!m_pending && Cheb(m_srvX, m_srvY, npc->x, npc->y) <= 2)
+		if (arrived && Cheb(m_predX, m_predY, npc->x, npc->y) <= 2)
 		{
 			OpenNpc(npc->id);
 			ClearGoal();
@@ -830,7 +907,7 @@ void Game::TickGoal()
 		break;
 	}
 	case GoalKind::Move:
-		if (!m_pending && m_srvX == m_goal.x && m_srvY == m_goal.y && !m_mouseHeld)
+		if (arrived && m_predX == m_goal.x && m_predY == m_goal.y && !m_mouseHeld)
 			ClearGoal();
 		break;
 	default:
@@ -858,7 +935,7 @@ void Game::TryAttackTarget(Entity& t)
 	if (Entity* me = Self())
 	{
 		me->attackT = 0.f;
-		const int dx = t.tx - m_srvX, dy = t.ty - m_srvY;
+		const int dx = t.tx - m_predX, dy = t.ty - m_predY;
 		const int sx = dx - dy, sy = dx + dy;
 		if (sx != 0) me->faceRight = sx > 0;
 		if (sy != 0) me->faceBack = sy < 0;
@@ -910,10 +987,10 @@ void Game::PickupHere()
 	for (auto& [id, e] : m_ents)
 	{
 		if (e.kind != EntityKind::Item || e.removing || e.flyT >= 0.f) continue;
-		const int d = Cheb(m_srvX, m_srvY, e.tx, e.ty);
+		const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
 		if (d < bestD) { bestD = d; best = &e; }
 	}
-	if (best && bestD == 0 && !m_pending)
+	if (best && bestD == 0 && !m_mover.IsWalking(m_now))
 	{
 		m_net.SendPickup();
 		m_pickupSentAt = m_now;
@@ -1228,7 +1305,7 @@ void Game::RunScript(float dt)
 			if (m_goal.kind == GoalKind::None) TargetNearestMonster();
 			int adjacent = 0;
 			for (auto& [id, e] : m_ents)
-				if (e.kind == EntityKind::Monster && !e.dead && std::abs(e.tx - m_srvX) + std::abs(e.ty - m_srvY) == 1) ++adjacent;
+				if (e.kind == EntityKind::Monster && !e.dead && std::abs(e.tx - m_predX) + std::abs(e.ty - m_predY) == 1) ++adjacent;
 			if (adjacent > 0) CastSkill();
 			if (m_hp * 2 < m_maxhp) UseQuickSlot(1);
 		}
@@ -1277,6 +1354,20 @@ void Game::RunScript(float dt)
 		}
 		else if (m_scriptStep == 2 && attacker && m_goal.kind == GoalKind::None)
 			m_scriptStep = 1;
+	}
+	else if (s == "wasd")
+	{
+		// 8방향 키보드 이동 검증: 오른쪽 → 오른쪽 아래 → 위 → 왼쪽 위 → 왼쪽(마을 광장)
+		struct Leg { float until; int kx, ky; };
+		static const Leg legs[] = {
+			{ 1.0f, 0, 0 }, { 2.6f, 1, 0 }, { 3.8f, 1, 1 }, { 5.2f, 0, -1 }, { 6.2f, -1, -1 }, { 7.4f, -1, 0 }, { 99.f, 0, 0 },
+		};
+		for (const Leg& leg : legs)
+			if (m_scriptT < leg.until) { m_scriptKeyX = leg.kx; m_scriptKeyY = leg.ky; break; }
+	}
+	else if (s == "watch")
+	{
+		// 가만히 서서 다른 플레이어의 움직임을 본다(원격 보간 검증)
 	}
 	else if (s == "behind")
 	{

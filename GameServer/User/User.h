@@ -28,6 +28,9 @@ public:
 	// 일정 폭 이상 변했을 때/PK/로그아웃 때만 저장한다(ContentHelper::SaveAlignment).
 	int16_t  m_savedAlignment    = 0;
 
+	// ── V2 이동(토큰 버킷, Data/MoveRule.h) ───────────────────────────────────
+	uint32_t m_moveClock         = 0;   // 마지막으로 허용한 걸음이 "끝나는" 가상 시각
+
 private:
 	shared_ptr<GameSession> m_session;
 	// Monster는 인벤토리가 없으므로 Subject가 아닌 User에 둔다 (m_session과 같은 이유).
@@ -69,6 +72,8 @@ public:
 	{
 		return IsHasted(now) ? CombatRule::kHasteMoveCooldownMs : CombatRule::kMoveCooldownMs;
 	}
+	// 확장 세션 이동속도(%). 100 = 기본. 가속·(이후) 스탯/장비/상태이상이 더해진다.
+	[[nodiscard]] uint32_t GetMoveSpeedPercent(uint32_t now) const noexcept;
 
 	// 현재 레벨에 맞춰 최대 HP/기본 공격력을 다시 계산한다(레벨업·로그인 복원 시).
 	// fullHeal이면 HP를 최대치로 채운다.

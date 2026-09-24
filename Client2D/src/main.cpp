@@ -10,6 +10,7 @@
 //   테스트용
 //     --screenshot out.png --after 8  지정 시간 뒤 스크린샷 저장 후 종료
 //     --hour 22                       게임 시각 고정
+//     --lag 120 --jitter 60           인공 네트워크 지연(한쪽 방향 ms)·지터 — 조작감 검증용
 //     --script hunt|town|inventory|map|help|enchant|chat
 // ─────────────────────────────────────────────────────────────────────────────
 #include "raylib.h"
@@ -158,6 +159,9 @@ int main(int argc, char** argv)
 		else if (a == "--hour") opts.hour = static_cast<float>(std::atof(next("12").c_str()));
 		else if (a == "--script") opts.script = next("");
 		else if (a == "--mute") opts.mute = true;
+		else if (a == "--lag") opts.lagMs = std::atoi(next("0").c_str());
+		else if (a == "--trace-move") opts.traceMove = next("move.csv");
+		else if (a == "--jitter") opts.jitterMs = std::atoi(next("0").c_str());
 		else if (a == "--gallery") gallery = true;
 		else if (a == "--size")
 		{
@@ -168,6 +172,12 @@ int main(int argc, char** argv)
 
 	SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
 	InitWindow(width, height, "여명의 대지 - MMORPG-with-IOCP");
+	if (!IsWindowReady())
+	{
+		// 그래픽 드라이버/디스플레이를 열 수 없다 — 크래시 대신 알리고 끝낸다.
+		std::fprintf(stderr, "창을 만들 수 없습니다(OpenGL 3.3 드라이버/디스플레이 확인).\n");
+		return 1;
+	}
 	SetWindowMinSize(1024, 640);
 	SetExitKey(KEY_NULL);
 	SetTargetFPS(144);

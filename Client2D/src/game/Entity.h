@@ -18,13 +18,20 @@ struct Entity
 	EntityKind  kind = EntityKind::Monster;
 	std::string name;
 
-	// 위치
+	// 위치 — tx,ty(서버 칸) → 논리 위치(logPos: 걸음 시간 동안 칸 사이를 직선 이동)
+	//        → 표시 위치(pos: logPos를 지수 스무딩으로 따라감). 자세한 건 game/Motion.h
 	int     tx = 0, ty = 0;          // 서버 칸
 	Vector2 pos{};                   // 그리는 위치(타일 좌표, 실수)
+	Vector2 logPos{};
 	Vector2 from{}, to{};
 	float   moveT = 1.f, moveDur = 0.5f;
+	struct QueuedStep { Vector2 to; float dur; };
+	std::array<QueuedStep, 4> stepQ{};   // 아직 재생하지 않은 걸음(원격 개체)
+	int     stepQN = 0;
 	float   walkPhase = 0.f;
-	float   moving = 0.f;            // 0~1(걷기 애니메이션 섞기)
+	float   moving = 0.f;            // 0~1(idle↔walk 섞기, 속도 기반)
+	float   run = 0.f;               // 0~1(walk↔run)
+	float   speed = 0.f;             // 표시 속도(칸/초)
 	bool    faceRight = true;
 	bool    faceBack = false;
 

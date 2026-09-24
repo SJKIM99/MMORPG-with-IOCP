@@ -269,7 +269,7 @@ namespace SectorHelper
 	}
 	// ──────────────────────────────────────────────────────────────────────────────
 
-	void HandlePlayerMove(const shared_ptr<User>& player, short nextX, short nextY)
+	void HandlePlayerMove(const shared_ptr<User>& player, short nextX, short nextY, bool notifySelf)
 	{
 		if (player == nullptr)
 			return;
@@ -291,7 +291,8 @@ namespace SectorHelper
 		const auto oldVisible = CollectSubjects(player);
 
 		UpdatePosition(const_cast<ObjID&>(playerId), nextX, nextY);
-		UserHelper::SendSUBJECT_MOVE_NFY(player, static_pointer_cast<Subject>(player));
+		if (notifySelf)
+			UserHelper::SendSUBJECT_MOVE_NFY(player, static_pointer_cast<Subject>(player));
 
 		if (oldX == player->GetX() && oldY == player->GetY())
 			return;

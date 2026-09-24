@@ -81,8 +81,19 @@ static void WriteCrashLog(const char* tag, DWORD exCode, void* exAddr, EXCEPTION
 	}
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+	// --view-range N : 시야 범위(기본 9). 포트폴리오 부하 테스트 조건은 5.
+	for (int i = 1; i + 1 < argc; ++i)
+	{
+		if (std::string(argv[i]) == "--view-range")
+		{
+			const int range = std::atoi(argv[i + 1]);
+			GViewRange = std::clamp(range, 3, SECTOR_RANGE);
+		}
+	}
+	std::cout << "View range: " << GViewRange << std::endl;
+
 	std::set_new_handler([]() noexcept {
 		WriteCrashLog("OOM", 0, nullptr);
 		std::set_new_handler(nullptr);

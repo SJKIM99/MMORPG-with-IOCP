@@ -3,6 +3,7 @@
 #include "net/Shared.h"
 #include "net/Socket.h"
 
+#include <deque>
 #include <functional>
 #include <string>
 #include <vector>
@@ -26,6 +27,10 @@ namespace net
 
 		void SetHandler(PacketHandler handler) { m_handler = std::move(handler); }
 
+		// 테스트: 인공 지연(ms, 한쪽 방향)과 지터. 받은 패킷·보낼 패킷을 순서를 지킨 채
+		// 늦게 전달해 나쁜 네트워크에서의 조작감/보정을 확인한다.
+		void SetSimulatedLag(int oneWayMs, int jitterMs) { m_lagMs = oneWayMs; m_jitterMs = jitterMs; }
+
 		[[nodiscard]] TcpSocket::State GetState() const noexcept { return m_socket.GetState(); }
 		[[nodiscard]] bool IsConnected() const noexcept { return m_socket.GetState() == TcpSocket::State::Connected; }
 		[[nodiscard]] const std::string& LastError() const noexcept { return m_socket.LastError(); }
@@ -38,6 +43,7 @@ namespace net
 		// ── 요청 ──
 		void SendLoginEx(const std::string& name, const std::string& password);
 		void SendMove(int direction);
+		void SendMoveEx(int direction, uint16_t seq);   // V2 순번 이동(예측/보정)
 		void SendAttackFacing(bool facingLeft);
 		void SendTargetAttack(const ObjID& target);
 		void SendSkill();
@@ -60,11 +66,17 @@ namespace net
 		{
 			packet.size = static_cast<unsigned short>(sizeof(Packet));
 			packet.type = static_cast<char>(type);
-			const char* raw = reinterpret_cast<const char*>(&packet);
-			m_sendBuf.insert(m_sendBuf.end(), raw, raw + sizeof(Packet));
-			Flush();
+			QueueRaw(reinterpret_cast<const char*>(&packet), sizeof(Packet));
 		}
+		void QueueRaw(const char* raw, size_t size);
 		void Flush();
+		void DeliverDelayed();
+		[[nodiscard]] double DelayFor();
+
+		struct Delayed { double at; std::vector<char> bytes; };
+		std::deque<Delayed> m_delayedIn, m_delayedOut;
+		int               m_lagMs = 0, m_jitterMs = 0;
+		double            m_lastInAt = 0.0, m_lastOutAt = 0.0;
 
 		TcpSocket         m_socket;
 		PacketHandler     m_handler;

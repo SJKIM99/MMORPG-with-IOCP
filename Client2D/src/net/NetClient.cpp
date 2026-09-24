@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 
 // 서버 헤더의 정적 멤버 정의(서버에서는 ObjID.cpp/ContentiD.cpp에 있다)
 ContentID ContentID::npos{};
@@ -14,6 +15,11 @@ namespace net
 	{
 		constexpr size_t kRecvBufferSize = 64 * 1024;
 		constexpr uint16_t kMaxPacketSize = 4096;   // 서버 SEND_BATCH_BUFFER_SIZE와 같은 상한
+
+		double NowSec()
+		{
+			return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		}
 
 		void CopyFixed(char* dst, size_t dstSize, const std::string& src)
 		{
@@ -35,6 +41,47 @@ namespace net
 		m_socket.Close();
 		m_recvLen = 0;
 		m_sendBuf.clear();
+		m_delayedIn.clear();
+		m_delayedOut.clear();
+	}
+
+	double NetClient::DelayFor()
+	{
+		const int j = m_jitterMs > 0 ? (std::rand() % (m_jitterMs * 2 + 1)) - m_jitterMs : 0;
+		return std::max(0, m_lagMs + j) / 1000.0;
+	}
+
+	void NetClient::QueueRaw(const char* raw, size_t size)
+	{
+		if (m_lagMs > 0)
+		{
+			const double at = std::max(m_lastOutAt, NowSec() + DelayFor());
+			m_lastOutAt = at;
+			m_delayedOut.push_back(Delayed{ at, std::vector<char>(raw, raw + size) });
+			return;
+		}
+		m_sendBuf.insert(m_sendBuf.end(), raw, raw + size);
+		Flush();
+	}
+
+	void NetClient::DeliverDelayed()
+	{
+		const double now = NowSec();
+		while (!m_delayedOut.empty() && m_delayedOut.front().at <= now)
+		{
+			const auto& d = m_delayedOut.front().bytes;
+			m_sendBuf.insert(m_sendBuf.end(), d.begin(), d.end());
+			m_delayedOut.pop_front();
+		}
+		while (!m_delayedIn.empty() && m_delayedIn.front().at <= now)
+		{
+			const std::vector<char> d = std::move(m_delayedIn.front().bytes);
+			m_delayedIn.pop_front();
+			if (m_handler)
+				m_handler(d.data(), static_cast<uint16_t>(d.size()));
+			if (!IsConnected())
+				return;
+		}
 	}
 
 	void NetClient::Update()
@@ -42,6 +89,9 @@ namespace net
 		if (m_socket.Poll() != TcpSocket::State::Connected)
 			return;
 
+		DeliverDelayed();
+		if (!IsConnected())
+			return;
 		Flush();
 
 		// 받을 수 있는 만큼 받는다
@@ -71,7 +121,14 @@ namespace net
 			if (m_recvLen - offset < size)
 				break;
 			++m_packetsIn;
-			if (m_handler)
+			if (m_lagMs > 0)
+			{
+				// 테스트 지연: 순서를 지키며(앞 패킷보다 먼저 오지 않게) 늦게 전달
+				const double at = std::max(m_lastInAt, NowSec() + DelayFor());
+				m_lastInAt = at;
+				m_delayedIn.push_back(Delayed{ at, std::vector<char>(m_recvBuf.data() + offset, m_recvBuf.data() + offset + size) });
+			}
+			else if (m_handler)
 				m_handler(m_recvBuf.data() + offset, size);
 			offset += size;
 			if (!IsConnected())
@@ -112,6 +169,14 @@ namespace net
 		p.move_time = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
 			std::chrono::steady_clock::now().time_since_epoch()).count());
 		Queue(p, PacketType::USER_MOVE_REQ);
+	}
+
+	void NetClient::SendMoveEx(int direction, uint16_t seq)
+	{
+		USER_MOVE_EX_REQ_PACKET p{};
+		p.dir = static_cast<uint8_t>(direction);
+		p.seq = seq;
+		Queue(p, PacketType::USER_MOVE_EX_REQ);
 	}
 
 	void NetClient::SendAttackFacing(bool facingLeft)
