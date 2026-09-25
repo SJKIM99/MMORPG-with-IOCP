@@ -10,6 +10,7 @@
 #include "render/Lighting.h"
 #include "render/Actors.h"
 #include "ui/Ui.h"
+#include "Data/QuestData.h"
 
 #include <array>
 #include <cstdio>
@@ -24,6 +25,9 @@
 //   GameNet.cpp   : 서버 패킷 처리(레거시 + 확장 프로토콜 전부)
 //   GameDraw.cpp  : 월드 그리기(깊이 패스), 이름표/체력바/말풍선
 //   GameUi.cpp    : HUD, 인벤토리/상점/텔레포트/강화/사망 창, 로그인 화면
+//   GameItems.cpp : 장비창 · 툴팁 · 희귀도 루팅 연출(아이템 성장)
+//   GameNpc.cpp   : 서버가 배회시키는 마을 NPC
+//   GameQuest.cpp : 퀘스트 · 메인 이야기(추적 · 일지 · 대화 · 나침반 · 장 제목 · 엔딩)
 // ─────────────────────────────────────────────────────────────────────────────
 class Game
 {
@@ -182,6 +186,52 @@ private:
 	void HandleNpcTalkAck(const NPC_TALK_ACK_PACKET& p);
 	void HandleNpcServiceAck(const NPC_SERVICE_ACK_PACKET& p);
 	void RequestNpcService(uint16_t npcId, WorldData::NpcService service);
+	// ── 퀘스트 · 메인 이야기(GameQuest.cpp) — 판정은 서버, 표시는 Data/QuestData.h ──
+	struct QuestView
+	{
+		uint16_t id = 0;
+		std::array<uint16_t, 3> progress{};
+		std::array<double, 3> bumpAt{ -10.0, -10.0, -10.0 };   // 진행도가 오른 순간(튀어 오름)
+		double acceptedAt = -10.0;
+		double readyAt = -10.0;                                // 목표를 다 이룬 순간
+	};
+	enum class QuestAvail { No, Yes, LowLevel, Cooldown };
+	enum class QuestMark { None, Low, Active, Talk, Available, Ready };   // 우선순위 순
+	struct QuestFly { Vector2 from; double at; uint16_t quest; int obj; };
+	struct QuestDoneFx { uint16_t quest; double at; uint32_t exp, adena; uint16_t item, count; uint8_t rarity; };
+	struct Discovery { uint16_t poi; double at; bool heart; };
+	void HandleQuestList(const QUEST_LIST_INF_PACKET& p);
+	void HandleQuestUpdate(const QUEST_UPDATE_INF_PACKET& p);
+	void HandleQuestResult(const QUEST_RESULT_ACK_PACKET& p);
+	[[nodiscard]] const QuestView* ActiveQuest(uint16_t id) const;
+	[[nodiscard]] bool QuestDone(uint16_t id) const;
+	[[nodiscard]] bool QuestReady(const QuestView& q) const;
+	[[nodiscard]] QuestAvail CanTakeQuest(const QuestData::QuestRow& q) const;
+	[[nodiscard]] QuestMark NpcQuestMark(uint16_t npcId) const;
+	[[nodiscard]] std::string ObjectiveLabel(const QuestData::Objective& o) const;
+	[[nodiscard]] const QuestView* FocusQuest() const;             // 나침반 · 추적 표시 대상
+	// 지금 가야 할 곳(칸)과 이름(나침반 · 미니맵 · 지도). viaTeleporter: 텔레포터를 거쳐 가라는 안내
+	struct QuestDest { Vector2 tile{}; std::string label; bool viaTeleporter = false; bool npc = false; bool poi = false; uint16_t quest = 0; };
+	bool QuestDestination(QuestDest& out) const;
+	[[nodiscard]] QuestAvail CanTakeQuestId(uint16_t id) const;
+	uint16_t AutoQuestForNpc(uint16_t npcId) const;                 // 말을 걸면 바로 펼칠 퀘스트(보고 · 메인 이야기)
+	void DrawNpcPortrait(Rectangle pr, const WorldData::NpcRow& npc);
+	[[nodiscard]] bool IsQuestTarget(const Entity& e) const;       // 몬스터 머리 위 퀘스트 표식
+	[[nodiscard]] bool QuestWantsRegion(int zoneId) const;         // 진행 중인 목표가 그 지역에 있나(텔레포트 목록 표시)
+	void SendQuest(QuestAction action, uint16_t questId);
+	void OpenQuestInDialog(uint16_t questId);
+	void UpdateQuests(float dt);
+	void DrawQuestMark(Vector2 head, QuestMark mark, float scale);
+	void DrawQuestTracker();
+	void DrawQuestLog();
+	void DrawQuestDialog(const WorldData::NpcRow& npc);
+	float DrawQuestRewards(float x, float y, float w, const QuestData::QuestRow& q, bool stacked = false);   // 차지한 높이
+	float DrawQuestObjectives(float x, float y, float w, const QuestData::QuestRow& q, const QuestView* v, float size);
+	void DrawQuestWorld(bool groundPass);                          // 월드 패스: 목적지 바닥 고리(ground) · 빛기둥
+	void DrawQuestCompass(const Camera2D& cam);                    // 화면 밖 목적지 화살표
+	void DrawQuestOverlay(const Camera2D& cam);                    // 날아오는 퀘스트 물건
+	void DrawQuestScreenFx();                                      // 장 제목 · 엔딩(화면 전체)
+	float DrawQuestStackCards(float y);                            // 알림 띠 맨 위: 새 장소 · 퀘스트 완료 카드(차지한 높이)
 	// 0 = 기본 공격, 1~5 스킬. quiet: 안내 문구 없이(자동 공격·예약 시전).
 	// forced: 대상을 정해서(자동 공격의 목표·사거리 밖에서 눌러 예약한 대상).
 	bool TryCastSkill(int slot, bool quiet = false, const ObjID& forced = ObjID{});
@@ -405,6 +455,34 @@ private:
 	double           m_chatOpenedAt = -10.0;
 	double           m_bossWarnAt = -100.0;
 	uint32_t         m_lastShopSeq = 0;
+
+	// ── 퀘스트 ──
+	std::vector<QuestView> m_quests;                   // 진행 중(받은 순서)
+	std::array<uint8_t, 32> m_questDone{};             // 끝낸 퀘스트 id 비트(서버와 같은 모양)
+	std::unordered_map<uint16_t, double> m_questCooldownUntil;   // 반복 퀘스트: m_now 기준 다시 받을 수 있는 시각
+	bool             m_questsKnown = false;
+	bool             m_questLogOpen = false;
+	uint16_t         m_questLogSel = 0;
+	uint16_t         m_trackedQuest = 0;              // 0 = 자동(메인 이야기 → 먼저 받은 것)
+	uint16_t         m_dialogQuest = 0;               // NPC 대화창에서 보고 있는 퀘스트
+	double           m_questSentAt = -10.0;
+	int              m_abandonArm = 0;                // 포기 확인(두 번 누르기)
+	double           m_abandonArmAt = -10.0;
+	std::vector<QuestFly> m_questFlies;
+	std::deque<QuestDoneFx> m_questDoneFx;
+	std::deque<Discovery> m_discoveries;
+	int              m_chapterCard = 0;
+	double           m_chapterCardAt = -100.0;
+	double           m_endingAt = -100.0;
+	float            m_trackerBottom = 256.f;         // 추적 표시 아래 끝(알림 토스트가 그 아래로)
+	QuestDest        m_questDest;                     // 이번 프레임 목적지(나침반 · 미니맵 · 지도 공용)
+	bool             m_questDestValid = false;
+	bool             m_chapterBellPlayed = false;
+	float            m_bannersBottom = 84.f;          // 알림 띠 아래 끝(가운데 알림이 그 아래로)
+	uint16_t         m_dialogAutoQuest = 0;           // 보고 직후 이어서 펼칠 다음 이야기(완료 연출이 지나간 뒤)
+	double           m_dialogAutoAt = 0.0;
+	int              m_endingStage = 0;
+	float            m_questLogScroll = 0.f;
 
 	// 테스트 자동화
 	float            m_runTime = 0.f;

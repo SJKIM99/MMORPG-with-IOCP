@@ -86,11 +86,14 @@ void Game::DrawGame()
 
 	DrawWorldOverlay(cam);
 	fx::Fx().DrawOverlay(cam);
+	DrawQuestOverlay(cam);
 
 	if (m_scene != Scene::Game)
 		return;
+	DrawQuestCompass(cam);
 	DrawHud();
 	DrawMinimap();
+	DrawQuestTracker();
 	DrawTargetFrame();
 	DrawChat();
 	DrawSkillBar();
@@ -100,6 +103,7 @@ void Game::DrawGame()
 	DrawToasts();
 	if (m_invOpen) DrawInventory();
 	if (m_charOpen) DrawCharacter();
+	if (m_questLogOpen) DrawQuestLog();
 	if (m_dialogNpc && m_shopMode == ShopMode::None) DrawNpcDialog();
 	if (m_shopMode == ShopMode::Buy) DrawShop();
 	if (m_shopMode == ShopMode::Sell) DrawSell();
@@ -108,6 +112,7 @@ void Game::DrawGame()
 	if (m_discard.open) DrawDiscard();
 	if (m_mapOpen) DrawWorldMap();
 	if (m_helpOpen) DrawHelp();
+	DrawQuestScreenFx();
 	if (m_dead) DrawDeath();
 }
 
@@ -216,6 +221,8 @@ void Game::DrawWorld(const Camera2D& cam)
 	}
 	fx::Fx().DrawGround();
 	skillfx::DrawGround();
+	gfx::SetDepthRaw(-0.97f);
+	DrawQuestWorld(true);
 	// 몬스터 강공격 예고(바닥이 차오른다) · 내 기술 사거리 미리보기
 	for (auto& [id, e] : m_ents)
 		if (e.tele.active && !e.dead)
@@ -270,6 +277,7 @@ void Game::DrawWorld(const Camera2D& cam)
 		skillfx::DrawStatus(e, base, EntityHeight(e), static_cast<float>(m_now));
 	}
 	gfx::ResetMod();
+	DrawQuestWorld(false);
 	fx::Fx().DrawWorld();
 	skillfx::DrawWorld();
 
@@ -489,6 +497,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			if (d < bestD) { bestD = d; interactNpc = nid; }
 		}
 	}
+	std::vector<std::pair<Vector2, QuestMark>> questMarks;   // 이름표보다 위에 그린다(겹친 NPC 이름에 가리지 않게)
 	for (const auto& [nid, v] : m_npcView)
 	{
 		if (!v.row) continue;
@@ -499,11 +508,12 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		if (head.x < -120 || head.y < -80 || head.x > m_screenW + 120 || head.y > m_screenH + 60) continue;
 		const int d = Cheb(m_predX, m_predY, v.tx, v.ty);
 		const bool hovered = nid == m_hoverNpc;
+		const QuestMark qm = NpcQuestMark(nid);
 		float y = head.y;
 		const char* role = npc.kind == WorldData::NpcKind::eMerchant ? "잡화 상점" : npc.kind == WorldData::NpcKind::eWeaponSmith ? "무기 상점"
 			: npc.kind == WorldData::NpcKind::eTeleporter ? "텔레포트" : npc.kind == WorldData::NpcKind::ePriest ? "치유의 기도"
 			: npc.kind == WorldData::NpcKind::eInnkeeper ? "여관 · 수프" : "";
-		if (!animal || hovered || alt || d <= 3)
+		if (!animal || hovered || alt || d <= 3 || qm == QuestMark::Talk)
 		{
 			st.size = animal ? 13.f : 15.f;
 			st.color = animal ? Rgb(0xF0E0C0) : Rgb(0xB8F08A);
@@ -527,11 +537,17 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			ui::Text("F", Vector2{ head.x, k.y + 1.f }, 13.f, Rgb(0xFFE08A), ui::Align::Center);
 			y -= 22.f;
 		}
-		else if (hovered && !animal)
+		else if (hovered && !animal && qm == QuestMark::None)
 		{
 			const float bob = std::sin(m_time * 5.f) * 3.f;
 			DrawTriangle(Vector2{ head.x - 6, y - 12 + bob }, Vector2{ head.x, y - 4 + bob }, Vector2{ head.x + 6, y - 12 + bob }, Rgb(0xFFE08A));
 			y -= 12.f;
+		}
+		// 퀘스트 표식(! 새 이야기 · ? 보고 · 말풍선 = 말을 걸어야 할 대상)
+		if (qm != QuestMark::None && (d <= 26 || qm == QuestMark::Ready || qm == QuestMark::Available))
+		{
+			questMarks.emplace_back(Vector2{ head.x, y - 6.f }, qm);
+			y -= 34.f;
 		}
 		// 말풍선(혼잣말·인사)
 		if (v.barkT > 0.f && !v.bark.empty())
@@ -561,6 +577,9 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			ui::Fonts().DrawCentered("♥", Vector2{ head.x + std::sin(u * 9.f) * 4.f, y - 10.f - u * 30.f }, hs);
 		}
 	}
+
+	for (const auto& [at, mark] : questMarks)
+		DrawQuestMark(at, mark, mark == QuestMark::Low || mark == QuestMark::Active ? 0.8f : 1.f);
 
 	for (auto& [id, e] : m_ents)
 	{
@@ -612,6 +631,16 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 				DrawPoly(Vector2{ head.x + m.x * 0.5f + 12.f, y - st.size * 0.5f - 2.f }, 4, 6.f, 45.f, Rgb(0xFF6A2A));
 			}
 			y -= st.size + 4.f;
+		}
+		// 퀘스트 대상 몬스터: 머리 위 작은 금빛 마름모
+		if (e.kind == EntityKind::Monster && !e.dead && IsQuestTarget(e))
+		{
+			const float bob = std::sin(m_time * 4.f + static_cast<float>(e.tx)) * 1.5f;
+			const Vector2 q{ head.x, y - 8.f + bob };
+			DrawPoly(q, 4, 7.f, 0.f, Color{ 40, 24, 6, 220 });
+			DrawPoly(q, 4, 5.f, 0.f, Rgb(0xFFD84A));
+			DrawPoly(Vector2{ q.x - 1.f, q.y - 1.5f }, 4, 1.8f, 0.f, Rgb(0xFFF6D0));
+			y -= 16.f;
 		}
 		// 말풍선
 		if (e.chatT > 0.f && !e.chat.empty())

@@ -22,6 +22,7 @@
 #include "Data/MonsterTable.h"
 #include "Data/WorldData.h"
 #include "Content/ContentHelper.h"
+#include "Quest/QuestHelper.h"
 #include "MonsterHelper.h"
 #include "GameSessionManager.h"
 #include "Zone/ZoneLayout.h"
@@ -302,6 +303,7 @@ namespace UserHelper
 		{
 			CombatHelper::SendStats(player);
 			CombatHelper::SendResource(player);
+			QuestHelper::OnEquipChanged(player);   // "N부위 착용" 목표
 		}
 	}
 
@@ -1049,6 +1051,10 @@ namespace UserHelper
 		HandleItemDrop(attacker, species, deathX, deathY);
 
 		const bool isBoss = species != nullptr && species->boss;
+		// V2 퀘스트: 처치 · 수집(막타), 보스는 가까이 있던 모두
+		QuestHelper::OnKill(attacker, species, deathX, deathY);
+		if (isBoss)
+			QuestHelper::OnBossKilled(species->id, deathX, deathY);
 		GTimerThread->ScheduleAfter(monsterId, isBoss ? std::chrono::seconds(WorldData::kBossRespawnSeconds) : std::chrono::seconds(10),
 			TIMER_EVENT_TYPE::EV_MONSTER_RESPAWN);
 	}
@@ -1312,6 +1318,7 @@ namespace UserHelper
 			SendADENA_INF(player, 0, AdenaReason::Init);
 			CombatHelper::SendStats(player);
 			CombatHelper::SendResource(player);
+			QuestHelper::SendList(player);
 		}
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
@@ -1370,6 +1377,7 @@ namespace UserHelper
 			SendUSER_INFO_EX_INF(player);
 			CombatHelper::SendStats(player);
 			CombatHelper::SendResource(player);
+			QuestHelper::SendList(player);
 		}
 
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
@@ -1795,6 +1803,9 @@ namespace UserHelper
 		player->SetLastStepMs(cost);
 		SectorHelper::HandlePlayerMove(player, x, y, false);
 		SendUSER_MOVE_EX_ACK(player, seq, MoveResult::Ok, cost);
+		// 탐험 목표(존을 넘어가는 걸음이면 새 Zone 스레드가 소유 — 다음 걸음에서 본다)
+		if (!player->IsTransferring())
+			QuestHelper::OnMoved(player);
 	}
 
 	void SaveProgress(const shared_ptr<User>& user)

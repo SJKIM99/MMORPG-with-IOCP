@@ -27,6 +27,8 @@ namespace sfx
 		Voice, DogBark, CatMeow, Cluck, Lute, Pet,
 		// 아이템 성장: 희귀도별 획득음
 		LootRare, LootHeroic, LootLegendary, LootMythic,
+		// 퀘스트 · 메인 이야기
+		QuestAccept, QuestTick, QuestObjDone, QuestReady, QuestComplete, ChapterBell, Discover, Heartbeat, QuestFly,
 		Count
 	};
 

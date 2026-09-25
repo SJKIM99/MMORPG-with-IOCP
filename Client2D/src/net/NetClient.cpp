@@ -221,6 +221,17 @@ namespace net
 		Queue(p, PacketType::ITEM_SORT_REQ);
 	}
 
+	void NetClient::SendQuest(QuestAction action, uint16_t questId)
+	{
+		// 세 요청은 본문 모양이 같다(questId 하나)
+		switch (action)
+		{
+		case QuestAction::Accept:   { QUEST_ACCEPT_REQ_PACKET p{}; p.questId = questId; Queue(p, PacketType::QUEST_ACCEPT_REQ); break; }
+		case QuestAction::Complete: { QUEST_COMPLETE_REQ_PACKET p{}; p.questId = questId; Queue(p, PacketType::QUEST_COMPLETE_REQ); break; }
+		case QuestAction::Abandon:  { QUEST_ABANDON_REQ_PACKET p{}; p.questId = questId; Queue(p, PacketType::QUEST_ABANDON_REQ); break; }
+		}
+	}
+
 	void NetClient::SendAttackFacing(bool facingLeft)
 	{
 		USER_ATTACK_REQ_PACKET p{};

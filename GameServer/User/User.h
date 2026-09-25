@@ -7,6 +7,7 @@
 #include "Data/LevelTable.h"
 #include "Data/CombatData.h"
 #include "Data/ItemRules.h"
+#include "Data/QuestData.h"
 
 class User : public Subject
 {
@@ -60,6 +61,18 @@ public:
 	uint32_t     m_npcSeenTick   = 0;   // 마지막으로 NPC 틱이 이 사용자를 마을에서 본 번호(새로 오면 목록을 보낸다)
 	uint32_t     m_npcHealReadyAt = 0;  // 사제 기도 재사용
 	uint32_t     m_npcSoupReadyAt = 0;  // 여관 수프 재사용
+
+	// ── V2 퀘스트(Data/QuestData.h, Quest/QuestHelper) — 진행 데이터 v3에 저장 ────────
+	struct QuestSlot
+	{
+		uint16_t id = 0;                                   // 0 = 빈 칸
+		std::array<uint16_t, QuestData::kMaxObjs> progress{};
+		std::array<uint8_t, QuestData::kMaxObjs> misses{}; // 수집 실패 횟수(운 보정, 저장하지 않는다)
+	};
+	std::array<QuestSlot, QuestData::kMaxActive> m_quests{};
+	std::array<uint8_t, 32> m_questDone{};                  // 끝낸 퀘스트(한 번뿐인 것) id 비트
+	struct QuestCooldown { uint16_t id; uint32_t readyAtUnix; };
+	std::vector<QuestCooldown> m_questCooldowns;            // 반복 퀘스트: 다시 받을 수 있는 시각(벽시계)
 
 private:
 	shared_ptr<GameSession> m_session;

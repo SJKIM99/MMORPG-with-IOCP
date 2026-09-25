@@ -58,6 +58,9 @@
     <Filter Include="Npc">
       <UniqueIdentifier>{c7e2a9d3-1b4f-4a6c-8d25-6e9f0b3c7d52}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Quest">
+      <UniqueIdentifier>{4531e17c-33f9-4dda-8430-4b5c19b8a59f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\CoreGlobal.cpp">
@@ -329,6 +332,9 @@
     <ClCompile Include="Npc\NpcHelper.cpp">
       <Filter>Npc</Filter>
     </ClCompile>
+    <ClCompile Include="Quest\QuestHelper.cpp">
+      <Filter>Quest</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Content\ContentHelper.h">
@@ -360,6 +366,12 @@
     </ClInclude>
     <ClInclude Include="Npc\NpcHelper.h">
       <Filter>Npc</Filter>
+    </ClInclude>
+    <ClInclude Include="Quest\QuestHelper.h">
+      <Filter>Quest</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\QuestData.h">
+      <Filter>Data</Filter>
     </ClInclude>
     <ClInclude Include="Data\MonsterTable.h">
       <Filter>Data</Filter>

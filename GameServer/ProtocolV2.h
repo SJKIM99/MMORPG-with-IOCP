@@ -281,7 +281,109 @@ struct ITEM_SORT_REQ_PACKET
 	uint8_t        mode;          // SortMode
 };
 
+// ── 퀘스트 · 메인 이야기(Data/QuestData.h) ───────────────────────────────────
+// 진행도는 목표마다 하나(QuestData::kMaxObjs). "목표를 다 이뤘나"는 표와 진행도로 양쪽이
+// 같은 식(QuestData::ObjectivesDone)으로 계산한다 — 따로 상태를 싣지 않는다.
+struct QUEST_ENTRY
+{
+	uint16_t questId;
+	uint16_t progress[3];
+};
+
+struct QUEST_COOLDOWN
+{
+	uint16_t questId;
+	uint32_t remainSec;       // 반복 퀘스트를 다시 받을 수 있을 때까지(초)
+};
+
+inline constexpr int kQuestListActiveMax = 8;     // = QuestData::kMaxActive
+inline constexpr int kQuestListCooldownMax = 8;
+struct QUEST_LIST_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        activeCount;
+	QUEST_ENTRY    active[kQuestListActiveMax];
+	uint8_t        done[32];                         // 끝낸 퀘스트(한 번뿐인 것) id 비트 1~255
+	uint8_t        cooldownCount;
+	QUEST_COOLDOWN cooldowns[kQuestListCooldownMax];
+};
+
+enum class QuestEvent : uint8_t
+{
+	Accepted,    // 받음(진행도는 받는 순간의 값 — 이미 입고 있는 장비 등)
+	Progress,    // 목표 하나가 늘었다(objIndex, x/y = 계기가 된 곳 — 쓰러진 몬스터 자리)
+	Completed,   // 끝(보상은 아래 필드). 반복 퀘스트면 cooldownSec
+	Abandoned,
+};
+
+struct QUEST_UPDATE_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       questId;
+	uint8_t        event;          // QuestEvent
+	uint8_t        objIndex;       // Progress: 바뀐 목표(0~2), 그 밖은 0xFF
+	uint16_t       progress[3];
+	short          x, y;           // Progress: 계기가 된 칸(없으면 -1)
+	// Completed: 받은 보상
+	uint32_t       exp;
+	uint32_t       adena;
+	uint16_t       itemId;
+	uint16_t       itemCount;
+	uint8_t        rarity;         // 장비 보상의 희귀도(Rarity)
+	uint32_t       cooldownSec;    // 반복 퀘스트: 다시 받을 수 있을 때까지
+};
+
+struct QUEST_ACCEPT_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       questId;
+};
+
+struct QUEST_COMPLETE_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       questId;
+};
+
+struct QUEST_ABANDON_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       questId;
+};
+
+enum class QuestAction : uint8_t { Accept, Complete, Abandon };
+enum class QuestResult : uint8_t
+{
+	Ok,
+	Unknown,        // 없는 퀘스트 · 진행 중이 아닌 퀘스트
+	TooFar,         // 주는/보고할 NPC 곁이 아니다
+	NotAvailable,   // 이미 받았거나 끝냈다 · 선행 퀘스트를 안 끝냈다
+	LevelTooLow,    // param = 필요 레벨
+	WrongClass,
+	LogFull,        // 진행 중인 퀘스트가 가득(QuestData::kMaxActive)
+	NotReady,       // 목표를 아직 다 이루지 못했다
+	InventoryFull,  // 보상을 받을 자리가 없다(아무것도 바뀌지 않는다)
+	Cooldown,       // param = 남은 초
+	Busy,           // 사망 · 존 이동 중
+};
+
+struct QUEST_RESULT_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       questId;
+	uint8_t        action;         // QuestAction
+	uint8_t        result;         // QuestResult
+	uint32_t       param;
+};
+
 static_assert(sizeof(USER_STATS_INF_PACKET) <= 255, "STRESS_TEST 수신 버퍼(255)를 넘으면 안 된다");
+static_assert(sizeof(QUEST_LIST_INF_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 static_assert(sizeof(PLAYER_LOOK_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 static_assert(sizeof(NPC_LIST_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 
@@ -296,5 +398,8 @@ namespace ClientPacketSizeDetailV2
 	constexpr size_t v04 = ProtocolConstMaxSize(v03, sizeof(NPC_TALK_REQ_PACKET));
 	constexpr size_t v05 = ProtocolConstMaxSize(v04, sizeof(NPC_SERVICE_REQ_PACKET));
 	constexpr size_t v06 = ProtocolConstMaxSize(v05, sizeof(ITEM_SORT_REQ_PACKET));
+	constexpr size_t v07 = ProtocolConstMaxSize(v06, sizeof(QUEST_ACCEPT_REQ_PACKET));
+	constexpr size_t v08 = ProtocolConstMaxSize(v07, sizeof(QUEST_COMPLETE_REQ_PACKET));
+	constexpr size_t v09 = ProtocolConstMaxSize(v08, sizeof(QUEST_ABANDON_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v06;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v09;

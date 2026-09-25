@@ -747,6 +747,114 @@ namespace sfx
 					Tone(b, 0.7f + i * 0.07f, 0.25f, Osc::Sine, Const(Rand(3000.f, 8000.f)), 0.09f, 0.002f, 12.f);
 				Load(Id::LootMythic, b, 0.7f);
 			}
+
+			// ── 퀘스트 · 메인 이야기 ──
+			{
+				// 받기: 양피지 스치는 소리 + 부드러운 두 음(솔 → 도)
+				Buf b(0.9f);
+				Noise(b, 0, 0.22f, Sweep(1800, 5200), 0.35f, 0.04f, 9.f, 700.f);
+				const float n[] = { 783.99f, 1046.5f };
+				for (int i = 0; i < 2; ++i)
+				{
+					Tone(b, 0.1f + i * 0.12f, 0.7f, Osc::Sine, Const(n[i]), 0.6f, 0.004f, 4.5f);
+					Tone(b, 0.1f + i * 0.12f, 0.4f, Osc::Sine, Const(n[i] * 2.76f), 0.12f, 0.003f, 9.f);
+				}
+				Load(Id::QuestAccept, b, 0.4f);
+			}
+			{
+				// 진행: 작게 튕기는 소리
+				Buf b(0.25f);
+				Tone(b, 0, 0.22f, Osc::Tri, Const(880.f), 0.8f, 0.002f, 16.f);
+				Tone(b, 0, 0.12f, Osc::Sine, Const(1760.f), 0.3f, 0.002f, 28.f);
+				Load(Id::QuestTick, b, 0.28f);
+			}
+			{
+				// 목표 하나 완료: 맑은 두 음이 위로
+				Buf b(0.7f);
+				const float n[] = { 1318.5f, 1760.f };
+				for (int i = 0; i < 2; ++i)
+				{
+					Tone(b, i * 0.08f, 0.55f, Osc::Sine, Const(n[i]), 0.6f, 0.003f, 6.f);
+					Tone(b, i * 0.08f, 0.3f, Osc::Sine, Const(n[i] * 2.76f), 0.12f, 0.002f, 12.f);
+				}
+				Load(Id::QuestObjDone, b, 0.38f);
+			}
+			{
+				// 모든 목표 완료: 도 · 미 · 솔 · 도 아르페지오 + 반짝임
+				Buf b(1.1f);
+				const float n[] = { 1046.5f, 1318.5f, 1568.f, 2093.f };
+				for (int i = 0; i < 4; ++i)
+				{
+					Tone(b, i * 0.07f, 0.8f, Osc::Sine, Const(n[i]), 0.5f, 0.003f, 4.f);
+					Tone(b, i * 0.07f, 0.5f, Osc::Tri, Const(n[i] * 0.5f), 0.2f, 0.003f, 6.f);
+				}
+				for (int i = 0; i < 6; ++i)
+					Tone(b, 0.3f + i * 0.06f, 0.18f, Osc::Sine, Const(Rand(3200.f, 6400.f)), 0.08f, 0.002f, 16.f);
+				Load(Id::QuestReady, b, 0.45f);
+			}
+			{
+				// 퀘스트 완료: 짧은 금관 팡파르(솔 → 도·미·솔 화음) + 종 + 반짝임
+				Buf b(2.0f);
+				Tone(b, 0, 0.16f, Osc::Saw, Const(392.f), 0.25f, 0.01f, 10.f);
+				Tone(b, 0, 0.16f, Osc::Tri, Const(392.f), 0.4f, 0.01f, 10.f);
+				const float chord[] = { 523.25f, 659.25f, 783.99f, 1046.5f };
+				for (int i = 0; i < 4; ++i)
+				{
+					Tone(b, 0.18f, 1.6f, Osc::Saw, Const(chord[i]), 0.12f, 0.02f, 1.7f, 5.f, 0.004f);
+					Tone(b, 0.18f, 1.6f, Osc::Tri, Const(chord[i]), 0.35f, 0.02f, 1.7f, 5.f, 0.004f);
+				}
+				Tone(b, 0.18f, 1.5f, Osc::Sine, Const(130.8f), 0.5f, 0.02f, 2.2f);
+				Tone(b, 0.2f, 1.4f, Osc::Sine, Const(2093.f), 0.25f, 0.003f, 2.5f);
+				Tone(b, 0.2f, 1.0f, Osc::Sine, Const(2093.f * 2.76f), 0.06f, 0.003f, 5.f);
+				for (int i = 0; i < 12; ++i)
+					Tone(b, 0.3f + i * 0.07f, 0.2f, Osc::Sine, Const(Rand(3000.f, 7000.f)), 0.07f, 0.002f, 14.f);
+				Load(Id::QuestComplete, b, 0.6f);
+			}
+			{
+				// 장 제목: 깊은 종(비조화 배음) + 낮은 울림이 부풀어 오른다
+				Buf b(3.4f);
+				const float f0 = 98.f;
+				const float partial[] = { 1.f, 2.f, 2.76f, 5.4f, 8.93f };
+				const float amp[] = { 0.7f, 0.45f, 0.35f, 0.18f, 0.08f };
+				for (int i = 0; i < 5; ++i)
+					Tone(b, 0.05f, 3.3f, Osc::Sine, Const(f0 * partial[i]), amp[i], 0.004f, 0.9f + i * 0.5f);
+				Tone(b, 0, 3.3f, Osc::Sine, Const(49.f), 0.5f, 1.2f, 0.8f);
+				Noise(b, 0.05f, 0.25f, Sweep(2500, 400), 0.25f, 0.f, 12.f, 150.f);
+				Load(Id::ChapterBell, b, 0.6f);
+			}
+			{
+				// 발견: 하프가 위로 쓸어 올라간다(오음 음계) + 반짝임
+				Buf b(1.6f);
+				const float scale[] = { 523.25f, 587.33f, 659.25f, 783.99f, 880.f, 1046.5f, 1174.7f, 1318.5f, 1568.f, 1760.f };
+				for (int i = 0; i < 10; ++i)
+				{
+					Tone(b, i * 0.045f, 0.9f, Osc::Tri, Const(scale[i]), 0.35f, 0.002f, 3.5f);
+					Tone(b, i * 0.045f, 0.5f, Osc::Sine, Const(scale[i] * 2.f), 0.12f, 0.002f, 6.f);
+				}
+				for (int i = 0; i < 10; ++i)
+					Tone(b, 0.45f + i * 0.07f, 0.25f, Osc::Sine, Const(Rand(3500.f, 7500.f)), 0.06f, 0.002f, 12.f);
+				Load(Id::Discover, b, 0.42f);
+			}
+			{
+				// 심장 박동: 쿵-쿵(두 번째가 조금 약하다)
+				Buf b(1.0f);
+				for (int k = 0; k < 2; ++k)
+				{
+					const float t0 = k * 0.3f;
+					const float a = k == 0 ? 1.f : 0.75f;
+					Tone(b, t0, 0.45f, Osc::Sine, ExpSweep(78, 38), a, 0.004f, 9.f);
+					Noise(b, t0, 0.06f, Const(500), 0.25f * a, 0.001f, 40.f);
+				}
+				Load(Id::Heartbeat, b, 0.85f);
+			}
+			{
+				// 퀘스트 물건이 날아온다: 쉭 + 높은 반짝임
+				Buf b(0.45f);
+				Noise(b, 0, 0.35f, ExpSweep(800, 6000), 0.4f, 0.12f, 8.f, 500.f);
+				for (int i = 0; i < 4; ++i)
+					Tone(b, 0.15f + i * 0.05f, 0.15f, Osc::Sine, Const(2400.f + i * 500.f), 0.2f, 0.002f, 18.f);
+				Load(Id::QuestFly, b, 0.3f);
+			}
 		}
 	}
 

@@ -17,6 +17,8 @@ namespace icons
 	void Draw(uint16_t itemId, Rectangle dst, Color tint = WHITE);
 	// 월드 공간(현재 gfx 깊이 사용)
 	void DrawWorld(uint16_t itemId, Vector2 center, float size, float rot, Color tint = WHITE);
+	// 퀘스트 수집물(가방 밖 물건) — questIcon = QuestData::QuestIcon 값
+	void DrawQuestItem(uint8_t questIcon, Rectangle dst, Color tint = WHITE);
 
 	// hilt = 손잡이 끝(잡는 곳), angle = 칼끝 방향(라디안, 화면 기준), scale 1 = 아이콘 128px 기준 약 1/3
 	void DrawWeapon(uint16_t itemId, Vector2 hilt, float angle, float scale, float time);

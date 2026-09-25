@@ -135,6 +135,20 @@ void Game::ResetWorld()
 	m_dashWaitSeq = 0;
 	m_actionLockUntil = 0.0;
 	m_charOpen = false;
+	// 퀘스트(로그인하면 QUEST_LIST_INF로 다시 온다)
+	m_quests.clear();
+	m_questDone = {};
+	m_questCooldownUntil.clear();
+	m_questsKnown = false;
+	m_questLogOpen = false;
+	m_dialogQuest = 0;
+	m_trackedQuest = 0;
+	m_questFlies.clear();
+	m_questDoneFx.clear();
+	m_discoveries.clear();
+	m_chapterCard = 0;
+	m_endingAt = -100.0;
+	m_questDestValid = false;
 	InitNpcs();
 }
 
@@ -150,6 +164,23 @@ void Game::Frame()
 	m_net.Update();
 	ui::BeginFrame(dt);
 	m_light.UpdateClock(m_opts.hour);
+	// 엔딩: 숲의 심장이 다시 뛰면 새벽이 온다(잠시 뒤 원래 시각으로 천천히 돌아간다)
+	if (m_endingAt > 0.0 && m_now - m_endingAt < 70.0)
+	{
+		const float t = static_cast<float>(m_now - m_endingAt);
+		if (t > 3.8f && t < 70.f)
+		{
+			const float real = m_light.Hour();
+			float diff = 6.8f - real;
+			while (diff > 12.f) diff -= 24.f;
+			while (diff < -12.f) diff += 24.f;
+			const float k = util::Clamp01((t - 3.8f) / 2.f) * (1.f - util::Clamp01((t - 55.f) / 15.f));
+			float h = real + diff * k;
+			if (h < 0.f) h += 24.f;
+			if (h >= 24.f) h -= 24.f;
+			m_light.UpdateClock(h);
+		}
+	}
 	props::SetNight(m_light.Night());
 
 	switch (m_scene)
@@ -342,6 +373,7 @@ void Game::UpdateGame(float dt)
 	TickCombat(dt);
 	TickLoot();
 	UpdateNpcs(sdt);
+	UpdateQuests(dt);
 
 	// ── 이동(내 캐릭터: 예측·보정·스무딩 / 다른 개체: 걸음 시간대로 보간) ──
 	// 서버 걸음을 재생하는 시간은 프레임 시간 상한(0.05초)에 묶이면 안 된다 — FPS가 낮을 때
@@ -538,7 +570,9 @@ void Game::HandleHotkeys()
 		if (ui::TextFocused()) { ui::Focus(nullptr); m_chatOpen = false; return; }
 		if (m_enchant.stage == 1 || m_enchant.stage == 2) { m_enchant = EnchantFlow{}; return; }
 		if (m_discard.open) { m_discard.open = false; return; }
+		if (m_dialogQuest != 0 && m_dialogNpc != 0) { m_dialogQuest = 0; m_dialogTextAt = m_now; return; }   // 이야기 → NPC 첫 화면
 		if (m_dialogNpc || m_shopMode != ShopMode::None) { CloseNpcWindows(); return; }
+		if (m_questLogOpen) { m_questLogOpen = false; sfx::Play(sfx::Id::Close, 0.5f); return; }
 		if (m_mapOpen) { m_mapOpen = false; return; }
 		if (m_helpOpen) { m_helpOpen = false; return; }
 		if (m_charOpen) { m_charOpen = false; return; }
@@ -553,6 +587,7 @@ void Game::HandleHotkeys()
 	if (IsKeyPressed(KEY_I)) { m_invOpen = !m_invOpen; sfx::Play(m_invOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
 	if (IsKeyPressed(KEY_C)) { m_charOpen = !m_charOpen; sfx::Play(m_charOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
 	if (IsKeyPressed(KEY_M)) { m_mapOpen = !m_mapOpen; sfx::Play(m_mapOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
+	if (IsKeyPressed(KEY_L) || IsKeyPressed(KEY_J)) { m_questLogOpen = !m_questLogOpen; m_abandonArm = 0; sfx::Play(m_questLogOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
 	if (IsKeyPressed(KEY_F1) || IsKeyPressed(KEY_H)) { m_helpOpen = !m_helpOpen; sfx::Play(sfx::Id::Open, 0.5f); }
 	if (IsKeyPressed(KEY_G)) m_showGrid = !m_showGrid;
 	if (IsKeyPressed(KEY_Z)) PickupHere();
@@ -1163,6 +1198,8 @@ void Game::OpenNpc(uint16_t npcId)
 	m_dialogLine = -1;
 	m_dialogTextAt = m_now;
 	m_shopMode = ShopMode::None;
+	// 보고할 퀘스트 · 이 사람이 들려줄 메인 이야기가 있으면 바로 펼친다
+	m_dialogQuest = AutoQuestForNpc(npcId);
 	m_buyItem = 0;
 	m_sellSlot = -1;
 	m_teleportSel = -1;
@@ -1179,6 +1216,7 @@ void Game::CloseNpcWindows()
 	if (m_dialogNpc != 0 || m_shopMode != ShopMode::None)
 		sfx::Play(sfx::Id::Close, 0.5f);
 	m_dialogNpc = 0;
+	m_dialogQuest = 0;
 	m_shopMode = ShopMode::None;
 }
 
@@ -1607,5 +1645,65 @@ void Game::RunScript(float dt)
 			m_net.SendChat("안녕하세요! 여명의 마을입니다");
 			m_scriptStep = 1;
 		}
+	}
+	else if (s == "quest" || s == "questlog")
+	{
+		// 새 캐릭터: 촌장에게 첫 이야기(장 제목) → 사제에게 보고(완료 연출) → 두 번째 이야기 → 남문 밖 사냥
+		auto talkTo = [&](uint16_t npc) { SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, npc }); m_scriptT = 0.f; };
+		switch (m_scriptStep)
+		{
+		case 0: if (m_scriptT > 2.0f && m_questsKnown) { talkTo(6); m_scriptStep = 1; } break;
+		case 1:
+			if (m_dialogNpc == 6 && m_dialogQuest == 1) { m_scriptStep = 2; m_scriptT = 0.f; }
+			else if (m_goal.kind == GoalKind::None && m_scriptT > 2.5f) talkTo(6);
+			break;
+		case 2: if (m_scriptT > 3.5f) { SendQuest(QuestAction::Accept, 1); m_scriptStep = 3; m_scriptT = 0.f; } break;
+		case 3:
+			if (s == "questlog" && m_scriptT > 6.5f) { CloseNpcWindows(); m_questLogOpen = true; m_scriptStep = 99; }
+			else if (s == "quest" && m_scriptT > 7.0f) { CloseNpcWindows(); talkTo(7); m_scriptStep = 4; }
+			break;
+		case 4:
+			if (m_dialogNpc == 7 && m_dialogQuest == 1) { m_scriptStep = 5; m_scriptT = 0.f; }
+			else if (m_goal.kind == GoalKind::None && m_scriptT > 2.5f) talkTo(7);
+			break;
+		case 5: if (m_scriptT > 3.0f) { SendQuest(QuestAction::Complete, 1); m_scriptStep = 6; m_scriptT = 0.f; } break;
+		case 6: if (m_scriptT > 3.5f && m_dialogQuest == 2) { SendQuest(QuestAction::Accept, 2); m_scriptStep = 7; m_scriptT = 0.f; } break;
+		case 7: if (m_scriptT > 2.5f) { CloseNpcWindows(); SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 21, WorldData::kTownY0 + 50 }); m_scriptStep = 8; m_scriptT = 0.f; } break;
+		case 8:
+			if (m_goal.kind == GoalKind::None)
+			{
+				bool any = false;
+				for (auto& [id, e] : m_ents) if (e.kind == EntityKind::Monster && !e.dead && IsQuestTarget(e) && Cheb(m_predX, m_predY, e.tx, e.ty) <= 9) any = true;
+				if (any)
+				{
+					// 퀘스트 대상부터
+					Entity* best = nullptr;
+					int bestD = 99;
+					for (auto& [id, e] : m_ents)
+						if (e.kind == EntityKind::Monster && !e.dead && IsQuestTarget(e) && Cheb(m_predX, m_predY, e.tx, e.ty) < bestD) { best = &e; bestD = Cheb(m_predX, m_predY, e.tx, e.ty); }
+					if (best) { m_target = best->id; SetGoal(Goal{ GoalKind::Attack, best->id }); }
+				}
+				else SetGoal(Goal{ GoalKind::Move, ObjID{}, m_predX + util::RandI(-6, 6), m_predY + util::RandI(2, 7) });
+			}
+			if (m_hp * 2 < m_maxhp) UseQuickSlot(0);
+			break;
+		default: break;
+		}
+	}
+	else if (s == "chapter")
+	{
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_chapterCard = 2; m_chapterCardAt = m_now; m_chapterBellPlayed = false; m_scriptStep = 1; }
+	}
+	else if (s == "discover")
+	{
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_discoveries.push_back(Discovery{ 3, m_now, false }); sfx::Play(sfx::Id::Discover); m_scriptStep = 1; }
+	}
+	else if (s == "questdone")
+	{
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_questDoneFx.push_back(QuestDoneFx{ 5, m_now, 400, 600, ItemTableData::Id::TravelerCloak, 1, 2 }); sfx::Play(sfx::Id::QuestComplete); m_scriptStep = 1; }
+	}
+	else if (s == "ending")
+	{
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_endingAt = m_now; m_endingStage = 0; m_scriptStep = 1; }
 	}
 }

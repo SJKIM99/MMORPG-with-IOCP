@@ -140,6 +140,7 @@ enum class WorldNoticeCode : uint16_t
 	EnchantSuccess,   // param1=ItemTableId, param2=강화 수치, name=플레이어
 	PlayerKilled,     // param1=지역, name=PK한 플레이어
 	RareLoot,         // V2: param1=ItemTableId, param2=희귀도(Rarity), name=주운 플레이어 — 신화 획득
+	StoryComplete,    // V2: param1=퀘스트 id(메인 이야기 마지막), name=플레이어 — 숲의 심장이 다시 뛴다
 };
 
 enum class PacketType : uint16_t
@@ -240,6 +241,13 @@ enum class PacketType : uint16_t
 	ITEM_DETAIL_INF,          // S→C 슬롯 하나의 인스턴스 값(희귀도·옵션) — ITEM_SLOT_EX_INF 바로 뒤에
 	PLAYER_LOOK_NFY,          // S→C 주변 플레이어의 착용 외형(부위별 아이템·희귀도)
 	ITEM_SORT_REQ,            // C→S 소지품 정리
+	// 퀘스트 · 메인 이야기(Data/QuestData.h)
+	QUEST_LIST_INF,           // S→C 진행 중 · 완료 · 반복 대기 전체(로그인 때 한 번)
+	QUEST_UPDATE_INF,         // S→C 퀘스트 하나의 변화(받음 · 진행 · 완료 · 포기)
+	QUEST_ACCEPT_REQ,         // C→S 퀘스트 받기(주는 NPC 곁에서)
+	QUEST_COMPLETE_REQ,       // C→S 퀘스트 보고(보고할 NPC 곁에서)
+	QUEST_ABANDON_REQ,        // C→S 퀘스트 포기
+	QUEST_RESULT_ACK,         // S→C 받기 · 보고 · 포기 요청의 결과(요청마다 하나)
 };
 
 #pragma pack (push, 1)
@@ -770,7 +778,7 @@ struct ITEM_SLOT_EX_INF_PACKET
 	ITEM_SLOT_EX_DATA slot;
 };
 
-enum class AdenaReason : uint8_t { Pickup, ShopBuy, ShopSell, Teleport, Init, Service };
+enum class AdenaReason : uint8_t { Pickup, ShopBuy, ShopSell, Teleport, Init, Service, Quest };
 
 struct ADENA_INF_PACKET
 {

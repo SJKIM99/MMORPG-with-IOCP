@@ -401,8 +401,8 @@ void Game::DrawHud()
 	}
 	DrawStatusIcons(12.f, 112.f);
 
-	// 가운데 알림
-	float y = H * 0.27f;
+	// 가운데 알림(위쪽 알림 띠가 길어지면 그 아래로)
+	float y = std::max(H * 0.27f, m_bannersBottom + 18.f);
 	for (const auto& c : m_center)
 	{
 		const float age = static_cast<float>(m_now - c.start);
@@ -581,12 +581,51 @@ void Game::DrawMinimap()
 	}
 	for (const auto& [nid, v] : m_npcView)
 	{
-		if (!v.row || WorldData::IsAnimal(v.row->kind)) continue;
+		if (!v.row) continue;
 		const Vector2 p = toMap(v.pos.x - m_predX, v.pos.y - m_predY);
+		// 퀘스트가 있는 사람은 ! ? 로
+		const QuestMark qm = NpcQuestMark(nid);
+		if (qm == QuestMark::Available || qm == QuestMark::Ready)
+		{
+			ui::TextStyle st;
+			st.size = 13.f;
+			st.color = Rgb(0xFFD84A);
+			st.outline = 1.5f;
+			st.outlineColor = Color{ 40, 24, 6, 230 };
+			ui::Fonts().DrawCentered(qm == QuestMark::Ready ? "?" : "!", Vector2{ p.x, p.y - 2.f }, st);
+			continue;
+		}
+		if (WorldData::IsAnimal(v.row->kind) && qm != QuestMark::Talk) continue;
 		const bool service = v.row->kind == WorldData::NpcKind::eMerchant || v.row->kind == WorldData::NpcKind::eWeaponSmith
 			|| v.row->kind == WorldData::NpcKind::eTeleporter || v.row->kind == WorldData::NpcKind::ePriest || v.row->kind == WorldData::NpcKind::eInnkeeper;
 		DrawCircleV(p, service ? 3.2f : 2.4f, Color{ 0, 0, 0, 160 });
-		DrawCircleV(p, service ? 2.4f : 1.7f, service ? Rgb(0xFFE08A) : Rgb(0x9AF06A));
+		DrawCircleV(p, service ? 2.4f : 1.7f, qm == QuestMark::Talk ? Rgb(0xFFD84A) : (service ? Rgb(0xFFE08A) : Rgb(0x9AF06A)));
+	}
+	// 퀘스트 목적지(밖이면 가장자리에 붙인다)
+	if (m_questDestValid)
+	{
+		Vector2 p = toMap(m_questDest.tile.x - m_predX, m_questDest.tile.y - m_predY);
+		const Rectangle in{ m.x + 7.f, m.y + 7.f, m.width - 14.f, m.height - 14.f };
+		const bool inside = CheckCollisionPointRec(p, in);
+		if (!inside)
+		{
+			const Vector2 d = util::Norm(util::Sub(p, c));
+			float k = 1e9f;
+			if (d.x > 1e-4f) k = std::min(k, (in.x + in.width - c.x) / d.x);
+			if (d.x < -1e-4f) k = std::min(k, (in.x - c.x) / d.x);
+			if (d.y > 1e-4f) k = std::min(k, (in.y + in.height - c.y) / d.y);
+			if (d.y < -1e-4f) k = std::min(k, (in.y - c.y) / d.y);
+			p = util::Add(c, util::Mul(d, k));
+			const Vector2 n{ -d.y, d.x };
+			DrawTriangle(util::Add(p, util::Mul(d, 6.f)), util::Add(util::Add(p, util::Mul(d, -3.f)), util::Mul(n, -5.f)), util::Add(util::Add(p, util::Mul(d, -3.f)), util::Mul(n, 5.f)), Rgb(0xFFD84A));
+		}
+		else
+		{
+			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 5.f);
+			DrawCircleV(p, 6.f + pulse * 3.f, Color{ 255, 216, 74, static_cast<unsigned char>(90 * (1.f - pulse)) });
+			DrawTriangle(Vector2{ p.x, p.y - 5.f }, Vector2{ p.x - 5.f, p.y }, Vector2{ p.x + 5.f, p.y }, Rgb(0xFFD84A));
+			DrawTriangle(Vector2{ p.x - 5.f, p.y }, Vector2{ p.x, p.y + 5.f }, Vector2{ p.x + 5.f, p.y }, Rgb(0xFFD84A));
+		}
 	}
 	// 나(바라보는 방향 화살표)
 	{
@@ -690,37 +729,64 @@ void Game::DrawChat()
 // ─────────────────────────────────────────────────────────────────────────────
 // NPC · 상점 · 텔레포트
 // ─────────────────────────────────────────────────────────────────────────────
-void Game::DrawNpcDialog()
+void Game::DrawNpcPortrait(Rectangle pr, const WorldData::NpcRow& npc)
 {
-	const auto* npc = WorldData::FindNpc(m_dialogNpc);
-	if (!npc) { m_dialogNpc = 0; return; }
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Rectangle r{ W * 0.5f - 300.f, H - 350.f, 600.f, 226.f };
-	bool open = true;
-	ui::Window(r, npc->name, &open);
-	if (!open) { CloseNpcWindows(); return; }
-
 	// 초상화(NPC를 크게 다시 그린다 — 말하는 동안 살짝 움직인다)
-	const Rectangle pr{ r.x + 16, r.y + 46, 120, 164 };
 	DrawRectangleRounded(pr, 0.06f, 6, Color{ 30, 26, 34, 255 });
 	DrawRectangleGradientV(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height), Color{ 70, 60, 50, 120 }, Color{ 10, 8, 12, 0 });
 	BeginScissorMode(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height));
 	{
 		actors::Pose pose;
-		const bool small = WorldData::IsAnimal(npc->kind) || npc->kind == WorldData::NpcKind::eChild;
+		const bool small = WorldData::IsAnimal(npc.kind) || npc.kind == WorldData::NpcKind::eChild;
 		pose.base = Vector2{ pr.x + pr.width * 0.5f, pr.y + pr.height + (small ? -8.f : 18.f) };
 		pose.scale = small ? 2.2f : 1.7f;
 		pose.time = m_time;
 		pose.faceRight = true;
-		pose.seed = npc->id;
+		pose.seed = npc.id;
 		gfx::BeginWorld(0.f, pose.scale);
 		gfx::ResetMod();
 		gfx::SetDepthRaw(-0.5f);
-		actors::DrawNpc(pose, *npc);
+		actors::DrawNpc(pose, npc);
 		gfx::Flush();
 	}
 	EndScissorMode();
 	DrawRectangleRoundedLinesEx(pr, 0.06f, 6, 1.5f, ui::theme::kBorder);
+}
+
+void Game::DrawNpcDialog()
+{
+	const auto* npc = WorldData::FindNpc(m_dialogNpc);
+	if (!npc) { m_dialogNpc = 0; return; }
+	if (m_dialogQuest != 0)
+	{
+		DrawQuestDialog(*npc);
+		return;
+	}
+
+	// 이 NPC와 얽힌 퀘스트(보고 · 새 이야기 · 진행 중 · 곧 받을 수 있는 것)
+	struct QuestEntry { const QuestData::QuestRow* q; QuestMark mark; };
+	std::vector<QuestEntry> quests;
+	for (const auto& v : m_quests)
+		if (const auto* q = QuestData::Find(v.id); q && q->turnIn == npc->id)
+			quests.push_back(QuestEntry{ q, QuestReady(v) ? QuestMark::Ready : QuestMark::Active });
+	for (const auto& q : QuestData::kQuests)
+	{
+		if (q.giver != npc->id || ActiveQuest(q.id)) continue;
+		const QuestAvail a = CanTakeQuest(q);
+		if (a == QuestAvail::Yes) quests.push_back(QuestEntry{ &q, QuestMark::Available });
+		else if (a == QuestAvail::LowLevel && (q.kind == QuestData::QuestKind::Main || q.minLevel <= m_level + 5)) quests.push_back(QuestEntry{ &q, QuestMark::Low });
+		else if (a == QuestAvail::Cooldown) quests.push_back(QuestEntry{ &q, QuestMark::None });
+	}
+	std::stable_sort(quests.begin(), quests.end(), [](const QuestEntry& a, const QuestEntry& b) { return static_cast<int>(a.mark) > static_cast<int>(b.mark); });
+	if (quests.size() > 4) quests.resize(4);
+	const float extra = quests.empty() ? 0.f : quests.size() * 30.f + 6.f;
+
+	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const Rectangle r{ W * 0.5f - 300.f, H - 350.f - extra, 600.f, 226.f + extra };
+	bool open = true;
+	ui::Window(r, npc->name, &open);
+	if (!open) { CloseNpcWindows(); return; }
+	DrawNpcPortrait(Rectangle{ r.x + 16, r.y + 46, 120, 164 }, *npc);
 
 	// 대사 — 한 글자씩 나타난다(누르면 바로 다)
 	const NpcTalk::Lines* lines = NpcTalk::Find(npc->id);
@@ -742,6 +808,35 @@ void Game::DrawNpcDialog()
 		// 다 읽었으면 작은 화살표가 깜빡인다
 		const float blink = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 6.f);
 		DrawTriangle(Vector2{ r.x + r.width - 30, r.y + 142 }, Vector2{ r.x + r.width - 24, r.y + 150 }, Vector2{ r.x + r.width - 18, r.y + 142 }, util::WithA(ui::theme::kGold, blink));
+	}
+
+	// 퀘스트 목록 — 누르면 그 이야기를 펼친다
+	for (size_t i = 0; i < quests.size(); ++i)
+	{
+		const auto& e = quests[i];
+		const Rectangle er{ r.x + 152.f, r.y + 156.f + i * 30.f, r.width - 170.f, 27.f };
+		const bool hover = ui::Hovered(er);
+		const bool bright = e.mark == QuestMark::Ready || e.mark == QuestMark::Available;
+		DrawRectangleRounded(er, 0.25f, 6, hover ? Color{ 80, 62, 36, 220 } : Color{ 34, 28, 26, 210 });
+		if (bright) DrawRectangleRoundedLinesEx(er, 0.25f, 6, 1.f, util::WithA(ui::theme::kGold, hover ? 0.9f : 0.45f));
+		const char* glyph = e.mark == QuestMark::Ready || e.mark == QuestMark::Active ? "?" : (e.mark == QuestMark::None ? "…" : "!");
+		ui::Text(glyph, Vector2{ er.x + 14.f, er.y + 3.f }, 17.f, bright ? ui::theme::kGold : ui::theme::kTextDim, Align::Center, true);
+		ui::Text(e.q->name, Vector2{ er.x + 30.f, er.y + 5.f }, 15.f, bright ? Rgb(0xFFE8B0) : ui::theme::kText);
+		std::string tag;
+		switch (e.mark)
+		{
+		case QuestMark::Ready: tag = "보고"; break;
+		case QuestMark::Available: tag = e.q->kind == QuestData::QuestKind::Main ? "메인 이야기" : (e.q->kind == QuestData::QuestKind::Daily ? "반복 의뢰" : (e.q->kind == QuestData::QuestKind::Class ? "직업의 길" : "부가 이야기")); break;
+		case QuestMark::Active: tag = "진행 중"; break;
+		case QuestMark::Low: tag = Fmt("Lv.%d부터", e.q->minLevel); break;
+		default: tag = "내일 다시"; break;
+		}
+		ui::Text(tag, Vector2{ er.x + er.width - 10.f, er.y + 6.f }, 13.f, bright ? ui::theme::kGold : ui::theme::kTextDim, Align::Right);
+		if (ui::Clicked(er))
+		{
+			OpenQuestInDialog(e.q->id);
+			sfx::Play(sfx::Id::Open, 0.6f);
+		}
 	}
 
 	float bx = r.x + 152;
@@ -770,7 +865,16 @@ void Game::DrawNpcDialog()
 		if (button(92, "판매")) { m_shopMode = ShopMode::Sell; m_sellSlot = -1; m_invOpen = true; sfx::Play(sfx::Id::Open, 0.6f); }
 		break;
 	case WorldData::NpcKind::eTeleporter:
-		if (button(120, "순간이동", ButtonKind::Primary)) { m_shopMode = ShopMode::Teleport; m_teleportSel = -1; sfx::Play(sfx::Id::Open, 0.6f); }
+		if (button(120, "순간이동", ButtonKind::Primary))
+		{
+			m_shopMode = ShopMode::Teleport;
+			m_teleportSel = -1;
+			// 퀘스트 목적지로 가는 길이면 미리 골라 둔다
+			if (m_questDestValid && m_questDest.viaTeleporter)
+				for (const auto& reg : WorldData::kRegions)
+					if (reg.teleportFee > 0 && QuestWantsRegion(reg.zoneId)) { m_teleportSel = reg.zoneId; break; }
+			sfx::Play(sfx::Id::Open, 0.6f);
+		}
 		break;
 	case WorldData::NpcKind::ePriest:
 	{
@@ -946,6 +1050,11 @@ void Game::DrawTeleport()
 		Stars(Vector2{ it.x + 150, it.y + it.height * 0.5f }, reg.tier, 9.f);
 		if (reg.bossSpecies)
 			ui::Text("보스: " + texts::MonsterName(reg.bossSpecies), Vector2{ it.x + 222, ty + 1 }, 13.f, Rgb(0xFF8A6A));
+		if (QuestWantsRegion(reg.zoneId))
+		{
+			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 4.f);
+			ui::Text("◆ 퀘스트", Vector2{ it.x + it.width - 96, ty + 1 }, 13.f, util::Mix(Rgb(0xE8B840), Rgb(0xFFE890), pulse), Align::Right);
+		}
 		const bool affordable = m_inv.adena >= reg.teleportFee;
 		ui::Text(texts::Number(reg.teleportFee), Vector2{ it.x + it.width - 12, ty }, 15.f, affordable ? Rgb(0xFFD84A) : ui::theme::kBad, Align::Right);
 		ui::Block(it);
@@ -1132,6 +1241,7 @@ void Game::DrawBanners()
 {
 	const float W = static_cast<float>(m_screenW);
 	float y = 84.f;
+	y += DrawQuestStackCards(y);
 	for (const auto& b : m_banners)
 	{
 		const float age = static_cast<float>(m_now - b.start);
@@ -1154,12 +1264,13 @@ void Game::DrawBanners()
 		ui::Fonts().DrawCentered(b.text, Vector2{ W * 0.5f, yy + 19.f }, st);
 		y += 44.f;
 	}
+	m_bannersBottom = y;
 }
 
 void Game::DrawToasts()
 {
 	const float W = static_cast<float>(m_screenW);
-	float y = 262.f;
+	float y = std::max(262.f, m_trackerBottom + 6.f);   // 퀘스트 추적 표시 아래
 	const float x1 = m_invOpen ? m_invRect.x - 12.f : W - 14.f;
 	for (const auto& t : m_toasts)
 	{
@@ -1179,13 +1290,14 @@ void Game::DrawToasts()
 void Game::DrawHelp()
 {
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Rectangle r{ W * 0.5f - 330.f, H * 0.5f - 250.f, 660.f, 500.f };
+	const Rectangle r{ W * 0.5f - 330.f, std::max(8.f, H * 0.5f - 270.f), 660.f, 540.f };
 	ui::Window(r, "도움말", &m_helpOpen);
 	const std::pair<const char*, const char*> rows[] = {
 		{ "W A S D / 방향키", "8방향 이동 (누른 쪽이 언제나 우선)" },
 		{ "Space", "기본 공격 — 대상이 없으면 가까운 적. 누르고 있으면 다음 적으로" },
 		{ "1 ~ 5", "직업 기술 (사거리 밖이면 다가가서 쓴다 · 쿨다운 직전에 눌러 두면 풀리는 순간)" },
 		{ "Tab / Esc", "가까운 순서로 대상 바꾸기 / 대상 해제" },
+		{ "L", "퀘스트 일지 — 머리 위 ! 새 이야기 · ? 보고" },
 		{ "Ctrl + 공격·기술", "다른 모험가 공격(PK) — 성향치와 보라돌이 규칙 주의" },
 		{ "F", "가까운 NPC와 대화 · 발밑 아이템 줍기" },
 		{ "Q E R T / F5~F8", "물약·주문서 칸 (소지품에서 끌어다 등록)" },
@@ -1200,7 +1312,7 @@ void Game::DrawHelp()
 	{
 		ui::TextShadow(k, Vector2{ r.x + 24, y }, 15.f, ui::theme::kTitle);
 		ui::Text(v, Vector2{ r.x + 184, y }, 14.f, ui::theme::kText);
-		y += 29;
+		y += 28;
 	}
 	ui::Divider(r.x + 20, r.x + r.width - 20, y + 4);
 	ui::TextWrapped("마을(여명의 마을)은 안전지대입니다. 텔레포터 루시엔에게 가면 다른 지역으로 이동할 수 있고, "
@@ -1245,6 +1357,42 @@ void Game::DrawWorldMap()
 			ui::Text(WorldData::kTownName, Vector2{ tp.x, tp.y + 8 }, 12.f, Rgb(0x9AF06A), Align::Center, true);
 		}
 	}
+	// 퀘스트: 사냥할 지역은 금빛 테두리, 이야기 속 장소는 ◆
+	if (const QuestView* fq = FocusQuest())
+		if (const auto* q = QuestData::Find(fq->id))
+			for (int i = 0; i < QuestData::kMaxObjs; ++i)
+			{
+				const auto& o = q->objs[i];
+				if (o.zone == QuestData::kAnyZone || fq->progress[static_cast<size_t>(i)] >= o.count) continue;
+				if (o.kind != QuestData::ObjKind::Kill && o.kind != QuestData::ObjKind::KillIn && o.kind != QuestData::ObjKind::Collect && o.kind != QuestData::ObjKind::Boss) continue;
+				const Rectangle c{ x0 + (o.zone % 4) * cell, y0 + (o.zone / 4) * cell, cell - 3, cell - 3 };
+				const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 3.f);
+				DrawRectangleLinesEx(c, 2.f + pulse, util::WithA(Rgb(0xFFD84A), 0.5f + 0.4f * pulse));
+			}
+	for (const auto& poi : QuestData::kPois)
+	{
+		const Vector2 pp{ x0 + poi.x / 500.f * cell, y0 + poi.y / 500.f * cell };
+		const bool dest = m_questDestValid && m_questDest.poi && static_cast<int>(m_questDest.tile.x) == poi.x && static_cast<int>(m_questDest.tile.y) == poi.y;
+		const float s = dest ? 6.f + std::sin(static_cast<float>(m_now) * 5.f) * 1.5f : 4.f;
+		const Color col = dest ? Rgb(0xFFD84A) : Rgb(0xE8DCC0, 200);
+		DrawTriangle(Vector2{ pp.x, pp.y - s }, Vector2{ pp.x - s, pp.y }, Vector2{ pp.x + s, pp.y }, col);
+		DrawTriangle(Vector2{ pp.x - s, pp.y }, Vector2{ pp.x, pp.y + s }, Vector2{ pp.x + s, pp.y }, col);
+		const Rectangle hit{ pp.x - 8.f, pp.y - 8.f, 16.f, 16.f };
+		if (dest || ui::Hovered(hit))
+			ui::Text(poi.name, Vector2{ pp.x, pp.y + 7.f }, 11.f, col, Align::Center, true);
+		if (ui::Hovered(hit))
+			ui::Tooltip({ { poi.name, ui::theme::kTitle, 16.f }, { poi.flavor, ui::theme::kText, 13.f } });
+	}
+	if (m_questDestValid && !m_questDest.poi)
+	{
+		const Vector2 dp{ x0 + m_questDest.tile.x / 500.f * cell, y0 + m_questDest.tile.y / 500.f * cell };
+		const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 5.f);
+		DrawCircleLinesV(dp, 6.f + pulse * 4.f, Rgb(0xFFD84A));
+		DrawCircleV(dp, 3.f, Rgb(0xFFD84A));
+	}
+	if (m_questDestValid)
+		ui::Text("목적지 · " + m_questDest.label, Vector2{ r.x + r.width * 0.5f, r.y + r.height - 54 }, 13.f, Rgb(0xFFD84A), Align::Center);
+
 	// 내 위치
 	const float px = x0 + m_predX / 500.f * cell, py = y0 + m_predY / 500.f * cell;
 	const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 5.f);
@@ -1414,7 +1562,7 @@ void Game::DrawComboCounter()
 {
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
 	const double age = m_now - m_comboLastAt;
-	const float cx = W - 150.f, cy = H * 0.42f;
+	const float cx = W - 360.f, cy = H * 0.42f;   // 오른쪽은 퀘스트 추적 표시 자리
 	if (m_comboHits >= 2 && age < 3.0)
 	{
 		const float a = age > 2.2 ? static_cast<float>(1.0 - (age - 2.2) / 0.8) : 1.f;

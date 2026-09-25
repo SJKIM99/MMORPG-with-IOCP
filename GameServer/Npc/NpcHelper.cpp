@@ -8,6 +8,7 @@
 #include "CoreTLS.h"
 #include "ServerGlobal.h"
 #include "Combat/CombatHelper.h"
+#include "Quest/QuestHelper.h"
 #include "Data/WorldData.h"
 #include "Data/NpcTalk.h"
 
@@ -477,6 +478,9 @@ namespace NpcHelper
 			g_users.clear();
 		}
 		session->PostSend(ack);
+		// 대화 목표(누렁이 쓰다듬기 등) — 결과 뒤에 진행을 알린다
+		if (ack.result == static_cast<uint8_t>(NpcTalkResult::Ok))
+			QuestHelper::OnTalk(user, npcId);
 	}
 
 	void HandleService(const shared_ptr<User>& user, uint16_t npcId, uint8_t service)

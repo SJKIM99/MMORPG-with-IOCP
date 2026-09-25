@@ -49,6 +49,7 @@ namespace net
 		void SendNpcTalk(uint16_t npcId);
 		void SendNpcService(uint16_t npcId, uint8_t service);
 		void SendItemSort();
+		void SendQuest(QuestAction action, uint16_t questId);   // 받기 · 보고 · 포기
 		void SendAttackFacing(bool facingLeft);
 		void SendTargetAttack(const ObjID& target);
 		void SendSkill();

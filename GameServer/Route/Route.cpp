@@ -14,6 +14,7 @@
 #include "Combat/CombatHelper.h"
 #include "Combat/SkillHelper.h"
 #include "Npc/NpcHelper.h"
+#include "Quest/QuestHelper.h"
 #include "Data/LevelTable.h"
 
 namespace Route
@@ -452,6 +453,25 @@ namespace Route
 			if (client == nullptr || client->IsTransferring())
 				break;
 			UserHelper::HandleItemSort(client);
+			break;
+		}
+		case PacketType::QUEST_ACCEPT_REQ:
+		case PacketType::QUEST_COMPLETE_REQ:
+		case PacketType::QUEST_ABANDON_REQ:
+		{
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			// 세 요청의 본문은 같은 모양(questId 하나)이다.
+			const uint16_t questId = reinterpret_cast<const QUEST_ACCEPT_REQ_PACKET*>(packet)->questId;
+			switch (static_cast<PacketType>(static_cast<uint8_t>(packet[2])))
+			{
+			case PacketType::QUEST_ACCEPT_REQ:   QuestHelper::HandleAccept(client, questId); break;
+			case PacketType::QUEST_COMPLETE_REQ: QuestHelper::HandleComplete(client, questId); break;
+			default:                             QuestHelper::HandleAbandon(client, questId); break;
+			}
 			break;
 		}
 		case PacketType::CS_CHAT:

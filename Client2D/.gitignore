@@ -2,3 +2,6 @@
 build/
 out/
 .vs/
+# 실행하면 생기는 캐릭터별 퀵슬롯 · 스크린샷(테스트)
+quickslots*.txt
+*.png.tmp

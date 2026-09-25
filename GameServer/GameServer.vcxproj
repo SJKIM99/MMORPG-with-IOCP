@@ -211,6 +211,7 @@
     <ClCompile Include="Combat\CombatHelper.cpp" />
     <ClCompile Include="Combat\SkillHelper.cpp" />
     <ClCompile Include="Npc\NpcHelper.cpp" />
+    <ClCompile Include="Quest\QuestHelper.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Area\AStar.h" />
@@ -264,6 +265,8 @@
     <ClInclude Include="Combat\SkillHelper.h" />
     <ClInclude Include="Combat\StatusSet.h" />
     <ClInclude Include="Npc\NpcHelper.h" />
+    <ClInclude Include="Quest\QuestHelper.h" />
+    <ClInclude Include="Data\QuestData.h" />
     <ClInclude Include="Data\LevelTable.h" />
     <ClInclude Include="Data\MoveRule.h" />
     <ClInclude Include="Data\CombatData.h" />

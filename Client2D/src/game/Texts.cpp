@@ -236,6 +236,8 @@ namespace texts
 			return Josa(name, "이", "가") + " " + Josa(ItemNameEnchanted(static_cast<uint16_t>(p1), p2), "을", "를") + " 만들어 냈습니다!";
 		case WorldNoticeCode::PlayerKilled:
 			return RegionName(p1) + "에서 " + Josa(name, "이", "가") + " 무고한 자를 쓰러뜨렸습니다.";
+		case WorldNoticeCode::StoryComplete:
+			return Josa(name, "이", "가") + " 숲의 심장을 다시 뛰게 했습니다! 긴 밤 끝에 새벽이 옵니다.";
 		}
 		return "";
 	}

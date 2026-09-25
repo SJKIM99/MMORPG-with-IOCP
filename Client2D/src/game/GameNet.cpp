@@ -281,6 +281,12 @@ void Game::OnPacket(const char* data, uint16_t size)
 		}
 		else if (reason == AdenaReason::Teleport && p.delta < 0)
 			AddChat("텔레포트 비용 " + texts::Number(-p.delta) + " 아데나를 지불했습니다.", Rgb(0xC8B070));
+		else if (reason == AdenaReason::Quest && p.delta > 0)
+		{
+			sfx::Play(sfx::Id::Coin, 0.8f);
+			if (Entity* me = Self())
+				fx::Fx().CoinBurst(TileToIso(me->pos), std::clamp(p.delta / 60, 4, 16));
+		}
 		break;
 	}
 	case PacketType::ENCHANT_RESULT_ACK:
@@ -426,6 +432,24 @@ void Game::OnPacket(const char* data, uint16_t size)
 		if (As(data, size, p)) HandlePlayerLook(p);
 		break;
 	}
+	case PacketType::QUEST_LIST_INF:
+	{
+		QUEST_LIST_INF_PACKET p{};
+		if (As(data, size, p)) HandleQuestList(p);
+		break;
+	}
+	case PacketType::QUEST_UPDATE_INF:
+	{
+		QUEST_UPDATE_INF_PACKET p{};
+		if (As(data, size, p)) HandleQuestUpdate(p);
+		break;
+	}
+	case PacketType::QUEST_RESULT_ACK:
+	{
+		QUEST_RESULT_ACK_PACKET p{};
+		if (As(data, size, p)) HandleQuestResult(p);
+		break;
+	}
 	case PacketType::WORLD_NOTICE_INF:
 	{
 		WORLD_NOTICE_INF_PACKET p{};
@@ -442,6 +466,10 @@ void Game::OnPacket(const char* data, uint16_t size)
 		case WorldNoticeCode::RareLoot:
 			c = icons::RarityColor(static_cast<Rarity>(std::clamp<int>(p.param2, 0, static_cast<int>(Rarity::Count) - 1)));
 			sfx::Play(sfx::Id::LootMythic, 0.45f);
+			break;
+		case WorldNoticeCode::StoryComplete:
+			c = Rgb(0xFFE6A8);
+			if (FixedStr(p.name, NAME_SIZE) != m_playerName) sfx::Play(sfx::Id::Heartbeat, 0.5f, 0.f);
 			break;
 		}
 		AddBanner(text, c);

@@ -16,7 +16,8 @@ namespace icons
 
 		constexpr int kCell = 128;
 		constexpr int kCols = 8;
-		constexpr int kRows = 8;
+		constexpr int kRows = 10;
+		constexpr int kQuestIconBase = 200;   // 퀘스트 수집물 아이콘: iconId 200 + QuestIcon
 		constexpr int kUnknownSlot = kCols * kRows - 1;
 		Texture2D g_atlas{};
 		int g_slotOf[256];   // iconId → 아틀라스 칸(Build가 표를 읽어 차례로 배정)
@@ -563,6 +564,145 @@ namespace icons
 			}
 		}
 
+		// ── 퀘스트 수집물(가방 밖 물건 — 진행도로만 센다) ──────────────────────────────
+		void QuestIconInto(int icon, Vector2 o)
+		{
+			const Vector2 c{ o.x + 64, o.y + 68 };
+			switch (icon)
+			{
+			case 1:   // 빛나는 이끼
+			{
+				IconShadow(o, 40);
+				gfx::CircleGrad(c, 58, Rgb(0xB8FF7A, 110), Rgb(0xB8FF7A, 0));
+				const float blobs[][3] = { { -22, 14, 20 }, { 18, 16, 22 }, { -2, 2, 26 }, { 26, -4, 14 }, { -28, -6, 13 } };
+				for (const auto& b : blobs) gfx::Circle(Vector2{ c.x + b[0], c.y + b[1] + 3 }, b[2], Rgb(0x1E4A22));
+				for (const auto& b : blobs) gfx::Circle(Vector2{ c.x + b[0], c.y + b[1] }, b[2], Rgb(0x3E8A3A));
+				for (const auto& b : blobs) gfx::Circle(Vector2{ c.x + b[0] - b[2] * 0.3f, c.y + b[1] - b[2] * 0.35f }, b[2] * 0.45f, Rgb(0x7AD05A));
+				const float dots[][2] = { { -18, -2 }, { 8, -12 }, { 22, 6 }, { -6, 18 }, { 30, -10 }, { -30, 8 } };
+				for (const auto& d : dots)
+				{
+					gfx::CircleGrad(Vector2{ c.x + d[0], c.y + d[1] }, 9, Rgb(0xE8FFB0, 220), Rgb(0xB8FF7A, 0));
+					gfx::Circle(Vector2{ c.x + d[0], c.y + d[1] }, 2.2f, Rgb(0xFFFFE0));
+				}
+				break;
+			}
+			case 2:   // 허수아비 조각(밀짚 다발 + 붉은 천)
+			{
+				IconShadow(o, 36);
+				for (int i = 0; i < 11; ++i)
+				{
+					const float t = (i - 5) / 5.f;
+					const Color straw = i % 3 == 0 ? Rgb(0xC89A3A) : (i % 3 == 1 ? Rgb(0xE8C060) : Rgb(0xF2D888));
+					gfx::Line(Vector2{ c.x + t * 10.f, c.y + 36 }, Vector2{ c.x + t * 34.f, c.y - 40 + std::fabs(t) * 10.f }, 4.f, straw);
+				}
+				gfx::Quad(Vector2{ c.x - 16, c.y + 2 }, Vector2{ c.x + 16, c.y + 2 }, Vector2{ c.x + 14, c.y + 16 }, Vector2{ c.x - 14, c.y + 16 }, Rgb(0xB0302A));
+				gfx::Quad(Vector2{ c.x - 16, c.y + 2 }, Vector2{ c.x + 16, c.y + 2 }, Vector2{ c.x + 16, c.y + 6 }, Vector2{ c.x - 16, c.y + 6 }, Rgb(0xE05A4A));
+				gfx::Tri(Vector2{ c.x + 12, c.y + 12 }, Vector2{ c.x + 30, c.y + 30 }, Vector2{ c.x + 20, c.y + 10 }, Rgb(0x8A2020));
+				break;
+			}
+			case 3:   // 곰 고기(뼈 달린 고깃덩이)
+			{
+				IconShadow(o, 40);
+				gfx::Capsule(Vector2{ c.x + 12, c.y - 12 }, Vector2{ c.x + 36, c.y - 34 }, 5.f, Rgb(0xE8E0CC));
+				gfx::Circle(Vector2{ c.x + 38, c.y - 40 }, 7.f, Rgb(0xF2ECDC));
+				gfx::Circle(Vector2{ c.x + 44, c.y - 32 }, 7.f, Rgb(0xE0D6C0));
+				gfx::Ellipse(Vector2{ c.x - 8, c.y + 12 }, 36, 28, Rgb(0x7A2A22));
+				gfx::Ellipse(Vector2{ c.x - 10, c.y + 8 }, 33, 25, Rgb(0xC0443A));
+				gfx::Ellipse(Vector2{ c.x - 16, c.y + 2 }, 20, 13, Rgb(0xE0786A));
+				gfx::EllipseArc(Vector2{ c.x - 10, c.y + 8 }, 24, 17, util::kPi * 0.1f, util::kPi * 0.9f, 3.f, Rgb(0xF2C8B8));
+				gfx::Circle(Vector2{ c.x - 26, c.y - 4 }, 4.f, Rgb(0xFFE0D0, 200));
+				break;
+			}
+			case 4:   // 정령의 빛(유리병에 담긴 빛)
+			{
+				IconShadow(o, 30);
+				gfx::CircleGrad(Vector2{ c.x, c.y + 6 }, 56, Rgb(0x8AF0E0, 120), Rgb(0x8AF0E0, 0));
+				gfx::Quad(Vector2{ c.x - 26, c.y - 22 }, Vector2{ c.x + 26, c.y - 22 }, Vector2{ c.x + 28, c.y + 38 }, Vector2{ c.x - 28, c.y + 38 }, Rgb(0xC8E8F0, 70));
+				gfx::Ellipse(Vector2{ c.x, c.y + 38 }, 28, 7, Rgb(0xA8D0D8, 90));
+				gfx::CircleGrad(Vector2{ c.x, c.y + 10 }, 22, Rgb(0xFFFFF0, 255), Rgb(0x6AF0D0, 0));
+				gfx::Circle(Vector2{ c.x, c.y + 10 }, 8, Rgb(0xFFFFFF));
+				gfx::Quad(Vector2{ c.x - 14, c.y - 34 }, Vector2{ c.x + 14, c.y - 34 }, Vector2{ c.x + 14, c.y - 22 }, Vector2{ c.x - 14, c.y - 22 }, Rgb(0xA0703A));
+				gfx::Line(Vector2{ c.x - 20, c.y - 14 }, Vector2{ c.x - 20, c.y + 28 }, 3.f, Rgb(0xFFFFFF, 150));
+				for (int i = 0; i < 4; ++i)
+					gfx::Star(Vector2{ c.x - 30 + i * 20.f, c.y - 36 + (i % 2) * 12.f }, 1.5f, 6.f, 4, 0.f, Rgb(0xE8FFF8));
+				break;
+			}
+			case 5:   // 성물 조각(금빛 수정 파편)
+			{
+				IconShadow(o, 34);
+				gfx::CircleGrad(c, 56, Rgb(0xFFE08A, 120), Rgb(0xFFE08A, 0));
+				const Vector2 a{ c.x - 6, c.y - 44 }, b{ c.x + 26, c.y - 6 }, d{ c.x + 8, c.y + 40 }, e{ c.x - 26, c.y + 20 }, f{ c.x - 24, c.y - 14 };
+				const Vector2 pts[] = { a, b, d, e, f };
+				gfx::Poly(pts, 5, Rgb(0xC8962A));
+				gfx::Tri(a, b, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xFFE89A));
+				gfx::Tri(a, f, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xF2C860));
+				gfx::Tri(f, e, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xD8A040));
+				gfx::Tri(b, d, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xE8B850));
+				gfx::Line(a, Vector2{ c.x + 2, c.y - 2 }, 1.5f, Rgb(0xFFFFE0));
+				gfx::Star(Vector2{ c.x - 8, c.y - 24 }, 2.f, 10.f, 4, 0.f, Rgb(0xFFFFFF));
+				break;
+			}
+			case 6:   // 녹슨 기사 문장(방패)
+			{
+				IconShadow(o, 34);
+				const Vector2 pts[] = { { c.x - 34, c.y - 36 }, { c.x + 34, c.y - 36 }, { c.x + 32, c.y + 4 }, { c.x, c.y + 44 }, { c.x - 32, c.y + 4 } };
+				gfx::Poly(pts, 5, Rgb(0x4A3A2E));
+				const Vector2 in[] = { { c.x - 28, c.y - 31 }, { c.x + 28, c.y - 31 }, { c.x + 26, c.y + 2 }, { c.x, c.y + 36 }, { c.x - 26, c.y + 2 } };
+				gfx::Poly(in, 5, Rgb(0x8A5A34));
+				gfx::Circle(Vector2{ c.x - 14, c.y - 12 }, 8, Rgb(0xA8683A, 200));
+				gfx::Circle(Vector2{ c.x + 12, c.y + 10 }, 10, Rgb(0x6A4A2A, 200));
+				// 심장나무 문양
+				gfx::Line(Vector2{ c.x, c.y + 24 }, Vector2{ c.x, c.y - 18 }, 5.f, Rgb(0xC8B090));
+				gfx::Line(Vector2{ c.x, c.y - 4 }, Vector2{ c.x - 14, c.y - 18 }, 3.f, Rgb(0xC8B090));
+				gfx::Line(Vector2{ c.x, c.y - 4 }, Vector2{ c.x + 14, c.y - 18 }, 3.f, Rgb(0xC8B090));
+				gfx::Circle(Vector2{ c.x, c.y - 22 }, 6, Rgb(0xD8C8A8));
+				break;
+			}
+			case 7:   // 꺼지지 않는 불씨
+			{
+				IconShadow(o, 28);
+				gfx::CircleGrad(Vector2{ c.x, c.y + 8 }, 58, Rgb(0xFF8A3A, 130), Rgb(0xFF4A1A, 0));
+				auto flame = [&](float scale, Color col, float dy)
+				{
+					std::vector<Vector2> pts;
+					const Vector2 base{ c.x, c.y + 18 + dy };
+					const float r = 26.f * scale;
+					for (int i = 0; i <= 12; ++i)
+					{
+						const float t = util::kPi * (i / 12.f);
+						pts.push_back(Vector2{ base.x + std::cos(t) * r, base.y + std::sin(t) * r });
+					}
+					pts.push_back(Vector2{ base.x - r * 0.8f, base.y - r * 0.9f });
+					pts.push_back(Vector2{ base.x, base.y - r * 2.6f });
+					pts.push_back(Vector2{ base.x + r * 0.8f, base.y - r * 0.9f });
+					gfx::Poly(pts.data(), static_cast<int>(pts.size()), col);
+				};
+				flame(1.f, Rgb(0xC0281A), 0.f);
+				flame(0.72f, Rgb(0xFF6A1A), 4.f);
+				flame(0.45f, Rgb(0xFFD04A), 8.f);
+				gfx::Circle(Vector2{ c.x, c.y + 24 }, 5, Rgb(0xFFFFE0));
+				break;
+			}
+			case 8:   // 룬이 새겨진 돌
+			{
+				IconShadow(o, 40);
+				gfx::Ellipse(Vector2{ c.x, c.y + 8 }, 42, 34, Rgb(0x3A3E48));
+				gfx::Ellipse(Vector2{ c.x - 3, c.y + 4 }, 39, 31, Rgb(0x6A707C));
+				gfx::Ellipse(Vector2{ c.x - 14, c.y - 8 }, 18, 11, Rgb(0x8A909C));
+				gfx::CircleGrad(Vector2{ c.x, c.y + 6 }, 30, Rgb(0x6AD8FF, 120), Rgb(0x6AD8FF, 0));
+				const Color rune = Rgb(0x9AE8FF);
+				gfx::Line(Vector2{ c.x - 10, c.y - 12 }, Vector2{ c.x - 10, c.y + 22 }, 4.f, rune);
+				gfx::Line(Vector2{ c.x - 10, c.y - 12 }, Vector2{ c.x + 12, c.y + 2 }, 4.f, rune);
+				gfx::Line(Vector2{ c.x + 12, c.y + 2 }, Vector2{ c.x - 10, c.y + 12 }, 4.f, rune);
+				gfx::Line(Vector2{ c.x + 14, c.y - 8 }, Vector2{ c.x + 14, c.y + 20 }, 3.f, rune);
+				break;
+			}
+			default:
+				gfx::Circle(c, 30, Rgb(0x8A6A4A));
+				break;
+			}
+		}
+
 		// 투명 픽셀의 RGB를 이웃 불투명 픽셀 색으로 번지게(밉맵 가장자리 검은 테 방지)
 		void BleedEdges(Image& img, int passes)
 		{
@@ -756,6 +896,16 @@ namespace icons
 			const Vector2 o{ static_cast<float>((slot % kCols) * kCell), static_cast<float>((slot / kCols) * kCell) };
 			DrawIconInto(e.icon, e.item, o);
 		}
+		// 퀘스트 수집물
+		for (int q = 1; q <= 8; ++q)
+		{
+			const int icon = kQuestIconBase + q;
+			if (static_cast<int>(entries.size()) >= kUnknownSlot) break;
+			g_slotOf[icon] = static_cast<int>(entries.size());
+			entries.push_back({ static_cast<uint8_t>(icon), 0 });
+			const int slot = SlotOf(static_cast<uint8_t>(icon));
+			QuestIconInto(q, Vector2{ static_cast<float>((slot % kCols) * kCell), static_cast<float>((slot / kCols) * kCell) });
+		}
 		// 알 수 없는 아이템(물음표 자루)
 		{
 			const int slot = kUnknownSlot;
@@ -796,6 +946,14 @@ namespace icons
 	{
 		if (g_atlas.id == 0) return;
 		DrawTexturePro(g_atlas, SrcFor(itemId), dst, Vector2{ 0, 0 }, 0.f, tint);
+	}
+
+	void DrawQuestItem(uint8_t questIcon, Rectangle dst, Color tint)
+	{
+		if (g_atlas.id == 0) return;
+		const int slot = SlotOf(static_cast<uint8_t>(kQuestIconBase + questIcon));
+		const Rectangle src{ static_cast<float>((slot % kCols) * kCell), static_cast<float>((slot / kCols) * kCell), static_cast<float>(kCell), static_cast<float>(kCell) };
+		DrawTexturePro(g_atlas, src, dst, Vector2{ 0, 0 }, 0.f, tint);
 	}
 
 	void DrawWorld(uint16_t itemId, Vector2 center, float size, float rot, Color tint)

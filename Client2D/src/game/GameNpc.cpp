@@ -288,7 +288,7 @@ void Game::UpdateNpcs(float dt)
 				for (int k = 0; k < 4; ++k)
 				{
 					const Vector2 iso = TileToIso(v.pos);
-					fx::Fx().FloatText(Vector2{ iso.x + util::RandF(-10.f, 14.f), iso.y }, 60.f + k * 10.f, k % 2 ? "♪" : "♫",
+					fx::Fx().FloatText(Vector2{ iso.x + util::RandF(-10.f, 14.f), iso.y }, 60.f + k * 10.f, "♪",
 						util::Mix(Rgb(0xFFE08A), Rgb(0xB8E0FF), util::RandF()), 16.f + k * 2.f, 1.6f + k * 0.25f);
 				}
 			}
