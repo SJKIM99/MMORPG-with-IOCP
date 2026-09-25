@@ -29,6 +29,8 @@ namespace sfx
 		LootRare, LootHeroic, LootLegendary, LootMythic,
 		// 퀘스트 · 메인 이야기
 		QuestAccept, QuestTick, QuestObjDone, QuestReady, QuestComplete, ChapterBell, Discover, Heartbeat, QuestFly,
+		// Phase 1-C: 바닥 종류별 발소리(풀 · 돌 · 나무 · 눈 · 모래)
+		StepGrass, StepStone, StepWood, StepSnow, StepSand,
 		Count
 	};
 

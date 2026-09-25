@@ -499,6 +499,17 @@ namespace actorspr
 		}
 
 		// ── 그리기 ────────────────────────────────────────────────────────────────
+		// 몸(Phase 1-C): 좌우 돌기(가로 배율) · 앞기울기 · 도는 쪽 기울기 · 멈춤 흔들림을 그림 변환에 얹는다
+		void ApplyBody(Anim& a, const actors::Pose& p)
+		{
+			const float t = actors::TurnScale(p);
+			const float k = std::max(actors::kTurnMinWidth, std::fabs(t));
+			a.xf.stretch *= k;
+			a.xf.rot += (p.lean * 0.55f + p.bank * 0.35f) * (kPi / 180.f);
+			a.xf.lean += p.settle * 2.2f;
+			a.xf.squash *= 1.f - 0.035f * p.settle;
+		}
+
 		void DrawAnim(const Anim& a, Vector2 base, float worldH, bool flip)
 		{
 			if (!a.s) return;
@@ -563,6 +574,7 @@ namespace actorspr
 		const float worldH = actors::PlayerHeight() * kPcScale * p.scale;
 		RarityAura(p, look.auraRarity, 21.f * p.scale);
 		Anim a = AnimatePlayer(p, set, look.cls);
+		ApplyBody(a, p);
 		// 강화 · 희귀 무기: 몸을 감싸는 빛(+7부터, 영웅 무기부터)
 		if (a.glow <= 0.f && p.dead <= 0.f)
 		{
@@ -584,7 +596,7 @@ namespace actorspr
 				a.glowCol = gc;
 			}
 		}
-		DrawAnim(a, p.base, worldH, !p.faceRight);
+		DrawAnim(a, p.base, worldH, actors::TurnScale(p) < 0.f);
 		return true;
 	}
 
@@ -594,13 +606,14 @@ namespace actorspr
 		if (row.id >= g_mon.size() || !g_mon[row.id].ok) return false;
 		const float worldH = actors::MonsterHeight(row) * kMonScale * p.scale;
 		Anim a = AnimateMonster(p, g_mon[row.id], row);
+		ApplyBody(a, p);
 		if (row.boss && p.dead <= 0.f && a.glow <= 0.f)
 		{
 			// 보스: 몸 둘레에 옅은 불씨빛이 숨 쉰다
 			a.glow = 0.10f + 0.06f * std::sin(p.time * 2.f);
 			a.glowCol = Rgb(0xFF6A3A);
 		}
-		DrawAnim(a, p.base, worldH, !p.faceRight);
+		DrawAnim(a, p.base, worldH, actors::TurnScale(p) < 0.f);
 		return true;
 	}
 
@@ -610,7 +623,8 @@ namespace actorspr
 		if (npc.id >= g_npc.size() || !g_npc[npc.id].ok) return false;
 		const float worldH = actors::NpcHeight(npc) * kNpcScale * p.scale;
 		Anim a = AnimateNpc(p, g_npc[npc.id], WorldData::IsAnimal(npc.kind));
-		DrawAnim(a, p.base, worldH, !p.faceRight);
+		ApplyBody(a, p);
+		DrawAnim(a, p.base, worldH, actors::TurnScale(p) < 0.f);
 		return true;
 	}
 

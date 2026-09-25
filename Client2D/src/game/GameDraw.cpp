@@ -176,6 +176,13 @@ void Game::DrawWorld(const Camera2D& cam)
 		if (e.kind == EntityKind::Item) r = 10.f;
 		if (e.row && e.row->archetype == MonsterArchetype::eGhost)
 			alpha *= 0.5f;
+		// 몸이 뜨면(도약 · 띄우기) 그림자는 땅에 남아 작고 옅어진다
+		if (e.hopT >= 0.f)
+		{
+			const float h = std::sin(util::kPi * e.hopT);
+			r *= 1.f - 0.35f * h;
+			alpha *= 1.f - 0.45f * h;
+		}
 		actors::DrawShadow(base, r, alpha);
 
 		if (id == m_target || id == m_hover)
@@ -307,6 +314,10 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	pose.base = TileToIso(e.pos);
 	pose.faceRight = e.faceRight;
 	pose.faceBack = e.faceBack;
+	pose.turn = e.body.turn;
+	pose.lean = e.dead ? 0.f : e.body.lean;
+	pose.bank = e.dead ? 0.f : e.body.bank;
+	pose.settle = e.body.settle;
 	pose.walk = e.walkPhase;
 	pose.moving = e.moving;
 	pose.hurt = e.hurtT;
@@ -532,6 +543,9 @@ void Game::DrawNpcs()
 		pose.walk = v.walkPhase;
 		pose.moving = v.moving;
 		pose.faceRight = v.faceRight;
+		pose.turn = v.body.turn;
+		pose.lean = v.body.lean * 0.6f;
+		pose.settle = v.body.settle;
 		pose.faceBack = v.faceBack;
 		// 말하는 중(대화창 · 혼잣말): 손짓하는 그림으로
 		if (nid == m_dialogNpc || (v.barkT > 0.f && !v.bark.empty()))

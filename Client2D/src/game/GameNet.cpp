@@ -526,7 +526,7 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 	me.name = m_playerName;
 	me.nameHash = HashName(m_playerName);
 	me.tx = p.x; me.ty = p.y;
-	me.pos = me.logPos = me.from = me.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
+	motion::RemoteSnap(me, Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) });
 	me.hp = p.hp; me.maxhp = p.maxhp; me.level = p.level;
 	me.spawnT = 0.f;
 	m_ents[p.id] = me;
@@ -559,9 +559,7 @@ void Game::HandleSubjectAdd(const SUBJECT_ADD_NFY_PACKET& p)
 	e.removeT = 0.f;
 	if (!existed)
 	{
-		e.pos = e.logPos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
-		e.moveT = 1.f;
-		e.stepQN = 0;
+		motion::RemoteSnap(e, Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) });
 		e.spawnT = 0.f;
 		e.faceRight = util::RandI(0, 1) == 1;
 	}
@@ -652,10 +650,7 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 		{
 			SyncMover();
 			if (Entity* me = Self())
-			{
-				me->pos = me->logPos = me->from = me->to = m_mover.Visual();
-				me->moveT = 1.f;
-			}
+				motion::RemoteSnap(*me, m_mover.Visual());
 			m_cam.SnapTo(TileToIso(m_mover.Visual(), 0.6f));
 			ClearGoal();
 			m_moveHeld = false;
@@ -684,6 +679,9 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 	else if (e->kind == EntityKind::Monster && p.move_time > 0 && p.move_time < 120)
 		far = true;   // 넉백·돌진(빠른 걸음)은 밀린 걸음을 기다리지 않고 바로 따라간다
 	motion::RemoteStep(*e, p.x, p.y, dur, far);
+	static const bool debugRemote = std::getenv("HARVEN_REMOTE_DEBUG") != nullptr;   // 원격 재생 진단(stderr)
+	if (e->kind == EntityKind::Player && debugRemote)
+		std::fprintf(stderr, "[remote] t=%.4f %d,%d dur=%.3f qn=%d tt=%.3f margin=%.3f\n", m_now, p.x, p.y, dur, e->track.qn, e->track.t, e->track.margin);
 }
 
 void Game::HandleMoveAck(const USER_MOVE_EX_ACK_PACKET& p)
@@ -794,8 +792,7 @@ void Game::HandleSubjectRespawn(const SUBJECT_RESPAWN_NFY_PACKET& p)
 		keep.dead = false;
 		keep.deadT = 0.f;
 		keep.tx = p.x; keep.ty = p.y;
-		keep.pos = keep.logPos = keep.from = keep.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
-		keep.moveT = 1.f;
+		motion::RemoteSnap(keep, Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) });
 		keep.hp = p.hp;
 		keep.spawnT = 0.f;
 		m_ents[m_selfId] = keep;
@@ -816,9 +813,7 @@ void Game::HandleSubjectRespawn(const SUBJECT_RESPAWN_NFY_PACKET& p)
 	Entity& e = m_ents[p.id];
 	e.id = p.id;
 	e.tx = p.x; e.ty = p.y;
-	e.pos = e.logPos = e.from = e.to = Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) };
-	e.moveT = 1.f;
-	e.stepQN = 0;
+	motion::RemoteSnap(e, Vector2{ static_cast<float>(p.x), static_cast<float>(p.y) });
 	e.dead = false;
 	e.deadT = 0.f;
 	e.removing = false;

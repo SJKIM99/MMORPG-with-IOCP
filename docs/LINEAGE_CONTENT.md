@@ -94,3 +94,9 @@
 - `STRESS_TEST/NetworkModule.cpp`: “아이템 id 2번부터 전부 장비” 가정이 새 아이템(그로시·두루마리 등)으로 깨져서,
   장비 id 목록(2~6, 15~18)으로 판정하도록 수정. 봇이 주운 두루마리를 무기로 착각해 부하 패턴이 바뀌는 것을 막습니다.
 - `Data/MonsterTable.h`: 보스 크기(최대 260%)가 `uint8_t`를 넘쳐 `scale`을 `uint16_t`로(MSVC에서는 축소 변환 오류).
+- **Phase 1(조작 · 이동, `docs/upgrade/PHASE_1.md`) — 새 패킷 0개, DB 변경 없음.**
+  - `Data/MoveRule.h` `kCatchupMs` 200 → **500**: 확장 세션 이동 검증(`USER_MOVE_EX_REQ` → `UserHelper::HandleMoveEx`)의 토큰 버킷이
+    늦게 온 패킷의 잃은 시간을 되찾는 창. TCP 재전송 한 번(200~450ms) 뒤 한꺼번에 도착한 대각 걸음(395ms)이 TooFast로 거절돼
+    1~1.4칸 되돌림이 생기던 것을 막는다(모의 시험 `--netsim 150/40/2` 6분: 거절 11 → 0). 오래 쉬었다가 한꺼번에 보낼 수 있는 양이
+    350 → 650ms어치(직선 두세 걸음)로 늘 뿐 평균 속도 상한은 그대로다. 레거시 `USER_MOVE_REQ`(STRESS_TEST 봇)는 `Route.cpp`의 쿨타임을 따로 써서 영향이 없다.
+  - `Data/CombatData.h`: 돌진 · 옛길 도약 · 잔상 회피 설명을 "커서 쪽으로"로(표시 문구만 — 판정 · 패킷 그대로).

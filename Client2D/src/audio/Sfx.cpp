@@ -343,6 +343,36 @@ namespace sfx
 
 			// ── 기타 ──
 			{ Buf b(0.05f); Noise(b, 0, 0.045f, Const(900), 1.f, 0.002f, 70.f, 120.f); Load(Id::Step, b, 0.18f); }
+			// 바닥 종류별 발소리(Phase 1-C) — 짧고 작게, 종류마다 결이 다르게
+			{   // 풀: 스치는 소리(낮은 잡음 + 가는 쉬익)
+				Buf b(0.10f);
+				Noise(b, 0, 0.08f, Const(1100), 1.f, 0.004f, 34.f, 180.f);
+				Noise(b, 0.004f, 0.06f, Const(4200), 0.35f, 0.002f, 55.f, 2500.f);
+				Load(Id::StepGrass, b, 0.16f);
+			}
+			{   // 돌: 딱 부딪힘 + 짧은 쿵
+				Buf b(0.08f);
+				Noise(b, 0, 0.03f, Const(2600), 1.f, 0.001f, 110.f, 400.f);
+				Tone(b, 0, 0.06f, Osc::Sine, ExpSweep(170, 90), 0.8f, 0.001f, 55.f);
+				Load(Id::StepStone, b, 0.18f);
+			}
+			{   // 나무: 속이 빈 두드림
+				Buf b(0.10f);
+				Tone(b, 0, 0.09f, Osc::Sine, ExpSweep(260, 190), 0.9f, 0.001f, 32.f);
+				Noise(b, 0, 0.04f, Const(900), 0.5f, 0.001f, 60.f, 200.f);
+				Load(Id::StepWood, b, 0.17f);
+			}
+			{   // 눈: 뽀드득(짧은 알갱이 여러 개)
+				Buf b(0.13f);
+				for (int i = 0; i < 5; ++i)
+					Noise(b, i * 0.018f, 0.03f, Const(3000.f + 500.f * (i % 3)), 0.8f - i * 0.1f, 0.001f, 90.f, 1200.f);
+				Load(Id::StepSnow, b, 0.16f);
+			}
+			{   // 모래: 부드럽게 쓸림
+				Buf b(0.11f);
+				Noise(b, 0, 0.1f, Sweep(2400, 1400), 1.f, 0.01f, 26.f, 500.f);
+				Load(Id::StepSand, b, 0.13f);
+			}
 			{
 				Buf b(0.7f);
 				Tone(b, 0, 0.18f, Osc::Square, Const(784), 0.4f, 0.005f, 8.f);

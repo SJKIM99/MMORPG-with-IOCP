@@ -113,9 +113,16 @@ int main(int argc, char** argv)
 	uint16_t seq = 0;
 	double nextStepAt = 0.0;
 	int steps = 0, rejects = 0;
+	uint32_t speedPercent = 100;   // 서버가 알려 준 이동 속도(민첩 · 장비) — 클라이언트처럼 이 박자로 걷는다
 	net.SetHandler([&](const char* data, uint16_t size)
 	{
 		const auto type = static_cast<PacketType>(static_cast<unsigned char>(data[2]));
+		if (type == PacketType::SERVER_CONFIG_INF && size >= sizeof(SERVER_CONFIG_INF_PACKET))
+		{
+			SERVER_CONFIG_INF_PACKET p{};
+			std::memcpy(&p, data, sizeof(p));
+			if (p.moveSpeedPercent > 0) speedPercent = p.moveSpeedPercent;
+		}
 		if (type == PacketType::USER_LOGIN_ACK && size >= sizeof(USER_LOGIN_ACK_PACKET))
 		{
 			USER_LOGIN_ACK_PACKET p{};
@@ -195,7 +202,7 @@ int main(int argc, char** argv)
 					++pending;
 					++steps;
 					x = nx; y = ny;
-					nextStepAt = std::max(nextStepAt, now - 0.02) + MoveRule::StepMs(real, 100) / 1000.0;
+					nextStepAt = std::max(nextStepAt, now - 0.02) + MoveRule::StepMs(real, speedPercent) / 1000.0;
 				}
 			}
 		}

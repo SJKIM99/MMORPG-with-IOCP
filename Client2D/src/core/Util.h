@@ -25,6 +25,7 @@ namespace util
 	inline Vector2 LerpV(Vector2 a, Vector2 b, float t) { return { Lerp(a.x, b.x, t), Lerp(a.y, b.y, t) }; }
 	inline float Len(Vector2 a) { return std::sqrt(a.x * a.x + a.y * a.y); }
 	inline Vector2 Norm(Vector2 a) { const float l = Len(a); return l > 1e-5f ? Vector2{ a.x / l, a.y / l } : Vector2{ 0, 0 }; }
+	inline float Dot(Vector2 a, Vector2 b) { return a.x * b.x + a.y * b.y; }
 	inline Vector2 Rot(Vector2 v, float a) { const float c = std::cos(a), s = std::sin(a); return { v.x * c - v.y * s, v.x * s + v.y * c }; }
 
 	// 프레임레이트와 무관한 지수 감쇠 보간(damp)

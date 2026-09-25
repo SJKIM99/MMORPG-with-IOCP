@@ -10,6 +10,9 @@ MSVC · 실제 MSSQL · 실제 GPU 확인은 여기서 대신할 수 없다 — 
 | `SandboxClock.h/.cpp` | 서버의 `steady_clock`을 바꿔 넣는 시계. `HARVEN_CLOCK=/dev/shm/harven_clock`이면 공유 시계, 없으면 실제 시계 |
 | `bot/HarvenBot.cpp` · `build_bot.sh` | 확장 세션으로 붙어 정해진 길(원 · 왕복)을 규칙 속도로 걷는 봇 — "다른 플레이어" 시험용 |
 | `run.sh` | 서버 · 봇 · 클라이언트(Xvfb) 띄우기/내리기, 영상 → GIF |
+| `motion_sim.cpp` · `build_motion_sim.sh` | 게임 · 서버 없이 `game/Motion`과 걸음 계획을 30fps로 돌려 이동 기록(csv)을 만드는 모의 시험(아래) |
+| `regress.py` | 모든 `--script` 시나리오를 차례로 돌려 스크린샷 · 종료 코드 · 성능 줄을 모은다(회귀 검사) |
+| `input_test.py` | Xvfb 창에 xdotool로 **실제** 키보드 · 마우스를 넣는 시험(조작 설정 · 채팅 중 차단 · 창 단축키) |
 
 ## 한 번 준비
 
@@ -50,4 +53,22 @@ tools/sandbox/run.sh stop
 ```
 
 녹화 시나리오(`Client2D --script`, 사람과 같은 마우스 경로 — `game/Input.h`):
-`runline[:dx,dy[,초]]` 화면 방향으로 누른 채 달리기 · `runcircle[:초]` 분수 둘레 원 그리기 · `follow:이름` 그 플레이어 따라가기.
+`runline[:dx,dy[,초[,x,y]]]` 화면 방향으로 누른 채 달리기(x,y = 먼저 걸어가 설 마을 기준 칸 — 부활 칸이 무작위라서) ·
+`runcircle[:초]` 분수 둘레 원 그리기 · `follow:이름` 그 플레이어 따라가기. 조명을 맞추려면 `--hour 12`(게임 시각은 실제 시계 24분 = 하루).
+
+분석 · 비교: `tools/record/analyze_trace.py stats out.csv [--remote]`(구간별 속도 · 멈칫 · 방향 깜빡임 · 원격 끊김),
+`analyze_trace.py plot 그래프.png 전=a.csv 후=b.csv [--remote]`, `tools/record/compare.sh`(전/후 영상 나란히).
+
+## 모의 시험 — motion_sim
+
+녹화 한 번은 몇 분 걸린다. 조율은 먼저 모의 시험으로 한다(같은 `game/Motion.cpp` · `game/Path.cpp`, 서버 토큰 버킷도 흉내):
+
+```bash
+tools/sandbox/build_motion_sim.sh                       # → build/motion_sim
+build/motion_sim ray -26.6 5 --at 14,19 --out r.csv     # 곧게(칸 좌표 각도°, 마을 기준 출발 칸)
+build/motion_sim circle 30 --at 22,28 --out c.csv       # 원 그리기(runcircle과 같은 조준)
+build/motion_sim circle 30 --latency 150 --jitter 40 --spike 2 --catchup 200   # 서버 되찾기 창 실험(거절 수)
+build/motion_sim remote 30 150 40 2 --botpace --bg 4 --bgpoisson --seed 3      # 원격 재생(봇 박자 · 들쭉날쭉한 배경 패킷)
+python3 tools/record/analyze_trace.py stats c.csv
+```
+`--noguide`: 안내선 없이(따라가기 · 쫓아가기처럼 궤적 앞보기). 마을 밖 들판은 예전 장애물 무늬가 촘촘해 곧은 길이 거의 없다 — `--at`으로 광장 · 길을 쓴다.

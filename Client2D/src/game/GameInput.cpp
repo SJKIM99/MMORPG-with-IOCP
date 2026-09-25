@@ -21,8 +21,8 @@
 //                      적: 다가가 기본 공격 반복 · NPC: 대화 · 물건: 줍기 · 모험가: 따라가기(Ctrl = 공격)
 //   우클릭 · C          기본 공격(커서에 가까운 적, 없으면 커서 쪽으로 휘두름). C를 누르고 있으면 가까운 적을 이어서
 //   Q W E R · A S D F   기술 8칸 — 커서 방향 · 커서 지점 · 커서에 가까운 적으로
-//   V · Space · Z       각성기 · 이동기 · 아이덴티티
-//   1~4 · F1 · 5~8      배틀 칸 · 체력 물약 · 보조 칸
+//   V · Space · Z       각성기 · 이동기 · 고유 기술
+//   1~4 · F1 · 5~8      전투 칸 · 체력 물약 · 보조 칸
 //   G                   가장 가까운 대상과 상호작용(대화 · 줍기 · 쓰다듬기)
 // 키는 모두 game/KeyBinds로 다시 지정할 수 있고, 채팅 중(한글 조합 포함)에는 먹지 않는다.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -378,6 +378,8 @@ void Game::HandleWorldInput()
 		m_moveHeld = true;
 		m_moveDirMode = false;
 		m_movePressAt = m_now;
+		m_movePressEnt = ObjID{};
+		m_movePressNpc = 0;
 		Entity* e = Find(m_hover);
 		if (e && e->kind == EntityKind::Monster && !e->dead)
 		{
@@ -394,19 +396,24 @@ void Game::HandleWorldInput()
 				SetGoal(Goal{ GoalKind::Attack, e->id, 0, 0, 0, true });
 			}
 			else
+			{
 				SetGoal(Goal{ GoalKind::Follow, e->id });
-			m_moveHeld = false;
+				m_movePressEnt = e->id;   // 누른 채 커서가 그 사람을 벗어나면 달리기로
+			}
+			if (force) m_moveHeld = false;
 		}
 		else if (e && e->kind == EntityKind::Item)
 		{
 			SetGoal(Goal{ GoalKind::Pickup, e->id, e->tx, e->ty });
 			fx::Fx().ClickMarker(TileToIso(e->pos), ui::theme::kDawnHi);
-			m_moveHeld = false;
+			m_movePressEnt = e->id;
 		}
 		else if (m_hoverNpc != 0)
 		{
+			// NPC를 누르면 다가가 대화 — 단, 누른 채 커서를 NPC 밖으로 끌면 그쪽으로 달린다
+			// (달리다가 지나가는 NPC 위에서 눌러도 대화로 멈춰 서지 않게)
 			SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, m_hoverNpc });
-			m_moveHeld = false;
+			m_movePressNpc = m_hoverNpc;
 		}
 		else if (m_hoverX >= 0)
 		{
@@ -440,14 +447,17 @@ void Game::HandleWorldInput()
 			m_moveHeld = false;
 			m_moveDirMode = false;
 		}
-		else if (m_aim.valid && (m_moveDirMode || m_now - m_movePressAt > 0.16))
+		else if (m_aim.valid && (m_moveDirMode || m_now - m_movePressAt > 0.16) &&
+			(m_moveDirMode || !((m_movePressNpc != 0 && m_hoverNpc == m_movePressNpc) || (m_movePressEnt != ObjID{} && m_hover == m_movePressEnt))))
 		{
-			// 누르고 있으면 커서 쪽으로 계속(목적지 클릭 → 방향 이동으로)
+			// 누르고 있으면 커서 쪽으로 계속(목적지 클릭 → 방향 이동으로).
+			// NPC · 물건 · 모험가를 눌렀으면 커서가 그 위에 있는 동안은 대화 · 줍기 · 따라가기를 지킨다.
 			if (!m_moveDirMode || m_goal.kind != GoalKind::Direction)
 			{
 				m_goal = Goal{ GoalKind::Direction };
 				m_path.clear();
 				m_queuedSkill = -1;
+				m_lineValid = false;
 			}
 			m_moveDirMode = true;
 			m_dirTarget = m_aim.world;
@@ -528,7 +538,7 @@ void Game::CastHot(int hot)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 소모품 칸(배틀 1~4 · 물약 F1 · 보조 5~8) — 캐릭터별 저장
+// 소모품 칸(전투 1~4 · 물약 F1 · 보조 5~8) — 캐릭터별 저장
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::UseItemSlot(int index)
 {
@@ -547,7 +557,7 @@ void Game::UseItemSlot(int index)
 
 void Game::LoadQuickSlots()
 {
-	// 기본: 배틀 1 진한 약초 물약 · 2 수액 영약 · 3 바람걸음 물약 · 물약(F1) 약초 물약 · 보조 5 귀환 · 6 옛길 두루마리
+	// 기본: 전투 1 진한 약초 물약 · 2 수액 영약 · 3 바람걸음 물약 · 물약(F1) 약초 물약 · 보조 5 귀환 · 6 옛길 두루마리
 	m_quick = {};
 	m_quick[0] = { 1, ItemTableData::Id::StrongHerbPotion };
 	m_quick[1] = { 1, ItemTableData::Id::SapElixir };
@@ -571,7 +581,7 @@ void Game::LoadQuickSlots()
 		readInto(in, kItemSlots);
 		return;
 	}
-	// 마이그레이션: 예전 Q E R T 네 칸(quickslots2) → 배틀 칸 1~4. 예전 파일은 지우지 않는다.
+	// 마이그레이션: 예전 Q E R T 네 칸(quickslots2) → 전투 칸 1~4. 예전 파일은 지우지 않는다.
 	if (std::ifstream old("quickslots2_" + m_playerName + ".txt"); old)
 	{
 		for (int i = 0; i < 4; ++i) m_quick[static_cast<size_t>(i)] = QuickSlot{};
@@ -610,6 +620,9 @@ void Game::SetGoal(const Goal& g)
 	m_goal = g;
 	m_path.clear();
 	m_repathAt = 0.0;
+	m_wayValid = false;
+	m_lineValid = false;
+	m_wantAt = 0.0;
 }
 
 void Game::ClearGoal()
@@ -617,6 +630,8 @@ void Game::ClearGoal()
 	m_goal = Goal{};
 	m_path.clear();
 	m_queuedSkill = -1;
+	m_wayValid = false;
+	m_lineValid = false;
 }
 
 void Game::SyncMover()
@@ -683,46 +698,265 @@ int Game::PickMoveDir(int dx, int dy) const
 	return best;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 걸음 계획(Phase 1-C) — 연속 경로(커서 광선 · 목적지로 가는 선)를 8방향 걸음으로(DDA).
+// 대각선은 두 직교 이웃이 모두 비었을 때만(path::CanStep — 서버의 축별 미끄러짐과 결과가 같다).
+// ─────────────────────────────────────────────────────────────────────────────
+int Game::PlanDir(int x, int y, Vector2 origin, Vector2 u) const
+{
+	// 앞으로 나아가는 걸음(선 방향과 67° 안) 중 새 칸 중심이 선에 가장 가까운 것 — 같으면 더 앞으로
+	int best = -1;
+	float bestScore = 1e9f;
+	for (int d = 0; d < 8; ++d)
+	{
+		int dx = 0, dy = 0;
+		MoveRule::Delta(d, dx, dy);
+		const float len = (dx != 0 && dy != 0) ? 1.41421356f : 1.f;
+		const float fwd = (dx * u.x + dy * u.y) / len;
+		if (fwd < 0.38f || !path::CanStep(x, y, dx, dy)) continue;
+		const float rx = static_cast<float>(x + dx) - origin.x, ry = static_cast<float>(y + dy) - origin.y;
+		const float score = std::fabs(rx * u.y - ry * u.x) - fwd * 0.05f;
+		if (score < bestScore) { bestScore = score; best = d; }
+	}
+	return best;
+}
+
+bool Game::RunLine(Vector2 target, Vector2& origin, Vector2& u)
+{
+	// 곧은 선 하나를 걸음 계획(DDA)과 화면 안내선이 함께 쓴다. 한 번 그으면 가려는 방향이 5° 넘게 바뀌거나
+	// (커서 · 경유점이 움직임) 칸 · 화면 위치가 선에서 벗어날 때만 지금 화면 위치에서 다시 긋는다.
+	// 매 걸음 화면 위치를 원점으로 새로 그으면 화면 ↔ 논리 차이가 선을 흔들어 걸음이 좌우로 흔들린다(1-C 검증에서 찾음).
+	const Vector2 P = m_mover.Visual();
+	const Vector2 d = util::Sub(target, P);
+	const float l = util::Len(d);
+	if (l < 0.3f)
+	{
+		if (!m_lineValid) return false;
+		origin = m_lineO;
+		u = m_lineU;
+		return true;
+	}
+	const Vector2 want = util::Mul(d, 1.f / l);
+	// 가려는 방향이 도는 속도(원을 그리며 달리기 · 움직이는 대상) — 걸음 계획이 한 걸음 앞을 내다보는 데 쓴다
+	if (m_now > m_wantAt + 1e-6)
+	{
+		const double gap = m_now - m_wantAt;
+		if (m_wantAt > 0.0 && gap < 0.25)
+		{
+			const float da = std::atan2(m_wantPrev.x * want.y - m_wantPrev.y * want.x, util::Dot(m_wantPrev, want));
+			m_wantTurn += (da / static_cast<float>(gap) - m_wantTurn) * (1.f - std::exp(-static_cast<float>(gap) / 0.15f));
+		}
+		else
+			m_wantTurn = 0.f;
+		m_wantPrev = want;
+		m_wantAt = m_now;
+	}
+	bool keep = m_lineValid && util::Dot(want, m_lineU) > 0.9962f;   // cos 5°
+	if (keep)
+	{
+		const Vector2 n{ -m_lineU.y, m_lineU.x };
+		const Vector2 L{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
+		keep = std::fabs(util::Dot(util::Sub(L, m_lineO), n)) < 0.75f && std::fabs(util::Dot(util::Sub(P, m_lineO), n)) < 0.45f;
+	}
+	if (!keep)
+	{
+		m_lineO = P;
+		m_lineU = want;
+		m_lineValid = true;
+	}
+	origin = m_lineO;
+	u = m_lineU;
+	return true;
+}
+
+Vector2 Game::PlanU(Vector2 u) const
+{
+	// 누른 채 달리기(커서 쪽)에서만 쓴다 — 경유점 · 움직이는 대상은 방향이 걸음마다 뛰어서 회전 속도가 의미 없다.
+	// 선의 방향은 5°마다만 다시 긋지만 가려는 쪽은 계속 돈다(원 그리기: 초당 약 40°). 0.1초 뒤의 방향(최대 ±20°)으로
+	// 고른다 — 지금 방향만 보면 가끔 "위 → 오른쪽" ㄱ자 두 걸음을 고르고(대각 한 걸음 대신) 그만큼 논리가 늦어져 화면이
+	// 선을 따라가다 끌려간다(1-C 검증: 부활 칸 10곳에서 원 그리기 — 멈칫 1~4프레임이 나던 2곳이 0으로). 0.2초는 원을 너무 안쪽으로 깎는다.
+	const float a = std::clamp(m_wantTurn * 0.1f, -0.35f, 0.35f);
+	return std::fabs(a) < 1e-4f ? u : util::Rot(u, a);
+}
+
+bool Game::LineClear(int x, int y, int gx, int gy, int stopWithin) const
+{
+	// (x,y) → (gx,gy) 곧은 선을 DDA 걸음으로 막힘 없이 따라갈 수 있나(도착 = 목표에서 stopWithin 안)
+	const Vector2 origin{ static_cast<float>(x), static_cast<float>(y) };
+	const Vector2 d{ static_cast<float>(gx - x), static_cast<float>(gy - y) };
+	const float l = util::Len(d);
+	if (l < 0.5f) return true;
+	const Vector2 u = util::Mul(d, 1.f / l);
+	const int maxSteps = Cheb(x, y, gx, gy) + 2;
+	for (int i = 0; i < maxSteps; ++i)
+	{
+		if (Cheb(x, y, gx, gy) <= stopWithin) return true;
+		int dir = -1;
+		if (Cheb(x, y, gx, gy) <= 1)
+		{
+			const int ddx = gx - x, ddy = gy - y;
+			if (path::CanStep(x, y, ddx, ddy)) dir = MoveRule::DirOf(ddx, ddy);
+		}
+		if (dir < 0) dir = PlanDir(x, y, origin, u);
+		if (dir < 0) return false;
+		int dx = 0, dy = 0;
+		MoveRule::Delta(dir, dx, dy);
+		x += dx;
+		y += dy;
+	}
+	return Cheb(x, y, gx, gy) <= stopWithin;
+}
+
+bool Game::Waypoint(int gx, int gy, int stopWithin, int& wx, int& wy)
+{
+	// 곧게 갈 수 있으면 목적지 그대로(대부분)
+	if (LineClear(m_predX, m_predY, gx, gy, stopWithin))
+	{
+		wx = gx;
+		wy = gy;
+		m_path.clear();
+		return true;
+	}
+	// 막혔으면 A* 경로(1초마다 · 목적지가 바뀌면 다시)를 시야선으로 줄여 곧게 보이는 가장 먼 칸으로
+	if (m_path.empty() || m_now > m_repathAt || m_pathGoalX != gx || m_pathGoalY != gy)
+	{
+		std::vector<path::Step> np = path::Find(m_predX, m_predY, gx, gy, stopWithin);
+		// 길 고수: 움직이는 대상이 장애물 건너편에 있으면 위로 도는 길과 아래로 도는 길이 번갈아 조금씩 짧아져
+		// 제자리에서 오르내린다(1-C 따라가기 녹화에서 찾음). 지금 길(남은 길 + 그 끝에서 새 목표까지)이 새 길보다
+		// 3칸 넘게 길지 않으면 지금 길을 그대로 간다.
+		auto cost = [&](const std::vector<path::Step>& p, size_t from)
+		{
+			float c = 0.f;
+			int x = m_predX, y = m_predY;
+			for (size_t i = from; i < p.size(); ++i)
+			{
+				c += (p[i].x != x && p[i].y != y) ? 1.41421356f : 1.f;
+				x = p[i].x;
+				y = p[i].y;
+			}
+			return c;
+		};
+		size_t at = 0;   // 지금 길에서 이미 지난 칸 다음
+		for (size_t i = 0; i < m_path.size(); ++i)
+			if (m_path[i].x == m_predX && m_path[i].y == m_predY) { at = i + 1; break; }
+		bool keep = false;
+		if (!m_path.empty() && !np.empty() && at < m_path.size() && m_goal.kind != GoalKind::Move)
+		{
+			const path::Step e = m_path.back();
+			const int ex = std::abs(e.x - gx), ey = std::abs(e.y - gy);
+			const float tail = static_cast<float>(std::max(ex, ey) - std::min(ex, ey)) + 1.41421356f * static_cast<float>(std::min(ex, ey));
+			keep = cost(m_path, at) + tail <= cost(np, 0) + 3.f;
+		}
+		if (!keep) m_path = std::move(np);
+		m_pathGoalX = gx;   // 고수했어도 이 목표로는 다시 찾지 않는다(1초 뒤 · 목표가 또 바뀌면 다시)
+		m_pathGoalY = gy;
+		m_repathAt = m_now + 1.0;
+		if (m_path.empty()) return false;
+	}
+	// 이미 지난 칸은 버린다
+	for (size_t i = 0; i < m_path.size(); ++i)
+		if (m_path[i].x == m_predX && m_path[i].y == m_predY)
+		{
+			m_path.erase(m_path.begin(), m_path.begin() + static_cast<std::ptrdiff_t>(i) + 1);
+			break;
+		}
+	if (m_path.empty()) return false;
+	for (int i = static_cast<int>(m_path.size()) - 1; i >= 0; --i)
+	{
+		const path::Step& n = m_path[static_cast<size_t>(i)];
+		if (i == 0 || LineClear(m_predX, m_predY, n.x, n.y, 0))
+		{
+			wx = n.x;
+			wy = n.y;
+			return true;
+		}
+	}
+	return false;
+}
+
 bool Game::StepToward(int gx, int gy, int stopWithin)
 {
 	if (Cheb(m_predX, m_predY, gx, gy) <= stopWithin && !(stopWithin == 0 && (m_predX != gx || m_predY != gy)))
 		return false;
-	if (m_path.empty() || m_now > m_repathAt)
-	{
-		m_path = path::Find(m_predX, m_predY, gx, gy, stopWithin);
-		m_repathAt = m_now + 1.2;
-		if (m_path.empty())
-			return false;
-	}
-	const path::Step next = m_path.front();
-	const int dir = MoveRule::DirOf(next.x - m_predX, next.y - m_predY);
-	if (dir < 0 || std::abs(next.x - m_predX) > 1 || std::abs(next.y - m_predY) > 1)
-	{
-		m_path.clear();
+	int wx = gx, wy = gy;
+	if (!Waypoint(gx, gy, stopWithin, wx, wy))
 		return false;
+	m_wayX = wx;
+	m_wayY = wy;
+	m_wayValid = true;
+	int dir = -1;
+	if (Cheb(m_predX, m_predY, wx, wy) <= 1)
+	{
+		// 마지막 한 칸은 정확히 그 칸으로
+		const int ddx = wx - m_predX, ddy = wy - m_predY;
+		if ((ddx != 0 || ddy != 0) && path::CanStep(m_predX, m_predY, ddx, ddy)) dir = MoveRule::DirOf(ddx, ddy);
 	}
-	// 경로의 다음 칸이 서버 규칙으로도 정확히 그 칸이어야 한다(대각선 모서리 등)
-	int x = m_predX, y = m_predY;
-	MoveRule::Apply(x, y, dir);
-	if (x != next.x || y != next.y)
+	if (dir < 0)
+	{
+		// 경유점으로 가는 곧은 선을 따라(DDA) — 격자 칸이 선에서 0.5칸 안에 머문다
+		Vector2 o{}, u{};
+		if (RunLine(Vector2{ static_cast<float>(wx), static_cast<float>(wy) }, o, u)) dir = PlanDir(m_predX, m_predY, o, u);
+		if (dir < 0)
+		{
+			const int sx = (wx > m_predX) - (wx < m_predX), sy = (wy > m_predY) - (wy < m_predY);
+			dir = PickMoveDir(sx, sy);
+		}
+	}
+	if (dir < 0)
 	{
 		m_path.clear();
 		m_repathAt = 0.0;
 		return false;
 	}
-	if (!SendStep(dir))
-		return false;
-	m_path.erase(m_path.begin());
-	return true;
+	return SendStep(dir);
 }
 
-bool Game::StepAlong(Vector2 dir)
+bool Game::StepAlong(Vector2 origin, Vector2 dir)
 {
-	int dx = 0, dy = 0;
-	Snap8(dir, dx, dy);
-	if (dx == 0 && dy == 0) return false;
-	const int d = PickMoveDir(dx, dy);
+	// 누른 채 이동: 커서 쪽 곧은 선을 따라 DDA로(임의 각도), 막히면 가장 가까운 열린 방향으로 미끄러진다
+	int d = PlanDir(m_predX, m_predY, origin, PlanU(dir));
+	if (d < 0)
+	{
+		int dx = 0, dy = 0;
+		Snap8(dir, dx, dy);
+		if (dx == 0 && dy == 0) return false;
+		d = PickMoveDir(dx, dy);
+	}
 	return d >= 0 && SendStep(d);
+}
+
+void Game::UpdateGuide()
+{
+	// 화면 추종자의 안내선: 지금 화면 위치에서 가려는 곳으로 곧게(격자 지그재그를 지운다)
+	motion::Guide g;
+	const Vector2 P = m_mover.Visual();
+	auto toward = [&](Vector2 target, float minDist)
+	{
+		if (util::Len(util::Sub(target, P)) < minDist) return;
+		Vector2 o{}, u{};
+		if (!RunLine(target, o, u)) return;
+		g.active = true;
+		g.origin = o;   // 걸음 계획과 같은 선
+		g.dir = u;
+	};
+	switch (m_goal.kind)
+	{
+	case GoalKind::Direction:
+		toward(m_dirTarget, 0.75f);
+		break;
+	case GoalKind::Move:
+	case GoalKind::Pickup:
+	case GoalKind::Talk:
+		if (m_wayValid) toward(Vector2{ static_cast<float>(m_wayX), static_cast<float>(m_wayY) }, 0.3f);
+		break;
+	// 움직이는 대상(따라가기 · 쫓아가 공격)은 곧은 선이 계속 돌아가서 화면이 흔들린다 — 논리 궤적을 앞보기로 따라간다
+	case GoalKind::Attack:
+	case GoalKind::Follow:
+	default:
+		break;
+	}
+	if (m_scriptKeyX != 0 || m_scriptKeyY != 0) g.active = false;   // 예전 WASD 시험: 칸 걸음 그대로
+	m_mover.SetGuide(g);
 }
 
 void Game::TickMovement()
@@ -730,7 +964,7 @@ void Game::TickMovement()
 	Entity* me = Self();
 	if (!me || m_dead)
 		return;
-	// 기술 동작 중(짧은 무게감)·돌진 착지 대기·기절/빙결 중에는 걸음을 보내지 않는다
+	// 기술 동작 중(짧은 무게감) · 돌진 착지 대기 · 기절/빙결 중에는 걸음을 보내지 않는다
 	if (m_now < m_actionLockUntil || (m_dashWaitSeq != 0 && m_now < m_dashWaitUntil))
 		return;
 	const float nowf = static_cast<float>(m_now);
@@ -748,13 +982,14 @@ void Game::TickMovement()
 		return;
 	}
 
+	// 선확정: 지금 걸음이 0.11초 남으면 다음 걸음을 정해 보낸다(칸 경계에서 멈추지 않게)
 	if (!m_mover.CanStep(m_now))
 		return;
 
 	switch (m_goal.kind)
 	{
 	case GoalKind::Move:
-		if (!StepToward(m_goal.x, m_goal.y, 0) && m_path.empty())
+		if (!StepToward(m_goal.x, m_goal.y, 0))
 		{
 			if (m_predX == m_goal.x && m_predY == m_goal.y)
 				break;
@@ -766,8 +1001,9 @@ void Game::TickMovement()
 	case GoalKind::Direction:
 	{
 		const Vector2 d = util::Sub(m_dirTarget, Vector2{ static_cast<float>(m_predX), static_cast<float>(m_predY) });
-		if (util::Len(d) > 0.75f)
-			StepAlong(d);
+		Vector2 o{}, u{};
+		if (util::Len(d) > 0.75f && RunLine(m_dirTarget, o, u))
+			StepAlong(o, u);
 		break;
 	}
 	case GoalKind::Attack:
@@ -776,7 +1012,12 @@ void Game::TickMovement()
 		break;
 	case GoalKind::Follow:
 		if (Entity* t = Find(m_goal.target))
-			StepToward(t->tx, t->ty, 1);
+		{
+			// 상대가 걷는 중이면 그 칸까지 쫓아가며 멈추지 않는다(한 칸 앞에서 섰다 떠나기를 되풀이하지 않게),
+			// 서 있으면 한 칸 옆에서 멈춘다
+			const bool moving = t->track.qn > 0 || t->track.t < 1.f || (t->track.lastSpeed > 0.3f && t->track.dryT < 0.5f);
+			StepToward(t->tx, t->ty, moving ? 0 : 1);
+		}
 		break;
 	case GoalKind::Pickup:
 		StepToward(m_goal.x, m_goal.y, 0);
@@ -809,14 +1050,8 @@ void Game::TickGoal()
 			ClearGoal();
 			return;
 		}
-		// 대상이 움직이면 경로를 다시 찾는다
+		// 대상이 움직이면 경로는 Waypoint가 다시 찾는다(지금 길이 크게 나쁘지 않으면 고수 — 제자리 오르내림 방지)
 		const int range = AttackRange();
-		if (!m_path.empty())
-		{
-			const path::Step last = m_path.back();
-			if (Cheb(last.x, last.y, t->tx, t->ty) > range)
-				m_path.clear();
-		}
 		if (arrived && Cheb(m_predX, m_predY, t->tx, t->ty) <= range)
 		{
 			m_path.clear();
@@ -837,12 +1072,6 @@ void Game::TickGoal()
 		Entity* t = Find(m_goal.target);
 		if (!t || t->dead || t->removing)
 			ClearGoal();
-		else if (!m_path.empty())
-		{
-			const path::Step last = m_path.back();
-			if (Cheb(last.x, last.y, t->tx, t->ty) > 1)
-				m_path.clear();
-		}
 		break;
 	}
 	case GoalKind::Pickup:

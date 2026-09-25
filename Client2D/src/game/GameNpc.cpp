@@ -56,9 +56,12 @@ void Game::InitNpcs()
 		v.row = &row;
 		v.tx = row.x;
 		v.ty = row.y;
-		v.pos = v.logPos = v.from = v.to = Vector2{ static_cast<float>(row.x), static_cast<float>(row.y) };
+		v.pos = v.logPos = Vector2{ static_cast<float>(row.x), static_cast<float>(row.y) };
+		motion::TrackSnap(v.track, v.pos);
 		v.faceRight = row.facing == 1 || row.facing == 2;
 		v.faceBack = row.facing >= 2;
+		v.body.Face(v.faceRight, v.faceBack);
+		v.body.turn = v.faceRight ? 1.f : -1.f;
 		v.noteAt = util::RandF(0.f, 4.f);
 		m_npcView[row.id] = v;
 	}
@@ -95,14 +98,12 @@ void Game::HandleNpcList(const NPC_LIST_NFY_PACKET& p)
 		const Vector2 t{ static_cast<float>(e.x), static_cast<float>(e.y) };
 		// 처음이거나 많이 어긋났으면 바로 옮기고, 가까우면 짧게 걸어가게 둔다
 		if (!v->known || util::Len(util::Sub(v->logPos, t)) > 2.5f)
-			v->pos = v->logPos = v->from = v->to = t;
-		else
 		{
-			v->from = v->logPos;
-			v->to = t;
-			v->moveT = 0.f;
-			v->moveDur = 0.35f;
+			v->pos = v->logPos = t;
+			motion::TrackSnap(v->track, t);
 		}
+		else
+			motion::TrackStep(v->track, e.x, e.y, 0.35f);
 		v->known = true;
 		v->state = e.state;
 		FaceFromTile(*v, e.faceX, e.faceY);
@@ -113,26 +114,15 @@ void Game::HandleNpcState(const NPC_STATE_NFY_PACKET& p)
 {
 	NpcView* v = NpcViewOf(p.npc.npcId);
 	if (!v) return;
-	const Vector2 t{ static_cast<float>(p.npc.x), static_cast<float>(p.npc.y) };
 	v->tx = p.npc.x;
 	v->ty = p.npc.y;
 	v->state = p.npc.state;
 	v->talkTo = p.talkTo;
+	// 한 걸음: 100ms 뒤 재생 시간표에 싣는다(멀면 스냅). 걸음 시간이 없으면 짧게 옮긴다.
 	if (p.stepMs > 0)
-	{
-		// 한 걸음: 지금 논리 위치에서 새 칸으로 걸음 시간 동안
-		v->from = util::Len(util::Sub(v->logPos, t)) > 2.5f ? t : v->logPos;
-		v->to = t;
-		v->moveT = 0.f;
-		v->moveDur = std::max(0.08f, p.stepMs / 1000.f);
-	}
-	else if (util::Len(util::Sub(v->to, t)) > 0.01f)
-	{
-		v->from = v->logPos;
-		v->to = t;
-		v->moveT = 0.f;
-		v->moveDur = 0.25f;
-	}
+		motion::TrackStep(v->track, p.npc.x, p.npc.y, std::max(0.08f, p.stepMs / 1000.f));
+	else
+		motion::TrackStep(v->track, p.npc.x, p.npc.y, 0.25f);
 	v->known = true;
 	if (p.npc.state != static_cast<uint8_t>(NpcActState::Walk) || p.stepMs > 0)
 		FaceFromTile(*v, p.npc.faceX, p.npc.faceY);
@@ -254,24 +244,19 @@ void Game::UpdateNpcs(float dt)
 	{
 		if (!v.row) continue;
 		const Vector2 prev = v.pos;
-		if (v.moveT < 1.f)
-			v.moveT = std::min(1.f, v.moveT + dt / std::max(0.05f, v.moveDur));
-		v.logPos = util::LerpV(v.from, v.to, v.moveT);
-		v.pos = util::DampV(v.pos, v.logPos, 1.f / 0.06f, dt);
-		const float dist = util::Len(util::Sub(v.pos, prev));
-		v.walkPhase += dist * util::kPi;
-		if (dt > 1e-4f) v.speed = util::Damp(v.speed, dist / dt, 12.f, dt);
-		const float walkTarget = util::Clamp01((v.speed - 0.3f) / 1.1f);
-		v.moving = util::Damp(v.moving, walkTarget, walkTarget > v.moving ? 14.f : 8.f, dt);
-		if (dist > 0.003f)
-		{
-			const float dx = v.pos.x - prev.x, dy = v.pos.y - prev.y;
-			const float sx = dx - dy, sy = dx + dy;
-			if (std::fabs(sx) > 0.002f) v.faceRight = sx > 0.f;
-			if (std::fabs(sy) > 0.002f) v.faceBack = sy < 0.f;
-		}
-		else if (v.talkTo == m_selfId && m_hasSelf)
+		v.pos = motion::TrackUpdate(v.track, dt, dt, false);
+		v.logPos = v.track.logical;
+		if (v.body.moving < 0.25f && v.talkTo == m_selfId && m_hasSelf)
 			FaceFromTile(v, m_predX - v.tx, m_predY - v.ty);
+		// 서 있는 동안 밖에서 정한 방향(대화 · 서버 방향)을 몸이 받아들이고, 걸으면 몸이 방향을 정한다
+		if (v.body.moving < 0.25f && (v.faceRight != v.body.faceRight || v.faceBack != v.body.faceBack))
+			v.body.Face(v.faceRight, v.faceBack);
+		v.body.Update(prev, v.pos, dt, v.track.lastSpeed > 0.3f ? v.track.lastSpeed : 2.5f);
+		v.faceRight = v.body.faceRight;
+		v.faceBack = v.body.faceBack;
+		v.walkPhase = v.body.stride;
+		v.moving = v.body.moving;
+		v.speed = v.body.speed;
 		v.barkT = std::max(0.f, v.barkT - dt);
 		if (v.heartT >= 0.f) { v.heartT += dt; if (v.heartT > 1.6f) v.heartT = -1.f; }
 		if (v.hopT >= 0.f) { v.hopT += dt / 0.35f; if (v.hopT >= 1.f) v.hopT = -1.f; }

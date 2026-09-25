@@ -125,7 +125,11 @@ namespace actors
 			Rig g;
 			g.base = p.base;
 			g.s = p.scale * extraScale;
-			g.dir = p.faceRight ? 1.f : -1.f;
+			{
+				const float t = TurnScale(p);   // 좌우 돌기: 부호 = 방향, 크기 = 돌아서는 중의 가로 배율
+				g.dir = (t < 0.f ? -1.f : 1.f) * std::max(kTurnMinWidth, std::fabs(t));
+			}
+			g.rot += (p.lean * 0.4f + p.bank * 0.3f) * (3.14159265f / 180.f) * (p.dead > 0.f ? 0.f : 1.f);
 			if (p.dead > 0.f)
 				g.rot = -util::EaseOutBounce(util::Clamp01(p.dead * 1.4f)) * 1.35f;
 			g.ox = -p.hurt * 4.f - p.knock * 6.f;
@@ -352,7 +356,9 @@ namespace actors
 
 	void DrawShadow(Vector2 base, float rx, float alpha)
 	{
-		gfx::EllipseGrad(base, rx, rx * 0.45f, Rgb(0x000000, static_cast<uint8_t>(110 * alpha)), Rgb(0x000000, 0));
+		// 부드러운 발밑 그림자(Phase 1-C): 넓고 옅은 번짐 + 발 밑의 짙은 핵 — 가장자리까지 매끈하게 줄어든다
+		gfx::EllipseGrad(base, rx * 1.15f, rx * 0.5f, Rgb(0x000000, static_cast<uint8_t>(54 * alpha)), Rgb(0x000000, 0));
+		gfx::EllipseGrad(base, rx * 0.62f, rx * 0.27f, Rgb(0x000000, static_cast<uint8_t>(78 * alpha)), Rgb(0x000000, 0));
 	}
 
 	float PlayerHeight() { return 70.f; }

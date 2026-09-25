@@ -31,7 +31,16 @@ namespace actors
 		float skillHold = 0.f;   // 기술 앞부분의 "힘 모으기" 구간 비율(처형·낙성)
 		float windup = 0.f;      // 몬스터 강공격 예고 자세 0~1
 		float knock = 0.f;       // 1 → 0 크게 밀려남
+		// Phase 1-C 몸(game/Motion Body) — 0이면 faceRight만 쓴다(도감 · 예전 호출)
+		float turn = 0.f;        // 가로 배율 −1(왼쪽) ~ +1(오른쪽): 좌우 반전이 60ms에 걸쳐 0을 지난다
+		float lean = 0.f;        // 앞기울기(도) — 출발 가속 · 달리는 자세
+		float bank = 0.f;        // 도는 쪽 기울기(도)
+		float settle = 0.f;      // 멈출 때 한 번 흔들림(−1~1 정도)
 	};
+	// 좌우 방향(부호)과 돌아서는 중의 가로 배율. 그릴 때는 kTurnMinWidth 밑으로 좁히지 않는다 —
+	// 0 근처(한 프레임)에서 종잇장처럼 보이지 않고 "휙 도는" 인상만 남게(1-C 녹화 검토)
+	inline constexpr float kTurnMinWidth = 0.32f;
+	[[nodiscard]] inline float TurnScale(const Pose& p) { return p.turn != 0.f ? p.turn : (p.faceRight ? 1.f : -1.f); }
 
 	struct PlayerLook
 	{

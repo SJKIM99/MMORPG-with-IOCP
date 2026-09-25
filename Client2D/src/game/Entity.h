@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "net/Shared.h"
+#include "game/Motion.h"
 
 #include <array>
 #include <string>
@@ -18,17 +19,14 @@ struct Entity
 	EntityKind  kind = EntityKind::Monster;
 	std::string name;
 
-	// 위치 — tx,ty(서버 칸) → 논리 위치(logPos: 걸음 시간 동안 칸 사이를 직선 이동)
-	//        → 표시 위치(pos: logPos를 지수 스무딩으로 따라감). 자세한 건 game/Motion.h
+	// 위치 — tx,ty(서버 칸) → 논리 위치(logPos: 재생 시간표대로 칸 사이를 직선 이동)
+	//        → 표시 위치(pos: 화면 추종자 — 명시 속도 · 앞보기). 자세한 건 game/Motion.h
 	int     tx = 0, ty = 0;          // 서버 칸
 	Vector2 pos{};                   // 그리는 위치(타일 좌표, 실수)
 	Vector2 logPos{};
-	Vector2 from{}, to{};
-	float   moveT = 1.f, moveDur = 0.5f;
-	struct QueuedStep { Vector2 to; float dur; };
-	std::array<QueuedStep, 4> stepQ{};   // 아직 재생하지 않은 걸음(원격 개체)
-	int     stepQN = 0;
-	float   walkPhase = 0.f;
+	motion::Track track;             // 원격 개체의 재생 시간표 · 화면 추종자
+	motion::Body  body;              // 방향(연속 각 · 8구역) · 걸음 위상 · 자세
+	float   walkPhase = 0.f;         // ↓ body를 비춘 값(그리기가 읽는다)
 	float   moving = 0.f;            // 0~1(idle↔walk 섞기, 속도 기반)
 	float   run = 0.f;               // 0~1(walk↔run)
 	float   speed = 0.f;             // 표시 속도(칸/초)
@@ -91,7 +89,6 @@ struct Entity
 	float hpShown = 1.f;             // 체력바(부드럽게)
 	float hpLag = 1.f;               // 늦게 따라오는 흰 바
 	float lastHitAt = -100.f;        // 최근 맞은 시각(체력바 표시)
-	float lastStepDust = 0.f;
 	std::string chat;
 	float chatT = 0.f;
 

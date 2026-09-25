@@ -18,6 +18,12 @@
 //   start <= now + kSlackMs 이면 허용      ← 지터로 몰려 온 패킷도 정상 속도면 통과
 //   clock = start + 걸음 비용
 // 정상 클라이언트는 몇 백 ms 지터에도 거절되지 않고, 속도 핵은 slack만큼만 앞설 수 있다.
+//
+// kCatchupMs = 500(Phase 1-C, 예전 200): TCP 재전송 한 번(200~450ms)이면 그 뒤 걸음들이 한꺼번에 도착한다.
+//   200ms로는 몰려 온 대각선 걸음(395ms)이 TooFast로 거절돼 1~1.4칸 되돌림이 생겼다
+//   (모의 시험 --netsim 150/40/2: 6분에 11번 → 500ms에서 0번). 오래 쉬었다가 한꺼번에 보낼 수 있는 양이
+//   350ms → 650ms어치(직선 두세 걸음)로 늘 뿐 평균 속도의 상한은 그대로다. 확장 세션(USER_MOVE_EX_REQ)만 쓰는 값 —
+//   레거시 USER_MOVE_REQ(STRESS_TEST 봇)는 따로 쿨타임을 본다.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace MoveRule
 {
@@ -27,7 +33,7 @@ namespace MoveRule
 	inline constexpr uint32_t kMinSpeedPercent  = 40;
 	inline constexpr uint32_t kMaxSpeedPercent  = 200;
 	inline constexpr uint32_t kSlackMs          = 150;
-	inline constexpr uint32_t kCatchupMs        = 200;
+	inline constexpr uint32_t kCatchupMs        = 500;
 
 	// 0:UP 1:DOWN 2:LEFT 3:RIGHT 4:UP-LEFT 5:UP-RIGHT 6:DOWN-LEFT 7:DOWN-RIGHT
 	[[nodiscard]] constexpr bool IsValidDir(int dir) noexcept { return dir >= 0 && dir <= 7; }

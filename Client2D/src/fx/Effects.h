@@ -62,6 +62,8 @@ namespace fx
 		void PlayerKill(Vector2 iso);
 		void Restart(Vector2 iso);
 		void Dust(Vector2 iso, float amount);
+		// 발이 땅에 닿는 순간(Phase 1-C) — 바닥 종류별: 0 풀 · 1 돌 · 2 나무 · 3 눈 · 4 모래
+		void Footfall(Vector2 iso, int ground, float amount);
 		void CoinBurst(Vector2 iso, int count);
 		void LootSparkle(Vector2 iso, Color color);
 		void ClickMarker(Vector2 iso, Color color);

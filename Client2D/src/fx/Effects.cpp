@@ -556,6 +556,26 @@ namespace fx
 				Vector2{ RandF(-20.f, 20.f), RandF(-6.f, 6.f) }, RandF(8.f, 22.f));
 	}
 
+	void Effects::Footfall(Vector2 iso, int ground, float amount)
+	{
+		// 달리는 동안 발마다 — 적고 짧게(화면을 흐리지 않게). 눈 · 모래는 조금 더, 돌 · 나무는 거의 없이.
+		struct G { Color c; float n; float size; float up; };
+		static constexpr G kG[5] = {
+			{ Color{ 150, 170, 110, 110 }, 0.6f, 5.f, 10.f },    // 풀: 풀잎 먼지 약간
+			{ Color{ 190, 184, 170, 90 },  0.35f, 5.f, 6.f },    // 돌: 옅은 흙먼지
+			{ Color{ 170, 140, 100, 70 },  0.2f, 4.f, 5.f },     // 나무
+			{ Color{ 236, 242, 250, 150 }, 1.3f, 7.f, 14.f },    // 눈: 흰 가루
+			{ Color{ 214, 188, 140, 130 }, 1.1f, 7.f, 12.f },    // 모래
+		};
+		const G& g = kG[ground >= 0 && ground < 5 ? ground : 0];
+		const float want = g.n * amount;
+		int n = static_cast<int>(want);
+		if (RandF() < want - n) ++n;
+		for (int i = 0; i < n; ++i)
+			Smoke(Vector2{ iso.x + RandF(-5.f, 5.f), iso.y + RandF(-1.5f, 1.5f) }, 1.f, g.c, g.size * 0.6f, g.size * 2.4f, RandF(0.3f, 0.5f),
+				Vector2{ RandF(-16.f, 16.f), RandF(-5.f, 5.f) }, RandF(g.up * 0.5f, g.up));
+	}
+
 	void Effects::CoinBurst(Vector2 iso, int count)
 	{
 		for (int i = 0; i < count; ++i)

@@ -76,10 +76,10 @@ private:
 	struct Toast { uint16_t itemId; std::string text; Color color; double start; };
 	struct CenterMsg { std::string text; Color color; double start; };
 	struct QuickSlot { int kind = 0; uint16_t itemId = 0; };   // kind 0 비었음, 1 아이템
-	// 소모품 칸: 배틀 1~4 · 체력 물약(F1) · 보조 5~8 — game/KeyBinds 동작 Battle1..Aux4 순서
+	// 소모품 칸: 전투 1~4 · 체력 물약(F1) · 보조 5~8 — game/KeyBinds 동작 Battle1..Aux4 순서
 	static constexpr int kItemSlots = 9;
 	static constexpr int kPotionSlot = 4;
-	// 기술 칸: 기본 공격(C · 우클릭) · Q W E R · A S D F · 각성기 V · 이동기 Space · 아이덴티티 Z
+	// 기술 칸: 기본 공격(C · 우클릭) · Q W E R · A S D F · 각성기 V · 이동기 Space · 고유 기술 Z
 	static constexpr int kHotSlots = 12;
 	static constexpr int kHotBasic = 0, kHotAwaken = 9, kHotMobility = 10, kHotIdentity = 11;
 	static constexpr int kDragSkill = 4;           // ui::DragPayload.kind — 기술(기술 창 · 기술 칸에서 끌기)
@@ -177,13 +177,19 @@ private:
 	void TickMovement();
 	void TickGoal();
 	bool StepToward(int gx, int gy, int stopWithin);
-	bool StepAlong(Vector2 dir);                        // 누른 채 이동: 커서 방향으로 한 걸음(막히면 벽을 타고)
+	bool StepAlong(Vector2 origin, Vector2 dir);        // 누른 채 이동: 커서 쪽 곧은 선을 따라 DDA 한 걸음(막히면 벽을 타고)
+	[[nodiscard]] int PlanDir(int x, int y, Vector2 origin, Vector2 u) const;   // 선(origin, u)을 따르는 다음 걸음(DDA)
+	bool RunLine(Vector2 target, Vector2& origin, Vector2& u);   // 걸음 계획 · 화면 안내선이 함께 쓰는 곧은 선(방향이 5° 넘게 바뀔 때만 다시 긋는다)
+	[[nodiscard]] Vector2 PlanU(Vector2 u) const;                // 걸음 계획용 방향: 가려는 쪽이 돌고 있으면 한 걸음 뒤의 방향으로 조금 앞당긴다
+	[[nodiscard]] bool LineClear(int x, int y, int gx, int gy, int stopWithin) const;
+	bool Waypoint(int gx, int gy, int stopWithin, int& wx, int& wy);           // 곧게 갈 수 있는 가장 먼 경유점
+	void UpdateGuide();                                 // 화면 추종자의 안내선(매 프레임)
 	bool SendStep(int dir);
 	int  PickMoveDir(int dx, int dy) const;   // 막히면 가장 가까운 열린 방향(미끄러짐)
 	void SyncMover();
 	void TryAttackTarget(Entity& target);
 	void UseSlot(int slot);
-	void UseItemSlot(int index);                        // 소모품 칸(배틀 1~4 · 물약 · 보조 5~8)
+	void UseItemSlot(int index);                        // 소모품 칸(전투 1~4 · 물약 · 보조 5~8)
 	void Interact();                                    // G: 가장 가까운 NPC와 대화 · 물건 줍기 · 쓰다듬기
 	[[nodiscard]] const WorldData::NpcRow* InteractNpc() const;   // G를 누르면 말 걸 NPC(없으면 nullptr)
 	[[nodiscard]] Entity* InteractItem();                          // G를 누르면 주울 물건
@@ -208,8 +214,9 @@ private:
 	{
 		const WorldData::NpcRow* row = nullptr;
 		int      tx = 0, ty = 0;             // 서버 칸
-		Vector2  pos{}, logPos{}, from{}, to{};
-		float    moveT = 1.f, moveDur = 0.5f;
+		Vector2  pos{}, logPos{};
+		motion::Track track;                 // 100ms 뒤 재생 시간표 · 화면 추종자(Phase 1-C)
+		motion::Body  body;                  // 방향 · 걸음 위상 · 자세
 		float    walkPhase = 0.f, moving = 0.f, speed = 0.f;
 		bool     faceRight = true, faceBack = false;
 		uint8_t  state = 0;                  // NpcActState
@@ -304,7 +311,7 @@ private:
 	void DrawWorldOverlay(const Camera2D& cam);
 	void DrawHud();
 	void DrawChat();
-	void DrawQuickBar();                                // 소모품 칸(배틀 1~4 · 물약 F1 · 보조 5~8)
+	void DrawQuickBar();                                // 소모품 칸(전투 1~4 · 물약 F1 · 보조 5~8)
 	void DrawSkillBar();                                // 기술 칸(QWER · ASDF · V · Space · Z)
 	void DrawHotSlot(Rectangle r, int hot, float keySize);
 	void DrawCombatPanel();                             // 아래 가운데 판: HP · MP · 능력치 한 줄
@@ -345,6 +352,7 @@ private:
 	Entity* Self();
 	Entity* Find(const ObjID& id);
 	[[nodiscard]] bool InTown() const;
+	[[nodiscard]] int GroundAt(Vector2 tile) const;     // 0 풀 · 1 돌 · 2 나무 · 3 눈 · 4 모래
 	[[nodiscard]] int Region() const;
 	void AddChat(const std::string& text, Color color);
 	void AddCenter(const std::string& text, Color color);
@@ -441,6 +449,9 @@ private:
 	int              m_predX = 0, m_predY = 0;
 	std::vector<path::Step> m_path;
 	double           m_repathAt = 0.0;
+	int              m_pathGoalX = -1, m_pathGoalY = -1;   // m_path를 찾은 목적지
+	int              m_wayX = 0, m_wayY = 0;               // 지금 향하는 경유점(곧은 선의 끝)
+	bool             m_wayValid = false;
 	int              m_viewRange = 9;          // 서버 설정(SERVER_CONFIG_INF)
 	uint32_t         m_baseSpeedPercent = 100; // 서버가 알려 준 내 이동속도(가속 제외)
 
@@ -477,6 +488,13 @@ private:
 	bool             m_moveHeld = false;            // 이동 버튼을 누르고 있다
 	bool             m_moveDirMode = false;         // 누른 채 커서 쪽으로 계속
 	double           m_movePressAt = 0.0;
+	ObjID            m_movePressEnt{};              // 누른 순간 커서 밑 모험가 · 물건(따라가기 · 줍기)
+	bool             m_lineValid = false;           // 곧은 선(RunLine): 원점 · 방향(칸 좌표)
+	Vector2          m_lineO{}, m_lineU{};
+	Vector2          m_wantPrev{};                  // 가려는 방향(화면 위치 → 목표)과 그 회전 속도(라디안/초, 거른 값)
+	double           m_wantAt = 0.0;
+	float            m_wantTurn = 0.f;
+	int              m_movePressNpc = 0;            // 누른 순간 커서 밑 NPC(대화)
 	Vector2          m_dirTarget{};                 // Direction 목표(커서 아래 바닥)
 	double           m_whiffAt = -10.0;             // 빈 곳에 휘두른 시각(기본 공격)
 	bool             m_menuOpen = false;            // 시스템 메뉴
@@ -578,8 +596,11 @@ private:
 	int              m_shotIndex = 0;
 	int              m_scriptStep = 0;
 	float            m_scriptT = 0.f;
+	float            m_scriptMark = 0.f;                    // 녹화 시나리오: 달리기 시작 시각(시작 칸에 선 뒤)
 	int              m_scriptKeyX = 0, m_scriptKeyY = 0;   // 스크립트가 누른 WASD(화면 방향)
 	double           m_scriptNextCast = 0.0;                // aimcombat: 다음 기술 키
 	int              m_scriptCastIdx = 0;
+	uint32_t         m_lastPacketsIn = 0;                   // 통신 멈춤 판단(원격 외삽 — motion::SetNetQuiet)
+	double           m_lastRecvAt = 0.0;
 	std::FILE*       m_traceFile = nullptr;
 };

@@ -313,6 +313,23 @@ Entity* Game::Find(const ObjID& id)
 
 bool Game::InTown() const { return WorldData::IsSafeZone(m_predX, m_predY); }
 
+// 바닥 종류(발소리 · 먼지): 0 풀 · 1 돌 · 2 나무 · 3 눈 · 4 모래
+int Game::GroundAt(Vector2 tile) const
+{
+	const int x = static_cast<int>(std::floor(tile.x + 0.5f)), y = static_cast<int>(std::floor(tile.y + 0.5f));
+	if (const char c = WorldData::TownCell(x, y); c != '\0')
+		return (c == '=' || c == ',' || c == 'G' || c == 'N') ? 1 : 0;
+	const auto* r = WorldData::FindRegion(WorldData::RegionIdAt(x, y));
+	if (!r) return 0;
+	using WorldData::Biome;
+	switch (r->biome)
+	{
+	case Biome::eSnow: return 3;
+	case Biome::eDesert: case Biome::eBeach: case Biome::eCanyon: case Biome::eWasteland: return 4;
+	case Biome::eVolcanic: case Biome::eRuins: case Biome::eOrcFort: case Biome::eHell: case Biome::eGraveyard: case Biome::eAntHill: return 1;
+	default: return 0;
+	}
+}
 int Game::Region() const { return WorldData::RegionIdAt(m_predX, m_predY); }
 
 Vector2 Game::TileToIso(Vector2 tile, float z) const { return gfx::IsoPx(tile.x, tile.y, z); }
@@ -403,6 +420,9 @@ void Game::UpdateGame(float dt)
 	}
 	const float sdt = dt * fx::Fx().TimeScale();
 	m_time += sdt;
+	// 이동 · 걸음 재생 시간: 프레임 시간 상한(0.05초)에 묶이면 FPS가 낮을 때 다른 개체 · NPC가 느려지고 밀린다.
+	// 실제 경과 시간(0.25초 상한, 히트스톱만 반영)을 쓴다.
+	const float netDt = std::min(clk::FrameDt(), 0.25f) * fx::Fx().TimeScale();
 
 	HandleHotkeys();
 	HandleWorldInput();
@@ -411,36 +431,54 @@ void Game::UpdateGame(float dt)
 	RunScript(dt);
 	TickCombat(dt);
 	TickLoot();
-	UpdateNpcs(sdt);
+	UpdateNpcs(netDt);
 	UpdateQuests(dt);
 
-	// ── 이동(내 캐릭터: 예측·보정·스무딩 / 다른 개체: 걸음 시간대로 보간) ──
-	// 서버 걸음을 재생하는 시간은 프레임 시간 상한(0.05초)에 묶이면 안 된다 — FPS가 낮을 때
-	// 다른 개체가 느려지고 밀린다. 실제 경과 시간(히트스톱만 반영)을 쓴다.
-	const float netDt = std::min(clk::FrameDt(), 0.25f) * fx::Fx().TimeScale();
+	// ── 이동(내 캐릭터: 선확정 예측 · 화면 추종자 / 다른 개체: 100ms 뒤 재생 시간표) ──
+	// 통신이 멈췄나(원격 외삽 판단) — 마지막 패킷을 받은 뒤 흐른 시간
+	if (m_net.PacketsIn() != m_lastPacketsIn) { m_lastPacketsIn = m_net.PacketsIn(); m_lastRecvAt = m_now; }
+	motion::SetNetQuiet(static_cast<float>(m_now - m_lastRecvAt));
 	m_mover.SetSpeedPercent(m_baseSpeedPercent + (m_hasteUntil > m_now ? MoveRule::kHasteBonusPercent : 0u));
-	m_mover.Update(m_now, sdt);
+	UpdateGuide();
+	// 이동은 실제 경과 시간(히트스톱만 반영)으로 — 프레임 시간 상한(0.05초)에 묶이면 FPS가 낮을 때 화면이 논리를 못 따라간다
+	m_mover.Update(m_now, netDt);
 	SyncMover();
 	if (!m_opts.traceMove.empty())
 	{
 		if (!m_traceFile)
 		{
 			m_traceFile = std::fopen(m_opts.traceMove.c_str(), "w");
-			if (m_traceFile) std::fprintf(m_traceFile, "t,lx,ly,vx,vy,speed,pending,keyx,keyy,rx,ry,camx,camy,zoom,face,rface\n");
+			if (m_traceFile) std::fprintf(m_traceFile, "t,lx,ly,vx,vy,speed,pending,keyx,keyy,rx,ry,camx,camy,zoom,face,rface,heading,sector,turn,dev,guided,rlx,rly,aimx,aimy,lineox,lineoy,lineux,lineuy\n");
 		}
 		if (m_traceFile)
 		{
 			const Vector2 l = m_mover.Logical(), v = m_mover.Visual();
 			// 다른 플레이어 하나(원격 보간 확인용)
-			Vector2 r{ -1, -1 };
+			Vector2 r{ -1, -1 }, rl{ -1, -1 };
 			int rface = -1;
 			for (const auto& [oid, o] : m_ents)
-				if (oid != m_selfId && o.kind == EntityKind::Player) { r = o.pos; rface = (o.faceRight ? 1 : 0) | (o.faceBack ? 2 : 0); break; }
-			int face = -1;
-			if (const Entity* me = Self()) face = (me->faceRight ? 1 : 0) | (me->faceBack ? 2 : 0);
+				if (oid != m_selfId && o.kind == EntityKind::Player)
+				{
+					// 방향 그림은 몸(Body)의 값 — 그려지는 것. e.faceRight는 걸음 알림이 온 프레임에 잠깐 걸음 방향으로 덮인다(서 있을 때만 몸이 받아들임)
+					r = o.pos;
+					rl = o.logPos;
+					rface = (o.body.faceRight ? 1 : 0) | (o.body.faceBack ? 2 : 0);
+					break;
+				}
+			int face = -1, sector = -1;
+			float heading = 0.f, turn = 1.f;
+			if (const Entity* me = Self())
+			{
+				face = (me->body.faceRight ? 1 : 0) | (me->body.faceBack ? 2 : 0);
+				sector = me->body.sector;
+				heading = me->body.heading;
+				turn = me->body.turn;
+			}
 			const Vector2 cam = m_cam.Target();
-			std::fprintf(m_traceFile, "%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%d,%d,%d,%.4f,%.4f,%.3f,%.3f,%.4f,%d,%d\n", m_now, l.x, l.y, v.x, v.y, m_mover.Speed(), m_mover.PendingCount(),
-				m_scriptKeyX, m_scriptKeyY, r.x, r.y, cam.x, cam.y, m_cam.Zoom(), face, rface);
+			// 조준(커서 아래 바닥) · 곧은 선(RunLine: 걸음 계획과 화면 안내선이 함께 쓰는 선)
+			std::fprintf(m_traceFile, "%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%d,%d,%d,%.4f,%.4f,%.3f,%.3f,%.4f,%d,%d,%.4f,%d,%.3f,%.4f,%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.5f,%.5f\n", m_now, l.x, l.y, v.x, v.y, m_mover.Speed(), m_mover.PendingCount(),
+				m_scriptKeyX, m_scriptKeyY, r.x, r.y, cam.x, cam.y, m_cam.Zoom(), face, rface, heading, sector, turn, m_mover.Deviation(), m_mover.Guided() ? 1 : 0, rl.x, rl.y,
+				m_aim.world.x, m_aim.world.y, m_lineValid ? m_lineO.x : -1.f, m_lineValid ? m_lineO.y : -1.f, m_lineU.x, m_lineU.y);
 		}
 	}
 
@@ -453,27 +491,34 @@ void Game::UpdateGame(float dt)
 			const Vector2 prev = e.pos;
 			e.pos = m_mover.Visual();
 			e.logPos = m_mover.Logical();
-			motion::Animate(e, prev, sdt);
+			motion::Animate(e, prev, netDt, m_mover.NominalSpeed());
 		}
 		else
-			motion::UpdateRemote(e, netDt, sdt);
-
-		if (e.kind != EntityKind::Item && e.moving > 0.2f)
 		{
-			// 발소리/먼지 — 한 걸음(위상 π)마다
-			if ((e.walkPhase - e.lastStepDust) > util::kPi)
+			motion::UpdateRemote(e, netDt, netDt);
+			static const bool debugRemote = std::getenv("HARVEN_REMOTE_DEBUG") != nullptr;   // 원격 재생 진단(stderr, 프레임마다)
+			if (e.kind == EntityKind::Player && debugRemote)
 			{
-				e.lastStepDust = e.walkPhase;
-				if (e.row == nullptr || e.row->archetype != MonsterArchetype::eGhost)
-					fx::Fx().Dust(TileToIso(e.pos), (id == m_selfId ? 0.8f : 0.4f) * (1.f + e.run));
-				if (id == m_selfId)
-					sfx::Play(sfx::Id::Step, 0.42f + 0.15f * e.run, 0.15f);
+				const motion::Track& tr = e.track;
+				std::fprintf(stderr, "[track] t=%.4f qn=%d tt=%.3f dur=%.3f wait=%.3f extra=%.3f merge=%.3f dryT=%.3f margin=%.3f late=%.3f L(%.3f,%.3f) to(%.0f,%.0f) V(%.3f,%.3f)\n",
+					m_now, tr.qn, tr.t, tr.dur, tr.wait, tr.extra, tr.merge, tr.dryT, tr.margin, tr.lateMax, tr.logical.x, tr.logical.y, tr.to.x, tr.to.y, e.pos.x, e.pos.y);
 			}
-			if (id == m_selfId && m_hasteUntil > m_now)
-				fx::Fx().HasteTrail(TileToIso(e.pos));
 		}
-		else
-			e.lastStepDust = e.walkPhase - util::kPi * 0.5f;   // 다시 걸을 때 반 걸음 뒤 첫 발소리
+
+		// 발이 땅에 닿는 순간(걸음 위상 = 이동 거리 ÷ 보폭): 바닥 종류별 발소리 · 먼지
+		if (e.kind != EntityKind::Item && e.body.footfall && !e.dead)
+		{
+			const int ground = GroundAt(e.pos);
+			if (e.row == nullptr || e.row->archetype != MonsterArchetype::eGhost)
+				fx::Fx().Footfall(TileToIso(e.pos), ground, (id == m_selfId ? 1.f : 0.5f) * (1.f + e.run));
+			static constexpr sfx::Id kStep[5] = { sfx::Id::StepGrass, sfx::Id::StepStone, sfx::Id::StepWood, sfx::Id::StepSnow, sfx::Id::StepSand };
+			if (id == m_selfId)
+				sfx::Play(kStep[ground], 0.5f + 0.15f * e.run, 0.12f);
+			else if (e.kind == EntityKind::Player && util::Len(util::Sub(e.pos, m_mover.Visual())) < 7.f)
+				PlayAt(static_cast<int>(kStep[ground]), e.pos, 0.22f, 0.12f);
+		}
+		if (id == m_selfId && m_hasteUntil > m_now && e.moving > 0.2f)
+			fx::Fx().HasteTrail(TileToIso(e.pos));
 		if (e.attackT >= 0.f) { e.attackT += sdt; if (e.attackT > 0.6f) e.attackT = -1.f; }
 		if (e.castT >= 0.f) { e.castT += sdt; if (e.castT > 0.7f) e.castT = -1.f; }
 		e.hurtT = std::max(0.f, e.hurtT - sdt * 5.f);
@@ -525,16 +570,29 @@ void Game::UpdateGame(float dt)
 	if (Entity* me = Self())
 	{
 		m_cam.Follow(TileToIso(me->pos, 0.6f));
-		// 이동 방향으로 살짝 앞을 보여 준다(속도에 비례, 멈추면 천천히 돌아옴)
+		// 진행 방향으로 앞서기: 스프링이 늦는 만큼(2τ·속도) + 달릴 때 약 1칸 더 — 가는 쪽이 더 보인다
 		const Vector2 v = m_mover.Velocity();
 		const Vector2 isoV{ (v.x - v.y) * gfx::kHalfW, (v.x + v.y) * gfx::kHalfH };
 		const float len = std::sqrt(isoV.x * isoV.x + isoV.y * isoV.y);
 		Vector2 lead{ 0, 0 };
 		if (len > 1.f)
-			lead = util::Mul(util::Norm(isoV), 34.f * util::Clamp01(len / 160.f));
+			lead = util::Add(util::Mul(isoV, 2.f * GameCamera::kTau), util::Mul(util::Norm(isoV), 38.f * util::Clamp01(len / 140.f)));
 		m_cam.SetLead(lead);
+		// 커서 쪽으로 조금(최대 약 1.5칸) — 창 · HUD 위에 있으면 치우치지 않는다
+		Vector2 bias{ 0, 0 };
+		if (!ui::MouseOverUi() && !m_menuOpen && !m_keysOpen && m_aim.valid)
+		{
+			const Vector2 toCursor = util::Sub(TileToIso(m_aim.world, 0.f), TileToIso(me->pos, 0.f));
+			bias = util::Mul(toCursor, 0.12f);
+			const float bl = util::Len(bias);
+			if (bl > 52.f) bias = util::Mul(bias, 52.f / bl);
+		}
+		m_cam.SetCursorBias(bias);
 		if (m_mover.Snapped())
+		{
 			m_cam.SnapTo(TileToIso(me->pos, 0.6f));
+			m_lineValid = false;
+		}
 	}
 	if (!ui::TextFocused() && !ui::MouseOverUi())
 	{
@@ -1040,18 +1098,34 @@ void Game::RunScript(float dt)
 	else if (s.rfind("runline", 0) == 0 || s == "runcircle" || s.rfind("runcircle:", 0) == 0 || s.rfind("follow:", 0) == 0)
 	{
 		// 녹화용 이동 시나리오(Phase 1 전/후 비교) — 사람처럼 **마우스로** 조작한다(in::SetScriptMouse).
-		//   runline[:dx,dy[,초]]  화면 방향(dx,dy)으로 커서를 두고 좌클릭을 누른 채 달린다(기본 오른쪽 6초)
-		//   runcircle[:초]         분수 둘레를 도는 점을 커서로 앞서 가리키며 누른 채 달린다(기본 30초)
-		//   follow:이름            그 플레이어 위에 커서를 두고 누른 채 따라간다
+		//   runline[:dx,dy[,초[,x,y]]]  화면 방향(dx,dy)으로 커서를 두고 좌클릭을 누른 채 달린다(기본 오른쪽 6초).
+		//                               x,y(마을 기준 칸)를 주면 먼저 그 칸으로 걸어가 선 뒤 시작한다(부활 칸이 무작위라서)
+		//   runcircle[:초]              분수 둘레를 도는 점을 커서로 앞서 가리키며 누른 채 달린다(기본 30초)
+		//   follow:이름                 그 플레이어 위에 커서를 두고 누른 채 따라간다
 		Entity* me = Self();
 		if (!me) return;
 		const Vector2 meScr = GetWorldToScreen2D(TileToIso(me->pos, 0.f), m_cam2d);
-		const float start = 1.5f;
+		float dx = 1.f, dy = 0.f, secs = 6.f, sx = -1.f, sy = -1.f;
+		if (s.rfind("runline:", 0) == 0) std::sscanf(s.c_str() + 8, "%f,%f,%f,%f,%f", &dx, &dy, &secs, &sx, &sy);
+		float start = 1.5f;
+		if (sx >= 0.f)
+		{
+			const int gx = WorldData::kTownX0 + static_cast<int>(sx), gy = WorldData::kTownY0 + static_cast<int>(sy);
+			if (m_scriptStep == 0 && m_scriptT > 0.3f)
+			{
+				SetGoal(Goal{ GoalKind::Move, ObjID{}, gx, gy });
+				m_scriptStep = 1;
+			}
+			else if (m_scriptStep == 1 && m_goal.kind == GoalKind::None && !m_mover.IsWalking(m_now))
+			{
+				m_scriptStep = 2;
+				m_scriptMark = m_scriptT + 0.8f;   // 선 뒤 잠깐 숨을 고르고
+			}
+			start = m_scriptStep == 2 ? m_scriptMark : 1e9f;
+		}
 		if (m_scriptT < start) { in::SetScriptMouse(Vector2{ meScr.x, meScr.y - 200.f }, false); return; }
 		if (s.rfind("runline", 0) == 0)
 		{
-			float dx = 1.f, dy = 0.f, secs = 6.f;
-			if (s.size() > 8) std::sscanf(s.c_str() + 8, "%f,%f,%f", &dx, &dy, &secs);
 			const float l = std::max(0.001f, std::sqrt(dx * dx + dy * dy));
 			const bool hold = m_scriptT < start + secs;
 			in::SetScriptMouse(Vector2{ meScr.x + dx / l * 240.f, meScr.y - 30.f + dy / l * 240.f }, hold);

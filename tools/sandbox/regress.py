@@ -39,7 +39,7 @@ def main():
         cmd = ['./Client2D', '--mute', '--no-msaa', '--size', '1280x720', '--name', who, '--class', str(cls),
                '--script', name, '--screenshot', shot, '--after', str(after)]
         try:
-            r = subprocess.run(cmd, cwd=client, env=env, capture_output=True, text=True, timeout=after + 120)
+            r = subprocess.run(cmd, cwd=client, env=env, capture_output=True, text=True, timeout=after * 5 + 120)   # 소프트웨어 렌더링(5fps 안팎)에서도 넉넉히
             code = r.returncode
             lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]')]
         except subprocess.TimeoutExpired:
