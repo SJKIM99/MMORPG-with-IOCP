@@ -11,6 +11,8 @@
 
 namespace fx
 {
+	namespace { constexpr float kClickLife = 0.3f; }   // 클릭 표시 수명(초)
+
 	using util::Rgb;
 	using util::RandF;
 	using util::WithA;
@@ -147,7 +149,7 @@ namespace fx
 		Age(m_teles, dt);
 		Age(m_slashes, sdt);
 		for (auto& c : m_clicks) c.t += dt;
-		m_clicks.erase(std::remove_if(m_clicks.begin(), m_clicks.end(), [](const ClickFx& c) { return c.t > 0.45f; }), m_clicks.end());
+		m_clicks.erase(std::remove_if(m_clicks.begin(), m_clicks.end(), [](const ClickFx& c) { return c.t > kClickLife; }), m_clicks.end());
 		if (m_flash > 0.f) m_flash = std::max(0.f, m_flash - dt);
 		Particles().Update(sdt);
 	}
@@ -741,13 +743,15 @@ namespace fx
 			for (int i = 0; i < 4; ++i)
 				gfx::Line(c[i], c[(i + 1) % 4], 3.f + pulse * 2.f, util::MulA(util::Shade(t.color, 1.3f), 0.9f));
 		}
-		// 클릭 표시
+		// 클릭 표시(Phase 1-A): 0.3초 — 바깥 고리가 조여 들고 가운데 점이 한 번 빛난다
 		for (const auto& c : m_clicks)
 		{
-			const float u = c.t / 0.45f;
+			const float u = util::Clamp01(c.t / kClickLife);
 			gfx::SetDepthRaw(-0.97f);
-			const float r = util::Lerp(22.f, 6.f, util::EaseOutCubic(u));
-			gfx::EllipseArc(c.iso, r, r * 0.5f, 0.f, util::kPi * 2.f, 3.f, util::MulA(c.color, 1.f - u));
+			const float r = util::Lerp(20.f, 7.f, util::EaseOutCubic(u));
+			const float a = 1.f - util::EaseInCubic(u);
+			gfx::EllipseArc(c.iso, r, r * 0.5f, 0.f, util::kPi * 2.f, 2.5f, util::MulA(c.color, a));
+			gfx::Ellipse(c.iso, 3.f * (1.f - u) + 1.f, 1.5f * (1.f - u) + 0.5f, util::MulA(c.color, a * 0.9f));
 		}
 	}
 

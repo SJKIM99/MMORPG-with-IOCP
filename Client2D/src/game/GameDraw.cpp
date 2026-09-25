@@ -12,6 +12,7 @@
 #include "ui/Font.h"
 #include "core/Util.h"
 #include "game/Input.h"
+#include "game/KeyBinds.h"
 
 #include "rlgl.h"
 #include <algorithm>
@@ -57,7 +58,7 @@ void Game::DrawGame()
 	Entity* me = Self();
 	const Vector2 playerTile = me ? me->pos : Vector2{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
 
-	m_terrain.DrawGround(cam, m_screenW, m_screenH, playerTile, m_time, true, m_showGrid ? 0.07f : 0.f);
+	m_terrain.DrawGround(cam, m_screenW, m_screenH, playerTile, m_time, true, kb::Opt().showGrid ? 0.07f : 0.f);
 	BeginMode2D(cam);
 	DrawWorld(cam);
 	EndMode2D();
@@ -94,6 +95,7 @@ void Game::DrawGame()
 	if (m_scene != Scene::Game)
 		return;
 	DrawQuestCompass(cam);
+	if (m_bigMapOpen) DrawBigMap();   // 창이 아니다 — HUD 아래, 달리면서 본다
 	DrawHud();
 	DrawMinimap();
 	DrawQuestTracker();
@@ -114,9 +116,13 @@ void Game::DrawGame()
 	if (m_enchant.stage >= 2) DrawEnchant();
 	if (m_discard.open) DrawDiscard();
 	if (m_mapOpen) DrawWorldMap();
+	if (m_skillWinOpen) DrawSkillWindow();
 	if (m_helpOpen) DrawHelp();
 	DrawQuestScreenFx();
 	if (m_dead) DrawDeath();
+	// 맨 위: 시스템 메뉴 · 조작 설정(Esc)
+	if (m_menuOpen) DrawSystemMenu();
+	if (m_keysOpen) DrawKeySettings();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,8 +141,8 @@ void Game::DrawWorld(const Camera2D& cam)
 	gfx::DepthWrite(false);
 	gfx::SetDepthRaw(-0.97f);
 
-	// 마우스가 가리키는 칸
-	if (m_hoverX >= 0 && m_hover == ObjID{} && m_hoverNpc == 0 && !ui::MouseOverUi() && !m_dead)
+	// 마우스가 가리키는 칸(바닥 격자를 켰을 때만 — 설정 창)
+	if (kb::Opt().showGrid && m_hoverX >= 0 && m_hover == ObjID{} && m_hoverNpc == 0 && !ui::MouseOverUi() && !m_dead)
 	{
 		const bool blocked = WorldData::IsBlocked(m_hoverX, m_hoverY);
 		const float X = static_cast<float>(m_hoverX), Y = static_cast<float>(m_hoverY);
@@ -145,14 +151,14 @@ void Game::DrawWorld(const Camera2D& cam)
 		gfx::Quad(c[0], c[1], c[2], c[3], util::MulA(col, 0.25f));
 		for (int i = 0; i < 4; ++i) gfx::Line(c[i], c[(i + 1) % 4], 1.5f, col);
 	}
-	// 이동 목표 표시
-	if (m_goal.kind == GoalKind::Move && !m_mouseHeld)
+	// 이동 목표 · 경로 점은 F3(계측)에서만 — 평소에는 클릭 고리(0.3초)가 알려 준다
+	if (m_debugOverlay && m_goal.kind == GoalKind::Move)
 	{
 		const float pulse = 0.5f + 0.5f * std::sin(t * 8.f);
 		gfx::Diamond(static_cast<float>(m_goal.x), static_cast<float>(m_goal.y), 0.55f + pulse * 0.15f, Rgb(0x8AF0A0, 70));
 	}
 	// 경로 점
-	for (size_t i = 0; i < m_path.size(); ++i)
+	for (size_t i = 0; m_debugOverlay && i < m_path.size(); ++i)
 	{
 		const Vector2 p = gfx::IsoPx(static_cast<float>(m_path[i].x), static_cast<float>(m_path[i].y));
 		gfx::Ellipse(p, 3.f, 1.5f, Rgb(0xFFFFFF, static_cast<uint8_t>(std::max(30, 120 - static_cast<int>(i) * 10))));
@@ -343,6 +349,34 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 		gfx::SetFlash(0.12f + 0.38f * e.windup * (0.5f + 0.5f * std::sin(m_time * (18.f + 20.f * e.windup))));
 	}
 	else if (e.id == m_hover) gfx::SetFlash(0.12f);
+	// 커서에 가장 가까운 적(대상형 기술 · 기본 공격이 향할 적): 외곽선 — 같은 그림을 네 방향으로 1.5px 밀어
+	// 단색으로 조금 뒤 깊이에 먼저 그린다. 셰이더 없이 되고, 한 마리에만 쓰므로 싸다.
+	if (e.id == m_aim.enemy && !e.dead && !m_silhouetteDraw && !isGhostCopy && !m_ghostDraw
+		&& (e.kind == EntityKind::Monster || e.kind == EntityKind::Player))
+	{
+		const float flashNow = gfx::Flash();
+		const Color flashColorNow = gfx::FlashColor();
+		const Color oc = e.kind == EntityKind::Player ? Rgb(0xFF8A5A) : Rgb(0xFF6A4A);
+		const float pulse = 0.75f + 0.25f * std::sin(m_time * 6.f);
+		constexpr float kOff[4][2] = { { -1.6f, 0.f }, { 1.6f, 0.f }, { 0.f, -1.3f }, { 0.f, 1.3f } };
+		for (const auto& o : kOff)
+		{
+			actors::Pose p2 = pose;
+			p2.base.x += o[0];
+			p2.base.y += o[1];
+			gfx::SetDepth(e.pos.x + e.pos.y + jitter - 0.003f);
+			gfx::SetFlashColor(oc);
+			gfx::SetFlash(1.f);
+			gfx::SetAlpha(alpha * pulse);
+			if (e.kind == EntityKind::Monster && e.row) actors::DrawMonster(p2, *e.row);
+			else if (e.kind == EntityKind::Player) actors::DrawPlayer(p2, LookOf(e));
+		}
+		gfx::ResetMod();
+		gfx::SetDepth(e.pos.x + e.pos.y + jitter);
+		gfx::SetAlpha(alpha);
+		gfx::SetFlashColor(flashColorNow);
+		if (flashNow > 0.f) gfx::SetFlash(flashNow);
+	}
 	if (e.Status(static_cast<uint8_t>(StatusId::Freeze), nowf)) gfx::SetTint(Rgb(0xA8D8FF));
 	else if (e.Status(static_cast<uint8_t>(StatusId::Poison), nowf)) gfx::SetTint(Rgb(0xC8F0B0));
 	if (e.Status(static_cast<uint8_t>(StatusId::Evade), nowf) && !m_silhouetteDraw) gfx::SetAlpha(alpha * 0.55f);
@@ -421,15 +455,22 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	gfx::ResetMod();
 }
 
-// 기술 칸에 마우스를 올리면 사거리(마름모 = 서버의 체비셰프 거리)와 범위를 바닥에 보여 준다.
+// 기술 칸에 마우스를 올리거나 "표시 후 시전"으로 누르고 있으면 사거리(마름모 = 서버의 체비셰프 거리)와
+// 실제로 떨어질 곳을 바닥에 보여 준다. 떨어질 곳은 시전과 같은 계산(ResolveSkillAim)이다.
 void Game::DrawSkillPreview()
 {
-	if (m_previewSkill < 0 || m_dead) return;
-	const SkillRow* row = SkillInSlot(m_previewSkill);
+	if (m_dead) return;
+	const SkillRow* row = nullptr;
+	bool aiming = false;
+	if (m_aimingHot >= 0 && (row = HotSkill(m_aimingHot)) != nullptr)
+		aiming = true;
+	else if (m_previewSkill >= 0)
+		row = SkillInSlot(m_previewSkill);
 	Entity* me = Self();
 	if (!row || !me) return;
 	const Color col = Rgb(row->color);
 	const float pulse = 0.5f + 0.5f * std::sin(m_time * 4.f);
+	const float k = aiming ? 1.f : 0.8f;
 	auto diamond = [&](Vector2 center, float R, Color fill, Color line, float th)
 	{
 		const Vector2 q[4] = { gfx::IsoPx(center.x - R, center.y - R), gfx::IsoPx(center.x + R, center.y - R),
@@ -439,26 +480,42 @@ void Game::DrawSkillPreview()
 	};
 	gfx::SetDepthRaw(-0.966f);
 	const Vector2 c{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
-	if (row->range > 1)
-		diamond(c, row->range + 0.5f, util::MulA(col, 0.05f), util::MulA(col, 0.45f + 0.25f * pulse), 2.f);
-	if (row->target == SkillTarget::Self && row->radius > 0)
-		diamond(c, row->radius + 0.5f, util::MulA(col, 0.16f), util::MulA(col, 0.85f), 2.5f);
-	else if (row->target == SkillTarget::Enemy || row->target == SkillTarget::Ground)
+	const float reach = static_cast<float>(row->id == 10 ? row->dash : row->range);
+	if (reach > 1.f)
+		diamond(c, reach + 0.5f, util::MulA(col, 0.05f * k), util::MulA(col, (0.45f + 0.25f * pulse) * k), 2.f);
+	const SkillAim a = ResolveSkillAim(*row, ObjID{});
+	switch (row->target)
 	{
-		if (Entity* t = PickSkillTarget(*row))
+	case SkillTarget::Self:
+		if (row->radius > 0)
+			diamond(c, row->radius + 0.5f, util::MulA(col, 0.16f * k), util::MulA(col, 0.85f * k), 2.5f);
+		break;
+	case SkillTarget::Enemy:
+		if (a.target)
 		{
-			const Vector2 tc{ static_cast<float>(t->tx), static_cast<float>(t->ty) };
-			diamond(tc, (row->shape == SkillShape::Circle ? row->radius : 0) + 0.5f, util::MulA(col, 0.22f), util::MulA(col, 0.9f), 2.5f);
+			const Vector2 tc{ static_cast<float>(a.target->tx), static_cast<float>(a.target->ty) };
+			const bool far = Cheb(m_predX, m_predY, a.target->tx, a.target->ty) > row->range;
+			const float R = (row->shape == SkillShape::Circle || row->shape == SkillShape::Chain ? row->radius : 0) + 0.5f;
+			diamond(tc, R, util::MulA(col, (far ? 0.10f : 0.22f) * k), util::MulA(col, (far ? 0.5f : 0.9f) * k), 2.5f);
+			if (aiming)
+				gfx::Line(gfx::IsoPx(c.x, c.y), gfx::IsoPx(tc.x, tc.y), 2.f, util::MulA(col, 0.45f));
 		}
-	}
-	else if (row->target == SkillTarget::Direction && row->dash > 0)
+		break;
+	case SkillTarget::Ground:
 	{
-		int dx = 0, dy = 0;
-		if (me->faceRight) { dx = me->faceBack ? 0 : 1; dy = me->faceBack ? -1 : 0; }
-		else { dx = me->faceBack ? -1 : 0; dy = me->faceBack ? 0 : 1; }
-		if (row->id == 16) { dx = -dx; dy = -dy; }
-		for (int i = 1; i <= row->dash; ++i)
-			gfx::Diamond(c.x + dx * i, c.y + dy * i, 0.8f, util::MulA(col, 0.12f + 0.06f * i));
+		const Vector2 tc = row->id == 10 ? PredictLanding(*row, a.tx, a.ty, nullptr) : Vector2{ static_cast<float>(a.tx), static_cast<float>(a.ty) };
+		diamond(tc, (row->shape == SkillShape::Circle ? row->radius : 0) + 0.5f, util::MulA(col, (a.ok ? 0.22f : 0.08f) * k), util::MulA(col, (a.ok ? 0.9f : 0.35f) * k), 2.5f);
+		if (aiming)
+			gfx::Line(gfx::IsoPx(c.x, c.y), gfx::IsoPx(tc.x, tc.y), 2.f, util::MulA(col, 0.45f));
+		break;
+	}
+	case SkillTarget::Direction:
+	{
+		const int n = std::max<int>(1, row->dash);
+		for (int i = 1; i <= n; ++i)
+			gfx::Diamond(c.x + a.dx * i, c.y + a.dy * i, 0.8f, util::MulA(col, (0.12f + 0.06f * i) * (aiming ? 1.6f : 1.f)));
+		break;
+	}
 	}
 }
 
@@ -492,7 +549,7 @@ void Game::DrawNpcs()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawWorldOverlay(const Camera2D& cam)
 {
-	const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+	const bool alt = kb::Down(kb::Act::ShowNames);
 	ui::TextStyle st;
 	st.outline = 1.4f;
 	st.outlineColor = Color{ 0, 0, 0, 190 };
@@ -514,16 +571,17 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		ui::TextWrapped(text, Rectangle{ b.x + 10, b.y + 5, maxW, bh }, size, util::MulA(ui::theme::kTextHi, a), 5.f);
 	};
 
-	// NPC — 이름(가까이·가리킬 때), 역할, 말풍선. [F]는 F를 누르면 말을 걸 NPC 하나에만.
+	// NPC — 이름(가까이·가리킬 때), 역할, 말풍선. [G]는 G를 누르면 상호작용할 대상 하나에만(NPC 또는 물건).
 	uint16_t interactNpc = 0;
+	ObjID interactItem{};
+	InteractTarget(interactNpc, interactItem);
+	const std::string gKey = kb::Label(kb::Act::Interact);
+	auto gMark = [&](float cx, float bottom)
 	{
-		int bestD = WorldData::kNpcInteractRange + 1;
-		for (const auto& [nid, v] : m_npcView)
-		{
-			const int d = Cheb(m_predX, m_predY, v.tx, v.ty);
-			if (d < bestD) { bestD = d; interactNpc = nid; }
-		}
-	}
+		const float bob = std::sin(m_time * 5.f) * 2.f;
+		const float kw = std::max(20.f, std::round(ui::Fonts().Measure(gKey, ui::type::kMicro, 0.f, ui::Face::Strong).x + 10.f));
+		ui::Keycap(Rectangle{ std::round(cx - kw * 0.5f), std::round(bottom - 20.f + bob), kw, 18.f }, gKey, true);
+	};
 	std::vector<std::pair<Vector2, QuestMark>> questMarks;   // 이름표보다 위에 그린다(겹친 NPC 이름에 가리지 않게)
 	for (const auto& [nid, v] : m_npcView)
 	{
@@ -556,12 +614,10 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			ui::Fonts().DrawCentered(role, Vector2{ head.x, y }, st);
 			y -= 14.f;
 		}
-		// 말을 걸 수 있을 만큼 가까우면 [F] 표시
+		// 말을 걸 수 있을 만큼 가까우면 [G] 표시
 		if (nid == interactNpc && !m_dead && m_dialogNpc == 0)
 		{
-			const float bob = std::sin(m_time * 5.f) * 2.f;
-			const Rectangle k{ std::round(head.x - 10.f), std::round(y - 20.f + bob), 20.f, 18.f };
-			ui::Keycap(k, "F", true);
+			gMark(head.x, y);
 			y -= 22.f;
 		}
 		else if (hovered && !animal && qm == QuestMark::None)
@@ -650,6 +706,12 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			}
 			y -= st.size + 4.f;
 		}
+		// G로 주울 물건
+		if (id == interactItem && !m_dead)
+		{
+			gMark(head.x, y - 2.f);
+			y -= 22.f;
+		}
 		// 퀘스트 대상 몬스터: 머리 위 작은 금빛 마름모
 		if (e.kind == EntityKind::Monster && !e.dead && IsQuestTarget(e))
 		{
@@ -678,8 +740,9 @@ void Game::DrawCursor()
 		if (m_enchant.stage == 1) kind = Enchant;
 		else if (Entity* e = Find(m_hover))
 		{
-			// 전투는 키보드 — 몬스터 위에서도 공격 커서를 띄우지 않는다
+			// 좌클릭 = 다가가 공격(몬스터 · 강제 공격 중인 모험가), 물건 = 줍기
 			if (e->kind == EntityKind::Item) kind = Pickup;
+			else if (!e->dead && IsEnemy(*e)) kind = Attack;
 		}
 		else if (m_hoverNpc) kind = Talk;
 	}

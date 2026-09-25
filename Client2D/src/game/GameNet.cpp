@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "game/KeyBinds.h"
 #include "render/Terrain.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
@@ -532,11 +533,17 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 
 	m_scene = Scene::Game;
 	m_cam.SnapTo(TileToIso(me.pos, 0.6f));
-	LoadQuickSlots();
+	LoadControls();
 	fx::Fx().TeleportIn(TileToIso(me.pos));
 	sfx::Play(sfx::Id::Teleport, 0.6f);
 	AddChat(std::string(WorldData::kTownName) + "에 오신 것을 환영합니다, " + m_playerName + "님!", Rgb(0xFFE08A));
-	AddChat("이동 WASD · 공격 Space · 기술 1~5 · 대상 Tab · 대화/줍기 F · 물약 Q E R T · 가방 I · 능력치 C · 도움말 F1", Rgb(0xB8B0A0));
+	{
+		using kb::Act;
+		auto L = [](Act a) { return kb::Label(a); };
+		AddChat("이동 좌클릭 · 공격 우클릭/" + L(Act::BasicAttack) + " · 기술 " + L(Act::Skill1) + L(Act::Skill2) + L(Act::Skill3) + L(Act::Skill4) + "·"
+			+ L(Act::Skill5) + L(Act::Skill6) + L(Act::Skill7) + L(Act::Skill8) + " · 각성기 " + L(Act::Awaken) + " · 대화/줍기 " + L(Act::Interact)
+			+ " · 물약 " + L(Act::Potion) + " · 도움말 " + L(Act::Help) + " · 조작 설정 Esc", Rgb(0xB8B0A0));
+	}
 }
 
 void Game::HandleSubjectAdd(const SUBJECT_ADD_NFY_PACKET& p)
@@ -651,7 +658,7 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 			}
 			m_cam.SnapTo(TileToIso(m_mover.Visual(), 0.6f));
 			ClearGoal();
-			m_mouseHeld = false;
+			m_moveHeld = false;
 		}
 		return;
 	}
@@ -763,7 +770,7 @@ void Game::HandleSubjectDie(const SUBJECT_DIE_NFY_PACKET& p)
 		m_hp = 0;
 		ClearGoal();
 		m_target = ObjID{};
-		m_mouseHeld = false;
+		m_moveHeld = false;
 		CloseNpcWindows();
 		m_enchant = EnchantFlow{};
 		sfx::Play(sfx::Id::Death);

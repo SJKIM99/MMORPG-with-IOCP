@@ -163,4 +163,6 @@ namespace ui
 	[[nodiscard]] bool TextFocused();
 	// 조합 중인 글자까지 포함해 확정(엔터 처리 시)
 	void CommitComposition(TextField& f);
+	// 이번 프레임에 그 글자가 입력되었나(단축키로 입력칸을 연 프레임에 같은 글자가 두 번 들어가지 않게)
+	[[nodiscard]] bool TypedThisFrame(int codepoint);
 }

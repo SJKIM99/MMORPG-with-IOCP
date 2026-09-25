@@ -15,6 +15,7 @@
 #include "core/Perf.h"
 #include "core/Recorder.h"
 #include "game/Input.h"
+#include "game/KeyBinds.h"
 
 #include "rlgl.h"
 #include <algorithm>
@@ -83,7 +84,7 @@ void Game::Shutdown()
 		std::fflush(stdout);
 	}
 	if (m_traceFile) { std::fclose(m_traceFile); m_traceFile = nullptr; }
-	SaveQuickSlots();
+	SaveControls();
 	m_net.Disconnect();
 	m_terrain.Shutdown();
 	m_light.Shutdown();
@@ -187,6 +188,7 @@ void Game::Frame()
 
 	m_net.Update();
 	ui::BeginFrame(dt);
+	kb::BeginFrame();   // 채팅 · 한글 조합 · 키 지정 중이면 이번 프레임의 동작 키를 모두 막는다
 	m_light.UpdateClock(m_opts.hour);
 	// 엔딩: 하르벤이 다시 뛰면 새벽이 온다(잠시 뒤 원래 시각으로 천천히 돌아간다)
 	if (m_endingAt > 0.0 && m_now - m_endingAt < 70.0)
@@ -310,6 +312,7 @@ Entity* Game::Find(const ObjID& id)
 }
 
 bool Game::InTown() const { return WorldData::IsSafeZone(m_predX, m_predY); }
+
 int Game::Region() const { return WorldData::RegionIdAt(m_predX, m_predY); }
 
 Vector2 Game::TileToIso(Vector2 tile, float z) const { return gfx::IsoPx(tile.x, tile.y, z); }
@@ -592,619 +595,8 @@ void Game::UpdateGame(float dt)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 입력
+// 강화 시작 · NPC 창 · 채팅
 // ─────────────────────────────────────────────────────────────────────────────
-void Game::HandleHotkeys()
-{
-	if (IsKeyPressed(KEY_F3))
-		m_debugOverlay = !m_debugOverlay;
-	// Enter: 채팅 열기/보내기(입력칸이 처리) · Esc: 창/대상 해제
-	if (!ui::TextFocused())
-	{
-		if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER))
-		{
-			m_chatOpen = true;
-			ui::Focus(&m_chatField);
-			return;
-		}
-	}
-	if (IsKeyPressed(KEY_ESCAPE))
-	{
-		if (ui::TextFocused()) { ui::Focus(nullptr); m_chatOpen = false; return; }
-		if (m_enchant.stage == 1 || m_enchant.stage == 2) { m_enchant = EnchantFlow{}; return; }
-		if (m_discard.open) { m_discard.open = false; return; }
-		if (m_dialogQuest != 0 && m_dialogNpc != 0) { m_dialogQuest = 0; m_dialogTextAt = m_now; return; }   // 이야기 → NPC 첫 화면
-		if (m_dialogNpc || m_shopMode != ShopMode::None) { CloseNpcWindows(); return; }
-		if (m_questLogOpen) { m_questLogOpen = false; sfx::Play(sfx::Id::Close, 0.5f); return; }
-		if (m_mapOpen) { m_mapOpen = false; return; }
-		if (m_helpOpen) { m_helpOpen = false; return; }
-		if (m_charOpen) { m_charOpen = false; return; }
-		if (m_invOpen) { m_invOpen = false; return; }
-		m_target = ObjID{};
-		ClearGoal();
-		return;
-	}
-	if (ui::TextFocused() || m_dead)
-		return;
-
-	if (IsKeyPressed(KEY_I)) { m_invOpen = !m_invOpen; sfx::Play(m_invOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
-	if (IsKeyPressed(KEY_C)) { m_charOpen = !m_charOpen; sfx::Play(m_charOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
-	if (IsKeyPressed(KEY_M)) { m_mapOpen = !m_mapOpen; sfx::Play(m_mapOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
-	if (IsKeyPressed(KEY_L) || IsKeyPressed(KEY_J)) { m_questLogOpen = !m_questLogOpen; m_abandonArm = 0; sfx::Play(m_questLogOpen ? sfx::Id::Open : sfx::Id::Close, 0.6f); }
-	if (IsKeyPressed(KEY_F1) || IsKeyPressed(KEY_H)) { m_helpOpen = !m_helpOpen; sfx::Play(sfx::Id::Open, 0.5f); }
-	if (IsKeyPressed(KEY_G)) m_showGrid = !m_showGrid;
-	if (IsKeyPressed(KEY_Z)) PickupHere();
-	if (IsKeyPressed(KEY_TAB)) CycleTarget();
-	if (IsKeyPressed(KEY_F)) Interact();
-	// Space: 기본 공격 — 대상(없으면 가까운 적)에게 다가가 계속 친다. 누르고 있으면
-	// 쓰러뜨린 뒤 다음 적으로 이어 간다. Ctrl을 같이 누르면 가까운 모험가(PK).
-	if (IsKeyPressed(KEY_SPACE) || (IsKeyDown(KEY_SPACE) && m_goal.kind == GoalKind::None && m_now >= m_actionLockUntil))
-	{
-		const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-		const SkillRow* basic = SkillInSlot(0);
-		Entity* t = basic ? PickSkillTarget(*basic) : nullptr;
-		if (t)
-		{
-			m_target = t->id;
-			SetGoal(Goal{ GoalKind::Attack, t->id, 0, 0, 0, t->kind == EntityKind::Player });
-		}
-		else if (!ctrl)
-			TargetNearestMonster();
-	}
-	// 기술 1~5 · 물약/두루마리 Q E R T(= F5~F8)
-	for (int i = 0; i < 5; ++i)
-		if (IsKeyPressed(KEY_ONE + i) || IsKeyPressed(KEY_KP_1 + i))
-			TryCastSkill(i + 1);
-	const int quickKeys[kQuickSlots] = { KEY_Q, KEY_E, KEY_R, KEY_T };
-	for (int i = 0; i < kQuickSlots; ++i)
-		if (IsKeyPressed(quickKeys[i]) || IsKeyPressed(KEY_F5 + i))
-			UseQuickSlot(i);
-	if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) m_cam.AdjustZoom(0.15f);
-	if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) m_cam.AdjustZoom(-0.15f);
-}
-
-void Game::PickUnderMouse()
-{
-	m_hover = ObjID{};
-	m_hoverNpc = 0;
-	m_hoverX = m_hoverY = -1;
-	if (ui::MouseOverUi())
-		return;
-	const Vector2 mouseIso = GetScreenToWorld2D(in::MousePos(), m_cam2d);
-	const Vector2 t = gfx::IsoToTile(mouseIso);
-	m_hoverX = static_cast<int>(std::floor(t.x + 0.5f));
-	m_hoverY = static_cast<int>(std::floor(t.y + 0.5f));
-
-	// 화면에서 몸통 사각형으로 고른다(앞쪽 = X+Y 큰 것 우선)
-	float bestDepth = -1e9f;
-	for (auto& [id, e] : m_ents)
-	{
-		if (id == m_selfId || e.removing || (e.dead && e.kind != EntityKind::Item) || e.flyT >= 0.f)
-			continue;
-		const Vector2 base = TileToIso(e.pos);
-		float h = 60.f, w = 26.f;
-		if (e.kind == EntityKind::Monster && e.row) { h = actors::MonsterHeight(*e.row); w = std::max(22.f, actors::MonsterShadow(*e.row) * 1.4f); }
-		if (e.kind == EntityKind::Item) { h = 26.f; w = 20.f; }
-		const Rectangle r{ base.x - w, base.y - h, w * 2.f, h + 8.f };
-		if (CheckCollisionPointRec(mouseIso, r))
-		{
-			const float depth = e.pos.x + e.pos.y + (e.kind == EntityKind::Item ? -0.3f : 0.f);
-			if (depth > bestDepth) { bestDepth = depth; m_hover = id; }
-		}
-	}
-	if (m_hover == ObjID{})
-	{
-		float bestDepth = -1e9f;
-		for (const auto& [nid, v] : m_npcView)
-		{
-			if (!v.row) continue;
-			const Vector2 base = TileToIso(v.pos);
-			const float h = actors::NpcHeight(*v.row);
-			const float w = WorldData::IsAnimal(v.row->kind) ? 20.f : 22.f;
-			const Rectangle r{ base.x - w, base.y - h, w * 2.f, h + 8 };
-			const float depth = v.pos.x + v.pos.y;
-			if (CheckCollisionPointRec(mouseIso, r) && depth > bestDepth) { bestDepth = depth; m_hoverNpc = nid; }
-		}
-	}
-}
-
-void Game::HandleWorldInput()
-{
-	PickUnderMouse();
-	if (m_dead)
-		return;
-
-	const bool overUi = ui::MouseOverUi() || ui::MouseConsumed();
-	const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-
-	// 인벤토리(또는 장비창)에서 끌어다 월드에 놓으면 버리기 — 여러 개이거나 희귀 이상·착용 중이면 한 번 묻는다
-	if (ui::Dragging() && ui::DragReleased() && !overUi && (ui::Drag().kind == 1 || ui::Drag().kind == 3))
-	{
-		const int slot = ui::Drag().index;
-		const InvSlot& s = m_inv.slots[slot];
-		if (!s.Empty())
-		{
-			const bool precious = s.equipped || SlotRarity(s) >= Rarity::Rare || s.enchant > 0;
-			if (s.count > 1 || precious)
-				m_discard = Discard{ true, slot, s.count };
-			else
-				m_net.SendDiscard(static_cast<uint16_t>(slot), 1);
-		}
-		ui::EndDrag();
-		return;
-	}
-
-	// 강화 대상 고르기 중에는 월드 클릭 무시
-	if (m_enchant.stage == 1)
-		return;
-
-	if (in::MousePressed(MOUSE_BUTTON_LEFT) && !overUi)
-	{
-		m_mouseHeld = false;
-		// 마우스는 이동·대화·줍기 같은 "전투 밖" 상호작용만 — 몬스터/사람을 눌러도 공격하지 않는다.
-		Entity* e = Find(m_hover);
-		if (e && e->kind == EntityKind::Item)
-		{
-			SetGoal(Goal{ GoalKind::Pickup, e->id, e->tx, e->ty });
-			fx::Fx().ClickMarker(TileToIso(e->pos), Rgb(0xFFD84A));
-		}
-		else if (m_hoverNpc != 0)
-		{
-			SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, m_hoverNpc });
-		}
-		else if (m_hoverX >= 0 && !(e && e->kind == EntityKind::Player && ctrl))
-		{
-			m_mouseHeld = true;
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, m_hoverX, m_hoverY });
-			fx::Fx().ClickMarker(gfx::IsoPx(static_cast<float>(m_hoverX), static_cast<float>(m_hoverY)), Rgb(0x8AF0A0));
-		}
-	}
-	// 누르고 있으면 계속 따라 걷기(리니지식)
-	if (m_mouseHeld)
-	{
-		if (!in::MouseDown(MOUSE_BUTTON_LEFT))
-			m_mouseHeld = false;
-		else if (m_now > m_holdRepathAt && m_hoverX >= 0 && !overUi)
-		{
-			m_holdRepathAt = m_now + 0.2;
-			if (m_goal.kind == GoalKind::Move && (m_goal.x != m_hoverX || m_goal.y != m_hoverY))
-			{
-				m_goal.x = m_hoverX;
-				m_goal.y = m_hoverY;
-				m_path.clear();
-			}
-		}
-	}
-
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 이동 예측 · 목표
-// ─────────────────────────────────────────────────────────────────────────────
-void Game::SetGoal(const Goal& g)
-{
-	m_goal = g;
-	m_path.clear();
-	m_repathAt = 0.0;
-}
-
-void Game::ClearGoal()
-{
-	m_goal = Goal{};
-	m_path.clear();
-	m_queuedSkill = -1;
-}
-
-void Game::SyncMover()
-{
-	m_srvX = m_mover.SrvX();
-	m_srvY = m_mover.SrvY();
-	m_predX = m_mover.PredX();
-	m_predY = m_mover.PredY();
-	if (Entity* me = Self())
-	{
-		me->tx = m_srvX;
-		me->ty = m_srvY;
-	}
-}
-
-bool Game::SendStep(int dir)
-{
-	uint16_t seq = 0;
-	if (!m_mover.Step(m_now, dir, seq))
-	{
-		m_path.clear();
-		return false;
-	}
-	m_net.SendMoveEx(dir, seq);
-	SyncMover();
-	return true;
-}
-
-int Game::PickMoveDir(int dx, int dy) const
-{
-	const int want = MoveRule::DirOf(dx, dy);
-	if (want < 0)
-		return -1;
-	if (m_mover.WouldMove(want))
-	{
-		// 대각선인데 한 축만 움직인다(벽을 따라 미끄러짐) → 그 축 방향 걸음으로 보낸다.
-		// 대각선 비용(√2)을 내고 한 칸만 가면 벽 옆에서 느려지기 때문.
-		int x = m_predX, y = m_predY;
-		MoveRule::Apply(x, y, want);
-		const int straight = MoveRule::DirOf(x - m_predX, y - m_predY);
-		return straight >= 0 ? straight : want;
-	}
-	// 막혔다 — 원하는 방향과 가장 가까운(45° 안쪽) 열린 방향으로 미끄러진다.
-	const float wl = std::sqrt(static_cast<float>(dx * dx + dy * dy));
-	int best = -1;
-	float bestDot = 0.55f;
-	for (int d = 0; d < 8; ++d)
-	{
-		if (d == want)
-			continue;
-		int x = m_predX, y = m_predY;
-		MoveRule::Apply(x, y, d);
-		const int mx = x - m_predX, my = y - m_predY;
-		if (mx == 0 && my == 0)
-			continue;
-		const float ml = std::sqrt(static_cast<float>(mx * mx + my * my));
-		const float dot = (mx * dx + my * dy) / (ml * wl);
-		if (dot > bestDot)
-		{
-			bestDot = dot;
-			best = d;
-		}
-	}
-	return best;
-}
-
-bool Game::StepToward(int gx, int gy, int stopWithin)
-{
-	if (Cheb(m_predX, m_predY, gx, gy) <= stopWithin && !(stopWithin == 0 && (m_predX != gx || m_predY != gy)))
-		return false;
-	if (m_path.empty() || m_now > m_repathAt)
-	{
-		m_path = path::Find(m_predX, m_predY, gx, gy, stopWithin);
-		m_repathAt = m_now + 1.2;
-		if (m_path.empty())
-			return false;
-	}
-	const path::Step next = m_path.front();
-	const int dir = MoveRule::DirOf(next.x - m_predX, next.y - m_predY);
-	if (dir < 0 || std::abs(next.x - m_predX) > 1 || std::abs(next.y - m_predY) > 1)
-	{
-		m_path.clear();
-		return false;
-	}
-	// 경로의 다음 칸이 서버 규칙으로도 정확히 그 칸이어야 한다(대각선 모서리 등)
-	int x = m_predX, y = m_predY;
-	MoveRule::Apply(x, y, dir);
-	if (x != next.x || y != next.y)
-	{
-		m_path.clear();
-		m_repathAt = 0.0;
-		return false;
-	}
-	if (!SendStep(dir))
-		return false;
-	m_path.erase(m_path.begin());
-	return true;
-}
-
-void Game::TickMovement()
-{
-	Entity* me = Self();
-	if (!me || m_dead)
-		return;
-	// 기술 동작 중(짧은 무게감)·돌진 착지 대기·기절/빙결 중에는 걸음을 보내지 않는다
-	if (m_now < m_actionLockUntil || (m_dashWaitSeq != 0 && m_now < m_dashWaitUntil))
-		return;
-	const float nowf = static_cast<float>(m_now);
-	if (me->Status(static_cast<uint8_t>(StatusId::Stun), nowf) || me->Status(static_cast<uint8_t>(StatusId::Freeze), nowf))
-		return;
-
-	// 1) 키보드 8방향(화면 기준 WASD/방향키) — 누르는 동안은 경로/자동 목표보다 우선
-	if (!ui::TextFocused())
-	{
-		int sx = (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1 : 0) - (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT) ? 1 : 0);
-		int sy = (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1 : 0) - (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) ? 1 : 0);
-		if (sx == 0 && sy == 0) { sx = m_scriptKeyX; sy = m_scriptKeyY; }
-		if (sx != 0 || sy != 0)
-		{
-			if (m_goal.kind != GoalKind::None)
-				ClearGoal();
-			m_mouseHeld = false;
-			if (!m_mover.CanStep(m_now))
-				return;
-			// 화면 오른쪽 = 타일(+1,-1), 화면 아래 = 타일(+1,+1)
-			const int dx = std::clamp(sx + sy, -1, 1), dy = std::clamp(sy - sx, -1, 1);
-			const int dir = PickMoveDir(dx, dy);
-			if (dir >= 0)
-				SendStep(dir);
-			return;
-		}
-	}
-
-	if (!m_mover.CanStep(m_now))
-		return;
-
-	// 2) 목표를 향한 경로
-	switch (m_goal.kind)
-	{
-	case GoalKind::Move:
-		if (!StepToward(m_goal.x, m_goal.y, 0) && !m_mouseHeld && m_path.empty())
-		{
-			if (m_predX == m_goal.x && m_predY == m_goal.y)
-				break;
-			// 경로가 막혔으면 한 번 더 찾아보고 그래도 없으면 포기
-			if (m_now > m_repathAt)
-				ClearGoal();
-		}
-		break;
-	case GoalKind::Attack:
-		if (Entity* t = Find(m_goal.target))
-			StepToward(t->tx, t->ty, AttackRange());
-		break;
-	case GoalKind::Pickup:
-		StepToward(m_goal.x, m_goal.y, 0);
-		break;
-	case GoalKind::Talk:
-	{
-		const Vector2 at = NpcTile(m_goal.npc);
-		StepToward(static_cast<int>(at.x), static_cast<int>(at.y), 2);
-		break;
-	}
-	default:
-		break;
-	}
-}
-
-void Game::TickGoal()
-{
-	if (m_dead)
-		return;
-	// 목표 행동(공격·줍기·대화)은 예측 칸에 **도착한 뒤**에 한다. 서버는 이동과 행동을
-	// 받은 순서대로 처리하므로 ACK를 기다릴 필요는 없다.
-	const bool arrived = !m_mover.IsWalking(m_now);
-	switch (m_goal.kind)
-	{
-	case GoalKind::Attack:
-	{
-		Entity* t = Find(m_goal.target);
-		if (!t || t->dead || t->removing)
-		{
-			ClearGoal();
-			return;
-		}
-		// 대상이 움직이면 경로를 다시 찾는다
-		const int range = AttackRange();
-		if (!m_path.empty())
-		{
-			const path::Step last = m_path.back();
-			if (Cheb(last.x, last.y, t->tx, t->ty) > range)
-				m_path.clear();
-		}
-		if (arrived && Cheb(m_predX, m_predY, t->tx, t->ty) <= range)
-		{
-			m_path.clear();
-			if (m_queuedSkill >= 0 && m_queuedTarget == t->id)
-			{
-				// 사거리 밖에서 눌러 둔 기술 — 닿았으니 쓴다(실패해도 4초 뒤엔 잊는다)
-				const int slot = m_queuedSkill;
-				if (TryCastSkill(slot, true, t->id) || m_now - m_queuedAt > 4.0)
-					m_queuedSkill = -1;
-			}
-			else
-				TryAttackTarget(*t);
-		}
-		break;
-	}
-	case GoalKind::Pickup:
-	{
-		Entity* item = Find(m_goal.target);
-		if (!item || item->removing || item->flyT >= 0.f)
-		{
-			ClearGoal();
-			return;
-		}
-		if (arrived && m_predX == item->tx && m_predY == item->ty)
-		{
-			PickupHere();
-			ClearGoal();
-		}
-		break;
-	}
-	case GoalKind::Talk:
-	{
-		const auto* npc = WorldData::FindNpc(m_goal.npc);
-		if (!npc) { ClearGoal(); return; }
-		const Vector2 at = NpcTile(npc->id);
-		if (arrived && Cheb(m_predX, m_predY, static_cast<int>(at.x), static_cast<int>(at.y)) <= 2)
-		{
-			OpenNpc(npc->id);
-			ClearGoal();
-		}
-		break;
-	}
-	case GoalKind::Move:
-		if (arrived && m_predX == m_goal.x && m_predY == m_goal.y && !m_mouseHeld)
-			ClearGoal();
-		break;
-	default:
-		break;
-	}
-}
-
-void Game::TryAttackTarget(Entity& t)
-{
-	if (t.kind == EntityKind::Player && !m_goal.force)
-	{
-		ClearGoal();
-		return;
-	}
-	TryCastSkill(0, true, t.id);   // 기본 공격도 기술 표(검격·각인탄·연속 찌르기)로
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 행동
-// ─────────────────────────────────────────────────────────────────────────────
-void Game::CycleTarget()
-{
-	// 가까운 순서로 다음 몬스터(화면 안 10칸)
-	std::vector<Entity*> list;
-	for (auto& [id, e] : m_ents)
-		if (e.kind == EntityKind::Monster && !e.dead && !e.removing && Cheb(m_predX, m_predY, e.tx, e.ty) <= 10)
-			list.push_back(&e);
-	if (list.empty())
-	{
-		AddCenter("주변에 대상이 없습니다.", Rgb(0xC8C8C8));
-		return;
-	}
-	std::sort(list.begin(), list.end(), [&](const Entity* a, const Entity* b)
-	{
-		const int da = Cheb(m_predX, m_predY, a->tx, a->ty), db = Cheb(m_predX, m_predY, b->tx, b->ty);
-		return da != db ? da < db : a->id.GetSerial() < b->id.GetSerial();
-	});
-	size_t next = 0;
-	for (size_t i = 0; i < list.size(); ++i)
-		if (list[i]->id == m_target) { next = (i + 1) % list.size(); break; }
-	m_target = list[next]->id;
-	fx::Fx().ClickMarker(TileToIso(list[next]->pos), Rgb(0xFF5A4A));
-	sfx::Play(sfx::Id::Hover, 0.5f);
-}
-
-void Game::Interact()
-{
-	if (m_dead) return;
-	// 가까운 NPC가 있으면 그쪽으로 가서 대화, 없으면 줍기
-	const WorldData::NpcRow* best = nullptr;
-	int bestD = WorldData::kNpcInteractRange + 1;   // 화면의 [F] 표시와 같은 기준
-	for (const auto& npc : WorldData::kNpcs)
-	{
-		const Vector2 at = NpcTile(npc.id);
-		const int d = Cheb(m_predX, m_predY, static_cast<int>(std::lround(at.x)), static_cast<int>(std::lround(at.y)));
-		if (d < bestD) { bestD = d; best = &npc; }
-	}
-	if (best)
-	{
-		if (m_dialogNpc == best->id) { CloseNpcWindows(); return; }
-		SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, best->id });
-		return;
-	}
-	PickupHere();
-}
-
-void Game::PickupHere()
-{
-	if (m_dead) return;
-	// 내 칸에 아이템이 있으면 줍고, 없으면 가까운 아이템으로 걸어간다
-	Entity* best = nullptr;
-	int bestD = 99;
-	for (auto& [id, e] : m_ents)
-	{
-		if (e.kind != EntityKind::Item || e.removing || e.flyT >= 0.f) continue;
-		const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
-		if (d < bestD) { bestD = d; best = &e; }
-	}
-	if (best && bestD == 0 && !m_mover.IsWalking(m_now))
-	{
-		m_net.SendPickup();
-		m_pickupSentAt = m_now;
-		return;
-	}
-	if (best && bestD <= 5)
-		SetGoal(Goal{ GoalKind::Pickup, best->id, best->tx, best->ty });
-}
-
-void Game::TargetNearestMonster()
-{
-	Entity* best = nullptr;
-	float bestD = 1e9f;
-	for (auto& [id, e] : m_ents)
-	{
-		if (e.kind != EntityKind::Monster || e.dead || e.removing) continue;
-		const float d = static_cast<float>(Cheb(m_predX, m_predY, e.tx, e.ty)) + (id == m_target ? -0.5f : 0.f);
-		if (d < bestD) { bestD = d; best = &e; }
-	}
-	if (!best)
-	{
-		AddCenter("주변에 공격할 대상이 없습니다.", Rgb(0xC8C8C8));
-		return;
-	}
-	m_target = best->id;
-	SetGoal(Goal{ GoalKind::Attack, best->id });
-	fx::Fx().ClickMarker(TileToIso(best->pos), Rgb(0xFF5A4A));
-}
-
-void Game::UseSlot(int slot)
-{
-	if (slot < 0 || slot >= MAX_INVENTORY_SLOTS || m_dead) return;
-	const InvSlot& s = m_inv.slots[slot];
-	if (s.Empty()) return;
-	const ItemTableRow* row = ItemTableData::Find(s.itemId);
-	if (!row) return;
-
-	if (row->type == ItemType::eEquipment)
-	{
-		if (s.equipped) m_net.SendUnequip(static_cast<uint16_t>(slot));
-		else m_net.SendEquip(static_cast<uint16_t>(slot));
-		return;
-	}
-	if (row->type != ItemType::eConsumable)
-		return;
-
-	switch (row->effect)
-	{
-	case ItemEffect::eHeal:
-	{
-		const double remain = m_lastPotionAt + CombatRule::kPotionCooldownMs / 1000.0 - m_now;
-		if (remain > 0.0)
-		{
-			char buf[64];
-			std::snprintf(buf, sizeof(buf), "물약 재사용 대기 중 (%.1f초)", remain);
-			AddCenter(buf, Rgb(0xC8C8C8));
-			sfx::Play(sfx::Id::Error, 0.4f);
-			return;
-		}
-		m_lastPotionAt = m_now + 0.05;
-		m_net.SendUseItem(static_cast<uint16_t>(slot));
-		break;
-	}
-	case ItemEffect::eReturnTown:
-	case ItemEffect::eTeleportRandom:
-	case ItemEffect::eHaste:
-	{
-		if (m_now - m_lastScrollAt < CombatRule::kScrollCooldownMs / 1000.0)
-			return;
-		m_lastScrollAt = m_now;
-		ClearGoal();
-		m_net.SendUseItem(static_cast<uint16_t>(slot));
-		break;
-	}
-	case ItemEffect::eEnchantWeapon:
-		StartEnchant(slot);
-		break;
-	default:
-		break;
-	}
-}
-
-void Game::UseQuickSlot(int index)
-{
-	if (index < 0 || index >= static_cast<int>(m_quick.size())) return;
-	const QuickSlot& q = m_quick[index];
-	if (q.kind != 1) return;
-	const int slot = m_inv.FirstSlotOf(q.itemId);
-	if (slot < 0)
-	{
-		AddCenter(texts::Josa(texts::ItemName(q.itemId), "이", "가") + " 없습니다.", Rgb(0xC8C8C8));
-		sfx::Play(sfx::Id::Error, 0.4f);
-		return;
-	}
-	UseSlot(slot);
-}
-
 void Game::StartEnchant(int scrollSlot)
 {
 	if (m_enchant.stage >= 3) return;
@@ -1277,36 +669,6 @@ void Game::SubmitChat()
 	if (text.empty())
 		return;
 	m_net.SendChat(text);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 퀵슬롯 저장(캐릭터별 파일)
-// ─────────────────────────────────────────────────────────────────────────────
-void Game::LoadQuickSlots()
-{
-	// 기본: Q 약초 물약 · E 진한 약초 물약 · R 바람걸음 물약 · F 귀환 두루마리
-	m_quick = {};
-	m_quick[0] = { 1, ItemTableData::Id::HerbPotion };
-	m_quick[1] = { 1, ItemTableData::Id::StrongHerbPotion };
-	m_quick[2] = { 1, ItemTableData::Id::WindstepPotion };
-	m_quick[3] = { 1, ItemTableData::Id::ReturnScroll };
-	std::ifstream in("quickslots2_" + m_playerName + ".txt");
-	if (!in) return;
-	for (auto& q : m_quick)
-	{
-		int kind = 0, item = 0;
-		if (!(in >> kind >> item)) break;
-		q.kind = kind == 1 ? 1 : 0;
-		q.itemId = q.kind ? static_cast<uint16_t>(item) : 0;
-	}
-}
-
-void Game::SaveQuickSlots()
-{
-	if (m_playerName.empty() || !m_hasSelf) return;
-	std::ofstream out("quickslots2_" + m_playerName + ".txt");
-	for (const auto& q : m_quick)
-		out << q.kind << ' ' << q.itemId << '\n';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1429,7 +791,7 @@ void Game::RunScript(float dt)
 			if (!attacking && m_goal.kind == GoalKind::None)
 				SetGoal(Goal{ GoalKind::Move, ObjID{}, 263, 265 });
 			// 체력이 낮으면 물약
-			if (m_hp * 2 < m_maxhp) UseQuickSlot(0);
+			if (m_hp * 2 < m_maxhp) UseItemSlot(kPotionSlot);
 		}
 	}
 	else if (s == "skill" || s == "combat" || s == "loot")
@@ -1480,11 +842,11 @@ void Game::RunScript(float dt)
 					if (!row || m_level < row->unlockLevel || m_now < m_skillReady[slot] || m_mp < static_cast<int>(row->mp)) continue;
 					if (row->target == SkillTarget::Enemy && d > row->range) continue;
 					if ((row->target == SkillTarget::Self || row->target == SkillTarget::Direction) && d > std::max<int>(1, row->radius)) continue;
-					m_hoverX = t->tx; m_hoverY = t->ty;   // 지점 기술은 대상 칸으로
+					SetScriptAim(t->tx, t->ty, t->id);   // 사람이 커서를 대상에 올린 것처럼(지점 기술은 그 칸으로)
 					if (TryCastSkill(slot, true, row->target == SkillTarget::Enemy ? t->id : ObjID{})) break;
 				}
 			}
-			if (m_hp * 2 < m_maxhp) UseQuickSlot(0);
+			if (m_hp * 2 < m_maxhp) UseItemSlot(kPotionSlot);
 		}
 	}
 	else if (s == "gear" || s == "gearsort")
@@ -1720,6 +1082,86 @@ void Game::RunScript(float dt)
 				in::SetScriptMouse(Vector2{ meScr.x, meScr.y - 200.f }, false);
 		}
 	}
+	else if (s == "aimcombat")
+	{
+		// Phase 1-A 조작을 사람과 같은 경로로: 마을 밖으로 나가 커서를 가장 가까운 적에 올리고(외곽선)
+		// 우클릭 기본 공격(누르고 떼기) · 기술 칸을 키로(kb::ScriptPress) · 체력이 낮으면 물약 칸
+		if (m_scriptStep == 0 && m_scriptT > 1.0f)
+		{
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			m_scriptStep = 1;
+		}
+		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
+			m_scriptStep = 2;
+		else if (m_scriptStep == 2)
+		{
+			Entity* best = nullptr;
+			int bestD = 99;
+			for (auto& [id, e] : m_ents)
+			{
+				if (e.kind != EntityKind::Monster || e.dead || e.removing) continue;
+				const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
+				if (d < bestD) { bestD = d; best = &e; }
+			}
+			if (!best || bestD > 9)
+			{
+				in::ClearScriptMouse();
+				if (m_goal.kind == GoalKind::None)
+					SetGoal(Goal{ GoalKind::Move, ObjID{}, m_predX + util::RandI(-6, 6), m_predY + util::RandI(3, 8) });
+				return;
+			}
+			const Vector2 scr = GetWorldToScreen2D(util::Add(TileToIso(best->pos, 0.f), Vector2{ 0.f, -(best->row ? actors::MonsterHeight(*best->row) : 40.f) * 0.45f }), m_cam2d);
+			const bool rmb = std::fmod(m_scriptT, 1.4f) < 0.5f;   // 우클릭을 눌렀다 뗐다
+			in::SetScriptMouse(scr, false, rmb);
+			if (m_now >= m_scriptNextCast && m_now >= m_actionLockUntil)
+			{
+				for (int k = 0; k < 10; ++k)
+				{
+					const int hot = 1 + (m_scriptCastIdx + k) % 10;   // Q W E R A S D F V (Space는 빼고 도는 차례)
+					const SkillRow* row = HotSkill(hot);
+					if (!row || hot == kHotMobility || m_level < row->unlockLevel || m_now < m_skillReady[row->slot] || m_mp < static_cast<int>(row->mp)) continue;
+					kb::ScriptPress(kb::HotAct(hot));
+					m_scriptCastIdx = hot;
+					break;
+				}
+				m_scriptNextCast = m_now + 1.6;
+			}
+			if (m_hp * 2 < m_maxhp) kb::ScriptPress(kb::Act::Potion);
+		}
+	}
+	else if (s == "bigmap")
+	{
+		// Tab 확장 미니맵을 켠 채 좌클릭을 누르고 달린다(창이 아니라 달리면서 본다)
+		Entity* me = Self();
+		if (!me) return;
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { kb::ScriptPress(kb::Act::BigMap); m_scriptStep = 1; }
+		const Vector2 meScr = GetWorldToScreen2D(TileToIso(me->pos, 0.f), m_cam2d);
+		in::SetScriptMouse(Vector2{ meScr.x + 200.f, meScr.y + 60.f }, m_scriptT > 1.5f && m_scriptT < 5.5f);
+	}
+	else if (s == "keysui" || s == "keysconflict")
+	{
+		// 조작 설정 창(Esc 메뉴) — keysconflict: 기술 1에 W를 눌러 겹침 경고를 띄운다
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_keysOpen = true; m_scriptStep = 1; }
+		if (s == "keysconflict" && m_scriptStep == 1 && m_scriptT > 1.6f) { ApplyKeyBind(static_cast<int>(kb::Act::Skill1), KEY_W, 0, false); m_scriptStep = 2; }
+	}
+	else if (s == "castpreview")
+	{
+		// 표시 후 시전: 기술 1을 누르고 있는 동안 커서 지점에 범위가 보이고, 떼면 나간다
+		Entity* me = Self();
+		if (!me) return;
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { kb::Opt().castMode = kb::CastMode::ShowThenCast; m_scriptStep = 1; }
+		const Vector2 meScr = GetWorldToScreen2D(TileToIso(me->pos, 0.f), m_cam2d);
+		in::SetScriptMouse(Vector2{ meScr.x + 150.f, meScr.y + 70.f }, false);
+		kb::ScriptHold(kb::Act::Skill1, m_scriptT > 1.5f && m_scriptT < 4.5f);
+	}
+	else if (s == "menu")
+	{
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_menuOpen = true; m_scriptStep = 1; }
+	}
+	else if (s == "skillwin")
+	{
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { kb::ScriptPress(kb::Act::SkillWindow); m_scriptStep = 1; }
+	}
 	else if (s == "behind")
 	{
 		// 잡화점 건물 바로 뒤(북쪽)에 서서 실루엣이 보이는지 확인
@@ -1776,7 +1218,7 @@ void Game::RunScript(float dt)
 				}
 				else SetGoal(Goal{ GoalKind::Move, ObjID{}, m_predX + util::RandI(-6, 6), m_predY + util::RandI(2, 7) });
 			}
-			if (m_hp * 2 < m_maxhp) UseQuickSlot(0);
+			if (m_hp * 2 < m_maxhp) UseItemSlot(kPotionSlot);
 			break;
 		default: break;
 		}

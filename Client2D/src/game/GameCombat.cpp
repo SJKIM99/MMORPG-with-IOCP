@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "game/KeyBinds.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "fx/Particles.h"
@@ -193,40 +194,103 @@ int Game::AttackRange() const
 	return basic ? std::max<int>(1, basic->range) : 1;
 }
 
-Entity* Game::PickSkillTarget(const SkillRow& row)
+// 커서 조준(Phase 1-A): 대상형은 커서에 가장 가까운 적, 지점형은 커서 칸(사거리 끝에서 멈춤),
+// 방향형은 커서 쪽 8방향. 커서가 캐릭터 위에 있어 방향이 없으면 바라보는 쪽.
+Game::SkillAim Game::ResolveSkillAim(const SkillRow& row, const ObjID& forced)
 {
-	// 전투는 키보드로만: 마우스가 가리키는 것은 보지 않는다.
-	// 1) 지금 대상(Tab/자동) → 2) 바라보는 쪽의 가까운 적 → 3) 가까운 적.
-	// Ctrl을 누르고 있으면 다른 모험가도 대상이 된다(강제 공격).
-	const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-	auto usable = [&](const Entity* e)
-	{
-		if (!e || e->dead || e->removing || e->id == m_selfId) return false;
-		if (e->kind == EntityKind::Monster) return true;
-		if (e->kind == EntityKind::Player) return (ctrl || (m_goal.kind == GoalKind::Attack && m_goal.force && m_goal.target == e->id)) && !WorldData::IsSafeZone(e->tx, e->ty);
-		return false;
-	};
-	if (Entity* t = Find(m_target); usable(t) && Cheb(m_predX, m_predY, t->tx, t->ty) <= row.range + 6)
-		return t;
+	SkillAim a;
+	a.tx = m_predX;
+	a.ty = m_predY;
 	Entity* me = Self();
-	int fx = 0, fy = 0;
-	if (me) FacingTile(*me, fx, fy);
-	Entity* best = nullptr;
-	float bestScore = 1e9f;
-	for (auto& [id, e] : m_ents)
+	if (!me) return a;
+	switch (row.target)
 	{
-		const bool candidate = ctrl ? (e.kind == EntityKind::Player || e.kind == EntityKind::Monster) : e.kind == EntityKind::Monster;
-		if (!candidate || !usable(&e)) continue;
-		const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
-		if (d > row.range + 4) continue;
-		// 바라보는 쪽이면 조금 더 가깝게 친다(앞의 적을 먼저)
-		const int dx = e.tx - m_predX, dy = e.ty - m_predY;
-		const float front = static_cast<float>(dx * fx + dy * fy);
-		float score = static_cast<float>(d) - (front > 0.f ? 0.6f : 0.f);
-		if (ctrl && e.kind == EntityKind::Player) score -= 0.3f;   // Ctrl: 사람을 우선
-		if (score < bestScore) { bestScore = score; best = &e; }
+	case SkillTarget::Enemy:
+	{
+		Entity* t = forced != ObjID{} ? Find(forced) : AimEnemy(&row);
+		if (!t && forced == ObjID{})
+		{
+			// 커서 근처에 적이 없으면: 지금 싸우는 대상 → 커서 쪽(앞 반쪽)의 가까운 적(사거리 + 2칸 안)
+			if (Entity* cur = Find(m_target); cur && IsEnemy(*cur) && Cheb(m_predX, m_predY, cur->tx, cur->ty) <= row.range + 6)
+				t = cur;
+			else
+			{
+				float best = 1e9f;
+				for (auto& [id, e] : m_ents)
+				{
+					if (!IsEnemy(e)) continue;
+					const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
+					if (d > row.range + 2) continue;
+					const Vector2 to{ static_cast<float>(e.tx - m_predX), static_cast<float>(e.ty - m_predY) };
+					const float len = util::Len(to);
+					const float front = len > 0.01f ? (to.x * m_aim.dir.x + to.y * m_aim.dir.y) / len : 1.f;
+					if (front < 0.f) continue;
+					const float score = static_cast<float>(d) - front;
+					if (score < best) { best = score; t = &e; }
+				}
+			}
+		}
+		if (t && !t->dead && !t->removing && t->kind != EntityKind::Item)
+		{
+			a.target = t;
+			a.tx = t->tx;
+			a.ty = t->ty;
+			a.ok = true;
+		}
+		break;
 	}
-	return best;
+	case SkillTarget::Ground:
+	{
+		int gx = m_aim.tx, gy = m_aim.ty;
+		const int reach = row.id == 10 ? std::max<int>(1, row.dash) : std::max<int>(1, row.range);
+		if (!m_aim.valid || (gx == m_predX && gy == m_predY))
+		{
+			// 커서가 발밑이면 바라보는 쪽으로(옛길 도약은 끝까지, 다른 지점 기술은 3칸 앞)
+			int dx = 0, dy = 0;
+			FacingTile(*me, dx, dy);
+			const int k = row.id == 10 ? reach : std::min(3, reach);
+			gx = m_predX + dx * k;
+			gy = m_predY + dy * k;
+		}
+		const int d = Cheb(m_predX, m_predY, gx, gy);
+		if (d > reach)
+		{
+			// 사거리보다 멀면 그 방향의 사거리 끝으로
+			const float k = static_cast<float>(reach) / static_cast<float>(d);
+			gx = m_predX + static_cast<int>(std::lround((gx - m_predX) * k));
+			gy = m_predY + static_cast<int>(std::lround((gy - m_predY) * k));
+		}
+		a.tx = gx;
+		a.ty = gy;
+		a.ok = !(row.id == 10 && gx == m_predX && gy == m_predY);
+		if (row.id == 10 && a.ok)
+		{
+			// 옛길 도약: 서버와 같은 방식으로 걸을 수 있는 곳까지만(미리보기 = 실제 도착)
+			const Vector2 land = PredictLanding(row, gx, gy, nullptr);
+			a.ok = static_cast<int>(land.x) != m_predX || static_cast<int>(land.y) != m_predY;
+		}
+		break;
+	}
+	case SkillTarget::Direction:
+	{
+		int dx = 0, dy = 0;
+		Snap8(m_aim.dir.x, m_aim.dir.y, dx, dy);
+		const Vector2 to{ m_aim.world.x - static_cast<float>(m_predX), m_aim.world.y - static_cast<float>(m_predY) };
+		if (!m_aim.valid || util::Len(to) < 0.5f || (dx == 0 && dy == 0))
+			FacingTile(*me, dx, dy);
+		const int reach = std::max<int>(1, row.dash);
+		a.dx = dx;
+		a.dy = dy;
+		a.tx = m_predX + dx * reach;
+		a.ty = m_predY + dy * reach;
+		a.ok = true;
+		break;
+	}
+	case SkillTarget::Self:
+		a.ok = true;
+		break;
+	}
+	return a;
 }
 
 Vector2 Game::PredictLanding(const SkillRow& row, int tx, int ty, const Entity* target) const
@@ -348,26 +412,27 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 		return false;
 	}
 
-	// ── 대상/지점 ──
+	// ── 대상/지점(커서 조준 — ResolveSkillAim) ──
 	ObjID targetId{};
-	int tx = m_predX, ty = m_predY;
+	const SkillAim aim = ResolveSkillAim(*row, forced);
+	int tx = aim.tx, ty = aim.ty;
 	Entity* target = nullptr;
 	switch (row->target)
 	{
 	case SkillTarget::Enemy:
 	{
-		target = forced != ObjID{} ? Find(forced) : PickSkillTarget(*row);
-		if (!target || target->dead || target->removing || target->kind == EntityKind::Item)
+		target = aim.target;
+		if (!aim.ok || !target)
 		{
 			if (!basic) say("대상이 없습니다.", Rgb(0xC8C8C8));
 			return false;
 		}
 		if (target->kind == EntityKind::Player)
 		{
-			const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-			if (!ctrl && !(m_goal.kind == GoalKind::Attack && m_goal.force && m_goal.target == target->id))
+			const bool force = kb::Down(kb::Act::ForceAttack);
+			if (!force && !(m_goal.kind == GoalKind::Attack && m_goal.force && m_goal.target == target->id))
 			{
-				if (!basic) say("다른 모험가를 공격하려면 Ctrl을 누른 채로 쓰세요.", Rgb(0xFFB070));
+				if (!basic) say("다른 모험가를 공격하려면 " + kb::Label(kb::Act::ForceAttack) + "을 누른 채로 쓰세요.", Rgb(0xFFB070));
 				return false;
 			}
 			if (WorldData::IsSafeZone(target->tx, target->ty))
@@ -389,89 +454,17 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 			return false;
 		}
 		targetId = target->id;
-		tx = target->tx;
-		ty = target->ty;
 		m_target = target->id;
 		break;
 	}
 	case SkillTarget::Ground:
-	{
-		int gx = m_predX, gy = m_predY;
-		// 방향 키를 누른 채로 쓰면 그쪽으로
-		int sx = (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1 : 0) - (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT) ? 1 : 0);
-		int sy = (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1 : 0) - (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) ? 1 : 0);
-		if (ui::TextFocused()) sx = sy = 0;
-		if (sx == 0 && sy == 0) { sx = m_scriptKeyX; sy = m_scriptKeyY; }
-		if (row->id == 10)
-		{
-			// 옛길 도약: 누르고 있는 방향(없으면 바라보는 방향)으로 dash칸
-			int dx = 0, dy = 0;
-			if (sx != 0 || sy != 0) { dx = std::clamp(sx + sy, -1, 1); dy = std::clamp(sy - sx, -1, 1); }
-			else FacingTile(*me, dx, dy);
-			gx = m_predX + dx * row->dash;
-			gy = m_predY + dy * row->dash;
-		}
-		else if (Entity* t = PickSkillTarget(*row); t && Cheb(m_predX, m_predY, t->tx, t->ty) <= row->range + 2)
-		{
-			// 지점 기술은 대상 발밑에(없으면 앞쪽)
-			gx = t->tx;
-			gy = t->ty;
-			m_target = t->id;
-		}
-		else
-		{
-			int dx = 0, dy = 0;
-			FacingTile(*me, dx, dy);
-			gx = m_predX + dx * std::min<int>(3, row->range);
-			gy = m_predY + dy * std::min<int>(3, row->range);
-		}
-		const int d = Cheb(m_predX, m_predY, gx, gy);
-		if (d > row->range && d > 0)
-		{
-			// 사거리보다 멀면 그 방향의 사거리 끝으로
-			const float k = static_cast<float>(row->range) / static_cast<float>(d);
-			gx = m_predX + static_cast<int>(std::lround((gx - m_predX) * k));
-			gy = m_predY + static_cast<int>(std::lround((gy - m_predY) * k));
-		}
-		tx = gx;
-		ty = gy;
-		if (row->id == 10 && tx == m_predX && ty == m_predY)
+		if (!aim.ok)
 		{
 			say("도약할 방향이 막혀 있습니다.", Rgb(0xC8C0FF));
 			return false;
 		}
 		break;
-	}
 	case SkillTarget::Direction:
-	{
-		// 방향: WASD를 누르고 있으면 그쪽(회피 = 가려는 곳으로), 아니면 대상 쪽
-		// (잔상 회피는 대상 반대쪽 — 적을 본 채로 물러난다), 그것도 없으면 바라보는 쪽
-		int sx = (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT) ? 1 : 0) - (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT) ? 1 : 0);
-		int sy = (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN) ? 1 : 0) - (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) ? 1 : 0);
-		if (ui::TextFocused()) sx = sy = 0;
-		if (sx == 0 && sy == 0) { sx = m_scriptKeyX; sy = m_scriptKeyY; }
-		int dx = 0, dy = 0;
-		if (sx != 0 || sy != 0)
-		{
-			dx = std::clamp(sx + sy, -1, 1);
-			dy = std::clamp(sy - sx, -1, 1);
-		}
-		else if (Entity* t = Find(m_target); t && !t->dead && !t->removing && (t->tx != m_predX || t->ty != m_predY))
-		{
-			// 돌진은 대상 쪽으로, 잔상 회피는 대상 반대쪽으로
-			Snap8(static_cast<float>(t->tx - m_predX), static_cast<float>(t->ty - m_predY), dx, dy);
-			if (row->id == 16) { dx = -dx; dy = -dy; }
-		}
-		if (dx == 0 && dy == 0)
-		{
-			FacingTile(*me, dx, dy);
-			if (row->id == 16) { dx = -dx; dy = -dy; }
-		}
-		const int reach = std::max<int>(1, row->dash);
-		tx = m_predX + dx * reach;
-		ty = m_predY + dy * reach;
-		break;
-	}
 	case SkillTarget::Self:
 		break;
 	}
@@ -570,9 +563,11 @@ void Game::HandleStats(const USER_STATS_INF_PACKET& p)
 		m_baseSpeedPercent = p.stats.moveSpeed;
 	if (Entity* me = Self())
 		me->classId = p.classId;
+	if (m_hotClass != m_classId)
+		InitHotbar();   // 직업이 정해지면(또는 바뀌면) 기술 칸 기본 배치
 	if (!first && p.freePoints > m_prevFreePoints)
 	{
-		AddCenter(Fmt("능력치 포인트 +%d  (C 캐릭터 창)", p.freePoints - m_prevFreePoints), Rgb(0xFFE08A));
+		AddCenter(Fmt("능력치 포인트 +%d  (%s 캐릭터 창)", p.freePoints - m_prevFreePoints, kb::Label(kb::Act::Character).c_str()), Rgb(0xFFE08A));
 		sfx::Play(sfx::Id::StatUp, 0.6f);
 	}
 	m_freePoints = p.freePoints;

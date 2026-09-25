@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "game/KeyBinds.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "fx/Particles.h"
@@ -581,7 +582,7 @@ void Game::HandleQuestUpdate(const QUEST_UPDATE_INF_PACKET& p)
 			const std::string who = q->turnIn ? NpcName(q->turnIn) : std::string();
 			AddBanner(std::string(q->name) + " — 목표 완료", ui::theme::kDawnHi, 3.5f);
 			AddChat(q->turnIn ? "[퀘스트] " + std::string(q->name) + " — " + texts::Josa(who, "과", "와") + " 이야기하면 보상을 받습니다." :
-				"[퀘스트] " + std::string(q->name) + " — 퀘스트 일지(L)에서 보상을 받으세요.", Rgb(0xFFE070));
+				"[퀘스트] " + std::string(q->name) + " — 퀘스트 일지(" + kb::Label(kb::Act::QuestLog) + ")에서 보상을 받으세요.", Rgb(0xFFE070));
 		}
 		else if (wasReady && !ready)
 			v->readyAt = -10.0;
@@ -920,9 +921,11 @@ void Game::DrawQuestTracker()
 	{
 		ui::TextStyle hs; hs.size = 13.f; hs.color = ui::theme::kTextHi; hs.face = ui::Face::Strong; hs.spacing = 0.5f; hs.shadow = 1.f; hs.shadowColor = Color{ 0, 0, 0, 170 };
 		const float hw = ui::Fonts().Draw("퀘스트", Vector2{ x + 2.f, y }, hs);
-		ui::Keycap(Rectangle{ x + w - 52.f, y + 1.f, 15.f, 14.f }, "L");
+		const std::string key = kb::Label(kb::Act::QuestLog);
+		const float kw = std::max(15.f, std::round(ui::Fonts().Measure(key, ui::type::kMicro, 0.f, ui::Face::Strong).x + 8.f));
+		ui::Keycap(Rectangle{ x + w - 37.f - kw, y + 1.f, kw, 14.f }, key);
 		ui::Text("일지", Vector2{ x + w - 33.f, y }, 12.f, ui::theme::kTextDim, Align::Left, true);
-		ui::Rule(x + hw + 10.f, x + w - 60.f, y + 8.f, util::WithA(ui::theme::kLineStrong, 0.8f));
+		ui::Rule(x + hw + 10.f, x + w - 45.f - kw, y + 8.f, util::WithA(ui::theme::kLineStrong, 0.8f));
 	}
 	y += 22.f;
 
@@ -977,7 +980,7 @@ void Game::DrawQuestTracker()
 		ly += 21.f;
 		if (ready)
 		{
-			const std::string t = q->turnIn ? "→ " + NpcName(q->turnIn) + "에게 보고" : std::string("→ 일지(L)에서 보상 받기");
+			const std::string t = q->turnIn ? "→ " + NpcName(q->turnIn) + "에게 보고" : ("→ 일지(" + kb::Label(kb::Act::QuestLog) + ")에서 보상 받기");
 			ui::Text(t, Vector2{ bb.x + 26.f, ly }, 12.5f, ui::theme::kDawn);
 		}
 		else
@@ -1042,9 +1045,9 @@ void Game::DrawQuestDialog(const WorldData::NpcRow& npc)
 	enum class Mode { Offer, During, Done };
 	const Mode mode = !v ? Mode::Offer : ((ready && q->turnIn == npc.id) ? Mode::Done : Mode::During);
 
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = static_cast<float>(m_screenW);
 	const float rh = 334.f;
-	const Rectangle r{ W * 0.5f - 350.f, std::max(12.f, H - 124.f - rh), 700.f, rh };
+	const Rectangle r{ W * 0.5f - 350.f, std::max(12.f, HudTop() - 14.f - rh), 700.f, rh };   // 전투 HUD 위
 	bool open = true;
 	ui::Window(r, npc.name, &open);
 	if (!open) { CloseNpcWindows(); return; }

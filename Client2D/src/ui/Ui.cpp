@@ -663,6 +663,13 @@ namespace ui
 		}
 	}
 
+	bool TypedThisFrame(int codepoint)
+	{
+		for (int cp : g_chars)
+			if (cp == codepoint) return true;
+		return false;
+	}
+
 	bool InputText(Rectangle r, TextField& f, std::string_view placeholder, bool autofocus)
 	{
 		const bool hover = Hovered(r);

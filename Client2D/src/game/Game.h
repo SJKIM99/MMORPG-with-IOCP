@@ -59,7 +59,8 @@ public:
 
 private:
 	enum class Scene { Login, Connecting, Game, Disconnected };
-	enum class GoalKind { None, Move, Attack, Pickup, Talk };
+	// Move = 목적지(클릭) · Direction = 누른 채 커서 쪽 · Follow = 다른 모험가 따라가기
+	enum class GoalKind { None, Move, Attack, Pickup, Talk, Direction, Follow };
 	enum class ShopMode { None, Buy, Sell, Teleport };
 
 	struct Goal
@@ -75,7 +76,31 @@ private:
 	struct Toast { uint16_t itemId; std::string text; Color color; double start; };
 	struct CenterMsg { std::string text; Color color; double start; };
 	struct QuickSlot { int kind = 0; uint16_t itemId = 0; };   // kind 0 비었음, 1 아이템
-	static constexpr int kQuickSlots = 4;                      // Q E R F(= F5~F8)
+	// 소모품 칸: 배틀 1~4 · 체력 물약(F1) · 보조 5~8 — game/KeyBinds 동작 Battle1..Aux4 순서
+	static constexpr int kItemSlots = 9;
+	static constexpr int kPotionSlot = 4;
+	// 기술 칸: 기본 공격(C · 우클릭) · Q W E R · A S D F · 각성기 V · 이동기 Space · 아이덴티티 Z
+	static constexpr int kHotSlots = 12;
+	static constexpr int kHotBasic = 0, kHotAwaken = 9, kHotMobility = 10, kHotIdentity = 11;
+	static constexpr int kDragSkill = 4;           // ui::DragPayload.kind — 기술(기술 창 · 기술 칸에서 끌기)
+	// 커서 조준(매 프레임): 월드 칸 · 방향 · 커서에 가장 가까운 적
+	struct Aim
+	{
+		Vector2  world{};            // 커서 아래 바닥(연속 칸 좌표)
+		int      tx = 0, ty = 0;     // 그 칸
+		Vector2  dir{ 1.f, 0.f };    // 나 → 커서(칸 좌표 단위 벡터)
+		uint8_t  dir256 = 0;         // 화면 기준 각도 0~255(0 = 오른쪽, 64 = 아래)
+		ObjID    enemy{};            // 커서에 가장 가까운 적(외곽선 강조 · 대상형 기술의 자동 대상)
+		bool     valid = false;
+	};
+	// 기술 하나를 지금 쓰면 어디로 가는가(시전과 "표시 후 시전" 미리보기가 같은 답을 쓴다)
+	struct SkillAim
+	{
+		Entity*  target = nullptr;   // 대상형: 맞을 적
+		int      tx = 0, ty = 0;     // 보낼 칸(지점형 = 떨어질 곳, 방향형 = 끝 칸)
+		int      dx = 0, dy = 0;     // 방향형 8방향
+		bool     ok = false;
+	};
 	struct EnchantFlow
 	{
 		int stage = 0;              // 0 없음, 1 무기 고르기, 2 확인, 3 충전(결과 대기/연출), 4 결과
@@ -146,20 +171,37 @@ private:
 	void OnTelegraphImpact(Entity& m);                  // 몬스터 강공격 예고가 끝난 순간(연출)
 	void HandleChat(const ObjID& sender, const std::string& senderName, const std::string& text, ChatChannel channel);
 
-	// ── 행동 ──
+	// ── 행동(GameInput.cpp) ──
 	void SetGoal(const Goal& g);
 	void ClearGoal();
 	void TickMovement();
 	void TickGoal();
 	bool StepToward(int gx, int gy, int stopWithin);
+	bool StepAlong(Vector2 dir);                        // 누른 채 이동: 커서 방향으로 한 걸음(막히면 벽을 타고)
 	bool SendStep(int dir);
 	int  PickMoveDir(int dx, int dy) const;   // 막히면 가장 가까운 열린 방향(미끄러짐)
 	void SyncMover();
 	void TryAttackTarget(Entity& target);
 	void UseSlot(int slot);
-	void UseQuickSlot(int index);
-	void CycleTarget();
-	void Interact();                                    // F: 가까운 NPC와 대화, 없으면 줍기
+	void UseItemSlot(int index);                        // 소모품 칸(배틀 1~4 · 물약 · 보조 5~8)
+	void Interact();                                    // G: 가장 가까운 NPC와 대화 · 물건 줍기 · 쓰다듬기
+	[[nodiscard]] const WorldData::NpcRow* InteractNpc() const;   // G를 누르면 말 걸 NPC(없으면 nullptr)
+	[[nodiscard]] Entity* InteractItem();                          // G를 누르면 주울 물건
+	void InteractTarget(uint16_t& npc, ObjID& item);               // G가 향하는 대상 하나(머리 위 G 표시)
+	void UpdateAim();
+	[[nodiscard]] Entity* AimEnemy(const SkillRow* row);           // 대상형 기술 · 기본 공격의 자동 대상
+	[[nodiscard]] SkillAim ResolveSkillAim(const SkillRow& row, const ObjID& forced);
+	[[nodiscard]] bool IsEnemy(const Entity& e) const;             // 지금 공격할 수 있는 상대(Ctrl이면 모험가도)
+	void BasicAttackAtAim(bool hold);
+	void CastHot(int hot);                              // 기술 칸(Q~Z)을 커서 쪽으로
+	void InitHotbar(bool loadSaved = true);             // 직업 기본 배치(+ 캐릭터별로 바꿔 둔 배치)
+	[[nodiscard]] const SkillRow* HotSkill(int hot) const;
+	[[nodiscard]] int HotOfSkill(uint16_t skillId) const;       // 그 기술이 놓인 칸(없으면 -1)
+	void SetScriptAim(int tx, int ty, const ObjID& enemy);      // 자동 시나리오: 커서 대신
+	[[nodiscard]] int MoveButton() const;               // 이동 = 좌클릭(설정: 좌우 반전)
+	[[nodiscard]] int AttackButton() const;
+	void LoadControls();                                // 키 · 소모품 칸(캐릭터별)
+	void SaveControls();
 	[[nodiscard]] Vector2 NpcTile(uint16_t npcId) const;  // NPC의 지금 칸(서버가 알려 준 배회 위치)
 	// ── 마을 NPC(GameNpc.cpp) — 서버가 배회시키는 위치를 받아 걷게 그린다 ──
 	struct NpcView
@@ -238,12 +280,12 @@ private:
 	// forced: 대상을 정해서(자동 공격의 목표·사거리 밖에서 눌러 예약한 대상).
 	bool TryCastSkill(int slot, bool quiet = false, const ObjID& forced = ObjID{});
 	[[nodiscard]] const SkillRow* SkillInSlot(int slot) const;
-	[[nodiscard]] Entity* PickSkillTarget(const SkillRow& row);
+
 	[[nodiscard]] int AttackRange() const;              // 자동 공격/예약 기술이 멈춰 설 거리
 	[[nodiscard]] Vector2 PredictLanding(const SkillRow& row, int tx, int ty, const Entity* target) const;
 	void AddCombo(int hits);
 	void PickupHere();
-	void TargetNearestMonster();
+	void TargetNearestMonster();                        // C를 누르고 있을 때: 가까운 적을 이어서
 	void OpenNpc(uint16_t npcId);
 	void CloseNpcWindows();
 	void StartEnchant(int scrollSlot);
@@ -253,6 +295,7 @@ private:
 	void HandleWorldInput();
 	void HandleHotkeys();
 	void PickUnderMouse();
+	bool CloseTopWindow();                              // Esc: 맨 위 창부터 닫는다(닫은 게 있으면 true)
 
 	// ── 그리기 ──
 	void DrawWorld(const Camera2D& cam);
@@ -261,8 +304,19 @@ private:
 	void DrawWorldOverlay(const Camera2D& cam);
 	void DrawHud();
 	void DrawChat();
-	void DrawQuickBar();
-	void DrawSkillBar();
+	void DrawQuickBar();                                // 소모품 칸(배틀 1~4 · 물약 F1 · 보조 5~8)
+	void DrawSkillBar();                                // 기술 칸(QWER · ASDF · V · Space · Z)
+	void DrawHotSlot(Rectangle r, int hot, float keySize);
+	void DrawCombatPanel();                             // 아래 가운데 판: HP · MP · 능력치 한 줄
+	[[nodiscard]] float HudTop() const;                 // 전투 HUD 판의 위쪽 y(대화창 · 채팅이 피한다)
+	[[nodiscard]] float HudLeft() const;                // 전투 HUD 판의 왼쪽 x
+	void ApplyKeyBind(int act, int key, uint8_t mods, bool swapIfTaken);
+	void SaveHotbar();
+	void DrawSystemMenu();                              // Esc(열린 창이 없을 때)
+	void DrawKeySettings();                             // 단축키 설정 · 조작 설정
+	void DrawSkillWindow();                             // K
+	void DrawBigMap();                                  // Tab: 화면 가운데 큰 반투명 지도
+	void DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap);
 	void DrawSkillTooltip(const SkillRow& row);
 	void DrawStatusIcons(float x, float y);
 	void DrawComboCounter();
@@ -402,8 +456,6 @@ private:
 	double           m_lastScrollAt = -100.0;
 	double           m_localSkillFxAt = -100.0;
 	double           m_pickupSentAt = -100.0;
-	bool             m_mouseHeld = false;
-	double           m_holdRepathAt = 0.0;
 
 	std::unordered_map<ObjID, Entity> m_ents;
 	ClientInventory  m_inv;
@@ -415,11 +467,33 @@ private:
 	std::deque<Banner>   m_banners;
 	std::deque<Toast>    m_toasts;
 	std::deque<CenterMsg> m_center;
-	std::array<QuickSlot, kQuickSlots> m_quick{};
+	std::array<QuickSlot, kItemSlots> m_quick{};
+	// ── 조작(1-A) ──
+	std::array<uint16_t, kHotSlots> m_hot{};       // 칸마다 기술 id(0 = 비었음)
+	ClassId          m_hotClass = ClassId::Count;   // m_hot을 만든 직업
+	Aim              m_aim;
+	bool             m_aimScripted = false;         // 자동 시나리오가 조준을 정했다(이번 프레임)
+	int              m_aimingHot = -1;              // 표시 후 시전: 누르고 있는 칸
+	bool             m_moveHeld = false;            // 이동 버튼을 누르고 있다
+	bool             m_moveDirMode = false;         // 누른 채 커서 쪽으로 계속
+	double           m_movePressAt = 0.0;
+	Vector2          m_dirTarget{};                 // Direction 목표(커서 아래 바닥)
+	double           m_whiffAt = -10.0;             // 빈 곳에 휘두른 시각(기본 공격)
+	bool             m_menuOpen = false;            // 시스템 메뉴
+	bool             m_keysOpen = false;            // 단축키 설정
+	int              m_keysCapture = -1;            // 새 키를 기다리는 동작(kb::Act), -1 없음
+	int              m_keysConflict = -1;           // 겹친 동작(맞바꿀지 묻는 중), -1 없음
+	int              m_keysConflictFor = -1;        // 그 키를 원한 동작
+	int              m_keysConflictKey = 0;         // 그때 누른 키(kb::Chord.key)
+	uint8_t          m_keysConflictMods = 0;
+	int              m_keysPendingMod = 0;          // 보조키만 눌렀다 뗄 때(강제 공격 = Ctrl 같은)
+	std::string      m_keysNote;                    // 방금 바꾼 결과 한 줄
+	double           m_keysNoteAt = -10.0;
+	bool             m_skillWinOpen = false;        // K
+	bool             m_bigMapOpen = false;          // Tab
 	bool             m_invOpen = false;
 	bool             m_helpOpen = false;
 	bool             m_mapOpen = false;
-	bool             m_showGrid = true;
 	uint16_t         m_dialogNpc = 0;
 	int              m_dialogLine = -1;             // 대화창: -1 인사, 0.. 이야기
 	double           m_dialogTextAt = 0.0;          // 글자가 한 자씩 나타나기 시작한 시각
@@ -455,6 +529,8 @@ private:
 	int32_t          m_lastExpLost = 0;
 	RenderTexture2D  m_minimapRt{};
 	int              m_minimapX = -9999, m_minimapY = -9999;
+	RenderTexture2D  m_bigMapRt{};                  // Tab 확장 미니맵(몇 칸 움직일 때마다 다시 그린다)
+	int              m_bigMapX = -9999, m_bigMapY = -9999;
 	double           m_chatOpenedAt = -10.0;
 	double           m_bossWarnAt = -100.0;
 	uint32_t         m_lastShopSeq = 0;
@@ -503,5 +579,7 @@ private:
 	int              m_scriptStep = 0;
 	float            m_scriptT = 0.f;
 	int              m_scriptKeyX = 0, m_scriptKeyY = 0;   // 스크립트가 누른 WASD(화면 방향)
+	double           m_scriptNextCast = 0.0;                // aimcombat: 다음 기술 키
+	int              m_scriptCastIdx = 0;
 	std::FILE*       m_traceFile = nullptr;
 };
