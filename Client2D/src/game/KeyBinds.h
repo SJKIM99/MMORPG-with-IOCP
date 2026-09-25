@@ -8,7 +8,7 @@
 // 조작 — "동작 → 키" 표. 게임은 키 번호가 아니라 동작 이름으로만 입력을 읽는다.
 //
 //  · 기본값은 로스트아크식(docs/upgrade/PHASE_1.md 5장): 이동 = 좌클릭, 기본 공격 = 우클릭 · C,
-//    기술 8칸 Q W E R · A S D F, 각성기 V, 이동기 Space, 아이덴티티 Z, 배틀 칸 1~4 · 물약 F1 · 보조 5~8.
+//    기술 8칸 Q W E R · A S D F, 각성기 V, 이동기 Space, 고유 기술 Z, 전투 칸 1~4 · 물약 F1 · 보조 5~8.
 //  · 캐릭터별 저장(controls_<이름>.txt, 한 줄 = "동작 키 보조키" · 설정 = "이름=값").
 //  · 채팅 입력 중(한글 조합 포함)에는 어떤 동작도 눌리지 않는다.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,8 +77,8 @@ namespace kb
 	void ScriptPress(Act a);
 	void ScriptHold(Act a, bool down);
 
-	// HUD 칸 ↔ 동작. 기술 칸: 0 기본 공격 · 1~8 기술(Q W E R · A S D F) · 9 각성기 · 10 이동기 · 11 아이덴티티.
-	// 소모품 칸: 0~3 배틀 1~4 · 4 체력 물약 · 5~8 보조 5~8.
+	// HUD 칸 ↔ 동작. 기술 칸: 0 기본 공격 · 1~8 기술(Q W E R · A S D F) · 9 각성기 · 10 이동기 · 11 고유 기술.
+	// 소모품 칸: 0~3 전투 1~4 · 4 체력 물약 · 5~8 보조 5~8.
 	[[nodiscard]] Act HotAct(int hot);
 	[[nodiscard]] Act ItemAct(int index);
 	[[nodiscard]] bool IsModifierKey(int key);

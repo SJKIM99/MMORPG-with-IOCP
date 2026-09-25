@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 전투 HUD 뼈대(Phase 1-A) — 로스트아크식 배치, 「새김」 모양. 최종 모양 · 옮기기는 Phase 3.
 //
-//   [보조 5~8 / 배틀 1~4] [물약 F1]  [Q W E R / A S D F]  [V 큰 칸] [Space / Z]
+//   [보조 5~8 / 전투 1~4] [물약 F1]  [Q W E R / A S D F]  [V 큰 칸] [Space / Z]
 //                   └──── HP · MP 막대(위) ────┘
 // 조작 설정(Esc 메뉴) · 기술 창(K) · 확장 미니맵(Tab)도 여기에 있다.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,14 +42,14 @@ namespace
 		Rectangle hp{}, mp{}, stats{};
 		Rectangle skill[8]{};           // Q W E R / A S D F
 		Rectangle awaken{}, mobility{}, identity{};
-		Rectangle item[9]{};            // 배틀 1~4 · 물약 · 보조 5~8
+		Rectangle item[9]{};            // 전투 1~4 · 물약 · 보조 5~8
 	};
 
 	constexpr float kS = 46.f, kG = 5.f;           // 기술 칸 · 간격
 	constexpr float kItemS = 40.f, kItemG = 4.f;   // 소모품 칸
 	constexpr float kPotS = 50.f;                  // 물약(F1)
 	constexpr float kAwakenS = 72.f;               // 각성기(V)
-	constexpr float kSmallS = 44.f;                // 이동기 · 아이덴티티
+	constexpr float kSmallS = 44.f;                // 이동기 · 고유 기술
 	constexpr float kHpH = 16.f, kMpH = 12.f, kBarGap = 3.f;
 
 	Hud Layout(float W, float H)
@@ -64,13 +64,13 @@ namespace
 		const float gx = std::round(W * 0.5f - gridW * 0.5f);
 		for (int i = 0; i < 8; ++i)
 			L.skill[i] = Rectangle{ gx + (i % 4) * (kS + kG), gy + (i / 4) * (kS + kG), kS, kS };
-		// 오른쪽: 각성기 큰 칸(가운데 맞춤) → 이동기 · 아이덴티티(위아래)
+		// 오른쪽: 각성기 큰 칸(가운데 맞춤) → 이동기 · 고유 기술(위아래)
 		const float vx = gx + gridW + 14.f;
 		L.awaken = Rectangle{ vx, std::round(gy + (gridH - kAwakenS) * 0.5f), kAwakenS, kAwakenS };
 		const float sx = vx + kAwakenS + 10.f;
 		L.mobility = Rectangle{ sx, gy, kSmallS, kSmallS };
 		L.identity = Rectangle{ sx, gy + gridH - kSmallS, kSmallS, kSmallS };
-		// 왼쪽: 물약(F1, 가운데 맞춤) → 배틀 1~4(윗줄) · 보조 5~8(아랫줄)
+		// 왼쪽: 물약(F1, 가운데 맞춤) → 전투 1~4(윗줄) · 보조 5~8(아랫줄)
 		const float px = gx - 14.f - kPotS;
 		L.item[4] = Rectangle{ px, std::round(gy + (gridH - kPotS) * 0.5f), kPotS, kPotS };
 		const float bw = 4 * kItemS + 3 * kItemG;
@@ -274,7 +274,7 @@ void Game::DrawSkillBar()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 소모품 칸(배틀 1~4 · 물약 F1 · 보조 5~8) — 소지품에서 끌어다 등록, 오른쪽 클릭 비우기
+// 소모품 칸(전투 1~4 · 물약 F1 · 보조 5~8) — 소지품에서 끌어다 등록, 오른쪽 클릭 비우기
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawQuickBar()
 {
@@ -688,7 +688,7 @@ void Game::DrawSkillWindow()
 	if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressKind == kDragSkill)
 		m_pressKind = 0;
 	ui::Rule(r.x + 12.f, r.x + r.width - 12.f, y + 4.f, ui::theme::kLine);
-	ui::TextWrapped("아이콘을 끌어 아래 가운데 기술 칸(각성기 · 이동기 · 아이덴티티 칸 포함)에 놓으면 자리를 바꿉니다. 기술 레벨 · 변형은 다음 단계에서 열립니다.",
+	ui::TextWrapped("아이콘을 끌어 아래 가운데 기술 칸(각성기 · 이동기 · 고유 기술 칸 포함)에 놓으면 자리를 바꿉니다. 기술 레벨 · 변형은 다음 단계에서 열립니다.",
 		Rectangle{ r.x + 18.f, y + 14.f, r.width - 190.f, 40.f }, ui::type::kCaption, ui::theme::kTextDim, 3.f);
 	if (ui::Button(Rectangle{ r.x + r.width - 160.f, y + 14.f, 142.f, 32.f }, "기본 배치로", ButtonKind::Normal, true, 14.f))
 	{
