@@ -1,0 +1,60 @@
+{
+ "pc_knight_run": {
+  "src": "pc_knight_walk1",
+  "canvas": 512,
+  "scale": 1.6,
+  "foot": [
+   256,
+   452
+  ],
+  "frames": 12,
+  "key": "magenta",
+  "tint": [
+   -24,
+   16
+  ],
+  "model": "minimax_h3_max",
+  "resolution": "480p",
+  "duration": 5,
+  "aspect_ratio": "1:1",
+  "credits": 7.5,
+  "prompt": "2D game sprite animation. The armored knight runs in place in a seamless looping run cycle, legs alternating steps, cape swaying, sword and shield arms swinging naturally. He stays exactly centered in the frame and does not travel, turn, or change size. Fixed locked camera, isometric three-quarter view, same view angle as the input image. Flat solid pure magenta background (#FF00FF) everywhere, no floor, no shadow, no scenery, no lighting change, no camera movement, no zoom.",
+  "media": "d5a4b2e3-c2f7-4fd7-bf4b-96bdb82204f4",
+  "job": "9cea6c26-dc06-4614-af92-f8dceb2d679d",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_173627_9cea6c26-dc06-4614-af92-f8dceb2d679d.mp4"
+ },
+ "pc_engraver_run": {
+  "src": "pc_engraver_walk1",
+  "canvas": 512,
+  "scale": 1.6,
+  "foot": [
+   256,
+   452
+  ],
+  "frames": 12,
+  "key": "magenta",
+  "tint": [
+   -128,
+   40
+  ],
+  "model": "seedance_2_0_mini",
+  "resolution": "480p",
+  "duration": 4,
+  "aspect_ratio": "1:1",
+  "generate_audio": false,
+  "credits": 2,
+  "prompt": "2D game sprite animation. The robed mage runs in place in a seamless looping run cycle, legs alternating steps, robe and sleeves swaying, one hand holding the glowing staff upright, the other arm swinging naturally. He stays exactly centered in the frame and does not travel, turn, or change size. Fixed locked camera, isometric three-quarter view, same view angle as the input image. Flat solid pure magenta background (#FF00FF) everywhere, no floor, no shadow, no scenery, no lighting change, no camera movement, no zoom.",
+  "media": "0192b00a-20da-435f-bed0-16dfe462de1c",
+  "job": "35b3196e-8dea-4642-bd3e-efd72d823aeb",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_174703_35b3196e-8dea-4642-bd3e-efd72d823aeb.mp4",
+  "replaced": [
+   {
+    "job": "e090cf29-b93c-465b-882a-3b78c7fc4dfb",
+    "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_182923_e090cf29-b93c-465b-882a-3b78c7fc4dfb.mp4",
+    "prompt": "2D game sprite animation. The robed mage runs on an invisible treadmill in a seamless looping run cycle: long running strides, each planted foot pushes backward along the ground under the body while the other leg swings forward, robe and sleeves swaying, one hand holding the glowing staff, the other arm swinging. The body stays exactly centered in the frame and does not travel, turn, or change size. Fixed locked camera, isometric three-quarter view, same view angle as the input image. Flat solid pure magenta background (#FF00FF) everywhere, no floor, no shadow, no scenery, no lighting change, no camera movement, no zoom.",
+    "note": "시험 ③: \"러닝머신 · 디딘 발이 뒤로\" 문구로 다시 — 여전히 제자리 걸음(발 쓸림 0.73칸/주기) + 발밑 그림자를 그려 넣음 → 쓰지 않음. 시험 ②(위 job)를 쓴다"
+   }
+  ],
+  "note": "시험 ②: 제자리 걸음이라 발 쓸림 0.67칸/주기(게임 보폭 1.9) — 디딘 발이 조금 미끄러진다. 예전 걸음 2장보다는 낫다"
+ }
+}

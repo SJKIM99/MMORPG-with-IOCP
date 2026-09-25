@@ -11,6 +11,7 @@
 //
 //  · assets/sprites/actors.txt · props.txt 한 줄 = 이름 쪽 x y w h 발x 발y 기준높이
 //    (tools/assetgen/process.py가 만든다). 아틀라스는 actors_N.png · props_N.png.
+//  · motion.txt · motion_N.png — 동작 영상에서 뽑은 한 주기 프레임(tools/assetgen/motion.py, 예: pc_knight_run00~11).
 //  · 발(anchor)을 바닥 위치에 놓고, "서 있는 모습의 높이(기준높이)"를 월드 높이로 맞춰 그린다.
 //    같은 캐릭터의 모든 동작은 같은 배율 — 동작이 바뀌어도 몸 크기가 튀지 않는다.
 //  · 파일이 없거나 이름이 없으면 nullptr — 부르는 쪽은 예전 절차적 그림으로 대신한다.

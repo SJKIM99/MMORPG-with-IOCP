@@ -34,7 +34,9 @@ namespace actorspr
 		enum NpcPose { NIdle, NWalk1, NWalk2, NTalk, NCount };
 		constexpr const char* kNpcNames[NCount] = { "idle", "walk1", "walk2", "talk" };
 
-		struct PcSet { const Sprite* s[PcCount]{}; bool ok = false; };
+		// 달리기 한 주기(Phase 1-D): 동작 영상에서 뽑은 프레임 pc_<직업>_run00… — 0번 = 첫 걸음(walk1) 자세
+		constexpr int kRunMax = 24;
+		struct PcSet { const Sprite* s[PcCount]{}; const Sprite* run[kRunMax]{}; int runN = 0; bool ok = false; };
 		struct MonSet { const Sprite* s[MCount]{}; bool ok = false; };
 		struct NpcSet { const Sprite* s[NCount]{}; bool ok = false; };
 
@@ -81,6 +83,15 @@ namespace actorspr
 				auto fb = [&](int i, int j) { if (!set.s[i]) set.s[i] = set.s[j]; };
 				fb(PcWalk1, PcIdle); fb(PcWalk2, PcWalk1); fb(PcWindup, PcIdle); fb(PcStrike, PcWindup);
 				fb(PcCast, PcWindup); fb(PcGuard, PcIdle); fb(PcHurt, PcIdle); fb(PcDead, PcHurt);
+				for (int i = 0; i < kRunMax; ++i)
+				{
+					char nm[40];
+					std::snprintf(nm, sizeof(nm), "pc_%s_run%02d", kClassKey[c], i);
+					const Sprite* r = sprites::Find(nm);
+					if (!r) break;
+					set.run[set.runN++] = r;
+				}
+				if (set.runN < 4) set.runN = 0;   // 너무 적으면 걷기 두 장이 낫다
 				set.ok = true;
 			}
 			for (size_t id = 1; id < g_mon.size(); ++id)
@@ -214,7 +225,17 @@ namespace actorspr
 			a.s = idle;
 
 			// 걷기 · 숨쉬기
-			if (p.moving > 0.05f)
+			if (p.moving > 0.05f && !back && set.runN > 0)
+			{
+				// 달리기 한 주기: 걸음 위상(이동 거리 ÷ 보폭)으로 프레임을 고른다 — 영상의 발 쓸림이 보폭과 같으면
+				// (tools/assetgen/motion.py 검사) 디딘 발이 땅에 붙는다. 0번 프레임 = walk1 자세 = 위상 π/2(첫 발 디딤).
+				// 몸의 오르내림은 프레임에 들어 있어 절차적 흔들기는 조금만.
+				float u = std::fmod(p.walk - kPi * 0.5f, 2.f * kPi) / (2.f * kPi);
+				if (u < 0.f) u += 1.f;
+				a.s = set.run[std::min(set.runN - 1, static_cast<int>(u * static_cast<float>(set.runN)))];
+				ApplyWalk(a, p, 0.6f, cls == 2 ? 4.f : 2.5f);
+			}
+			else if (p.moving > 0.05f)
 			{
 				const int f = StepFrame(p.walk);
 				a.s = f == 1 ? walk1 : (f == 2 ? walk2 : idle);

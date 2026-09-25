@@ -107,6 +107,7 @@ void main()
 		Shutdown();
 		const bool a = LoadSet(dir, "actors");
 		const bool b = LoadSet(dir, "props");
+		LoadSet(dir, "motion");   // 동작 영상에서 뽑은 프레임(Phase 1-D, tools/assetgen/motion.py) — 없으면 걷기 두 장으로
 		g_shader = LoadShaderFromMemory(nullptr, kFs);
 		if (g_shader.id == 0 || g_shader.id == rlGetShaderIdDefault())
 		{
