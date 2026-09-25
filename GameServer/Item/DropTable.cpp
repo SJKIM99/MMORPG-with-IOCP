@@ -36,109 +36,109 @@ namespace
 	// 표마다 noDropWeight + weight 합 = 1000으로 맞춰 두면 weight가 곧 천분율이다.
 
 	// 1단계: 기존 전역 표(물약 150 / 나무검 80 / 철검 50 / 강철검 15 / 화염검 4 / 드슬 1)를
-	// 바탕으로, 초반 사냥터답게 물약·주문서를 늘리고 고등급 무기는 아래 단계로 넘겼다.
+	// 바탕으로, 초반 사냥터답게 물약·두루마리를 늘리고 고등급 무기는 아래 단계로 넘겼다.
 	constexpr DropTableEntry kTier1[] =
 	{
-		{ HealthPotion,   C, N,                   180, 1, 2 },
-		{ OrangePotion,   C, N,                    20, 1, 1 },
-		{ ReturnScroll,   C, N,                    30, 1, 1 },
-		{ TeleportScroll, C, N,                    14, 1, 1 },
-		{ WoodenSword,    E, N,                    40, 1, 1 },
-		{ IronSword,      E, ItemGrade::eRare,     12, 1, 1 },
-		{ EnchantScroll,  C, N,                     4, 1, 1 },
+		{ HerbPotion,         C, N,                      180, 1, 2 },
+		{ StrongHerbPotion,   C, N,                       20, 1, 1 },
+		{ ReturnScroll,       C, N,                       30, 1, 1 },
+		{ OldwayScroll,       C, N,                       14, 1, 1 },
+		{ PracticeSword,      E, N,                       40, 1, 1 },
+		{ IronSword,          E, ItemGrade::eRare,        12, 1, 1 },
+		{ EngravingScroll,    C, N,                        4, 1, 1 },
 	};
 	constexpr DropTableEntry kTier2[] =
 	{
-		{ HealthPotion,     C, N,                 160, 1, 3 },
-		{ OrangePotion,     C, N,                  60, 1, 2 },
-		{ ReturnScroll,     C, N,                  35, 1, 1 },
-		{ TeleportScroll,   C, N,                  30, 1, 1 },
-		{ HastePotion,      C, N,                  25, 1, 1 },
-		{ IronSword,        E, ItemGrade::eRare,   40, 1, 1 },
-		{ OrichalcumDagger, E, ItemGrade::eRare,   10, 1, 1 },
-		{ SteelSword,       E, ItemGrade::eEpic,    8, 1, 1 },
-		{ EnchantScroll,    C, N,                  12, 1, 1 },
+		{ HerbPotion,         C, N,                      160, 1, 3 },
+		{ StrongHerbPotion,   C, N,                       60, 1, 2 },
+		{ ReturnScroll,       C, N,                       35, 1, 1 },
+		{ OldwayScroll,       C, N,                       30, 1, 1 },
+		{ WindstepPotion,     C, N,                       25, 1, 1 },
+		{ IronSword,          E, ItemGrade::eRare,        40, 1, 1 },
+		{ DobranDagger,       E, ItemGrade::eRare,        10, 1, 1 },
+		{ SteelSword,         E, ItemGrade::eEpic,         8, 1, 1 },
+		{ EngravingScroll,    C, N,                       12, 1, 1 },
 	};
 	constexpr DropTableEntry kTier3[] =
 	{
-		{ OrangePotion,     C, N,                 140, 1, 2 },
-		{ ClearPotion,      C, N,                  40, 1, 1 },
-		{ ReturnScroll,     C, N,                  40, 1, 1 },
-		{ TeleportScroll,   C, N,                  35, 1, 1 },
-		{ HastePotion,      C, N,                  40, 1, 1 },
-		{ SteelSword,       E, ItemGrade::eEpic,   40, 1, 1 },
-		{ OrichalcumDagger, E, ItemGrade::eRare,   25, 1, 1 },
-		{ Katana,           E, ItemGrade::eEpic,    6, 1, 1 },
-		{ FlameSword,       E, ItemGrade::eUnique,  4, 1, 1 },
-		{ EnchantScroll,    C, N,                  25, 1, 1 },
-		{ BlessedEnchant,   C, N,                   5, 1, 1 },
+		{ StrongHerbPotion,   C, N,                      140, 1, 2 },
+		{ SapElixir,          C, N,                       40, 1, 1 },
+		{ ReturnScroll,       C, N,                       40, 1, 1 },
+		{ OldwayScroll,       C, N,                       35, 1, 1 },
+		{ WindstepPotion,     C, N,                       40, 1, 1 },
+		{ SteelSword,         E, ItemGrade::eEpic,        40, 1, 1 },
+		{ DobranDagger,       E, ItemGrade::eRare,        25, 1, 1 },
+		{ CavalrySaber,       E, ItemGrade::eEpic,         6, 1, 1 },
+		{ EmberSword,         E, ItemGrade::eUnique,       4, 1, 1 },
+		{ EngravingScroll,    C, N,                       25, 1, 1 },
+		{ ConsecratedScroll,  C, N,                        5, 1, 1 },
 	};
 	constexpr DropTableEntry kTier4[] =
 	{
-		{ OrangePotion,     C, N,                    120, 1, 3 },
-		{ ClearPotion,      C, N,                     90, 1, 2 },
-		{ ReturnScroll,     C, N,                     35, 1, 1 },
-		{ TeleportScroll,   C, N,                     30, 1, 1 },
-		{ HastePotion,      C, N,                     45, 1, 1 },
-		{ SteelSword,       E, ItemGrade::eEpic,      50, 1, 1 },
-		{ Katana,           E, ItemGrade::eEpic,      20, 1, 1 },
-		{ OrichalcumDagger, E, ItemGrade::eRare,       9, 1, 1 },
-		{ FlameSword,       E, ItemGrade::eUnique,    12, 1, 1 },
-		{ DragonSlayer,     E, ItemGrade::eLegendary,  2, 1, 1 },
-		{ EnchantScroll,    C, N,                     55, 1, 1 },
-		{ BlessedEnchant,   C, N,                     12, 1, 1 },
+		{ StrongHerbPotion,   C, N,                      120, 1, 3 },
+		{ SapElixir,          C, N,                       90, 1, 2 },
+		{ ReturnScroll,       C, N,                       35, 1, 1 },
+		{ OldwayScroll,       C, N,                       30, 1, 1 },
+		{ WindstepPotion,     C, N,                       45, 1, 1 },
+		{ SteelSword,         E, ItemGrade::eEpic,        50, 1, 1 },
+		{ CavalrySaber,       E, ItemGrade::eEpic,        20, 1, 1 },
+		{ DobranDagger,       E, ItemGrade::eRare,         9, 1, 1 },
+		{ EmberSword,         E, ItemGrade::eUnique,      12, 1, 1 },
+		{ Dawnkeeper,         E, ItemGrade::eLegendary,    2, 1, 1 },
+		{ EngravingScroll,    C, N,                       55, 1, 1 },
+		{ ConsecratedScroll,  C, N,                       12, 1, 1 },
 	};
 	constexpr DropTableEntry kTier5[] =
 	{
-		{ ClearPotion,      C, N,                    180, 1, 2 },
-		{ OrangePotion,     C, N,                     60, 1, 3 },
-		{ ReturnScroll,     C, N,                     14, 1, 1 },
-		{ HastePotion,      C, N,                     50, 1, 1 },
-		{ Katana,           E, ItemGrade::eEpic,      40, 1, 1 },
-		{ FlameSword,       E, ItemGrade::eUnique,    30, 1, 1 },
-		{ DragonSlayer,     E, ItemGrade::eLegendary,  6, 1, 1 },
-		{ EnchantScroll,    C, N,                    110, 1, 1 },
-		{ BlessedEnchant,   C, N,                     30, 1, 1 },
+		{ SapElixir,          C, N,                      180, 1, 2 },
+		{ StrongHerbPotion,   C, N,                       60, 1, 3 },
+		{ ReturnScroll,       C, N,                       14, 1, 1 },
+		{ WindstepPotion,     C, N,                       50, 1, 1 },
+		{ CavalrySaber,       E, ItemGrade::eEpic,        40, 1, 1 },
+		{ EmberSword,         E, ItemGrade::eUnique,      30, 1, 1 },
+		{ Dawnkeeper,         E, ItemGrade::eLegendary,    6, 1, 1 },
+		{ EngravingScroll,    C, N,                      110, 1, 1 },
+		{ ConsecratedScroll,  C, N,                       30, 1, 1 },
 	};
 	constexpr DropTableEntry kBossCommon[] =
 	{
-		{ EnchantScroll,    C, N,                    350, 1, 3 },
-		{ BlessedEnchant,   C, N,                    150, 1, 1 },
-		{ Katana,           E, ItemGrade::eEpic,     150, 1, 1 },
-		{ FlameSword,       E, ItemGrade::eUnique,   120, 1, 1 },
-		{ ClearPotion,      C, N,                    150, 3, 5 },
-		{ DragonSlayer,     E, ItemGrade::eLegendary, 20, 1, 1 },
-		{ HastePotion,      C, N,                     60, 1, 2 },
+		{ EngravingScroll,    C, N,                      350, 1, 3 },
+		{ ConsecratedScroll,  C, N,                      150, 1, 1 },
+		{ CavalrySaber,       E, ItemGrade::eEpic,       150, 1, 1 },
+		{ EmberSword,         E, ItemGrade::eUnique,     120, 1, 1 },
+		{ SapElixir,          C, N,                      150, 3, 5 },
+		{ Dawnkeeper,         E, ItemGrade::eLegendary,   20, 1, 1 },
+		{ WindstepPotion,     C, N,                       60, 1, 2 },
 	};
-	constexpr DropTableEntry kDeathKnight[] =
+	constexpr DropTableEntry kSeverin[] =
 	{
-		{ EnchantScroll,    C, N,                    300, 1, 3 },
-		{ BlessedEnchant,   C, N,                    150, 1, 1 },
-		{ DkFlameSword,     E, ItemGrade::eUnique,   200, 1, 1 },
-		{ FlameSword,       E, ItemGrade::eUnique,   150, 1, 1 },
-		{ Katana,           E, ItemGrade::eEpic,     100, 1, 1 },
-		{ DragonSlayer,     E, ItemGrade::eLegendary, 40, 1, 1 },
-		{ ClearPotion,      C, N,                     60, 3, 5 },
+		{ EngravingScroll,    C, N,                      300, 1, 3 },
+		{ ConsecratedScroll,  C, N,                      150, 1, 1 },
+		{ SeverinBlade,       E, ItemGrade::eUnique,     200, 1, 1 },
+		{ EmberSword,         E, ItemGrade::eUnique,     150, 1, 1 },
+		{ CavalrySaber,       E, ItemGrade::eEpic,       100, 1, 1 },
+		{ Dawnkeeper,         E, ItemGrade::eLegendary,   40, 1, 1 },
+		{ SapElixir,          C, N,                       60, 3, 5 },
 	};
-	constexpr DropTableEntry kFireDrake[] =
+	constexpr DropTableEntry kZmaj[] =
 	{
-		{ EnchantScroll,    C, N,                    300, 2, 4 },
-		{ BlessedEnchant,   C, N,                    200, 1, 1 },
-		{ DragonSlayer,     E, ItemGrade::eLegendary,120, 1, 1 },
-		{ FlameSword,       E, ItemGrade::eUnique,   180, 1, 1 },
-		{ DkFlameSword,     E, ItemGrade::eUnique,   100, 1, 1 },
-		{ Executioner,      E, ItemGrade::eLegendary, 20, 1, 1 },
-		{ ClearPotion,      C, N,                     80, 3, 5 },
+		{ EngravingScroll,    C, N,                      300, 2, 4 },
+		{ ConsecratedScroll,  C, N,                      200, 1, 1 },
+		{ Dawnkeeper,         E, ItemGrade::eLegendary,  120, 1, 1 },
+		{ EmberSword,         E, ItemGrade::eUnique,     180, 1, 1 },
+		{ SeverinBlade,       E, ItemGrade::eUnique,     100, 1, 1 },
+		{ KaldunExecutioner,  E, ItemGrade::eLegendary,   20, 1, 1 },
+		{ SapElixir,          C, N,                       80, 3, 5 },
 	};
-	constexpr DropTableEntry kBaphomet[] =
+	constexpr DropTableEntry kGramok[] =
 	{
-		{ EnchantScroll,    C, N,                    300, 2, 4 },
-		{ BlessedEnchant,   C, N,                    200, 1, 1 },
-		{ Executioner,      E, ItemGrade::eLegendary, 60, 1, 1 },
-		{ DragonSlayer,     E, ItemGrade::eLegendary,120, 1, 1 },
-		{ DkFlameSword,     E, ItemGrade::eUnique,   120, 1, 1 },
-		{ FlameSword,       E, ItemGrade::eUnique,   120, 1, 1 },
-		{ ClearPotion,      C, N,                     80, 3, 5 },
+		{ EngravingScroll,    C, N,                      300, 2, 4 },
+		{ ConsecratedScroll,  C, N,                      200, 1, 1 },
+		{ KaldunExecutioner,  E, ItemGrade::eLegendary,   60, 1, 1 },
+		{ Dawnkeeper,         E, ItemGrade::eLegendary,  120, 1, 1 },
+		{ SeverinBlade,       E, ItemGrade::eUnique,     120, 1, 1 },
+		{ EmberSword,         E, ItemGrade::eUnique,     120, 1, 1 },
+		{ SapElixir,          C, N,                       80, 3, 5 },
 	};
 
 	template<size_t Count>
@@ -153,9 +153,9 @@ namespace
 		MakeDef(520, kTier4),
 		MakeDef(480, kTier5),
 		MakeDef(0,   kBossCommon),
-		MakeDef(0,   kDeathKnight),
-		MakeDef(0,   kFireDrake),
-		MakeDef(0,   kBaphomet),
+		MakeDef(0,   kSeverin),
+		MakeDef(0,   kZmaj),
+		MakeDef(0,   kGramok),
 	};
 
 	// DropTable(여기)과 ItemTable(진짜 데이터 소유자)이 서로 어긋나면

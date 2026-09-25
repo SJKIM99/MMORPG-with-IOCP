@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// 여명의 대지 — MMORPG-with-IOCP 2D(아이소메트릭) 클라이언트
+// 하르벤 — MMORPG-with-IOCP 2D(아이소메트릭) 클라이언트
 //
 //   실행 옵션
 //     --host 127.0.0.1 --port 4000   서버 주소(로그인 화면 기본값)
@@ -11,13 +11,14 @@
 //     --screenshot out.png --after 8  지정 시간 뒤 스크린샷 저장 후 종료
 //     --hour 22                       게임 시각 고정
 //     --lag 120 --jitter 60           인공 네트워크 지연(한쪽 방향 ms)·지터 — 조작감 검증용
-//     --class 0|1|2                   새 캐릭터 직업(0 황혼의 기사 · 1 룬술사 · 2 그림자 사냥꾼)
+//     --class 0|1|2                   새 캐릭터 직업(0 서약기사 · 1 각인술사 · 2 밤사냥꾼)
 //     --script hunt|town|inventory|map|help|enchant|chat|combat|charwin
 // ─────────────────────────────────────────────────────────────────────────────
 #include "raylib.h"
 #include "rlgl.h"
 
 #include "game/Game.h"
+#include "render/Art.h"
 #include "render/Assets.h"
 #include "render/Icons.h"
 #include "render/Draw.h"
@@ -40,13 +41,14 @@
 
 namespace
 {
-	std::string FindFont()
+	// 에셋 폴더(assets/fonts, assets/art) — 실행 파일 옆 → 작업 폴더 → 상위 폴더 순서로 찾는다.
+	// probe = 그 폴더에 반드시 있는 파일 하나
+	std::string FindAssetDir(const char* rel, const char* probe)
 	{
-		const char* rel = "assets/fonts/NanumSquareRoundB.ttf";
 		const std::string appDir = GetApplicationDirectory();
 		const std::string candidates[] = { appDir + rel, std::string(rel), std::string("../") + rel, std::string("../../") + rel };
 		for (const auto& c : candidates)
-			if (FileExists(c.c_str()))
+			if (FileExists((c + "/" + probe).c_str()))
 				return c;
 		return rel;
 	}
@@ -173,7 +175,7 @@ int main(int argc, char** argv)
 	}
 
 	SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
-	InitWindow(width, height, "여명의 대지 - MMORPG-with-IOCP");
+	InitWindow(width, height, "하르벤");
 	if (!IsWindowReady())
 	{
 		// 그래픽 드라이버/디스플레이를 열 수 없다 — 크래시 대신 알리고 끝낸다.
@@ -181,12 +183,27 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	SetWindowMinSize(1024, 640);
+	{
+		// 창 · 작업 표시줄 아이콘(지평선과 샛별). 실행 파일 아이콘은 res/app.rc
+		const std::string icon = FindAssetDir("assets/icon", "harven.png") + "/harven.png";
+		if (FileExists(icon.c_str()))
+		{
+			Image img = LoadImage(icon.c_str());
+			if (img.data)
+			{
+				ImageFormat(&img, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+				SetWindowIcon(img);
+				UnloadImage(img);
+			}
+		}
+	}
 	SetExitKey(KEY_NULL);
 	SetTargetFPS(144);
 	rlDisableBackfaceCulling();
 	HideCursor();
 
-	ui::Fonts().Init(FindFont());
+	ui::Fonts().Init(FindAssetDir("assets/fonts", "Pretendard-Medium.ttf"));
+	art::Init(FindAssetDir("assets/art", "key_art.jpg"));
 	assets::Load();
 	icons::Build();
 	if (!opts.mute)
@@ -211,6 +228,7 @@ int main(int argc, char** argv)
 	sfx::Shutdown();
 	icons::Unload();
 	assets::Unload();
+	art::Shutdown();
 	ui::Fonts().Shutdown();
 	CloseWindow();
 	return 0;

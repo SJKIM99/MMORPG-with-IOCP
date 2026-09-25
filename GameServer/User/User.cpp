@@ -110,7 +110,7 @@ bool User::RecomputeStats(bool fullHeal)
 	if (fullHeal || GetStat()->GetHp() > m_derived.maxHp)
 		GetStat()->SetHp(m_derived.maxHp);
 	// 레거시 경로(공격력 하나)도 같은 값을 보게 한다.
-	GetStat()->SetOffensive(m_classId == ClassId::RuneCaster ? m_derived.magicAttack : m_derived.attack);
+	GetStat()->SetOffensive(m_classId == ClassId::Engraver ? m_derived.magicAttack : m_derived.attack);
 	if (fullHeal || m_mp > m_derived.maxMp)
 		m_mp = m_derived.maxMp;
 

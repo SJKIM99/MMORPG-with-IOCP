@@ -12,7 +12,7 @@ enum ItemType : uint8_t
 	eEquipment  = 1,  // 장착형. 기본적으로 스택 불가(maxStack = 1)
 	eMaterial   = 2,  // 제작 재료 등, 사용 로직 없음
 	eEtc        = 3,  // 분류 미정
-	// 아데나. 필드에 떨어진 상태로만 존재하고, 주우면 인벤토리 슬롯이 아니라
+	// 그로시. 필드에 떨어진 상태로만 존재하고, 주우면 인벤토리 슬롯이 아니라
 	// 지갑(Inventory::GetAdena)으로 들어간다 — 슬롯을 차지하지 않는다.
 	eCurrency   = 4,
 };
@@ -24,10 +24,10 @@ enum class ItemEffect : uint8_t
 {
 	eNone           = 0,
 	eHeal           = 1,  // healAmount만큼 HP 회복
-	eReturnTown     = 2,  // 마을 귀환 주문서
-	eTeleportRandom = 3,  // 순간이동 주문서 — 현재 지역 안의 무작위 위치
-	eHaste          = 4,  // 초록 물약 — effectValue초 동안 이동 가속
-	eEnchantWeapon  = 5,  // 무기 강화 주문서 — ITEM_ENCHANT_REQ로만 사용(effectValue: 0 일반 / 1 축복)
+	eReturnTown     = 2,  // 귀환 두루마리
+	eTeleportRandom = 3,  // 옛길 두루마리 — 현재 지역 안의 무작위 위치
+	eHaste          = 4,  // 바람걸음 물약 — effectValue초 동안 이동 가속
+	eEnchantWeapon  = 5,  // 각인 두루마리 — ITEM_ENCHANT_REQ로만 사용(effectValue: 0 일반 / 1 축복)
 };
 
 // 장비 등급. eNone은 "등급이 없는 장비"(예: 시작 무기)와 "장비가 아니라서 등급
@@ -70,7 +70,7 @@ enum class WeaponKind : uint8_t
 	None       = 0,
 	Sword      = 1,
 	Greatsword = 2,
-	Katana     = 3,
+	Saber      = 3,   // 곡도(기병 곡도)
 	Dagger     = 4,
 	Staff      = 5,
 };

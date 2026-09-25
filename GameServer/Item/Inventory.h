@@ -123,21 +123,21 @@ public:
 	int TrySort() noexcept;
 
 	// ── 리니지풍 컨텐츠 확장 ────────────────────────────────────────────────
-	// 지갑(아데나). 리니지에서는 아데나도 인벤토리 안의 물건이라, 슬롯과 같은 곳에서
-	// 관리해야 "아데나 차감 + 슬롯 지급"을 한 번의 원자적 동작으로 묶을 수 있다.
+	// 지갑(그로시). 리니지에서는 그로시도 인벤토리 안의 물건이라, 슬롯과 같은 곳에서
+	// 관리해야 "그로시 차감 + 슬롯 지급"을 한 번의 원자적 동작으로 묶을 수 있다.
 	[[nodiscard]] uint32_t GetAdena() const noexcept { return _adena; }
 
 	// 로그인 시 DB 값 복원(LoadFromDB와 같은 전제 — 아직 공개 전이라 검증/저장 없음).
 	void LoadAdena(uint32_t adena) noexcept { _adena = adena; }
 
-	// 줍기 등으로 아데나 증가. 상한(DB INT 범위)을 넘는 만큼은 버려진다.
+	// 줍기 등으로 그로시 증가. 상한(DB INT 범위)을 넘는 만큼은 버려진다.
 	// 실제로 늘어난 양을 반환하고, 즉시 DB 저장 + 확장 세션에 ADENA_INF를 보낸다.
 	uint32_t AddAdena(uint32_t amount, AdenaReason reason) noexcept;
 
-	// 아데나를 쓴다(텔레포트 요금 등 물건을 받지 않는 지출). 모자라면 false — 아무것도 바뀌지 않는다.
+	// 그로시를 쓴다(텔레포트 요금 등 물건을 받지 않는 지출). 모자라면 false — 아무것도 바뀌지 않는다.
 	[[nodiscard]] bool TrySpendAdena(uint32_t amount, AdenaReason reason) noexcept;
 
-	// 소비 아이템 하나를 소모한다(주문서/초록 물약처럼 효과가 인벤토리 밖에서
+	// 소비 아이템 하나를 소모한다(두루마리/바람걸음 물약처럼 효과가 인벤토리 밖에서
 	// 일어나는 아이템용). slotIndex가 비었거나, 소비 아이템이 아니거나, 효과가
 	// expected와 다르면 false — 아무것도 바뀌지 않는다.
 	[[nodiscard]] bool TryConsumeOne(uint16_t slotIndex, ItemEffect expected, ItemTableId* outItemId = nullptr) noexcept;
@@ -151,20 +151,20 @@ public:
 		bool          wasEquipped   = false;  // 증발/변화한 무기가 장착 중이었나(외형 브로드캐스트 필요)
 	};
 
-	// 무기 강화. 주문서 1장 소모 + 무기 수치 변경(또는 증발)을 한 번에 처리하고,
-	// DB에도 SaveTwoSlotsToDB로 한 트랜잭션에 묶는다(주문서만 사라지고 무기는 그대로,
+	// 무기 강화. 두루마리 1장 소모 + 무기 수치 변경(또는 증발)을 한 번에 처리하고,
+	// DB에도 SaveTwoSlotsToDB로 한 트랜잭션에 묶는다(두루마리만 사라지고 무기는 그대로,
 	// 또는 그 반대인 상태가 남지 않게). 난수는 호출자가 넘긴다(roll100: 0~99, bonusRoll: 0~2).
 	[[nodiscard]] EnchantOutcome TryEnchant(uint16_t scrollSlot, uint16_t targetSlot, uint32_t roll100, uint32_t bonusRoll) noexcept;
 
-	// 상점 구매: 아데나 차감 + 슬롯 하나에 지급. 수량 전체가 "한 슬롯"에 들어갈 때만
-	// 성공한다(기존 스택에 합치거나 빈 슬롯 하나) — 그래야 DB 반영이 "아데나 + 슬롯 1개"
+	// 상점 구매: 그로시 차감 + 슬롯 하나에 지급. 수량 전체가 "한 슬롯"에 들어갈 때만
+	// 성공한다(기존 스택에 합치거나 빈 슬롯 하나) — 그래야 DB 반영이 "그로시 + 슬롯 1개"
 	// 한 트랜잭션(ShopTransaction 프로시저)으로 끝난다. outSlot에 지급된 슬롯을 담아준다.
 	[[nodiscard]] ShopResult TryBuy(ItemTableId itemId, uint16_t count, uint32_t totalPrice, uint16_t* outSlot) noexcept;
 
-	// 상점 판매: 슬롯에서 count만큼 빼고 아데나를 준다. 장착 중인 장비는 팔 수 없다.
+	// 상점 판매: 슬롯에서 count만큼 빼고 그로시를 준다. 장착 중인 장비는 팔 수 없다.
 	[[nodiscard]] ShopResult TrySell(uint16_t slotIndex, uint16_t count, uint32_t* outGain) noexcept;
 
-	// 카오틱 사망 시 떨어뜨릴 아이템을 하나 골라 꺼낸다(roll은 호출자가 넘기는 난수).
+	// 악명 사망 시 떨어뜨릴 아이템을 하나 골라 꺼낸다(roll은 호출자가 넘기는 난수).
 	// 비어 있으면 nullptr. 꺼낸 아이템은 어느 인벤토리에도 속하지 않는다(TryExtractItem과 같음).
 	[[nodiscard]] Item::SharedPtr TryTakeRandomItem(uint32_t roll) noexcept;
 

@@ -23,9 +23,9 @@ public:
 
 	// ── 리니지풍 컨텐츠 확장 ──────────────────────────────────────────────────
 	// 아래 값들은 전부 소유 Zone 스레드에서만 읽고 쓴다(Inventory와 같은 전제).
-	uint32_t m_lastScrollUseTime = 0;   // 주문서/초록 물약 쿨타임(물약과 별개)
+	uint32_t m_lastScrollUseTime = 0;   // 두루마리/바람걸음 물약 쿨타임(물약과 별개)
 	uint32_t m_lastShopSeq       = 0;   // 상점/텔레포트 요청 멱등성 — 마지막으로 처리한 seq
-	uint32_t m_purpleUntil       = 0;   // GetNowTime() 기준. 이 시각 전까지 보라돌이
+	uint32_t m_purpleUntil       = 0;   // GetNowTime() 기준. 이 시각 전까지 적대
 	uint32_t m_hasteUntil        = 0;   // GetNowTime() 기준. 이 시각 전까지 가속
 	uint32_t m_deathSeq          = 0;   // 사망할 때마다 증가 — 늦게 도착한 부활 타이머를 걸러낸다
 	uint32_t m_lastWorldChatTime = 0;   // 전체 채팅 도배 방지
@@ -46,7 +46,7 @@ public:
 	uint32_t     m_lastCounterAt = 0;           // 철벽 태세 반격 간격
 	uint32_t     m_lastCombatAt  = 0;           // 마지막 전투 시각(비전투 회복)
 	struct PendingImpact { uint32_t seq; uint16_t skillId; ObjID target; short x, y; };
-	std::vector<PendingImpact> m_pendingImpacts; // 예고 뒤 판정할 스킬(혜성·처형·룬 폭발)
+	std::vector<PendingImpact> m_pendingImpacts; // 예고 뒤 판정할 스킬(낙성·처형·각인 폭발)
 	uint32_t     m_impactSeq     = 0;
 
 	// ── V2 아이템 성장(Data/ItemRules.h) ───────────────────────────────────────
@@ -54,8 +54,8 @@ public:
 	uint16_t     m_pityRare      = 0;       // "희귀 이상"을 못 본 장비 드롭 수(천장)
 	uint16_t     m_pityHeroic    = 0;       // "영웅 이상"을 못 본 장비 드롭 수
 	uint32_t     m_lastSortAt    = 0;       // 소지품 정리 도배 방지
-	uint32_t     m_guardianReadyAt = 0;     // 수호의 맹세(특수 효과) 재발동 시각
-	uint32_t     m_lifestealFxAt = 0;       // 피의 갈증 연출 간격
+	uint32_t     m_guardianReadyAt = 0;     // 서약의 방패(특수 효과) 재발동 시각
+	uint32_t     m_lifestealFxAt = 0;       // 생명 흡수 연출 간격
 
 	// ── V2 마을 NPC(Npc/NpcHelper) ─────────────────────────────────────────────
 	uint32_t     m_npcSeenTick   = 0;   // 마지막으로 NPC 틱이 이 사용자를 마을에서 본 번호(새로 오면 목록을 보낸다)
@@ -83,7 +83,7 @@ private:
 	// 이후 Inventory 저장 경로는 매번 name으로 재조회하지 않고 이 값을 그대로 쓴다.
 	int m_playerId = 0;
 
-	int16_t  m_alignment = 0;   // 성향치(라우풀 +, 카오틱 -)
+	int16_t  m_alignment = 0;   // 성향치(명예 +, 악명 -)
 	uint16_t m_pkCount   = 0;
 
 public:

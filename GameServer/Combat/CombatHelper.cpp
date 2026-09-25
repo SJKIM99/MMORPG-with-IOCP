@@ -154,7 +154,7 @@ namespace CombatHelper
 		};
 		const uint32_t now = GetNowTime();
 
-		// 피의 갈증 — 준 피해의 일부를 HP로(쓰러뜨린 한 방도 포함)
+		// 생명 흡수 — 준 피해의 일부를 HP로(쓰러뜨린 한 방도 포함)
 		if (const uint8_t pw = power(ItemProc::Lifesteal); pw > 0 && dealt > 0 && u->GetStat()->GetHp() < u->GetStat()->GetMaxHp())
 		{
 			const uint32_t heal = std::max<uint32_t>(1, dealt * static_cast<uint32_t>(ItemRules::ProcPower(ItemProc::Lifesteal, pw)) / 100u);
@@ -260,7 +260,7 @@ namespace CombatHelper
 		const bool dead = victim->GetStat()->IsDead();
 		UserHelper::BroadcastDamage(victim, monsterId, static_cast<int32_t>(damage), static_cast<uint8_t>(flags | (dead ? DAMAGE_KILLED : 0)), 0, 0, flags2);
 
-		// 수호의 맹세(장비 특수 효과) — 맞을 때 확률로 철벽 태세(재발동 대기 있음)
+		// 서약의 방패(장비 특수 효과) — 맞을 때 확률로 철벽 태세(재발동 대기 있음)
 		if (!dead && !guarding)
 		{
 			const uint8_t pw = victim->m_gearEx.procPower[static_cast<size_t>(ItemProc::Guardian)];

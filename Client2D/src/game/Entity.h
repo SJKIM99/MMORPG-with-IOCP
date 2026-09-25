@@ -66,7 +66,7 @@ struct Entity
 	uint16_t animSkill = 0;
 	float    animT = -1.f;           // 경과(초), <0 없음
 	float    animDur = 0.5f;
-	float    animCast = 0.f;         // 예고 시간(처형·혜성)
+	float    animCast = 0.f;         // 예고 시간(처형·낙성)
 
 	// 몬스터 강공격 예고
 	struct Telegraph { bool active = false; uint8_t shape = 0, pattern = 0; Vector2 c{}, from{}; float radius = 0.f, t = 0.f, dur = 1.f; };

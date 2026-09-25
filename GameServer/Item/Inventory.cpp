@@ -234,7 +234,7 @@ bool Inventory::TryAddItem(ItemTableId itemId, uint16_t count, std::vector<uint1
 	const ItemTableRow* row = ItemTable::Find(itemId);
 	if (row == nullptr)
 		return false;
-	// 아데나는 슬롯이 아니라 지갑으로 간다(AddAdena) — 여기로 오면 호출자 실수다.
+	// 그로시는 슬롯이 아니라 지갑으로 간다(AddAdena) — 여기로 오면 호출자 실수다.
 	if (row->type == ItemType::eCurrency)
 		return false;
 
@@ -513,7 +513,7 @@ bool Inventory::TryUseItem(uint16_t slotIndex) noexcept
 	// 그 자체가 불변조건 위반이다.
 	ASSERT_CRASH(row != nullptr);
 
-	// 이 경로는 회복 물약 전용이다. 주문서/초록 물약처럼 효과가 인벤토리 밖에서
+	// 이 경로는 회복 물약 전용이다. 두루마리/바람걸음 물약처럼 효과가 인벤토리 밖에서
 	// 일어나는 아이템은 TryConsumeOne + UserHelper 쪽 효과 처리로 간다 — 여기서
 	// 받아버리면 효과 없이 소모만 되는 버그가 된다.
 	if (row->effect != ItemEffect::eHeal || row->healAmount == 0)
@@ -664,11 +664,11 @@ Inventory::EnchantOutcome Inventory::TryEnchant(uint16_t scrollSlot, uint16_t ta
 
 	const auto weapon = std::dynamic_pointer_cast<EquipmentItem>(targetIt->second);
 	if (weapon == nullptr || !ItemTableData::IsWeapon(weapon->GetItemTableId()))
-		return outcome;   // 무기 강화 주문서는 무기에만(방어구·장신구는 대상이 아니다)
+		return outcome;   // 각인 두루마리는 무기에만(방어구·장신구는 대상이 아니다)
 
 	const uint8_t before = weapon->GetEnchant();
 	if (before >= EnchantRule::kMaxLevel)
-		return outcome;  // 최대 강화 — 주문서를 소모하지 않는다
+		return outcome;  // 최대 강화 — 두루마리를 소모하지 않는다
 
 	// ── 여기부터는 실패할 수 없다: 판정 → 메모리 반영 → DB 한 트랜잭션 ──
 	outcome.itemId      = weapon->GetItemTableId();
@@ -678,14 +678,14 @@ Inventory::EnchantOutcome Inventory::TryEnchant(uint16_t scrollSlot, uint16_t ta
 	const bool blessed = scrollRow->effectValue != 0;
 	const bool success = roll100 < EnchantRule::SuccessPercent(before);
 
-	// 주문서 1장 소모
+	// 두루마리 1장 소모
 	scrollIt->second->RemoveCount(1);
 	if (scrollIt->second->GetCount() == 0)
 		_slots.erase(scrollIt);
 
 	if (success)
 	{
-		// 축복받은 주문서: 안전 구간에서는 +1~3, 안전 구간을 넘는 단계는 +1만(리니지와 같음)
+		// 축성된 두루마리: 안전 구간에서는 +1~3, 안전 구간을 넘는 단계는 +1만(리니지와 같음)
 		uint8_t step = 1;
 		if (blessed && before < EnchantRule::kSafeLevel)
 			step = static_cast<uint8_t>(1 + bonusRoll % 3);
@@ -710,7 +710,7 @@ Inventory::EnchantOutcome Inventory::TryEnchant(uint16_t scrollSlot, uint16_t ta
 	if (outcome.wasEquipped)
 		RecomputeOffensive();
 
-	// 주문서 슬롯과 무기 슬롯을 한 트랜잭션으로 저장한다.
+	// 두루마리 슬롯과 무기 슬롯을 한 트랜잭션으로 저장한다.
 	SaveTwoSlotsToDB(scrollSlot, targetSlot);
 	return outcome;
 }

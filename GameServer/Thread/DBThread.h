@@ -53,7 +53,7 @@ public:
 
 	// ── 리니지풍 컨텐츠 확장 ──
 	// 셋 다 playerId 샤드로 간다(인벤토리 슬롯 저장과 같은 샤드) — 한 플레이어의
-	// 아데나/슬롯/성향치 변경이 넣은 순서 그대로 커밋된다. 값은 절대값(최신 상태)이다.
+	// 그로시/슬롯/성향치 변경이 넣은 순서 그대로 커밋된다. 값은 절대값(최신 상태)이다.
 	void RequestSaveAdena(int playerId, uint32_t adena);
 	void RequestShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot);
 	void RequestSaveAlignment(int playerId, int16_t alignment, uint16_t pkCount);

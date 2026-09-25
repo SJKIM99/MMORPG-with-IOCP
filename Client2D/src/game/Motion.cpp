@@ -184,7 +184,7 @@ namespace motion
 		const Vector2 target = V(x, y);
 		if (duration <= 0.0)
 		{
-			// 순간이동형(공간 도약·그림자 돌진): 몸은 바로 옮기고 카메라는 미끄러지게 둔다
+			// 순간이동형(옛길 도약·그늘 걸음): 몸은 바로 옮기고 카메라는 미끄러지게 둔다
 			m_segFrom = m_segTo = m_logical = m_visual = target;
 			m_segT0 = m_segT1 = now;
 			m_velocity = Vector2{ 0, 0 };

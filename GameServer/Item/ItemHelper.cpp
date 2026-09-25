@@ -123,7 +123,7 @@ namespace ItemHelper
 			return;
 		}
 
-		// 아데나는 슬롯이 아니라 지갑으로 간다. 지갑은 가득 찰 일이 사실상 없으므로
+		// 그로시는 슬롯이 아니라 지갑으로 간다. 지갑은 가득 찰 일이 사실상 없으므로
 		// (상한 20억) 실패 경로 없이 필드에서 지우고 끝낸다.
 		if (const ItemTableRow* row = ItemTable::Find(target->GetItemTableId()); row != nullptr && row->type == ItemType::eCurrency)
 		{

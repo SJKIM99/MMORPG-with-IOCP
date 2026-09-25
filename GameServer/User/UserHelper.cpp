@@ -806,12 +806,12 @@ namespace UserHelper
 			const int t = std::clamp(tier, 1, 5);
 			switch (cls)
 			{
-			case ClassId::RuneCaster:
+			case ClassId::Engraver:
 			{
 				static constexpr ItemTableId kStaff[6] = { 19, 19, 21, 22, 23, 24 };
 				return kStaff[t];
 			}
-			case ClassId::ShadowHunter:
+			case ClassId::NightHunter:
 			{
 				static constexpr ItemTableId kDagger[6] = { 20, 20, 25, 26, 27, 28 };
 				return kDagger[t];
@@ -825,14 +825,14 @@ namespace UserHelper
 			}
 		}
 
-		// 예전 표가 굴린 무기가 내 직업 무기 종류가 아니면(룬술사에게 검 등) 60% 확률로
+		// 예전 표가 굴린 무기가 내 직업 무기 종류가 아니면(각인술사에게 검 등) 60% 확률로
 		// 같은 단계의 직업 무기로 바꿔 준다 — "주울 만한 것"이 더 자주 떨어지게.
 		ItemTableId MaybeClassSwap(ItemTableId id, ClassId cls)
 		{
 			const ItemTableRow* row = ItemTableData::Find(id);
 			if (row == nullptr || ItemTableData::SlotOf(*row) != EquipSlot::Weapon)
 				return id;
-			const WeaponKind want = cls == ClassId::RuneCaster ? WeaponKind::Staff : (cls == ClassId::ShadowHunter ? WeaponKind::Dagger : WeaponKind::None);
+			const WeaponKind want = cls == ClassId::Engraver ? WeaponKind::Staff : (cls == ClassId::NightHunter ? WeaponKind::Dagger : WeaponKind::None);
 			if (want == WeaponKind::None || row->weaponKind == want)
 				return id;
 			return (LRng() % 100u) < 60u ? ClassWeaponFor(cls, row->tier) : id;
@@ -893,7 +893,7 @@ namespace UserHelper
 	// HandleAttack/SkillAttack -> 여기), 그 전제 위에서만 성립하는
 	// ItemHelper::SpawnFieldItem을 안전하게 바로 호출할 수 있다.
 	//
-	// 확장: 종족별 드롭 테이블(DropTable 번호)과 굴림 횟수(보스는 여러 번), 아데나 드롭.
+	// 확장: 종족별 드롭 테이블(DropTable 번호)과 굴림 횟수(보스는 여러 번), 그로시 드롭.
 	void HandleItemDrop(const shared_ptr<User>& attacker, const MonsterTableRow* species, short x, short y)
 	{
 		int tileIndex = 0;
@@ -912,12 +912,12 @@ namespace UserHelper
 		const int tier = species == nullptr ? 1 : (species->dropTable >= 1 && species->dropTable <= 5 ? species->dropTable : 5);
 		const bool boss = species != nullptr && species->boss;
 
-		// 아데나 — 리니지처럼 바닥에 떨어진 "물건"이고, 주우면 지갑으로 들어간다.
+		// 그로시 — 리니지처럼 바닥에 떨어진 "물건"이고, 주우면 지갑으로 들어간다.
 		if (species != nullptr && species->adenaMax > 0 && (LRng() % 100) < species->adenaChance)
 		{
 			std::uniform_int_distribution<uint32_t> amountRoll(species->adenaMin, species->adenaMax);
 			uint32_t rolled = amountRoll(LRng);
-			if (v2 && attacker->m_gearEx.adenaFind > 0)   // 장비 옵션 "아데나 획득"
+			if (v2 && attacker->m_gearEx.adenaFind > 0)   // 장비 옵션 "그로시 획득"
 				rolled = rolled * (100u + attacker->m_gearEx.adenaFind) / 100u;
 			const uint16_t amount = static_cast<uint16_t>(std::min<uint32_t>(rolled, 65535));
 			if (amount > 0)
@@ -1371,7 +1371,7 @@ namespace UserHelper
 		{
 			SendSERVER_CONFIG_INF(player);
 			SendITEM_LIST_EX_ACK(player);
-			// 리니지의 "초보자 지원" — 물약/주문서/무기/아데나를 쥐여 준다.
+			// 리니지의 "초보자 지원" — 물약/두루마리/무기/그로시를 쥐여 준다.
 			ContentHelper::GiveStarterKit(player);
 			player->RecomputeStats(true);
 			SendUSER_INFO_EX_INF(player);

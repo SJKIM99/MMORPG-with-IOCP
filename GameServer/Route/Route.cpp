@@ -70,7 +70,7 @@ namespace Route
 			if (p->direction > 7)
 				break;
 
-			// 이동 쿨타임: 기본 500ms, 초록 물약(가속) 중에는 더 짧다.
+			// 이동 쿨타임: 기본 500ms, 바람걸음 물약(가속) 중에는 더 짧다.
 			const uint32_t now = GetNowTime();
 			if (now > client->m_lastMoveTime + client->GetMoveCooldown(now))
 			{
@@ -291,7 +291,7 @@ namespace Route
 			auto* p = reinterpret_cast<const ITEM_USE_REQ_PACKET*>(packet);
 			const uint32_t now = GetNowTime();
 
-			// 회복 물약이 아닌 소비 아이템(주문서/초록 물약)은 효과가 인벤토리 밖에서
+			// 회복 물약이 아닌 소비 아이템(두루마리/바람걸음 물약)은 효과가 인벤토리 밖에서
 			// 일어나므로 별도 경로로 보낸다. 쿨타임도 물약(5초)과 따로 잰다.
 			ItemEffect effect = ItemEffect::eNone;
 			{
@@ -315,7 +315,7 @@ namespace Route
 				break;
 			}
 
-			// 회복 물약이 아니면(빈 슬롯/장비/강화 주문서 등) 쿨타임을 소모하지 않고 바로 실패
+			// 회복 물약이 아니면(빈 슬롯/장비/각인 두루마리 등) 쿨타임을 소모하지 않고 바로 실패
 			if (effect != ItemEffect::eHeal)
 			{
 				UserHelper::SendITEM_USE_ACK(client, p->slotIndex, false);

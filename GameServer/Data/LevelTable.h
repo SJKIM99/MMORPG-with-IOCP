@@ -88,7 +88,7 @@ namespace CombatRule
 	inline constexpr uint32_t kAttackCooldownMs     = 500;
 	inline constexpr uint32_t kSkillCooldownMs      = 5000;
 	inline constexpr uint32_t kPotionCooldownMs     = 5000;  // 기존 물약 쿨타임 그대로
-	inline constexpr uint32_t kScrollCooldownMs     = 1000;  // 주문서/초록 물약
+	inline constexpr uint32_t kScrollCooldownMs     = 1000;  // 두루마리/바람걸음 물약
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,16 +130,16 @@ namespace EnchantRule
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 성향치(라우풀/카오틱)와 PK
+// 성향치(명예/악명)와 PK
 // ─────────────────────────────────────────────────────────────────────────────
 namespace AlignmentRule
 {
 	inline constexpr int16_t kMax           = 32767;
 	inline constexpr int16_t kMin           = -32768;
-	inline constexpr int16_t kLawfulLine    = 500;    // 이 이상이면 라우풀(파란 이름)
+	inline constexpr int16_t kLawfulLine    = 500;    // 이 이상이면 명예(파란 이름)
 	inline constexpr int16_t kPkPenalty     = 1000;   // 무고한 플레이어를 죽이면 이만큼 떨어진다
-	inline constexpr uint32_t kPurpleDurationMs = 60'000;  // 먼저 공격하면 보라돌이(정당방위 대상)
-	inline constexpr uint32_t kChaoticDropPercent = 40;    // 카오틱 사망 시 아이템 드롭 확률
+	inline constexpr uint32_t kPurpleDurationMs = 60'000;  // 먼저 공격하면 적대(정당방위 대상)
+	inline constexpr uint32_t kChaoticDropPercent = 40;    // 악명 사망 시 아이템 드롭 확률
 
 	enum class NameColor : uint8_t { eNeutral, eLawful, eChaotic, ePurple };
 

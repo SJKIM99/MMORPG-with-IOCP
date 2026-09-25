@@ -90,8 +90,8 @@ namespace
 		}
 
 		const uint32_t now = GetNowTime();
-		// 무고한 대상 = 보라돌이도 아니고 카오틱도 아닌 플레이어. 이런 대상을 먼저 치면
-		// 공격자가 보라돌이가 되어, 상대가 반격해도 상대에게 페널티가 없다(정당방위).
+		// 무고한 대상 = 적대도 아니고 악명도 아닌 플레이어. 이런 대상을 먼저 치면
+		// 공격자가 적대가 되어, 상대가 반격해도 상대에게 페널티가 없다(정당방위).
 		const bool victimInnocent = !victim->IsPurple(now) && victim->GetAlignment() >= 0;
 		if (victimInnocent)
 		{
@@ -182,7 +182,7 @@ namespace
 		if (!victim->GetStat()->IsDead())
 			return;
 
-		// 무고한 플레이어를 죽이면 PK — 성향치가 크게 떨어지고 카오틱(빨간 이름)이 된다.
+		// 무고한 플레이어를 죽이면 PK — 성향치가 크게 떨어지고 악명(빨간 이름)이 된다.
 		if (victimInnocent)
 		{
 			const int16_t before = attacker->GetAlignment();
@@ -287,7 +287,7 @@ namespace ContentHelper
 			}
 		}
 
-		// 카오틱(성향치 음수)은 죽을 때 소지품을 떨어뜨릴 수 있다 — 장착 중인 장비도 예외가 아니다.
+		// 악명(성향치 음수)은 죽을 때 소지품을 떨어뜨릴 수 있다 — 장착 중인 장비도 예외가 아니다.
 		if (victim->GetAlignment() < 0 && (LRng() % 100) < AlignmentRule::kChaoticDropPercent)
 		{
 			const uint32_t roll = static_cast<uint32_t>(LRng());
@@ -323,7 +323,7 @@ namespace ContentHelper
 		const MonsterTableRow* species = monster->GetSpecies();
 		const uint8_t level = species != nullptr ? species->level : 1;
 
-		// 사냥으로 성향치가 오른다(라우풀 회복 — 카오틱도 사냥으로 속죄할 수 있다).
+		// 사냥으로 성향치가 오른다(명예 회복 — 악명도 사냥으로 속죄할 수 있다).
 		const int16_t before = killer->GetAlignment();
 		if (before < AlignmentRule::kMax)
 		{
@@ -542,9 +542,9 @@ namespace ContentHelper
 		using namespace ItemTableData::Id;
 		auto inventory = player->GetInventory();
 
-		// 직업별 초보자 무기(기사 나무 검 / 룬술사 지팡이 / 사냥꾼 단검)
+		// 직업별 초보자 무기(서약기사 목검 / 각인술사 지팡이 / 사냥꾼 단검)
 		std::vector<uint16_t> touched;
-		const ItemTableId weapon = player->IsExtended() ? ClassTable::Get(player->m_classId).starterWeapon : WoodenSword;
+		const ItemTableId weapon = player->IsExtended() ? ClassTable::Get(player->m_classId).starterWeapon : PracticeSword;
 		if (inventory->TryAddItem(weapon, 1, &touched) && !touched.empty())
 			(void)inventory->TryEquip(touched.front());
 
@@ -559,11 +559,11 @@ namespace ContentHelper
 			}
 		}
 
-		(void)inventory->TryAddItem(HealthPotion, 20);
+		(void)inventory->TryAddItem(HerbPotion, 20);
 		(void)inventory->TryAddItem(ReturnScroll, 3);
-		(void)inventory->TryAddItem(TeleportScroll, 2);
-		(void)inventory->TryAddItem(HastePotion, 2);
-		(void)inventory->TryAddItem(EnchantScroll, 1);
+		(void)inventory->TryAddItem(OldwayScroll, 2);
+		(void)inventory->TryAddItem(WindstepPotion, 2);
+		(void)inventory->TryAddItem(EngravingScroll, 1);
 		(void)inventory->AddAdena(1000, AdenaReason::Init);
 	}
 

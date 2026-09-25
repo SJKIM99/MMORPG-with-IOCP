@@ -424,7 +424,7 @@ namespace sfx
 				Noise(b, 0.05f, 0.9f, Const(260), 0.7f, 0.05f, 3.f);
 				Load(Id::Execute, b, 0.95f);
 			}
-			// 룬술사 — 마력·원소
+			// 각인술사 — 마력·원소
 			{
 				Buf b(0.2f);
 				Tone(b, 0, 0.16f, Osc::Sine, ExpSweep(1500, 620), 0.8f, 0.002f, 16.f);
@@ -479,7 +479,7 @@ namespace sfx
 					Noise(b, Rand(0.1f, 1.1f), 0.02f, Const(5000), Rand(0.15f, 0.45f), 0.f, 150.f, 1200.f);
 				Load(Id::MeteorImpact, b, 1.f);
 			}
-			// 그림자 사냥꾼 — 날카롭고 가볍게
+			// 밤사냥꾼 — 날카롭고 가볍게
 			{
 				Buf b(0.24f);
 				Noise(b, 0, 0.07f, Sweep(2000, 6000), 1.f, 0.005f, 30.f, 1200.f);

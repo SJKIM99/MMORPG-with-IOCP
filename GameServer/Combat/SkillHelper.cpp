@@ -20,7 +20,7 @@ namespace
 	using namespace CombatHelper;
 
 	constexpr uint32_t kCooldownGraceMs = 60;    // 네트워크 지터 여유
-	constexpr uint32_t kRuneDelayMs = 1000;      // 공간 도약이 남긴 룬이 터지기까지
+	constexpr uint32_t kRuneDelayMs = 1000;      // 옛길 도약이 남긴 각인이 터지기까지
 
 	int Cheb(int ax, int ay, int bx, int by) { return (std::max)(std::abs(ax - bx), std::abs(ay - by)); }
 	int Sign(int v) { return (v > 0) - (v < 0); }
@@ -214,7 +214,7 @@ namespace
 		{
 		// ── 기본 공격 ─────────────────────────────────────────────
 		case 1:   // 검격
-		case 7:   // 룬 탄환
+		case 7:   // 각인탄
 		{
 			auto target = ResolveEnemy(u, targetId);
 			if (!target) return;
@@ -243,10 +243,10 @@ namespace
 			return;
 		}
 
-		// ── 황혼의 기사 ───────────────────────────────────────────
+		// ── 서약기사 ───────────────────────────────────────────
 		case 2:   // 방패 강타
 		case 15:  // 독 칼날
-		case 6:   // 황혼의 처형(예고 뒤)
+		case 6:   // 단죄(예고 뒤)
 		{
 			auto target = ResolveEnemy(u, targetId);
 			if (!target) return;
@@ -260,7 +260,7 @@ namespace
 		}
 		case 3:   // 회전 베기
 		case 9:   // 화염 고리
-		case 18:  // 월영 난무
+		case 18:  // 그믐 베기
 		{
 			auto targets = MonstersAround(u, ux, uy, row.radius);
 			if (row.id == 18)
@@ -359,9 +359,9 @@ namespace
 			ApplyStatus(u, StatusId::Guard, row.statusMs, 1, u->GetObjID());
 			return;
 
-		// ── 룬술사 ───────────────────────────────────────────────
-		case 8:   // 빙결 인장
-		case 12:  // 혜성 낙하(예고 뒤)
+		// ── 각인술사 ───────────────────────────────────────────────
+		case 8:   // 서리 각인
+		case 12:  // 낙성(예고 뒤)
 		{
 			for (auto& m : MonstersAround(u, tx, ty, row.radius))
 			{
@@ -372,7 +372,7 @@ namespace
 			}
 			return;
 		}
-		case 10:  // 공간 도약 — 도착은 시전 때 끝났다. 여기는 떠난 자리의 룬 폭발.
+		case 10:  // 옛길 도약 — 도착은 시전 때 끝났다. 여기는 떠난 자리의 각인 폭발.
 		{
 			UserHelper::BroadcastEffect(u, u->GetObjID(), EffectId::RuneExplosion, tx, ty, row.radius);
 			for (auto& m : MonstersAround(u, tx, ty, row.radius))
@@ -384,7 +384,7 @@ namespace
 			}
 			return;
 		}
-		case 11:  // 번개 폭발 — 대상에서 주변으로 연쇄
+		case 11:  // 벼락 사슬 — 대상에서 주변으로 연쇄
 		{
 			auto first = ResolveEnemy(u, targetId);
 			if (!first) return;
@@ -419,8 +419,8 @@ namespace
 			return;
 		}
 
-		// ── 그림자 사냥꾼 ─────────────────────────────────────────
-		case 14:  // 그림자 돌진 — 대상의 등 뒤로
+		// ── 밤사냥꾼 ─────────────────────────────────────────
+		case 14:  // 그늘 걸음 — 대상의 등 뒤로
 		{
 			auto target = ResolveEnemy(u, targetId);
 			if (!target) return;
@@ -530,7 +530,7 @@ namespace SkillHelper
 				return fail(SkillResult::OutOfRange);
 			if (row->id == 10)
 			{
-				// 공간 도약: 도착 칸이 걸을 수 있어야 한다. 막혔으면 가까운 쪽으로 당긴다.
+				// 옛길 도약: 도착 칸이 걸을 수 있어야 한다. 막혔으면 가까운 쪽으로 당긴다.
 				int dx = Sign(tx - ux), dy = Sign(ty - uy);
 				int bx = ux, by = uy;
 				for (int i = 0; i < row->dash; ++i)
@@ -575,7 +575,7 @@ namespace SkillHelper
 		short landX = tx, landY = ty;
 		if (row->id == 10)
 		{
-			// 공간 도약은 시전 즉시 이동, 떠난 자리에 룬(예약)
+			// 옛길 도약은 시전 즉시 이동, 떠난 자리에 각인(예약)
 			BroadcastCast(u, row->id, targetId, static_cast<short>(ux), static_cast<short>(uy), landX, landY, 0);
 			MovePlayerTo(u, landX, landY, 0);
 			User::PendingImpact impact{ ++u->m_impactSeq, row->id, ObjID{}, static_cast<short>(ux), static_cast<short>(uy) };
@@ -613,7 +613,7 @@ namespace SkillHelper
 		const SkillRow* row = SkillTable::Find(impact.skillId);
 		if (!row)
 			return;
-		// 예고 중 기절하면 취소(처형) — 혜성·룬은 이미 떨어지는 중이라 그대로
+		// 예고 중 기절하면 취소(단죄) — 낙성·각인은 이미 떨어지는 중이라 그대로
 		if (row->id == 6 && u->Status().BlocksAttack(GetNowTime()))
 			return;
 		Execute(u, *row, impact.target, impact.x, impact.y);

@@ -275,12 +275,12 @@ void Game::OnPacket(const char* data, uint16_t size)
 			sfx::Play(sfx::Id::Coin, 0.9f);
 			if (Entity* me = Self())
 			{
-				fx::Fx().FloatText(TileToIso(me->pos), actors::PlayerHeight() + 10.f, "+" + texts::Number(p.delta) + " 아데나", Rgb(0xFFD84A), 20.f);
+				fx::Fx().FloatText(TileToIso(me->pos), actors::PlayerHeight() + 10.f, "+" + texts::Number(p.delta) + " 그로시", Rgb(0xE8E4DA), 19.f);
 				fx::Fx().CoinBurst(TileToIso(me->pos), std::clamp(p.delta / 20, 3, 12));
 			}
 		}
 		else if (reason == AdenaReason::Teleport && p.delta < 0)
-			AddChat("텔레포트 비용 " + texts::Number(-p.delta) + " 아데나를 지불했습니다.", Rgb(0xC8B070));
+			AddChat("옛길 이동 비용 " + texts::Number(-p.delta) + " 그로시를 치렀습니다.", Rgb(0xC8B070));
 		else if (reason == AdenaReason::Quest && p.delta > 0)
 		{
 			sfx::Play(sfx::Id::Coin, 0.8f);
@@ -325,12 +325,12 @@ void Game::OnPacket(const char* data, uint16_t size)
 		if (kind == ShopKind::Buy)
 		{
 			sfx::Play(sfx::Id::Buy);
-			AddChat(texts::ItemName(p.itemId) + " ×" + std::to_string(p.count) + " 구매 (" + texts::Number(-p.adenaDelta) + " 아데나)", Rgb(0xC8E0A0));
+			AddChat(texts::ItemName(p.itemId) + " ×" + std::to_string(p.count) + " 구매 (" + texts::Number(-p.adenaDelta) + " 그로시)", Rgb(0xC8E0A0));
 		}
 		else if (kind == ShopKind::Sell)
 		{
 			sfx::Play(sfx::Id::Coin);
-			AddChat(texts::ItemName(p.itemId) + " ×" + std::to_string(p.count) + " 판매 (+" + texts::Number(p.adenaDelta) + " 아데나)", Rgb(0xC8E0A0));
+			AddChat(texts::ItemName(p.itemId) + " ×" + std::to_string(p.count) + " 판매 (+" + texts::Number(p.adenaDelta) + " 그로시)", Rgb(0xC8E0A0));
 			m_sellSlot = -1;
 		}
 		else
@@ -456,19 +456,19 @@ void Game::OnPacket(const char* data, uint16_t size)
 		if (!As(data, size, p)) break;
 		const auto code = static_cast<WorldNoticeCode>(p.code);
 		const std::string text = texts::WorldNotice(code, p.param1, p.param2, FixedStr(p.name, NAME_SIZE));
-		Color c = Rgb(0xFFD070);
+		Color c = ui::theme::kDawn;
 		switch (code)
 		{
-		case WorldNoticeCode::BossSpawned: c = Rgb(0xFF6A5A); sfx::Play(sfx::Id::BossRoar, 0.5f); break;
-		case WorldNoticeCode::BossKilled: c = Rgb(0xFFD070); sfx::Play(sfx::Id::Notice); break;
-		case WorldNoticeCode::EnchantSuccess: c = Rgb(0xA8D8FF); sfx::Play(sfx::Id::Notice, 0.7f); break;
-		case WorldNoticeCode::PlayerKilled: c = Rgb(0xFF4A4A); sfx::Play(sfx::Id::Notice, 0.6f); break;
+		case WorldNoticeCode::BossSpawned: c = ui::theme::kEmber; sfx::Play(sfx::Id::BossRoar, 0.5f); break;
+		case WorldNoticeCode::BossKilled: c = ui::theme::kDawn; sfx::Play(sfx::Id::Notice); break;
+		case WorldNoticeCode::EnchantSuccess: c = ui::theme::kOldway; sfx::Play(sfx::Id::Notice, 0.7f); break;
+		case WorldNoticeCode::PlayerKilled: c = ui::theme::kBad; sfx::Play(sfx::Id::Notice, 0.6f); break;
 		case WorldNoticeCode::RareLoot:
 			c = icons::RarityColor(static_cast<Rarity>(std::clamp<int>(p.param2, 0, static_cast<int>(Rarity::Count) - 1)));
 			sfx::Play(sfx::Id::LootMythic, 0.45f);
 			break;
 		case WorldNoticeCode::StoryComplete:
-			c = Rgb(0xFFE6A8);
+			c = Rgb(0xF2DEB8);
 			if (FixedStr(p.name, NAME_SIZE) != m_playerName) sfx::Play(sfx::Id::Heartbeat, 0.5f, 0.f);
 			break;
 		}
@@ -856,8 +856,8 @@ void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 		{
 			m_cam.AddTrauma(0.3f);
 			m_cam.Kick(0.05f);
-			AddBanner("LEVEL UP!  Lv." + std::to_string(p.param), Rgb(0xFFD66A), 3.5f);
-			fx::Fx().FloatText(iso, actors::PlayerHeight() + 20.f, "LEVEL UP!", Rgb(0xFFE08A), 30.f, 1.8f);
+			AddBanner("레벨 " + std::to_string(p.param), ui::theme::kDawn, 3.5f);
+			fx::Fx().FloatText(iso, actors::PlayerHeight() + 20.f, "LEVEL UP", Rgb(0xF2C47C), 30.f, 1.8f, ui::Face::Latin);
 		}
 		break;
 	case EffectId::PotionHeal:
@@ -891,7 +891,7 @@ void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 		if (subj) subj->castT = 0.f;
 		PlayAt(static_cast<int>(sfx::Id::SlamWarn), tile, 1.f, 0.f);
 		if (Cheb(m_predX, m_predY, p.x, p.y) <= radius)
-			AddCenter("붉은 장판에서 벗어나세요!", Rgb(0xFF6A5A));
+			AddCenter("바닥의 붉은 표식에서 벗어나세요!", Rgb(0xE8705E));
 		break;
 	}
 	case EffectId::BossSlamImpact:
@@ -964,7 +964,7 @@ void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 	case EffectId::ProcGuardian:
 		skillfx::OnServerEffect(id, subj ? TileToIso(subj->pos) : iso, p.param);
 		PlayAt(static_cast<int>(sfx::Id::GuardUp), tile, 0.6f);
-		if (self) AddCenter("수호의 맹세 — 철벽 태세!", Rgb(0xFFD870));
+		if (self) AddCenter("서약의 방패 — 철벽 태세", Rgb(0xE8C890));
 		break;
 	case EffectId::ProcEmber:
 		skillfx::OnServerEffect(id, iso, p.param);

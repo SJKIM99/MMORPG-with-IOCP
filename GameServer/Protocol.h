@@ -74,9 +74,9 @@ enum class SystemMessageCode : uint16_t
 	// ── 이하 확장 프로토콜(USER_LOGIN_EX_REQ로 접속한 세션)에만 보낸다 ──────────
 	// 레거시 클라이언트/STRESS_TEST 봇은 아래 코드를 받을 일이 없다.
 	ExpLost,             // 사망으로 경험치 감소. param1=잃은 양
-	NotEnoughAdena,      // param1=필요 아데나, param2=보유 아데나
+	NotEnoughAdena,      // param1=필요 그로시, param2=보유 그로시
 	SafeZoneNoCombat,    // 안전지대에서는 공격할 수 없음
-	ItemDroppedOnDeath,  // 카오틱 사망으로 아이템을 떨어뜨림. param1=ItemTableId, param2=강화 수치
+	ItemDroppedOnDeath,  // 악명 사망으로 아이템을 떨어뜨림. param1=ItemTableId, param2=강화 수치
 	BecamePurple,        // 먼저 공격해 보라색 이름이 됨(정당방위 대상). param1=지속 ms
 	BecameChaotic,       // PK로 성향치가 음수가 됨. param1=현재 성향치
 	HasteStart,          // param1=지속 초
@@ -87,7 +87,7 @@ enum class SystemMessageCode : uint16_t
 	TargetInvalid,       // 공격/강화 대상이 없거나 잘못됨
 	TargetTooFar,        // 대상이 너무 멀리 있음
 	ItemCooldown,        // param1=남은 ms
-	CannotUseHere,       // 여기서는 사용할 수 없음(예: 마을에서 순간이동 주문서)
+	CannotUseHere,       // 여기서는 사용할 수 없음(예: 마을에서 옛길 두루마리)
 	AlignmentRecovered,  // 성향치가 다시 0 이상이 됨. param1=현재 성향치
 };
 
@@ -115,7 +115,7 @@ enum class EffectId : uint16_t
 	BossSpawn,        // subject=보스
 	// V2
 	DiscoverRegion,   // param=지역(zoneId) — 새 지역 발견(본인에게)
-	RuneExplosion,    // x/y=중심 — 공간 도약이 남긴 룬 폭발
+	RuneExplosion,    // x/y=중심 — 옛길 도약이 남긴 각인 폭발
 	SteamBurst,       // x/y=중심 — 증발 폭발
 	Counter,          // subject=반격한 기사
 	WallSlam,         // x/y=부딪힌 칸
@@ -123,11 +123,11 @@ enum class EffectId : uint16_t
 	PriestHeal,       // subject=치유받은 플레이어, param=회복량
 	// V2 아이템 특수 효과(Data/ItemRules.h ItemProc) — subject=장비 주인, x/y=효과 위치
 	ProcThunder,      // 천둥의 일격(벼락이 떨어진 칸)
-	ProcLifesteal,    // 피의 갈증(param=회복량)
+	ProcLifesteal,    // 생명 흡수(param=회복량)
 	ProcFrost,        // 서리 손길(x/y=대상)
 	ProcExecute,      // 처형자(x/y=대상)
 	ProcEcho,         // 메아리(x/y=대상)
-	ProcGuardian,     // 수호의 맹세(주인)
+	ProcGuardian,     // 서약의 방패(주인)
 	ProcEmber,        // 잔불(x/y=대상)
 	ProcVenom,        // 맹독(x/y=대상)
 };
@@ -140,7 +140,7 @@ enum class WorldNoticeCode : uint16_t
 	EnchantSuccess,   // param1=ItemTableId, param2=강화 수치, name=플레이어
 	PlayerKilled,     // param1=지역, name=PK한 플레이어
 	RareLoot,         // V2: param1=ItemTableId, param2=희귀도(Rarity), name=주운 플레이어 — 신화 획득
-	StoryComplete,    // V2: param1=퀘스트 id(메인 이야기 마지막), name=플레이어 — 숲의 심장이 다시 뛴다
+	StoryComplete,    // V2: param1=퀘스트 id(메인 이야기 마지막), name=플레이어 — 하르벤이 다시 뛴다
 };
 
 enum class PacketType : uint16_t
@@ -197,13 +197,13 @@ enum class PacketType : uint16_t
 	USER_LOGIN_EX_REQ,        // 확장 로그인: 이 세션은 확장 패킷을 받는다
 	USER_RESTART_REQ,         // 사망 상태에서 마을로 리스타트
 	USER_TARGET_ATTACK_REQ,   // 대상 지정 공격(몬스터/플레이어 공통, PK 포함)
-	ITEM_ENCHANT_REQ,         // 무기 강화 주문서 사용
+	ITEM_ENCHANT_REQ,         // 각인 두루마리 사용
 	SHOP_BUY_REQ,
 	SHOP_SELL_REQ,
 	NPC_TELEPORT_REQ,
 
 	// Server → Client (확장 세션에만)
-	USER_INFO_EX_INF,         // 내 확장 정보(아데나/성향치/공격력/다음 레벨 경험치 등)
+	USER_INFO_EX_INF,         // 내 확장 정보(그로시/성향치/공격력/다음 레벨 경험치 등)
 	SUBJECT_INFO_EX_NFY,      // 주변 플레이어의 레벨/성향치/상태/무기 강화 수치
 	ITEM_LIST_EX_ACK,         // 강화 수치를 포함한 인벤토리 전체 스냅샷
 	ITEM_SLOT_EX_INF,         // 슬롯 하나의 최신 상태(모든 슬롯 변경에서 전송)
@@ -721,7 +721,7 @@ struct ITEM_SLOT_EX_DATA
 // SUBJECT_INFO_EX_NFY.flags / USER_INFO_EX_INF.flags
 enum SubjectExFlag : uint8_t
 {
-	SUBJECT_EX_PURPLE  = 1 << 0,   // 보라돌이(먼저 공격함)
+	SUBJECT_EX_PURPLE  = 1 << 0,   // 적대(먼저 공격함)
 	SUBJECT_EX_HASTE   = 1 << 1,   // 가속 중
 	SUBJECT_EX_DEAD    = 1 << 2,
 	SUBJECT_EX_SAFE    = 1 << 3,   // 안전지대 안
@@ -791,7 +791,7 @@ struct ADENA_INF_PACKET
 
 enum class EnchantResult : uint8_t
 {
-	Invalid,       // 요청 자체가 잘못됨(주문서/대상 없음, 최대 강화 등) — 아무 것도 소모되지 않음
+	Invalid,       // 요청 자체가 잘못됨(두루마리/대상 없음, 최대 강화 등) — 아무 것도 소모되지 않음
 	Success,
 	Evaporated,    // 실패 — 무기가 증발했다
 };

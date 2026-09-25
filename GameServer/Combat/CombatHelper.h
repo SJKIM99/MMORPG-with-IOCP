@@ -34,7 +34,7 @@ namespace CombatHelper
 
 	// 플레이어 → 몬스터(방어 적용 후 UserHelper::AttackMonster로 처치·보상까지). 방어 적용 후 피해를 돌려준다.
 	uint32_t HitMonster(const std::shared_ptr<User>& attacker, const std::shared_ptr<Monster>& monster, uint32_t damage, const HitCtx& ctx);
-	// V2 장비 특수 효과(Data/ItemRules.h) — 기술 적중 뒤(피의 갈증·천둥·메아리·서리·잔불·맹독)
+	// V2 장비 특수 효과(Data/ItemRules.h) — 기술 적중 뒤(생명 흡수·천둥·메아리·서리·잔불·맹독)
 	void ApplyGearProcs(const std::shared_ptr<User>& attacker, uint16_t skillId, bool basic, DamageKind kind,
 		const std::shared_ptr<Monster>& monster, uint32_t dealt, uint8_t hitIndex);
 	// 몬스터 → 확장 세션 플레이어(회피·방어·철벽 태세·반격). 죽었으면 true.
@@ -47,7 +47,7 @@ namespace CombatHelper
 
 	// 넉백 — 몬스터를 (fromX, fromY) 반대쪽으로 tiles칸 민다. 벽에 막히면 outWall.
 	bool Knockback(const std::shared_ptr<Monster>& target, int fromX, int fromY, int tiles, bool& outWall);
-	// 서버가 옮기는 플레이어 이동(돌진·도약·그림자 돌진). 걸음 시간 stepMs로 보간.
+	// 서버가 옮기는 플레이어 이동(돌진·도약·그늘 걸음). 걸음 시간 stepMs로 보간.
 	bool MovePlayerTo(const std::shared_ptr<User>& player, short x, short y, uint32_t stepMs);
 
 	// 자원·능력치 알림(확장 세션)

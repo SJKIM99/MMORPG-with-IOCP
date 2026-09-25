@@ -1,11 +1,72 @@
 #include "ui/Font.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
-#include <algorithm>
+
+// stb_truetype(공개 도메인, v1.26)를 이 번역 단위 안에서만 쓴다(STBTT_STATIC).
+// raylib도 내부에 같은 라이브러리를 static으로 넣어 두었으므로 이름이 부딪히지 않는다.
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+#include "third_party/stb_truetype.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 namespace ui
 {
+	namespace
+	{
+		// 크기 기준: 예전 본문 글꼴(나눔스퀘어라운드)의 줄 상자. size px 줄 상자에서 em은
+		// size × 0.905, 기준선은 위에서 size × 0.769. 계열이 바뀌어도 화면 배치가 그대로다.
+		constexpr float kEmRatio = 1000.f / 1105.f;
+		constexpr float kBaselineRatio = 850.f / 1105.f;
+
+		struct FaceSpec
+		{
+			const char* file;
+			float scale;        // em 배율(한글 · 숫자 높이를 본문과 맞춘다)
+			float shift;        // 기준선 보정(기준 em 단위, + = 아래로) — 세로 중심을 본문과 맞춘다
+			float gamma;        // 커버리지 곡선(< 1 = 조금 더 또렷하게)
+			bool  tabular;      // 숫자를 고정폭으로
+			std::array<Face, 5> chain;   // 폴백 순서(자기 자신 포함, Count = 끝)
+		};
+
+		constexpr Face N = Face::Count;
+		// Face 열거 순서와 같아야 한다.
+		constexpr FaceSpec kSpecs[] =
+		{
+			{ "Pretendard-Medium.ttf",        1.00f, 0.000f, 0.85f, false, { Face::Body, Face::Symbol, N, N, N } },
+			{ "Pretendard-SemiBold.ttf",      1.00f, 0.000f, 0.88f, false, { Face::Strong, Face::Body, Face::Symbol, N, N } },
+			{ "Pretendard-Bold.ttf",          1.00f, 0.000f, 0.90f, false, { Face::Bold, Face::Strong, Face::Body, Face::Symbol, N } },
+			{ "GowunBatang-Bold.ttf",         0.97f, 0.060f, 0.85f, false, { Face::Display, Face::Strong, Face::Body, Face::Symbol, N } },
+			{ "GowunBatang-Regular.ttf",      0.97f, 0.060f, 0.80f, false, { Face::Serif, Face::Display, Face::Body, Face::Symbol, N } },
+			{ "BarlowCondensed-SemiBold.ttf", 1.12f, 0.046f, 0.90f, true,  { Face::Number, Face::Bold, Face::Body, Face::Symbol, N } },
+			{ "BarlowCondensed-ExtraBold.ttf",1.12f, 0.046f, 0.90f, true,  { Face::NumberBold, Face::Number, Face::Bold, Face::Body, Face::Symbol } },
+			{ "Marcellus-Regular.ttf",        1.00f, 0.000f, 0.85f, false, { Face::Latin, Face::Display, Face::Body, Face::Symbol, N } },
+			{ "NanumSquareRoundB.ttf",        1.00f, 0.000f, 0.90f, false, { Face::Symbol, Face::Body, N, N, N } },
+		};
+		static_assert(sizeof(kSpecs) / sizeof(kSpecs[0]) == static_cast<size_t>(Face::Count), "Face와 kSpecs 순서/개수가 맞아야 한다");
+	}
+
+	struct FontSystem::FaceData
+	{
+		unsigned char* data = nullptr;
+		int dataSize = 0;
+		stbtt_fontinfo info{};
+		bool ok = false;
+		int digitAdvance = 0;              // 숫자 중 가장 넓은 전진 폭(글꼴 단위)
+		std::array<unsigned char, 256> lut{};
+	};
+
+	FontSystem::FontSystem() = default;
+	FontSystem::~FontSystem() = default;
+
 	FontSystem& Fonts()
 	{
 		static FontSystem instance;
@@ -47,10 +108,41 @@ namespace ui
 		s.erase(i);
 	}
 
-	bool FontSystem::Init(const std::string& path)
+	bool FontSystem::Init(const std::string& dir)
 	{
-		m_fontData = LoadFileData(path.c_str(), &m_fontDataSize);
-		return m_fontData != nullptr;
+		m_faces.assign(static_cast<size_t>(Face::Count), FaceData{});
+		bool any = false;
+		for (size_t i = 0; i < m_faces.size(); ++i)
+		{
+			FaceData& f = m_faces[i];
+			const FaceSpec& spec = kSpecs[i];
+			const std::string path = dir + "/" + spec.file;
+			if (!FileExists(path.c_str()))
+				continue;
+			f.data = LoadFileData(path.c_str(), &f.dataSize);
+			if (f.data == nullptr)
+				continue;
+			const int offset = stbtt_GetFontOffsetForIndex(f.data, 0);
+			if (offset < 0 || !stbtt_InitFont(&f.info, f.data, offset))
+			{
+				UnloadFileData(f.data);
+				f.data = nullptr;
+				continue;
+			}
+			f.ok = true;
+			any = true;
+			for (int d = '0'; d <= '9'; ++d)
+			{
+				int adv = 0, lsb = 0;
+				stbtt_GetCodepointHMetrics(&f.info, d, &adv, &lsb);
+				f.digitAdvance = std::max(f.digitAdvance, adv);
+			}
+			for (int a = 0; a < 256; ++a)
+				f.lut[a] = static_cast<unsigned char>(std::lround(255.0 * std::pow(a / 255.0, spec.gamma)));
+		}
+		m_faceStack.clear();
+		m_ready = any;
+		return any;
 	}
 
 	void FontSystem::Shutdown()
@@ -59,10 +151,16 @@ namespace ui
 			UnloadTexture(page.tex);
 		m_pages.clear();
 		m_glyphs.clear();
-		if (m_fontData)
-			UnloadFileData(m_fontData);
-		m_fontData = nullptr;
+		for (auto& f : m_faces)
+			if (f.data) UnloadFileData(f.data);
+		m_faces.clear();
+		m_ready = false;
 	}
+
+	void FontSystem::PushFace(Face f) { m_faceStack.push_back(f == Face::Inherit ? CurrentFace() : f); }
+	void FontSystem::PopFace() { if (!m_faceStack.empty()) m_faceStack.pop_back(); }
+	Face FontSystem::CurrentFace() const { return m_faceStack.empty() ? Face::Body : m_faceStack.back(); }
+	Face FontSystem::Resolve(Face f) const { return (f == Face::Inherit || f >= Face::Count) ? CurrentFace() : f; }
 
 	bool FontSystem::Allocate(int w, int h, int& outPage, int& outX, int& outY)
 	{
@@ -105,77 +203,109 @@ namespace ui
 		return true;
 	}
 
-	const FontSystem::Glyph& FontSystem::GetGlyph(int size, int codepoint)
+	bool FontSystem::Rasterize(int faceIndex, int size, int codepoint, Glyph& out)
 	{
-		const uint64_t key = (static_cast<uint64_t>(size) << 32) | static_cast<uint32_t>(codepoint);
-		auto it = m_glyphs.find(key);
-		if (it != m_glyphs.end())
-			return it->second;
+		if (faceIndex < 0 || faceIndex >= static_cast<int>(m_faces.size()))
+			return false;
+		FaceData& f = m_faces[faceIndex];
+		if (!f.ok)
+			return false;
+		const int gi = stbtt_FindGlyphIndex(&f.info, codepoint);
+		if (gi == 0)
+			return false;
+		const FaceSpec& spec = kSpecs[faceIndex];
+		const float emPx = static_cast<float>(size) * kEmRatio * spec.scale;
+		const float sc = stbtt_ScaleForMappingEmToPixels(&f.info, emPx);
 
-		Glyph glyph;
-		int cp = codepoint;
-		GlyphInfo* info = LoadFontData(m_fontData, m_fontDataSize, size, &cp, 1, FONT_DEFAULT);
-		if (info != nullptr)
+		int adv = 0, lsb = 0;
+		stbtt_GetGlyphHMetrics(&f.info, gi, &adv, &lsb);
+		out = Glyph{};
+		out.advance = static_cast<float>(adv) * sc;
+		float tabShift = 0.f;
+		if (spec.tabular && codepoint >= '0' && codepoint <= '9')
 		{
-			glyph.offX = static_cast<float>(info->offsetX);
-			glyph.offY = static_cast<float>(info->offsetY);
-			glyph.advance = static_cast<float>(info->advanceX);
-			if (glyph.advance <= 0)
-				glyph.advance = static_cast<float>(info->image.width);
+			const float tab = static_cast<float>(f.digitAdvance) * sc;
+			tabShift = (tab - out.advance) * 0.5f;
+			out.advance = tab;
+		}
 
-			const int w = info->image.width;
-			const int h = info->image.height;
-			int page = -1, x = 0, y = 0;
-			if (w > 0 && h > 0 && info->image.data != nullptr && Allocate(w, h, page, x, y))
+		int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+		stbtt_GetGlyphBitmapBox(&f.info, gi, sc, sc, &x0, &y0, &x1, &y1);
+		const int w = x1 - x0, h = y1 - y0;
+		const float baseline = static_cast<float>(size) * kBaselineRatio + spec.shift * static_cast<float>(size) * kEmRatio;
+		out.offX = static_cast<float>(x0) + tabShift;
+		out.offY = baseline + static_cast<float>(y0);
+
+		if (w > 0 && h > 0)
+		{
+			std::vector<unsigned char> bmp(static_cast<size_t>(w) * h);
+			stbtt_MakeGlyphBitmap(&f.info, bmp.data(), w, h, w, sc, sc, gi);
+			int page = -1, px = 0, py = 0;
+			if (Allocate(w, h, page, px, py))
 			{
-				// GRAYSCALE → RGBA(흰색 + 커버리지 알파)
+				// 흰색 + 커버리지 알파(계열별 곡선). 색은 그릴 때 tint로 준다.
 				std::vector<unsigned char> rgba(static_cast<size_t>(w) * h * 4);
-				const unsigned char* src = static_cast<const unsigned char*>(info->image.data);
 				for (int i = 0; i < w * h; ++i)
 				{
 					rgba[i * 4 + 0] = 255;
 					rgba[i * 4 + 1] = 255;
 					rgba[i * 4 + 2] = 255;
-					rgba[i * 4 + 3] = src[i];
+					rgba[i * 4 + 3] = f.lut[bmp[i]];
 				}
-				UpdateTextureRec(m_pages[page].tex, Rectangle{ (float)x, (float)y, (float)w, (float)h }, rgba.data());
-				glyph.page = page;
-				glyph.src = Rectangle{ (float)x, (float)y, (float)w, (float)h };
+				UpdateTextureRec(m_pages[page].tex, Rectangle{ (float)px, (float)py, (float)w, (float)h }, rgba.data());
+				out.page = page;
+				out.src = Rectangle{ (float)px, (float)py, (float)w, (float)h };
 			}
-			UnloadFontData(info, 1);
 		}
+		return true;
+	}
 
-		// 폰트에 없는 글자는 '?'로 대체(무한 재귀 방지)
-		if (glyph.advance <= 0 && codepoint != '?')
-			return m_glyphs[key] = GetGlyph(size, '?');
+	const FontSystem::Glyph& FontSystem::GetGlyph(Face face, int size, int codepoint)
+	{
+		const uint64_t key = (static_cast<uint64_t>(face) << 48) | (static_cast<uint64_t>(size & 0xFFFF) << 32) | static_cast<uint32_t>(codepoint);
+		auto it = m_glyphs.find(key);
+		if (it != m_glyphs.end())
+			return it->second;
 
+		Glyph glyph;
+		bool found = false;
+		for (Face f : kSpecs[static_cast<size_t>(face)].chain)
+		{
+			if (f == Face::Count) break;
+			if (Rasterize(static_cast<int>(f), size, codepoint, glyph)) { found = true; break; }
+		}
+		// 어느 글꼴에도 없는 글자는 '?'로 대체(무한 재귀 방지)
+		if (!found && codepoint != '?')
+			return m_glyphs[key] = GetGlyph(face, size, '?');
 		return m_glyphs[key] = glyph;
 	}
 
-	Vector2 FontSystem::Measure(std::string_view text, float size, float spacing)
+	Vector2 FontSystem::Measure(std::string_view text, float size, float spacing, Face face)
 	{
-		if (!m_fontData) return { 0, 0 };
+		if (!IsReady()) return { 0, 0 };
+		const Face f = Resolve(face);
 		const int isize = std::max(4, static_cast<int>(std::lround(size)));
 		static thread_local std::vector<int> cps;
 		DecodeUtf8(text, cps);
 		float w = 0.f;
 		for (int cp : cps)
-			w += GetGlyph(isize, cp).advance + spacing;
+			w += GetGlyph(f, isize, cp).advance + spacing;
 		if (!cps.empty()) w -= spacing;
 		return { w, static_cast<float>(isize) };
 	}
 
-	float FontSystem::DrawRun(std::string_view text, Vector2 pos, int isize, float spacing, Color color)
+	float FontSystem::DrawRun(std::string_view text, Vector2 pos, Face face, int isize, float spacing, Color color)
 	{
 		static thread_local std::vector<int> cps;
 		DecodeUtf8(text, cps);
 		float x = pos.x;
 		for (int cp : cps)
 		{
-			const Glyph& g = GetGlyph(isize, cp);
+			const Glyph& g = GetGlyph(face, isize, cp);
 			if (g.page >= 0)
 			{
-				const Rectangle dst{ std::floor(x + g.offX), std::floor(pos.y + g.offY), g.src.width, g.src.height };
+				// 정수 픽셀에 맞춰 찍는다(힌팅 없는 래스터라이저라 반 픽셀 위치면 번진다)
+				const Rectangle dst{ std::round(x + g.offX), std::round(pos.y + g.offY), g.src.width, g.src.height };
 				DrawTexturePro(m_pages[g.page].tex, g.src, dst, Vector2{ 0, 0 }, 0.f, color);
 			}
 			x += g.advance + spacing;
@@ -185,21 +315,22 @@ namespace ui
 
 	float FontSystem::Draw(std::string_view text, Vector2 pos, const TextStyle& style)
 	{
-		if (!m_fontData || text.empty()) return 0.f;
+		if (!IsReady() || text.empty()) return 0.f;
+		const Face face = Resolve(style.face);
 		const int isize = std::max(4, static_cast<int>(std::lround(style.size)));
 
 		if (style.shadow > 0.f)
-			DrawRun(text, Vector2{ pos.x + style.shadow, pos.y + style.shadow }, isize, style.spacing, style.shadowColor);
+			DrawRun(text, Vector2{ pos.x + style.shadow, pos.y + style.shadow }, face, isize, style.spacing, style.shadowColor);
 
 		if (style.outline > 0.f)
 		{
 			const float o = style.outline;
 			static constexpr float dirs[8][2] = { {1,0},{-1,0},{0,1},{0,-1},{.7f,.7f},{-.7f,.7f},{.7f,-.7f},{-.7f,-.7f} };
 			for (const auto& d : dirs)
-				DrawRun(text, Vector2{ pos.x + d[0] * o, pos.y + d[1] * o }, isize, style.spacing, style.outlineColor);
+				DrawRun(text, Vector2{ pos.x + d[0] * o, pos.y + d[1] * o }, face, isize, style.spacing, style.outlineColor);
 		}
 
-		return DrawRun(text, pos, isize, style.spacing, style.color);
+		return DrawRun(text, pos, face, isize, style.spacing, style.color);
 	}
 
 	float FontSystem::Draw(std::string_view text, Vector2 pos, float size, Color color)
@@ -212,7 +343,7 @@ namespace ui
 
 	void FontSystem::DrawCentered(std::string_view text, Vector2 center, const TextStyle& style)
 	{
-		const Vector2 m = Measure(text, style.size, style.spacing);
+		const Vector2 m = Measure(text, style.size, style.spacing, style.face);
 		Draw(text, Vector2{ center.x - m.x * 0.5f, center.y - m.y * 0.5f }, style);
 	}
 }

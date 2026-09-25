@@ -62,6 +62,9 @@ endif()
 
 target_link_libraries(Client2D PRIVATE raylib)
 if(WIN32)
+    # 실행 파일 아이콘 · 버전 정보(res/app.rc → res/harven.ico)
+    enable_language(RC)
+    target_sources(Client2D PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/res/app.rc)
     target_link_libraries(Client2D PRIVATE ws2_32 imm32 winmm opengl32)
     target_compile_definitions(Client2D PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
@@ -80,6 +83,6 @@ else()
     endif()
 endif()
 
-# 폰트 등 에셋을 실행 파일 옆으로 복사
+# 폰트 · 그림 · 아이콘 등 에셋을 실행 파일 옆으로 복사
 add_custom_command(TARGET Client2D POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:Client2D>/assets)

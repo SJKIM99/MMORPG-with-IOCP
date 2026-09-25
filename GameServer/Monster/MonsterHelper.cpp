@@ -917,7 +917,7 @@ namespace MonsterHelper
 		Monster::PatternState st = monster->m_pattern;
 		monster->m_pattern.pending = false;
 		const uint32_t now = GetNowTime();
-		// 예고 중에 기절/빙결시키면 끊긴다 — 방패 강타·빙결 인장으로 받아칠 수 있다.
+		// 예고 중에 기절/빙결시키면 끊긴다 — 방패 강타·서리 각인으로 받아칠 수 있다.
 		if (monster->Status().BlocksAttack(now) || monster->Status().BlocksMove(now))
 		{
 			SendTelegraph(monster, TelegraphShape::Circle, st.cx, st.cy, st.fromX, st.fromY, 0, 0, st.type);   // 취소

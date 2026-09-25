@@ -184,18 +184,18 @@ struct DB_ITEM_SAVE_TWO_EVENT : DB_EVENT_BASE
 
 // ── 리니지풍 컨텐츠 확장 DB 이벤트 ─────────────────────────────────────────────
 // 전부 playerId 기준 샤드로 보낸다 — 인벤토리 슬롯 저장과 같은 샤드라서, 한
-// 플레이어의 "아데나 변경"과 "슬롯 변경"이 넣은 순서 그대로 커밋된다.
+// 플레이어의 "그로시 변경"과 "슬롯 변경"이 넣은 순서 그대로 커밋된다.
 // 값은 항상 델타가 아니라 절대값(메모리의 최신 상태)을 싣는다: 메모리가 권위이고
 // DB는 그 저널이므로, 마지막으로 커밋된 이벤트가 곧 최신 상태가 된다.
 
-// 아데나 획득(줍기) 등, 슬롯 변화 없이 지갑만 바뀐 경우.
+// 그로시 획득(줍기) 등, 슬롯 변화 없이 지갑만 바뀐 경우.
 struct DB_ADENA_SAVE_EVENT : DB_EVENT_BASE
 {
 	int      playerId = 0;
 	uint32_t adena    = 0;
 };
 
-// 상점 구매/판매: 아데나와 슬롯 하나를 "하나의 SQL 트랜잭션"으로 반영한다.
+// 상점 구매/판매: 그로시와 슬롯 하나를 "하나의 SQL 트랜잭션"으로 반영한다.
 // 따로 저장하면 그 사이에 서버가 죽었을 때 "돈은 나갔는데 물건이 없음" 또는
 // "물건은 들어왔는데 돈이 그대로"(=복사) 상태가 DB에 영구히 남는다.
 struct DB_SHOP_TX_EVENT : DB_EVENT_BASE
@@ -233,7 +233,7 @@ enum TIMER_EVENT_TYPE
 	// 리니지풍 컨텐츠 확장
 	EV_BOSS_SKILL_CAST,       // 보스 광역기 예고
 	EV_BOSS_SKILL_IMPACT,     // 보스 광역기 적중(예고 1.2초 뒤)
-	EV_PURPLE_EXPIRE,         // 보라돌이 해제 확인
+	EV_PURPLE_EXPIRE,         // 적대 해제 확인
 	EV_HASTE_EXPIRE,          // 가속 해제 확인
 	// V2 전투
 	EV_SKILL_IMPACT,          // 예고 뒤 스킬 판정(targetId.DatabaseID = 예약 번호)

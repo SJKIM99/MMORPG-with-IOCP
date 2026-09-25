@@ -24,10 +24,10 @@ namespace
 			// 표시 이름은 클라이언트가 그대로 그리므로 비어 있으면 안 된다.
 			if (rows[i].displayName == nullptr || rows[i].displayName[0] == '\0')
 				return false;
-			// 장비는 스택 불가, 아데나는 슬롯에 들어가지 않으므로 효과를 갖지 않는다.
+			// 장비는 스택 불가, 그로시는 슬롯에 들어가지 않으므로 효과를 갖지 않는다.
 			if (rows[i].type == ItemType::eEquipment && rows[i].maxStack != 1)
 				return false;
-			// 매입가가 판매가보다 높으면 "사서 되팔기"로 아데나를 무한 복사할 수 있다.
+			// 매입가가 판매가보다 높으면 "사서 되팔기"로 그로시를 무한 복사할 수 있다.
 			if (rows[i].buyPrice != 0 && rows[i].sellPrice > rows[i].buyPrice)
 				return false;
 

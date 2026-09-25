@@ -32,7 +32,7 @@ namespace icons
 		{
 			float len = 38.f, width = 7.f, grip = 11.f, guard = 16.f;
 			Color blade{}, edge{}, guardCol{}, grip2{};
-			int style = 0;   // 0 곧은 검, 1 카타나, 2 단검, 3 목검, 4 대검, 5 화염검, 6 집행검, 7 지팡이
+			int style = 0;   // 0 곧은 검, 1 곡도, 2 단검, 3 목검, 4 대검, 5 잉걸 장검, 6 칼둔의 처형검, 7 지팡이
 			Color glow{ 0, 0, 0, 0 };
 		};
 
@@ -123,7 +123,7 @@ namespace icons
 				gfx::Ellipse(Vector2{ o.x + 24, o.y + y }, 4, 7, paperDark);
 				gfx::Ellipse(Vector2{ o.x + 104, o.y + y }, 4, 7, Shade(paperDark, 0.85f));
 			}
-			// 글자/룬
+			// 글자/각인
 			const Color ink = runeStyle >= 2 ? Rgb(0xB0782A) : Rgb(0x6A5A4A);
 			for (int i = 0; i < 4; ++i)
 			{
@@ -215,7 +215,7 @@ namespace icons
 			switch (g.style)
 			{
 			case 0:   // 두건
-			case 4:   // 별빛 두건
+			case 4:   // 이레린 두건
 			{
 				// 뒤로 흘러내리는 천 + 둥근 머리 + 어두운 얼굴 구멍
 				gfx::Quad4(Vector2{ c.x - 30, c.y - 4 }, Vector2{ c.x + 30, c.y - 4 }, Vector2{ c.x + 36, c.y + 42 }, Vector2{ c.x - 36, c.y + 42 },
@@ -251,7 +251,7 @@ namespace icons
 				break;
 			}
 			case 2:   // 기사의 투구(닫힌 면갑 + 깃털)
-			case 3:   // 여명의 투구(날개)
+			case 3:   // 서약의 투구(날개)
 			{
 				if (g.style == 3)
 				{
@@ -570,7 +570,7 @@ namespace icons
 			const Vector2 c{ o.x + 64, o.y + 68 };
 			switch (icon)
 			{
-			case 1:   // 빛나는 이끼
+			case 1:   // 빛 잃은 이끼
 			{
 				IconShadow(o, 40);
 				gfx::CircleGrad(c, 58, Rgb(0xB8FF7A, 110), Rgb(0xB8FF7A, 0));
@@ -627,22 +627,38 @@ namespace icons
 					gfx::Star(Vector2{ c.x - 30 + i * 20.f, c.y - 36 + (i % 2) * 12.f }, 1.5f, 6.f, 4, 0.f, Rgb(0xE8FFF8));
 				break;
 			}
-			case 5:   // 성물 조각(금빛 수정 파편)
+			case 5:   // 호박빛 수액(하르벤의 수액 — 굳어 가는 방울)
 			{
-				IconShadow(o, 34);
-				gfx::CircleGrad(c, 56, Rgb(0xFFE08A, 120), Rgb(0xFFE08A, 0));
-				const Vector2 a{ c.x - 6, c.y - 44 }, b{ c.x + 26, c.y - 6 }, d{ c.x + 8, c.y + 40 }, e{ c.x - 26, c.y + 20 }, f{ c.x - 24, c.y - 14 };
-				const Vector2 pts[] = { a, b, d, e, f };
-				gfx::Poly(pts, 5, Rgb(0xC8962A));
-				gfx::Tri(a, b, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xFFE89A));
-				gfx::Tri(a, f, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xF2C860));
-				gfx::Tri(f, e, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xD8A040));
-				gfx::Tri(b, d, Vector2{ c.x + 2, c.y - 2 }, Rgb(0xE8B850));
-				gfx::Line(a, Vector2{ c.x + 2, c.y - 2 }, 1.5f, Rgb(0xFFFFE0));
-				gfx::Star(Vector2{ c.x - 8, c.y - 24 }, 2.f, 10.f, 4, 0.f, Rgb(0xFFFFFF));
+				IconShadow(o, 32);
+				gfx::CircleGrad(Vector2{ c.x, c.y + 10 }, 54, Rgb(0xE8A04A, 90), Rgb(0xE8A04A, 0));
+				// 방울: 아래는 둥글고 위는 뾰족하다
+				auto drop = [&](Vector2 at, float r, Color col)
+				{
+					std::vector<Vector2> pts;
+					for (int i = 0; i <= 16; ++i)
+					{
+						const float t = util::kPi * (i / 16.f);
+						pts.push_back(Vector2{ at.x + std::cos(t) * r, at.y + std::sin(t) * r });
+					}
+					pts.push_back(Vector2{ at.x - r * 0.72f, at.y - r * 0.7f });
+					pts.push_back(Vector2{ at.x, at.y - r * 2.1f });
+					pts.push_back(Vector2{ at.x + r * 0.72f, at.y - r * 0.7f });
+					gfx::Poly(pts.data(), static_cast<int>(pts.size()), col);
+				};
+				drop(Vector2{ c.x + 1, c.y + 18 }, 30.f, Rgb(0x7A3E12));
+				drop(Vector2{ c.x - 1, c.y + 15 }, 28.f, Rgb(0xC8742A));
+				drop(Vector2{ c.x - 3, c.y + 13 }, 20.f, Rgb(0xE8A04A));
+				// 속에 갇힌 작은 잎맥 — 하르벤의 것이라는 표시
+				gfx::Line(Vector2{ c.x - 2, c.y + 26 }, Vector2{ c.x - 2, c.y + 2 }, 2.f, Rgb(0x8A4A1A, 200));
+				gfx::Line(Vector2{ c.x - 2, c.y + 12 }, Vector2{ c.x - 10, c.y + 4 }, 1.6f, Rgb(0x8A4A1A, 200));
+				gfx::Line(Vector2{ c.x - 2, c.y + 16 }, Vector2{ c.x + 7, c.y + 9 }, 1.6f, Rgb(0x8A4A1A, 200));
+				gfx::Ellipse(Vector2{ c.x - 12, c.y + 4 }, 6, 11, Rgb(0xFFE0A8, 200));
+				gfx::Circle(Vector2{ c.x - 12, c.y }, 2.2f, Rgb(0xFFFFF0));
+				// 떨어진 작은 방울
+				drop(Vector2{ c.x + 30, c.y + 34 }, 7.f, Rgb(0xC8742A));
 				break;
 			}
-			case 6:   // 녹슨 기사 문장(방패)
+			case 6:   // 녹슨 기사단 문장(방패)
 			{
 				IconShadow(o, 34);
 				const Vector2 pts[] = { { c.x - 34, c.y - 36 }, { c.x + 34, c.y - 36 }, { c.x + 32, c.y + 4 }, { c.x, c.y + 44 }, { c.x - 32, c.y + 4 } };
@@ -683,7 +699,7 @@ namespace icons
 				gfx::Circle(Vector2{ c.x, c.y + 24 }, 5, Rgb(0xFFFFE0));
 				break;
 			}
-			case 8:   // 룬이 새겨진 돌
+			case 8:   // 각인 조약돌
 			{
 				IconShadow(o, 40);
 				gfx::Ellipse(Vector2{ c.x, c.y + 8 }, 42, 34, Rgb(0x3A3E48));
@@ -779,7 +795,7 @@ namespace icons
 		// 칼날
 		switch (s.style)
 		{
-		case 7:  // 지팡이 — 나무 자루 + 끝의 룬 수정
+		case 7:  // 지팡이 — 나무 자루 + 끝의 각인 수정
 		{
 			const float sw = std::max(1.5f, w * 1.1f);
 			gfx::Line(P(hilt, d, n, -grip, 0), P(base, d, n, len * 0.92f, 0), sw * 1.5f, s.blade);
@@ -799,7 +815,7 @@ namespace icons
 			gfx::Tri(q[0], q[1], q[2], Shade(s.edge, 1.35f));
 			return;
 		}
-		case 1:  // 카타나 — 가늘고 살짝 휜 날
+		case 1:  // 곡도 — 가늘고 살짝 휜 날
 		{
 			const int seg = 8;
 			for (int i = 0; i < seg; ++i)
@@ -816,7 +832,7 @@ namespace icons
 			gfx::Circle(base, gw * 0.5f, Shade(s.guardCol, 1.6f));
 			return;
 		}
-		case 6:  // 집행검 — 넓고 끝이 비스듬히 잘린 날
+		case 6:  // 처형검 — 넓고 끝이 비스듬히 잘린 날
 		{
 			const Vector2 q[5] = { P(base, d, n, 0, -w * 0.8f), P(base, d, n, len * 0.95f, -w * 1.2f), P(base, d, n, len, w * 0.2f), P(base, d, n, len * 0.8f, w * 1.1f), P(base, d, n, 0, w * 0.8f) };
 			gfx::Poly(q, 5, s.blade);
@@ -990,7 +1006,7 @@ namespace icons
 		if (!row) return WHITE;
 		if (row->type == ItemType::eCurrency) return Rgb(0xFFD84A);
 		if (row->type == ItemType::eEquipment) return RarityColor(ItemRules::EffectiveRarity(*row, extra));
-		if (row->id == ItemTableData::Id::BlessedEnchant) return Rgb(0xFFE070);
+		if (row->id == ItemTableData::Id::ConsecratedScroll) return Rgb(0xFFE070);
 		return Rgb(0xE8E4DA);
 	}
 

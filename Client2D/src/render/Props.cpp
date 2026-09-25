@@ -776,7 +776,7 @@ namespace props
 			gfx::Face({ x0, y1 + 0.01f, h * 0.55f }, { x1, y1 + 0.01f, h * 0.55f }, { x1, y1 + 0.01f, h * 0.55f + 0.1f }, { x0, y1 + 0.01f, h * 0.55f + 0.1f }, beam);
 			gfx::Face({ x1 + 0.01f, y0, h * 0.55f }, { x1 + 0.01f, y1, h * 0.55f }, { x1 + 0.01f, y1, h * 0.55f + 0.1f }, { x1 + 0.01f, y0, h * 0.55f + 0.1f }, util::Shade(beam, 0.8f));
 		}
-		// 신전 기둥
+		// 예배당 기둥
 		if (b.kind == BuildingKind::eTemple)
 		{
 			for (float x = x0 + 0.6f; x < x1 - 0.3f; x += 1.2f)
@@ -840,7 +840,7 @@ namespace props
 			if (b.kind == BuildingKind::eWeaponShop)
 				g_lights.push_back({ gfx::IsoPx(x1 + 0.5f, y1 + 0.5f), 140.f, Rgb(0xFF8A30), 0.8f });
 		}
-		// 신전 종탑
+		// 예배당 종탑
 		if (b.kind == BuildingKind::eTemple)
 		{
 			const float cx = x0 + 1.2f, cy = (y0 + y1) * 0.5f;

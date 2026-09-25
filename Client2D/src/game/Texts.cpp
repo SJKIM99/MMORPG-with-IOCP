@@ -102,34 +102,34 @@ namespace texts
 		{
 		case SystemMessageCode::InventoryFull:
 			important = true;
-			return "인벤토리가 가득 차서 " + Josa(ItemName(static_cast<uint16_t>(p1)), "을", "를") + " 얻지 못했습니다.";
+			return "소지품이 가득 차서 " + Josa(ItemName(static_cast<uint16_t>(p1)), "을", "를") + " 얻지 못했습니다.";
 		case SystemMessageCode::ExpLost:
 			return "사망하여 경험치 " + Josa(Number(p1), "을", "를") + " 잃었습니다.";
 		case SystemMessageCode::NotEnoughAdena:
 			important = true;
-			return "아데나가 부족합니다. (필요 " + Number(p1) + " / 보유 " + Number(p2) + ")";
+			return "그로시가 부족합니다. (필요 " + Number(p1) + " / 보유 " + Number(p2) + ")";
 		case SystemMessageCode::SafeZoneNoCombat:
 			important = true;
 			return "마을 안에서는 싸울 수 없습니다.";
 		case SystemMessageCode::ItemDroppedOnDeath:
 			important = true;
-			return "카오틱 상태로 쓰러져 " + Josa(ItemNameEnchanted(static_cast<uint16_t>(p1), p2), "을", "를") + " 떨어뜨렸습니다!";
+			return "악명 상태로 쓰러져 " + Josa(ItemNameEnchanted(static_cast<uint16_t>(p1), p2), "을", "를") + " 떨어뜨렸습니다.";
 		case SystemMessageCode::BecamePurple:
 			important = true;
-			return Fmt("먼저 공격하여 보라색 이름이 되었습니다. %d초 동안은 반격을 받아도 상대에게 벌칙이 없습니다.", p1 / 1000);
+			return Fmt("먼저 공격하여 적대 상태가 되었습니다. %d초 동안은 반격을 받아도 상대에게 벌칙이 없습니다.", p1 / 1000);
 		case SystemMessageCode::BecameChaotic:
 			important = true;
-			return "무고한 자를 쓰러뜨려 카오틱이 되었습니다. (성향치 " + Number(p1) + ")";
+			return "무고한 자를 쓰러뜨려 악명을 얻었습니다. (성향 " + Number(p1) + ")";
 		case SystemMessageCode::HasteStart:
-			return Fmt("몸이 가벼워졌습니다! (%d초)", p1);
+			return Fmt("몸이 가벼워졌습니다. (%d초)", p1);
 		case SystemMessageCode::HasteEnd:
-			return "가속 효과가 사라졌습니다.";
+			return "바람걸음이 끝났습니다.";
 		case SystemMessageCode::ReturnedToTown:
 			return JosaRo(std::string(WorldData::kTownName)) + " 귀환했습니다.";
 		case SystemMessageCode::Teleported:
-			return JosaRo(RegionName(p1)) + " 순간이동했습니다.";
+			return JosaRo(RegionName(p1)) + " 옛길 이동했습니다.";
 		case SystemMessageCode::LevelUp:
-			return Fmt("레벨이 올랐습니다! (Lv.%d)", p1);
+			return Fmt("레벨이 올랐습니다. (Lv.%d)", p1);
 		case SystemMessageCode::TargetInvalid:
 			return "대상이 올바르지 않습니다.";
 		case SystemMessageCode::TargetTooFar:
@@ -141,7 +141,7 @@ namespace texts
 			return "여기서는 사용할 수 없습니다.";
 		case SystemMessageCode::AlignmentRecovered:
 			important = true;
-			return "성향치가 회복되었습니다. (성향치 " + Number(p1) + ")";
+			return "성향이 회복되었습니다. (성향 " + Number(p1) + ")";
 		}
 		return "알 수 없는 알림";
 	}
@@ -168,7 +168,7 @@ namespace texts
 		{
 		case WeaponKind::Sword:      return "한손검";
 		case WeaponKind::Greatsword: return "양손검";
-		case WeaponKind::Katana:     return "도";
+		case WeaponKind::Saber:      return "곡도";
 		case WeaponKind::Dagger:     return "단검";
 		case WeaponKind::Staff:      return "지팡이";
 		default:                     return "무기";
@@ -227,17 +227,17 @@ namespace texts
 		{
 		case WorldNoticeCode::RareLoot:
 			return Josa(name, "이", "가") + " " + ItemRules::RarityName(static_cast<Rarity>(p2)) + " 등급 "
-				+ Josa(ItemName(static_cast<uint16_t>(p1)), "을", "를") + " 손에 넣었습니다!";
+				+ Josa(ItemName(static_cast<uint16_t>(p1)), "을", "를") + " 손에 넣었습니다.";
 		case WorldNoticeCode::BossSpawned:
-			return RegionName(p2) + "에 " + Josa(MonsterName(static_cast<uint16_t>(p1)), "이", "가") + " 나타났습니다!";
+			return RegionName(p2) + "에 " + Josa(MonsterName(static_cast<uint16_t>(p1)), "이", "가") + " 나타났습니다.";
 		case WorldNoticeCode::BossKilled:
-			return Josa(name, "이", "가") + " " + RegionName(p2) + "의 " + Josa(MonsterName(static_cast<uint16_t>(p1)), "을", "를") + " 쓰러뜨렸습니다!";
+			return Josa(name, "이", "가") + " " + RegionName(p2) + "의 " + Josa(MonsterName(static_cast<uint16_t>(p1)), "을", "를") + " 쓰러뜨렸습니다.";
 		case WorldNoticeCode::EnchantSuccess:
-			return Josa(name, "이", "가") + " " + Josa(ItemNameEnchanted(static_cast<uint16_t>(p1), p2), "을", "를") + " 만들어 냈습니다!";
+			return Josa(name, "이", "가") + " " + Josa(ItemNameEnchanted(static_cast<uint16_t>(p1), p2), "을", "를") + " 만들어 냈습니다.";
 		case WorldNoticeCode::PlayerKilled:
 			return RegionName(p1) + "에서 " + Josa(name, "이", "가") + " 무고한 자를 쓰러뜨렸습니다.";
 		case WorldNoticeCode::StoryComplete:
-			return Josa(name, "이", "가") + " 숲의 심장을 다시 뛰게 했습니다! 긴 밤 끝에 새벽이 옵니다.";
+			return Josa(name, "이", "가") + " 하르벤을 다시 뛰게 했습니다. 긴 밤 끝에 새벽이 옵니다.";
 		}
 		return "";
 	}
@@ -247,9 +247,9 @@ namespace texts
 		switch (result)
 		{
 		case ShopResult::Success:
-			return kind == ShopKind::Buy ? "구매했습니다." : (kind == ShopKind::Sell ? "판매했습니다." : "순간이동합니다.");
+			return kind == ShopKind::Buy ? "구매했습니다." : (kind == ShopKind::Sell ? "판매했습니다." : "옛길로 이동합니다.");
 		case ShopResult::Duplicate:      return "이미 처리된 요청입니다.";
-		case ShopResult::NotEnoughAdena: return "아데나가 부족합니다.";
+		case ShopResult::NotEnoughAdena: return "그로시가 부족합니다.";
 		case ShopResult::InventoryFull:  return "인벤토리에 빈 칸이 없습니다.";
 		case ShopResult::TooFar:         return "상인과 너무 멀리 떨어져 있습니다.";
 		case ShopResult::InvalidItem:    return kind == ShopKind::Sell ? "그 물건은 팔 수 없습니다." : "그 물건은 여기서 팔지 않습니다.";

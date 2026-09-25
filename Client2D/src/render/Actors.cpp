@@ -273,7 +273,7 @@ namespace actors
 		look.enchant = enchant;
 		switch (cls)
 		{
-		case 1:   // 룬술사: 짙은 로브 + 이름마다 다른 룬 빛
+		case 1:   // 각인술사: 짙은 로브 + 이름마다 다른 각인 빛
 		{
 			static const Color robes[] = { Rgb(0x2A3468), Rgb(0x3A2A5A), Rgb(0x1E3A4A), Rgb(0x2E2A3E), Rgb(0x3A3050) };
 			static const Color runes[] = { Rgb(0x6AD8FF), Rgb(0xB08AFF), Rgb(0x7AF0C8), Rgb(0xFFC870) };
@@ -282,7 +282,7 @@ namespace actors
 			look.armor = Rgb(0xB8A07A);
 			break;
 		}
-		case 2:   // 그림자 사냥꾼: 검은 가죽 + 스카프 색
+		case 2:   // 밤사냥꾼: 검은 가죽 + 스카프 색
 		{
 			static const Color scarves[] = { Rgb(0x9A2A3A), Rgb(0x5A3A9A), Rgb(0x2A6A5A), Rgb(0x7A6A2A), Rgb(0x3A4A8A) };
 			look.cloth = scarves[nameHash % 5];
@@ -290,7 +290,7 @@ namespace actors
 			look.trim = Rgb(0xB88AFF);
 			break;
 		}
-		default:  // 황혼의 기사: 강철 + 저녁노을 망토
+		default:  // 서약기사: 강철 + 저녁노을 망토
 		{
 			static const Color cloths[] = { Rgb(0x8A3A2A), Rgb(0xA8582A), Rgb(0x6A2A3A), Rgb(0x3A4A8A), Rgb(0x7A5A2A), Rgb(0x4A2A5A) };
 			static const Color armors[] = { Rgb(0xA0AABA), Rgb(0xB8A888), Rgb(0x8A96A8), Rgb(0xC0C4CC), Rgb(0x9A8A7A) };
@@ -448,7 +448,7 @@ namespace actors
 			}
 		}
 
-		// 가슴 갑옷(로브를 입는 룬술사가 판금·사슬·가죽을 입었을 때 로브 위에)
+		// 가슴 갑옷(로브를 입는 각인술사가 판금·사슬·가죽을 입었을 때 로브 위에)
 		void ChestOverlay(const Rig& g, float b, const PlayerLook& look, bool back)
 		{
 			if (look.bodyStyle < 0 || look.bodyStyle == 3 || look.bodyStyle == 6) return;
@@ -471,7 +471,7 @@ namespace actors
 
 		Color HandColor(const PlayerLook& look, Color skin) { return look.hasGloves ? look.gloveMain : skin; }
 
-		// ── 황혼의 기사 ─────────────────────────────────────────────────────────
+		// ── 서약기사 ─────────────────────────────────────────────────────────
 		Arms KnightArms(const Pose& p)
 		{
 			Arms a;
@@ -517,7 +517,7 @@ namespace actors
 				a.ang = 1.1f; a.hx = 2.f; a.hy = -26.f; a.crouch = 3.f * std::min(1.f, k);
 				break;
 			}
-			case 6:   // 황혼의 처형 — 들어 올려 힘을 모았다가 내려찍는다
+			case 6:   // 단죄 — 들어 올려 힘을 모았다가 내려찍는다
 			{
 				const float hold = std::max(0.2f, p.skillHold);
 				if (t < hold)
@@ -613,7 +613,7 @@ namespace actors
 			}
 		}
 
-		// ── 룬술사 ───────────────────────────────────────────────────────────────
+		// ── 각인술사 ───────────────────────────────────────────────────────────────
 		Arms CasterArms(const Pose& p)
 		{
 			Arms a;
@@ -623,7 +623,7 @@ namespace actors
 			Progress(p, 7, sk, t);
 			switch (sk)
 			{
-			case 7:   // 룬 탄환: 지팡이를 앞으로 내민다
+			case 7:   // 각인탄: 지팡이를 앞으로 내민다
 			{
 				const float k = util::Pulse(std::min(1.f, t * 1.5f));
 				a.ang = Lerp(-1.35f, -0.35f, k); a.hx = Lerp(9.f, 15.f, k); a.hy = Lerp(-30.f, -36.f, k);
@@ -637,7 +637,7 @@ namespace actors
 				a.fx = Lerp(-8.f, 14.f, k); a.fy = Lerp(-30.f, -41.f, k); a.offFront = k > 0.3f; a.glow = k; a.lean = 2.f * k;
 				break;
 			}
-			case 12:  // 혜성: 양손을 하늘로(예고 동안 떨린다)
+			case 12:  // 낙성: 양손을 하늘로(예고 동안 떨린다)
 			{
 				const float hold = std::max(0.2f, p.skillHold);
 				const float k = t < hold ? util::EaseOutCubic(t / hold) : 1.f - util::EaseInOutCubic((t - hold) / std::max(0.01f, 1.f - hold));
@@ -654,7 +654,7 @@ namespace actors
 				a.hx = Lerp(9.f, 16.f, o); a.hy = Lerp(-30.f, -42.f, o); a.ang = Lerp(-1.35f, -0.8f, o); a.glow = o;
 				break;
 			}
-			case 10:  // 공간 도약: 몸을 웅크린다
+			case 10:  // 옛길 도약: 몸을 웅크린다
 			{
 				const float k = util::Pulse(t);
 				a.crouch = 4.f * k; a.fx = Lerp(-8.f, -2.f, k); a.hx = Lerp(9.f, 4.f, k); a.glow = k;
@@ -673,9 +673,9 @@ namespace actors
 				Weapon(g, look.weaponId, hx, hy, ang, 0.72f, time, look.enchant, look.weaponRarity);   // 지팡이가 아니면 그 무기를 든다
 				return;
 			}
-			// 초보자 지팡이는 주인의 룬 색, 다른 지팡이는 그 지팡이의 수정 색
+			// 초보자 지팡이는 주인의 각인 색, 다른 지팡이는 그 지팡이의 수정 색
 			const Color crystal = (look.weaponId != 0 && look.weaponId != ItemTableData::Id::ApprenticeStaff) ? icons::WeaponAccent(look.weaponId) : look.trim;
-			// 지팡이: 손 아래로 조금, 위로 길게. 끝에 룬 수정.
+			// 지팡이: 손 아래로 조금, 위로 길게. 끝에 각인 수정.
 			const float c = std::cos(ang), sn = std::sin(ang);
 			const float x0 = hx - c * 13.f, y0 = hy - sn * 13.f;
 			const float x1 = hx + c * 40.f, y1 = hy + sn * 40.f;
@@ -749,14 +749,14 @@ namespace actors
 					Seg(g, 2, -40 + b, 3.5f + sway, -3, 1.2f, WithA(rune, 0.8f));
 				}
 				Seg(g, -13 + sway, -2.5f, 13 + sway, -2.5f, 1.6f, WithA(rune, 0.7f));
-				// 허리띠 + 룬 주머니
+				// 허리띠 + 각인 주머니
 				Seg(g, -8.5f, -25 + b, 8.5f, -25 + b, 2.6f, Rgb(0x3A2A1E));
 				Ell(g, -6, -22 + b, 2.6f, 3.2f, leather);
 				// 어깨 망토
 				Quad4(g, -10, -45 + b, 10, -45 + b, 11, -36 + b, -11, -36 + b, Shade(leather, 1.1f), Shade(leather, 0.9f), Shade(leather, 0.7f), Shade(leather, 0.8f));
 				if (!back)
 				{
-					// 가슴의 룬(맥동)
+					// 가슴의 각인(맥동)
 					const float pulse = 0.6f + 0.4f * std::sin(p.time * 3.f);
 					gfx::Additive(true);
 					Glow(g, 3, -33 + b, 7.f, WithA(rune, 0.5f * pulse));
@@ -767,7 +767,7 @@ namespace actors
 			};
 			auto head = [&]()
 			{
-				// 두건: 얼굴은 그늘 속, 눈만 룬빛
+				// 두건: 얼굴은 그늘 속, 눈만 각인빛
 				Ball(g, 0, -52 + b, 9.5f, Shade(robe, 0.9f));
 				Tri(g, -8, -58 + b, -2, -61 + b, -14 + sway * 0.5f, -50 + b, Shade(robe, 0.75f));
 				if (!back)
@@ -781,7 +781,7 @@ namespace actors
 				}
 			};
 
-			// 떠다니는 룬 두 점(직업 표식)
+			// 떠다니는 각인 두 점(직업 표식)
 			gfx::Additive(true);
 			for (int i = 0; i < 2; ++i)
 			{
@@ -819,7 +819,7 @@ namespace actors
 			}
 		}
 
-		// ── 그림자 사냥꾼 ───────────────────────────────────────────────────────
+		// ── 밤사냥꾼 ───────────────────────────────────────────────────────
 		Arms HunterArms(const Pose& p)
 		{
 			Arms a;
@@ -842,7 +842,7 @@ namespace actors
 					a.fx = Lerp(-7.f, 17.f, k); a.fy = Lerp(-30.f, -35.f, k); a.ang2 = Lerp(2.5f, -0.05f, k); a.lean = 4.f * k; a.offFront = k > 0.2f;
 				}
 				break;
-			case 14:  // 그림자 돌진: 낮게 웅크려 뛰어든다
+			case 14:  // 그늘 걸음: 낮게 웅크려 뛰어든다
 			{
 				const float k = util::Pulse(t);
 				a.crouch = 2.f + 5.f * k; a.lean = 7.f * k; a.hx = Lerp(9.f, 2.f, k); a.fx = Lerp(-7.f, -13.f, k);
@@ -879,7 +879,7 @@ namespace actors
 				}
 				break;
 			}
-			case 18:  // 월영 난무: 두 바퀴 돌며 벤다
+			case 18:  // 그믐 베기: 두 바퀴 돌며 벤다
 				a.spin = t * kPi * 4.f;
 				a.hx = 15.f; a.hy = -33.f; a.ang = -0.1f;
 				a.fx = 13.f; a.fy = -30.f; a.ang2 = 0.2f; a.offFront = true;
@@ -1017,7 +1017,7 @@ namespace actors
 			g.ox += lunge * 6.f;
 			const float h = 26.f * sy, w = 18.f * sx;
 			const float lift = bounce * 6.f;
-			// 몸통(반투명 젤리)
+			// 몸통(반투명 덩이)
 			Vector2 pts[14];
 			for (int i = 0; i < 14; ++i)
 			{
@@ -1786,27 +1786,36 @@ namespace actors
 		}
 		case NpcKind::eTeleporter:
 		{
-			const Color robe = Rgb(0x3A4AA8), trimC = Rgb(0xE0C060);
+			// 길잡이(교회 필경사 출신): 짙은 청회색 두건 달린 옷 + 옛길 돌을 매단 지팡이(청록 빛)
+			const Color robe = Rgb(0x34426A), trimC = Rgb(0xB89A5A);
 			Quad4(g, -9, -46 + b, 9, -46 + b, 14, -1, -14, -1, Shade(robe, 1.15f), Shade(robe, 0.8f), Shade(robe, 0.55f), Shade(robe, 0.85f));
 			Seg(g, -14, -2, 14, -2, 2.f, trimC);
-			Seg(g, 1, -44 + b, 1, -3, 1.6f, trimC);
+			Seg(g, 1, -44 + b, 1, -3, 1.4f, Shade(trimC, 0.9f));
+			// 두루마리 가방(비스듬한 끈 + 통)
+			Seg(g, -8, -44 + b, 8, -22 + b, 1.6f, Rgb(0x5A4030));
+			Quad(g, -12, -24 + b, -4, -26 + b, -3, -20 + b, -11, -18 + b, Rgb(0x7A5A3A));
 			Limb(g, -7, -42 + b, -10, -30 + b, 3.2f, Shade(robe, 0.8f));
-			// 지팡이 + 빛나는 구슬
+			// 지팡이 + 옛길 돌
 			Limb(g, 7, -42 + b, 12, -34 + b, 3.2f, robe);
-			Seg(g, 13, 0, 13, -66, 2.4f, Rgb(0x7A5A3A));
-			const float pulse = 0.7f + 0.3f * std::sin(p.time * 3.f);
-			Glow(g, 13, -70, 14.f * pulse, Rgb(0x8AD8FF, 200));
-			Circ(g, 13, -70, 4.f, Rgb(0xD8F4FF));
-			props::FrameLights().push_back({ g.P(0, 0), 150.f, Rgb(0x8AD8FF), 0.9f * pulse });
+			Seg(g, 13, 0, 13, -64, 2.4f, Rgb(0x6A4E34));
+			const float pulse = 0.7f + 0.3f * std::sin(p.time * 2.4f);
+			Glow(g, 13, -68, 12.f * pulse, Rgb(0x6FB5AC, 190));
+			Quad(g, 10.5f, -71, 15.5f, -71, 15, -65, 11, -65, Rgb(0x8A9A98));
+			Seg(g, 12.2f, -70, 13.8f, -66, 1.f, Rgb(0xC8F0E8));
+			props::FrameLights().push_back({ g.P(0, 0), 140.f, Rgb(0x6FB5AC), 0.75f * pulse });
 			Ball(g, 1, -53 + b, 7.5f, skin);
-			// 고깔모자
-			Tri(g, -10, -56 + b, 11, -56 + b, -3, -80 + b, robe);
-			Ell(g, 0, -56 + b, 11.f, 3.f, Shade(robe, 0.8f));
-			Circ(g, -3, -80 + b, 2.f, trimC);
-			Vector2 beard[4] = { g.P(-3, -50 + b), g.P(8, -50 + b), g.P(4, -36 + b), g.P(0, -40 + b) };
-			gfx::Poly(beard, 4, Rgb(0xF2F2F2));
+			// 두건(머리를 감싸고 어깨로 흘러내린다)
+			Ell(g, 0, -56 + b, 10.5f, 10.f, Shade(robe, 0.9f));
+			Tri(g, -10, -54 + b, -12, -42 + b, -4, -47 + b, Shade(robe, 0.8f));
+			Tri(g, 10, -54 + b, 11, -42 + b, 5, -47 + b, Shade(robe, 0.8f));
 			if (!p.faceBack)
-				Circ(g, 4, -54 + b, 1.2f, Rgb(0x2A1A1A));
+			{
+				// 얼굴은 두건 안에서 보인다
+				Ell(g, 3, -52 + b, 6.f, 6.5f, skin);
+				Vector2 beard[4] = { g.P(-1, -49 + b), g.P(8, -49 + b), g.P(5, -41 + b), g.P(1, -44 + b) };
+				gfx::Poly(beard, 4, Rgb(0xB8B4AC));
+				Circ(g, 5, -53 + b, 1.1f, Rgb(0x2A1A1A));
+			}
 			break;
 		}
 		case NpcKind::eGuard:

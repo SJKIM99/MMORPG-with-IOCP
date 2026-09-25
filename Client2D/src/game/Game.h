@@ -210,7 +210,7 @@ private:
 	[[nodiscard]] QuestMark NpcQuestMark(uint16_t npcId) const;
 	[[nodiscard]] std::string ObjectiveLabel(const QuestData::Objective& o) const;
 	[[nodiscard]] const QuestView* FocusQuest() const;             // 나침반 · 추적 표시 대상
-	// 지금 가야 할 곳(칸)과 이름(나침반 · 미니맵 · 지도). viaTeleporter: 텔레포터를 거쳐 가라는 안내
+	// 지금 가야 할 곳(칸)과 이름(나침반 · 미니맵 · 지도). viaTeleporter: 길잡이를 거쳐 가라는 안내
 	struct QuestDest { Vector2 tile{}; std::string label; bool viaTeleporter = false; bool npc = false; bool poi = false; uint16_t quest = 0; };
 	bool QuestDestination(QuestDest& out) const;
 	[[nodiscard]] QuestAvail CanTakeQuestId(uint16_t id) const;
@@ -374,7 +374,7 @@ private:
 	bool             m_statsKnown = false;
 	double           m_dangerAt = -10.0;            // 내 발밑에 예고가 깔린 시각(화면 가장자리 경고)
 	struct ChainHop { ObjID caster; Vector2 iso; float z; double at; };
-	std::vector<ChainHop> m_chainHops;              // 번개 폭발: 직전에 맞은 곳(다음 줄기의 시작점)
+	std::vector<ChainHop> m_chainHops;              // 벼락 사슬: 직전에 맞은 곳(다음 줄기의 시작점)
 	std::array<double, 6> m_readyPrev{};            // 쿨다운 끝 알림(반짝임) 판정용
 	float            m_feelTrauma = 0.f, m_feelKick = 0.f, m_feelStop = 0.f;   // 이번 프레임 적중 체감(최댓값만)
 

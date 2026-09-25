@@ -14,23 +14,68 @@
 //   · 창/버튼이 차지한 영역은 Block()으로 등록 → 월드 클릭이 UI를 뚫고 나가지 않는다
 //     (판정은 직전 프레임에 등록된 영역 기준이라 그리기 순서와 무관).
 //   · 툴팁/드래그 중인 아이콘은 EndFrame에서 맨 위에 그린다.
-// 겉모습: 어두운 판넬 + 청동 테두리(리니지풍).
+//
+// 디자인 언어 — "새김"(docs/DESIGN_SYSTEM.md):
+//   새벽이 오기 전 밤의 청회색 바탕 + 모서리를 깎은 판(새김판) + 가는 선.
+//   강조는 새벽빛(호박색) 한 가지만, 옛길 · 마법은 청록. 금테 · 광택 · 그라데이션 띠는 쓰지 않는다.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace ui
 {
 	namespace theme
 	{
-		inline constexpr Color kPanelTop{ 34, 30, 38, 238 };
-		inline constexpr Color kPanelBottom{ 18, 16, 22, 244 };
-		inline constexpr Color kBorder{ 138, 106, 58, 255 };
-		inline constexpr Color kBorderHi{ 214, 176, 104, 255 };
-		inline constexpr Color kTitle{ 240, 214, 150, 255 };
-		inline constexpr Color kText{ 232, 226, 212, 255 };
-		inline constexpr Color kTextDim{ 160, 152, 138, 255 };
-		inline constexpr Color kGold{ 255, 214, 90, 255 };
-		inline constexpr Color kGood{ 120, 230, 130, 255 };
-		inline constexpr Color kBad{ 255, 96, 86, 255 };
-		inline constexpr Color kSlot{ 14, 12, 16, 220 };
+		// ── 표면(먹빛 청회색) ──
+		inline constexpr Color kInk{ 11, 13, 16, 255 };          // 가장 깊은 바탕 · 어둡게 덮기
+		inline constexpr Color kSurface0{ 17, 21, 25, 255 };     // 창 바탕(불투명 — 뒤의 이름표가 비치지 않게. HUD는 Panel의 alpha로 조금 비친다)
+		inline constexpr Color kSurface1{ 23, 28, 33, 255 };     // 목록 줄 · 입력칸 · 칸
+		inline constexpr Color kSurface2{ 31, 37, 43, 255 };     // 버튼 · 호버
+		inline constexpr Color kSurface3{ 41, 48, 56, 255 };     // 눌림 · 선택된 줄
+		inline constexpr Color kLine{ 45, 53, 61, 255 };         // 가는 선(구분선 · 칸 테두리)
+		inline constexpr Color kLineStrong{ 66, 76, 86, 255 };   // 창 · 버튼 테두리
+		// ── 글자 ──
+		inline constexpr Color kTextHi{ 237, 231, 219, 255 };    // 제목 · 중요한 값
+		inline constexpr Color kText{ 207, 200, 187, 255 };      // 본문
+		inline constexpr Color kTextDim{ 142, 136, 125, 255 };   // 보조 설명 · 라벨
+		inline constexpr Color kTextMute{ 96, 92, 85, 255 };     // 비활성
+		// ── 브랜드 ──
+		inline constexpr Color kDawn{ 217, 165, 91, 255 };       // 새벽빛: 초점 · 주 버튼 · 핵심 값 · 퀘스트
+		inline constexpr Color kDawnHi{ 242, 196, 124, 255 };
+		inline constexpr Color kDawnDeep{ 104, 77, 42, 255 };
+		inline constexpr Color kOldway{ 111, 181, 172, 255 };    // 옛길: 이동 · 마법 · 연결
+		inline constexpr Color kEmber{ 201, 87, 63, 255 };       // 위험 · 적대
+		// ── 의미 ──
+		inline constexpr Color kGood{ 141, 191, 110, 255 };
+		inline constexpr Color kBad{ 216, 96, 79, 255 };
+		inline constexpr Color kWarn{ 224, 176, 74, 255 };
+		inline constexpr Color kInfo{ 127, 168, 214, 255 };
+		// ── 수치 막대 ──
+		inline constexpr Color kHp{ 176, 58, 50, 255 };
+		inline constexpr Color kMp{ 60, 104, 176, 255 };
+		inline constexpr Color kExp{ 196, 156, 82, 255 };
+		// ── 예전 이름(호환) ──
+		inline constexpr Color kPanelTop = kSurface1;
+		inline constexpr Color kPanelBottom = kSurface0;
+		inline constexpr Color kBorder = kLineStrong;
+		inline constexpr Color kBorderHi = kDawn;
+		inline constexpr Color kTitle{ 233, 223, 201, 255 };     // 창 안의 소제목 · 이름(따뜻한 흰색)
+		inline constexpr Color kGold{ 222, 184, 110, 255 };      // 값 강조(돈 · 보상) — 새벽빛보다 조금 밝게
+		inline constexpr Color kSlot{ 15, 18, 22, 235 };
+	}
+
+	// 글자 크기(px, 1280×720 기준) — docs/DESIGN_SYSTEM.md 2장. 새 화면은 이 값만 쓴다.
+	namespace type
+	{
+		inline constexpr float kDisplayXL = 52.f;   // 로고
+		inline constexpr float kDisplayL  = 36.f;   // 장 제목 · 엔딩
+		inline constexpr float kDisplayM  = 26.f;   // 보스 이름 · 지역 진입
+		inline constexpr float kDisplayS  = 20.f;   // 카드 제목
+		inline constexpr float kTitle     = 17.f;   // 창 제목(Display)
+		inline constexpr float kHeading   = 15.f;   // 소제목 · 이름(Strong)
+		inline constexpr float kBody      = 14.f;   // 본문
+		inline constexpr float kBodyS     = 13.f;   // 목록 · 툴팁 본문
+		inline constexpr float kCaption   = 12.f;   // 보조 설명
+		inline constexpr float kMicro     = 11.f;   // 단축키 · 배지
+		inline constexpr float kNumber    = 14.f;   // HUD 수치(Number)
+		inline constexpr float kLeading   = 0.5f;   // 줄 간격 = 크기 × 0.5 (행간 150%)
 	}
 
 	enum class Align { Left, Center, Right };
@@ -54,9 +99,20 @@ namespace ui
 	[[nodiscard]] float Time();
 
 	// ── 그리기 ──
+	// 새김판: 모서리를 chamfer px 깎은 판. borderW = 0이면 테두리 없음.
+	void Plate(Rectangle r, Color fill, Color border, float chamfer = 4.f, float borderW = 1.f);
+	// 가는 선(정수 픽셀에 맞춰 또렷하게)
+	void Rule(float x0, float x1, float y, Color c = theme::kLine);
+	// 창 안 소제목: 작은 글씨 + 오른쪽으로 이어지는 가는 선
+	void SectionHeader(Vector2 pos, float width, std::string_view title);
+	// 단축키 표시(작은 새김판 + 글자)
+	void Keycap(Rectangle r, std::string_view key, bool active = false);
 	void Panel(Rectangle r, float alpha = 1.f, bool fancy = true);
+	// 게임 로고(하르벤 · HARVEN · 멈춘 심장) — center = 한글 글자의 가운데
+	void Logo(Vector2 center, float scale = 1.f, float alpha = 1.f, bool subtitle = true);
 	// 창: 판넬 + 제목 + 닫기 버튼. open=false가 되면 닫힌 것
 	void Window(Rectangle r, std::string_view title, bool* open);
+	// fontSize는 예전 크기 체계 — 글꼴(Strong)에 맞춰 조금 줄여 그린다(17 → 15).
 	bool Button(Rectangle r, std::string_view label, ButtonKind kind = ButtonKind::Normal, bool enabled = true, float fontSize = 17.f);
 	bool IconButton(Rectangle r, std::string_view glyph, bool enabled = true);
 	void Text(std::string_view s, Vector2 pos, float size, Color color, Align align = Align::Left, bool outline = false);
@@ -70,7 +126,7 @@ namespace ui
 
 	// ── 툴팁(맨 위에 그림) ──
 	// text가 "---"인 줄은 구분선으로 그린다.
-	struct TooltipLine { std::string text; Color color; float size = 15.f; };
+	struct TooltipLine { std::string text; Color color; float size = 15.f; Face face = Face::Inherit; };
 	// accent: 테두리·아이콘 칸 색(희귀도). a가 0이면 기본 테두리.
 	void Tooltip(std::vector<TooltipLine> lines, uint16_t iconItemId = 0, Color accent = Color{ 0, 0, 0, 0 });
 	// 비교 툴팁(착용 중인 장비) — 같은 프레임의 Tooltip 옆에 붙여 그린다. header는 위에 작은 띠("착용 중").

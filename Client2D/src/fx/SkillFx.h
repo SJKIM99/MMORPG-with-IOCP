@@ -31,7 +31,7 @@ namespace skillfx
 
 	void Update(float dt);
 	void Clear();
-	void DrawGround();           // 바닥 문양(룬·인장·불 고리)
+	void DrawGround();           // 바닥 문양(각인·인장·불 고리)
 	void DrawWorld();            // 투사체·번개·방패 막(가산 합성)
 
 	// 시전 연출. 투사체면 도착까지 걸리는 시간(초)을 돌려준다(적중 표시를 그만큼 늦춘다).
@@ -46,7 +46,7 @@ namespace skillfx
 
 	// 연쇄 번개(두 점 사이)
 	void Bolt(Vector2 a, float za, Vector2 b, float zb, Color color, float life);
-	// 서버 이펙트 알림(룬 폭발·증발 폭발·반격·벽 충돌·독 폭발)
+	// 서버 이펙트 알림(각인 폭발·증발 폭발·반격·벽 충돌·독 폭발)
 	void OnServerEffect(EffectId id, Vector2 iso, int param);
 
 	// 상태이상: 파티클은 Emit*, 모양은 Draw*

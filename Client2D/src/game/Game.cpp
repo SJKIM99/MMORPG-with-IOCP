@@ -164,7 +164,7 @@ void Game::Frame()
 	m_net.Update();
 	ui::BeginFrame(dt);
 	m_light.UpdateClock(m_opts.hour);
-	// 엔딩: 숲의 심장이 다시 뛰면 새벽이 온다(잠시 뒤 원래 시각으로 천천히 돌아간다)
+	// 엔딩: 하르벤이 다시 뛰면 새벽이 온다(잠시 뒤 원래 시각으로 천천히 돌아간다)
 	if (m_endingAt > 0.0 && m_now - m_endingAt < 70.0)
 	{
 		const float t = static_cast<float>(m_now - m_endingAt);
@@ -328,20 +328,22 @@ Color Game::NameColor(const Entity& e) const
 		const bool purple = (e.flags & SUBJECT_EX_PURPLE) != 0;
 		switch (AlignmentRule::ColorOf(e.alignment, purple))
 		{
-		case AlignmentRule::NameColor::ePurple: return Rgb(0xD890FF);
-		case AlignmentRule::NameColor::eChaotic: return Rgb(0xFF5A50);
-		case AlignmentRule::NameColor::eLawful: return Rgb(0x7AB8FF);
-		default: return Rgb(0xF2F0E8);
+		// 성향 색: 적대(먼저 공격함) · 악명 · 명예 · 중립 — docs/DESIGN_SYSTEM.md 1장
+		case AlignmentRule::NameColor::ePurple: return Rgb(0xE08C5A);
+		case AlignmentRule::NameColor::eChaotic: return Rgb(0xD85848);
+		case AlignmentRule::NameColor::eLawful: return Rgb(0x8FB2DC);
+		default: return Rgb(0xECE8DE);
 		}
 	}
 	if (e.kind == EntityKind::Monster && e.row)
 	{
-		if (e.row->boss) return Rgb(0xFF8A3A);
+		// 위험도 색: 보스 · 훨씬 강함 · 강함 · 약함 · 비슷함
+		if (e.row->boss) return Rgb(0xE07848);
 		const int diff = e.row->level - m_level;
-		if (diff >= 8) return Rgb(0xFF4A4A);
-		if (diff >= 3) return Rgb(0xFFA040);
-		if (diff <= -8) return Rgb(0x9A9A9A);
-		return Rgb(0xF2EEDC);
+		if (diff >= 8) return Rgb(0xD85046);
+		if (diff >= 3) return Rgb(0xE0A05A);
+		if (diff <= -8) return Rgb(0x8C8C88);
+		return Rgb(0xECE6D6);
 	}
 	// 바닥 장비는 희귀도 색(서버가 알려 준 희귀도 — 옵션은 주워야 보인다)
 	if (const ItemTableRow* row = ItemTableData::Find(e.itemId); row && row->type == ItemType::eEquipment)
@@ -608,7 +610,7 @@ void Game::HandleHotkeys()
 		else if (!ctrl)
 			TargetNearestMonster();
 	}
-	// 기술 1~5 · 물약/주문서 Q E R T(= F5~F8)
+	// 기술 1~5 · 물약/두루마리 Q E R T(= F5~F8)
 	for (int i = 0; i < 5; ++i)
 		if (IsKeyPressed(KEY_ONE + i) || IsKeyPressed(KEY_KP_1 + i))
 			TryCastSkill(i + 1);
@@ -1000,7 +1002,7 @@ void Game::TryAttackTarget(Entity& t)
 		ClearGoal();
 		return;
 	}
-	TryCastSkill(0, true, t.id);   // 기본 공격도 기술 표(검격·룬 탄환·연속 찌르기)로
+	TryCastSkill(0, true, t.id);   // 기본 공격도 기술 표(검격·각인탄·연속 찌르기)로
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1170,7 +1172,7 @@ void Game::StartEnchant(int scrollSlot)
 	m_enchant.scrollSlot = scrollSlot;
 	m_enchant.scrollId = m_inv.slots[scrollSlot].itemId;
 	m_invOpen = true;
-	AddCenter("강화할 무기를 인벤토리에서 선택하세요.", Rgb(0xFFE08A));
+	AddCenter("강화할 무기를 소지품에서 고르세요.", ui::theme::kDawnHi);
 	sfx::Play(sfx::Id::Open, 0.6f);
 }
 
@@ -1239,11 +1241,11 @@ void Game::SubmitChat()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::LoadQuickSlots()
 {
-	// 기본: Q 체력 물약 · E 주황 물약 · R 가속 물약 · F 귀환 주문서
+	// 기본: Q 약초 물약 · E 진한 약초 물약 · R 바람걸음 물약 · F 귀환 두루마리
 	m_quick = {};
-	m_quick[0] = { 1, ItemTableData::Id::HealthPotion };
-	m_quick[1] = { 1, ItemTableData::Id::OrangePotion };
-	m_quick[2] = { 1, ItemTableData::Id::HastePotion };
+	m_quick[0] = { 1, ItemTableData::Id::HerbPotion };
+	m_quick[1] = { 1, ItemTableData::Id::StrongHerbPotion };
+	m_quick[2] = { 1, ItemTableData::Id::WindstepPotion };
 	m_quick[3] = { 1, ItemTableData::Id::ReturnScroll };
 	std::ifstream in("quickslots2_" + m_playerName + ".txt");
 	if (!in) return;
@@ -1321,7 +1323,7 @@ void Game::RunScript(float dt)
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.5f)
 		{
-			const int scroll = m_inv.FirstSlotOf(ItemTableData::Id::EnchantScroll);
+			const int scroll = m_inv.FirstSlotOf(ItemTableData::Id::EngravingScroll);
 			if (scroll >= 0) { StartEnchant(scroll); m_scriptStep = 1; }
 		}
 		else if (m_scriptStep == 1 && m_scriptT > 2.5f)
@@ -1348,7 +1350,7 @@ void Game::RunScript(float dt)
 	}
 	else if (s == "teleport" || s == "boss")
 	{
-		// 텔레포터에게 가서 서리 설원(0번 지역)으로 이동 → (boss) 서리 거인에게 돌진
+		// 길잡이에게 가서 벨고라 설원(0번 지역)으로 이동 → (boss) 모로즈에게 돌진
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
 			SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, 3 });
@@ -1423,7 +1425,7 @@ void Game::RunScript(float dt)
 			if (t && !t->dead && m_now >= m_actionLockUntil)
 			{
 				// 직업별 연계 순서(슬롯): 기사 방패 강타→처형→회전 베기→철벽→돌진 /
-				// 룬술사 빙결 인장→혜성→번개→화염 고리 / 사냥꾼 독 칼날→그림자 돌진→후방 습격→월영 난무
+				// 각인술사 서리 각인→낙성→번개→화염 고리 / 사냥꾼 독 칼날→그늘 걸음→후방 습격→그믐 베기
 				static const int order[3][5] = { { 1, 5, 2, 4, 3 }, { 1, 5, 4, 2, 0 }, { 2, 1, 4, 5, 0 } };
 				const int cls = static_cast<int>(m_classId);
 				const int d = Cheb(m_predX, m_predY, t->tx, t->ty);
@@ -1541,10 +1543,11 @@ void Game::RunScript(float dt)
 			m_scriptStep = 1;
 		}
 	}
-	else if (s == "talk" || s == "priest" || s == "pet" || s == "soup")
+	else if (s == "talk" || s == "priest" || s == "pet" || s == "soup" || s.rfind("talk:", 0) == 0)
 	{
-		// 촌장(6)과 이야기 / 사제(7)의 기도 / 누렁이(17) 쓰다듬기 / 여관 수프(8)
-		const uint16_t npcId = s == "talk" ? 6 : (s == "priest" ? 7 : (s == "pet" ? 17 : 8));
+		// 촌장(6)과 이야기 / 사제(7)의 기도 / 누렁이(17) 쓰다듬기 / 여관 수프(8) / talk:N = N번 NPC와 이야기
+		const uint16_t npcId = s.rfind("talk:", 0) == 0 ? static_cast<uint16_t>(std::atoi(s.c_str() + 5))
+			: (s == "talk" ? 6 : (s == "priest" ? 7 : (s == "pet" ? 17 : 8)));
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
 			SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, npcId });
@@ -1563,7 +1566,7 @@ void Game::RunScript(float dt)
 		}
 		else if (m_scriptStep == 2 && m_scriptT > 1.6f)
 		{
-			if (s == "talk") { m_dialogLine = 0; m_dialogTextAt = m_now; }
+			if (s == "talk" || s.rfind("talk:", 0) == 0) { m_dialogLine = 0; m_dialogTextAt = m_now; }
 			else if (s == "priest") RequestNpcService(npcId, WorldData::NpcService::Heal);
 			else if (s == "soup") RequestNpcService(npcId, WorldData::NpcService::Soup);
 			else if (s == "pet") OpenNpc(npcId);
@@ -1642,7 +1645,7 @@ void Game::RunScript(float dt)
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			m_net.SendChat("안녕하세요! 여명의 마을입니다");
+			m_net.SendChat("안녕하세요, 데니차입니다.");
 			m_scriptStep = 1;
 		}
 	}
@@ -1690,9 +1693,11 @@ void Game::RunScript(float dt)
 		default: break;
 		}
 	}
-	else if (s == "chapter")
+	else if (s.rfind("chapter", 0) == 0)
 	{
-		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_chapterCard = 2; m_chapterCardAt = m_now; m_chapterBellPlayed = false; m_scriptStep = 1; }
+		// chapter = 제2장, chapterN = 제N장
+		const int n = s.size() > 7 ? std::clamp(std::atoi(s.c_str() + 7), 1, static_cast<int>(QuestData::kChapterCount)) : 2;
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_chapterCard = n; m_chapterCardAt = m_now; m_chapterBellPlayed = false; m_scriptStep = 1; }
 	}
 	else if (s == "discover")
 	{

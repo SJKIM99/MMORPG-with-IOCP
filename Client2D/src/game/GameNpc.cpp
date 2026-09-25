@@ -238,7 +238,7 @@ void Game::HandleNpcServiceAck(const NPC_SERVICE_ACK_PACKET& p)
 		AddCenter(buf, Rgb(0xC8C8C8));
 		break;
 	}
-	case NpcServiceResult::NoAdena: AddCenter("아데나가 부족합니다.", Rgb(0xFF8A7A)); sfx::Play(sfx::Id::Error, 0.4f); break;
+	case NpcServiceResult::NoAdena: AddCenter("그로시가 부족합니다.", Rgb(0xFF8A7A)); sfx::Play(sfx::Id::Error, 0.4f); break;
 	case NpcServiceResult::Full: AddCenter("이미 몸이 가뿐합니다.", Rgb(0xC8E0C8)); break;
 	case NpcServiceResult::TooFar: AddCenter("조금 더 가까이 가세요.", Rgb(0xD8D0C0)); break;
 	default: AddCenter("지금은 부탁할 수 없습니다.", Rgb(0xD8D0C0)); break;

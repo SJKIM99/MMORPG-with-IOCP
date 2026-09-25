@@ -28,14 +28,14 @@ namespace actors
 		// V2
 		uint16_t skill = 0;      // 재생 중인 직업 기술(Data/CombatData.h SkillTable id)
 		float skillT = -1.f;     // 0~1 기술 동작 진행(<0 = 없음)
-		float skillHold = 0.f;   // 기술 앞부분의 "힘 모으기" 구간 비율(처형·혜성)
+		float skillHold = 0.f;   // 기술 앞부분의 "힘 모으기" 구간 비율(처형·낙성)
 		float windup = 0.f;      // 몬스터 강공격 예고 자세 0~1
 		float knock = 0.f;       // 1 → 0 크게 밀려남
 	};
 
 	struct PlayerLook
 	{
-		uint8_t  cls = 0;        // ClassId: 0 황혼의 기사 · 1 룬술사 · 2 그림자 사냥꾼
+		uint8_t  cls = 0;        // ClassId: 0 서약기사 · 1 각인술사 · 2 밤사냥꾼
 		uint16_t weaponId = 0;
 		int      enchant = 0;
 		Color    armor{ 150, 160, 176, 255 };
@@ -43,9 +43,9 @@ namespace actors
 		Color    trim{ 200, 170, 90, 255 };
 		// ── V2 착용 장비 외형(ApplyGear) ──
 		uint8_t  weaponRarity = 0;            // Rarity — 영웅 이상은 무기에 희귀도 빛
-		int8_t   helmStyle = -1;              // -1 직업 기본 · 0 두건 · 1 철모 · 2 기사 투구 · 3 날개 투구 · 4 별빛 두건
+		int8_t   helmStyle = -1;              // -1 직업 기본 · 0 두건 · 1 철모 · 2 기사 투구 · 3 날개 투구 · 4 이레린 두건
 		Color    helmMain{}, helmTrim{}, helmAccent{};
-		int8_t   bodyStyle = -1;              // -1 직업 기본 · 0 누빔 · 1 사슬 · 2 판금 · 3 로브 · 4 가죽 · 5 여명 판금 · 6 별빛 로브
+		int8_t   bodyStyle = -1;              // -1 직업 기본 · 0 누빔 · 1 사슬 · 2 판금 · 3 로브 · 4 가죽 · 5 서약 판금 · 6 이레린 로브
 		Color    bodyMain{}, bodyTrim{}, bodyAccent{};
 		bool     hasCloak = false;
 		Color    cloakMain{}, cloakTrim{};

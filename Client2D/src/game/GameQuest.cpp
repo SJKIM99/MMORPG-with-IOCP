@@ -3,6 +3,7 @@
 #include "fx/Effects.h"
 #include "fx/Particles.h"
 #include "render/Draw.h"
+#include "render/Art.h"
 #include "render/Actors.h"
 #include "render/Icons.h"
 #include "audio/Sfx.h"
@@ -24,7 +25,7 @@
 //   · 추적 표시(미니맵 아래) · 나침반(화면 밖 목적지 화살표) · 미니맵/지도 표식
 //   · 수집물은 쓰러진 몬스터에게서 날아와 가방 대신 일지에 쌓인다
 //   · 새 장이 열리면 이야기책처럼 장 제목이 뜨고, 새 장소에 들어서면 한 줄 이야기가 흐른다
-//   · 마지막 퀘스트를 마치면 숲의 심장이 다시 뛰고 새벽이 온다(엔딩)
+//   · 마지막 퀘스트를 마치면 하르벤이 다시 뛰고 새벽이 온다(엔딩)
 // ─────────────────────────────────────────────────────────────────────────────
 using util::Rgb;
 using ui::Align;
@@ -51,10 +52,11 @@ namespace
 	{
 		switch (k)
 		{
-		case QuestKind::Main:  return Rgb(0xFFD25A);
-		case QuestKind::Side:  return Rgb(0x9AF06A);
-		case QuestKind::Daily: return Rgb(0x7AC8FF);
-		case QuestKind::Class: return Rgb(0xD8A0FF);
+		// 메인 이야기 = 새벽빛, 부가 = 들녘의 풀빛, 반복 = 흐린 하늘빛, 직업 = 옛길 청록
+		case QuestKind::Main:  return ui::theme::kDawn;
+		case QuestKind::Side:  return Rgb(0x9CC47E);
+		case QuestKind::Daily: return ui::theme::kInfo;
+		case QuestKind::Class: return ui::theme::kOldway;
 		}
 		return WHITE;
 	}
@@ -112,11 +114,18 @@ namespace
 		DrawLineEx(Vector2{ c.x - s * 0.1f, c.y + s * 0.4f }, Vector2{ c.x + s * 0.55f, c.y - s * 0.45f }, std::max(1.5f, s * 0.22f), col);
 	}
 
+	// 그로시(은화)
 	void Coin(Vector2 c, float r)
 	{
-		DrawCircleV(Vector2{ c.x + 1, c.y + 1 }, r, Color{ 0, 0, 0, 120 });
-		DrawCircleV(c, r, Rgb(0xE8B830));
-		DrawCircleV(Vector2{ c.x - r * 0.2f, c.y - r * 0.2f }, r * 0.55f, Rgb(0xFFE070));
+		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, Color{ 0, 0, 0, 140 });
+		DrawCircleV(c, r, Color{ 128, 132, 138, 255 });
+		DrawCircleV(c, r - 1.2f, Color{ 196, 199, 202, 255 });
+		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, Color{ 232, 232, 226, 255 });
+	}
+
+	void Section(const char* title, float x, float y, float w)
+	{
+		ui::SectionHeader(Vector2{ x, y }, w, title);
 	}
 
 	// 목표 종류 아이콘(작은 벡터 그림)
@@ -389,7 +398,7 @@ bool Game::QuestDestination(QuestDest& out) const
 					const int here = Region();
 					if (o.zone != QuestData::kAnyZone && (o.zone != here || InTown()))
 					{
-						// 그 지역의 사냥터로(여명의 평원은 남문 밖)
+						// 그 지역의 사냥터로(데니차 들녘은 남문 밖)
 						if (o.zone == WorldData::kTownZoneId)
 							dest = Vector2{ static_cast<float>(WorldData::kTownX0 + 21), static_cast<float>(WorldData::kTownY0 + WorldData::kTownSize + 5) };
 						else if (const auto* reg = WorldData::FindRegion(o.zone))
@@ -418,12 +427,12 @@ bool Game::QuestDestination(QuestDest& out) const
 			if (!found) return false;
 		}
 	}
-	// 마을 안에서 다른 지역으로 가야 하면 텔레포터를 거친다
+	// 마을 안에서 다른 지역으로 가야 하면 길잡이(옛길 이동)를 거친다
 	const int destRegion = WorldData::RegionIdAt(static_cast<int>(dest.x), static_cast<int>(dest.y));
 	if (InTown() && destRegion >= 0 && destRegion != WorldData::kTownZoneId)
 	{
 		out.tile = NpcTile(3);
-		out.label = "텔레포터 루시엔 → " + texts::RegionName(destRegion);
+		out.label = std::string(WorldData::FindNpc(3)->name) + " → " + texts::RegionName(destRegion);
 		out.viaTeleporter = true;
 		out.npc = true;
 		return true;
@@ -495,6 +504,7 @@ void Game::HandleQuestUpdate(const QUEST_UPDATE_INF_PACKET& p)
 				m_chapterCard = q->chapter;
 				m_chapterCardAt = m_now + 0.5;
 				m_chapterBellPlayed = false;
+				(void)art::Chapter(q->chapter);   // 카드가 뜨기 전에 미리 풀어 둔다(뜨는 순간 멈칫하지 않게)
 			}
 		}
 		// 받으면 대화창을 닫는다 — 장 제목 · 추적 표시 · 나침반이 다음 걸음을 안내한다
@@ -548,7 +558,7 @@ void Game::HandleQuestUpdate(const QUEST_UPDATE_INF_PACKET& p)
 			}
 			break;
 		case ObjKind::Boss:
-			AddBanner(texts::MonsterName(o.target) + " 토벌 인정!", Rgb(0xFF9A5A), 4.f);
+			AddBanner(texts::MonsterName(o.target) + " 토벌 인정", ui::theme::kEmber, 4.f);
 			break;
 		case ObjKind::Talk:
 			fx::Fx().FloatText(myIso, actors::PlayerHeight() + 16.f, label, Rgb(0xFFE08A), 17.f, 1.6f);
@@ -569,7 +579,7 @@ void Game::HandleQuestUpdate(const QUEST_UPDATE_INF_PACKET& p)
 			v->readyAt = m_now;
 			sfx::Play(sfx::Id::QuestReady, 0.75f, 0.f);
 			const std::string who = q->turnIn ? NpcName(q->turnIn) : std::string();
-			AddBanner(std::string(q->name) + " — 목표 완료!", Rgb(0xFFE070), 3.5f);
+			AddBanner(std::string(q->name) + " — 목표 완료", ui::theme::kDawnHi, 3.5f);
 			AddChat(q->turnIn ? "[퀘스트] " + std::string(q->name) + " — " + texts::Josa(who, "과", "와") + " 이야기하면 보상을 받습니다." :
 				"[퀘스트] " + std::string(q->name) + " — 퀘스트 일지(L)에서 보상을 받으세요.", Rgb(0xFFE070));
 		}
@@ -590,7 +600,7 @@ void Game::HandleQuestUpdate(const QUEST_UPDATE_INF_PACKET& p)
 		fx::Fx().LootSparkle(myIso, kc);
 		std::string reward;
 		if (p.exp) reward += "경험치 +" + texts::Number(p.exp);
-		if (p.adena) reward += (reward.empty() ? "" : " · ") + std::string("아데나 +") + texts::Number(p.adena);
+		if (p.adena) reward += (reward.empty() ? "" : " · ") + std::string("그로시 +") + texts::Number(p.adena);
 		if (p.itemId) reward += (reward.empty() ? "" : " · ") + texts::ItemName(p.itemId) + (p.itemCount > 1 ? Fmt(" ×%d", p.itemCount) : "");
 		AddChat("[퀘스트 완료] " + std::string(q->name) + (reward.empty() ? "" : " — " + reward), Rgb(0xFFE070));
 		if (m_trackedQuest == p.questId) m_trackedQuest = 0;
@@ -722,36 +732,32 @@ void Game::DrawQuestMark(Vector2 head, QuestMark mark, float scale)
 	if (mark == QuestMark::Talk)
 	{
 		const Rectangle b{ c.x - 15.f * scale, c.y - 10.f * scale, 30.f * scale, 20.f * scale };
-		DrawRectangleRounded(Rectangle{ b.x + 1, b.y + 2, b.width, b.height }, 0.5f, 6, Color{ 0, 0, 0, 110 });
-		DrawRectangleRounded(b, 0.5f, 6, Rgb(0xFFF4D8));
-		DrawTriangle(Vector2{ c.x - 4.f * scale, b.y + b.height - 1 }, Vector2{ c.x - 7.f * scale, b.y + b.height + 6.f * scale }, Vector2{ c.x + 3.f * scale, b.y + b.height - 1 }, Rgb(0xFFF4D8));
+		ui::Plate(Rectangle{ b.x + 1, b.y + 2, b.width, b.height }, Color{ 0, 0, 0, 100 }, BLANK, 4.f * scale, 0.f);
+		ui::Plate(b, Color{ 16, 19, 23, 235 }, ui::theme::kDawn, 4.f * scale, 1.f);
+		DrawTriangle(Vector2{ c.x - 4.f * scale, b.y + b.height - 1 }, Vector2{ c.x - 7.f * scale, b.y + b.height + 6.f * scale }, Vector2{ c.x + 3.f * scale, b.y + b.height - 1 }, Color{ 16, 19, 23, 235 });
 		for (int i = -1; i <= 1; ++i)
 		{
 			const float a = 0.5f + 0.5f * std::sin(m_time * 6.f - i * 0.9f);
-			DrawCircleV(Vector2{ c.x + i * 7.f * scale, c.y }, 2.3f * scale, util::Mix(Rgb(0x8A6A3A), Rgb(0xE0A030), a));
+			DrawCircleV(Vector2{ c.x + i * 7.f * scale, c.y }, 2.1f * scale, util::Mix(ui::theme::kDawnDeep, ui::theme::kDawnHi, a));
 		}
 		return;
 	}
 	const bool bright = mark == QuestMark::Ready || mark == QuestMark::Available;
-	const Color col = bright ? Rgb(0xFFD84A) : Rgb(0xA8A298);
+	const Color col = bright ? ui::theme::kDawnHi : Rgb(0x96908A);
 	const char* glyph = (mark == QuestMark::Ready || mark == QuestMark::Active) ? "?" : "!";
 	if (bright)
 	{
 		const float pulse = 0.5f + 0.5f * std::sin(m_time * 4.f);
-		DrawCircleGradient(static_cast<int>(c.x), static_cast<int>(c.y), 24.f * scale, util::WithA(col, 0.28f + 0.14f * pulse), util::WithA(col, 0.f));
+		DrawCircleGradient(static_cast<int>(c.x), static_cast<int>(c.y), 22.f * scale, util::WithA(col, 0.20f + 0.10f * pulse), util::WithA(col, 0.f));
 		if (mark == QuestMark::Ready)
-			for (int k = 0; k < 8; ++k)
-			{
-				const float a = m_time * 0.8f + k * util::kPi / 4.f;
-				const Vector2 d{ std::cos(a), std::sin(a) };
-				DrawLineEx(Vector2{ c.x + d.x * 15.f * scale, c.y + d.y * 15.f * scale }, Vector2{ c.x + d.x * (21.f + 3.f * pulse) * scale, c.y + d.y * (21.f + 3.f * pulse) * scale }, 2.f, util::WithA(col, 0.55f));
-			}
+			DrawRing(c, (16.f + 2.f * pulse) * scale, (17.5f + 2.f * pulse) * scale, 0.f, 360.f, 40, util::WithA(col, 0.45f));
 	}
 	ui::TextStyle st;
-	st.size = 30.f * scale;
+	st.size = 28.f * scale;
 	st.color = col;
-	st.outline = 2.6f;
-	st.outlineColor = Color{ 46, 26, 6, 235 };
+	st.outline = 2.2f;
+	st.outlineColor = Color{ 20, 12, 4, 235 };
+	st.face = ui::Face::Bold;
 	ui::Fonts().DrawCentered(glyph, c, st);
 }
 
@@ -765,8 +771,8 @@ float Game::DrawQuestObjectives(float x, float y, float w, const QuestRow& q, co
 		const int n = v ? v->progress[static_cast<size_t>(i)] : 0;
 		const bool done = v && n >= o.count;
 		const float bump = v ? static_cast<float>(std::max(0.0, 0.6 - (m_now - v->bumpAt[static_cast<size_t>(i)])) / 0.6) : 0.f;
-		const Color tint = done ? Rgb(0x8ACB7A) : util::Mix(ui::theme::kText, Rgb(0xFFE070), bump);
-		ObjIcon(Rectangle{ x, y + 1.f, size + 4.f, size + 4.f }, o, done ? Rgb(0x8ACB7A) : Rgb(0xE8C888));
+		const Color tint = done ? ui::theme::kGood : util::Mix(ui::theme::kText, ui::theme::kDawnHi, bump);
+		ObjIcon(Rectangle{ x, y + 1.f, size + 4.f, size + 4.f }, o, done ? ui::theme::kGood : Rgb(0xC8B896));
 		const float lx = x + size + 12.f;
 		ui::Text(ObjectiveLabel(o), Vector2{ lx, y }, size, tint);
 		std::string where;
@@ -780,14 +786,18 @@ float Game::DrawQuestObjectives(float x, float y, float w, const QuestRow& q, co
 			ui::Text("· " + where, Vector2{ lx + lw + 6.f, y + 1.f }, size - 2.f, ui::theme::kTextDim);
 		}
 		if (done)
-			Check(Vector2{ x + w - 10.f, y + size * 0.5f + 1.f }, size * 0.8f, Rgb(0x9AE88A));
+			Check(Vector2{ x + w - 10.f, y + size * 0.5f + 1.f }, size * 0.8f, ui::theme::kGood);
 		else if (v && o.count > 1)
-			ui::Text(Fmt("%d / %d", n, o.count), Vector2{ x + w, y }, size, util::Mix(ui::theme::kGold, WHITE, bump), Align::Right);
+		{
+			ui::TextStyle ns; ns.size = size + 1.f; ns.color = util::Mix(ui::theme::kTextHi, ui::theme::kDawnHi, bump); ns.face = ui::Face::Number;
+			const std::string cnt = Fmt("%d / %d", n, o.count);
+			ui::Fonts().Draw(cnt, Vector2{ x + w - ui::Fonts().Measure(cnt, ns.size, 0.f, ui::Face::Number).x, y - 1.f }, ns);
+		}
 		if (v && o.count > 1)
 		{
-			const Rectangle bar{ lx, y + size + 3.f, w - (lx - x), 3.f };
-			DrawRectangleRec(bar, Color{ 0, 0, 0, 120 });
-			DrawRectangleRec(Rectangle{ bar.x, bar.y, bar.width * std::min(1.f, static_cast<float>(n) / o.count), bar.height }, done ? Rgb(0x6AB85A) : util::Mix(Rgb(0xC8962A), Rgb(0xFFE070), bump));
+			const Rectangle bar{ lx, y + size + 3.f, w - (lx - x), 2.f };
+			DrawRectangleRec(bar, Color{ 0, 0, 0, 130 });
+			DrawRectangleRec(Rectangle{ bar.x, bar.y, std::round(bar.width * std::min(1.f, static_cast<float>(n) / o.count)), bar.height }, done ? ui::theme::kGood : util::Mix(ui::theme::kDawn, ui::theme::kDawnHi, bump));
 		}
 		y += size + (v && o.count > 1 ? 12.f : 8.f);
 	}
@@ -802,23 +812,25 @@ float Game::DrawQuestRewards(float x, float y, float w, const QuestRow& q, bool 
 	const uint32_t exp = QuestData::RewardExp(q, static_cast<uint8_t>(m_level));
 	if (exp > 0)
 	{
-		const std::string t = "경험치 +" + texts::Number(exp);
-		const float tw = ui::Fonts().Measure(t, 14.f).x + 20.f;
+		const std::string t = texts::Number(exp);
+		const float lw = ui::Fonts().Measure("경험치", 12.f, 0.f, ui::Face::Body).x;
+		const float tw = lw + ui::Fonts().Measure(t, 15.f, 0.f, ui::Face::Number).x + 26.f;
 		const Rectangle chip{ cx, y + 8.f, tw, 24.f };
-		DrawRectangleRounded(chip, 0.5f, 6, Rgb(0x3A2A5A, 230));
-		DrawRectangleRoundedLinesEx(chip, 0.5f, 6, 1.f, Rgb(0xC08AFF));
-		ui::Text(t, Vector2{ chip.x + 10.f, chip.y + 4.f }, 14.f, Rgb(0xE0C8FF));
+		ui::Plate(chip, ui::theme::kSurface2, ui::theme::kLine, 3.f, 1.f);
+		ui::Text("경험치", Vector2{ chip.x + 9.f, chip.y + 5.f }, 12.f, ui::theme::kTextDim);
+		ui::TextStyle ns; ns.size = 15.f; ns.color = ui::theme::kExp; ns.face = ui::Face::Number;
+		ui::Fonts().Draw(t, Vector2{ chip.x + 15.f + lw, chip.y + 4.f }, ns);
 		cx += tw + 8.f;
 	}
 	if (q.reward.adena > 0)
 	{
 		const std::string t = texts::Number(q.reward.adena);
-		const float tw = ui::Fonts().Measure(t, 14.f).x + 34.f;
+		const float tw = ui::Fonts().Measure(t, 15.f, 0.f, ui::Face::Number).x + 34.f;
 		const Rectangle chip{ cx, y + 8.f, tw, 24.f };
-		DrawRectangleRounded(chip, 0.5f, 6, Rgb(0x3A2E14, 230));
-		DrawRectangleRoundedLinesEx(chip, 0.5f, 6, 1.f, Rgb(0xE8B830));
-		Coin(Vector2{ chip.x + 13.f, chip.y + 12.f }, 6.f);
-		ui::Text(t, Vector2{ chip.x + 24.f, chip.y + 4.f }, 14.f, Rgb(0xFFE070));
+		ui::Plate(chip, ui::theme::kSurface2, ui::theme::kLine, 3.f, 1.f);
+		Coin(Vector2{ chip.x + 13.f, chip.y + 12.f }, 5.5f);
+		ui::TextStyle ns; ns.size = 15.f; ns.color = ui::theme::kTextHi; ns.face = ui::Face::Number;
+		ui::Fonts().Draw(t, Vector2{ chip.x + 24.f, chip.y + 4.f }, ns);
 		cx += tw + 8.f;
 	}
 	const uint16_t item = QuestData::RewardItem(q, m_classId);
@@ -839,12 +851,17 @@ float Game::DrawQuestRewards(float x, float y, float w, const QuestRow& q, bool 
 			DrawCircleGradient(static_cast<int>(slot.x + h * 0.5f), static_cast<int>(slot.y + h * 0.5f), h * 0.6f, util::WithA(rc, 0.3f), util::WithA(rc, 0.f));
 		icons::Draw(item, Rectangle{ slot.x + 3, slot.y + 3, h - 6, h - 6 });
 		if (q.reward.count > 1)
-			ui::Text(Fmt("%d", q.reward.count), Vector2{ slot.x + h - 3.f, slot.y + h - 16.f }, 13.f, WHITE, Align::Right, true);
+		{
+			ui::TextStyle cs; cs.size = 13.f; cs.color = ui::theme::kTextHi; cs.outline = 1.2f; cs.face = ui::Face::Number;
+			const std::string cnt = Fmt("%d", q.reward.count);
+			ui::Fonts().Draw(cnt, Vector2{ slot.x + h - 3.f - ui::Fonts().Measure(cnt, cs.size, 0.f, ui::Face::Number).x, slot.y + h - 15.f }, cs);
+		}
 		const float nx = cx + h + 8.f;
 		if (nx < x + w)
 		{
-			ui::Text(texts::ItemName(item), Vector2{ nx, y + 3.f }, 14.f, gear ? rc : ui::theme::kText);
-			ui::Text(gear ? std::string(ItemRules::RarityName(r)) + " 이상 · 가끔 더 좋은 것" : Fmt("%d개", q.reward.count), Vector2{ nx, y + 21.f }, 12.f, ui::theme::kTextDim);
+			ui::TextStyle is; is.size = 14.f; is.color = gear ? rc : ui::theme::kText; is.face = ui::Face::Strong;
+			ui::Fonts().Draw(texts::ItemName(item), Vector2{ nx, y + 3.f }, is);
+			ui::Text(gear ? std::string(ItemRules::RarityName(r)) + " 이상 · 가끔 더 좋은 것" : Fmt("%d개", q.reward.count), Vector2{ nx, y + 22.f }, 12.f, ui::theme::kTextDim);
 		}
 		if (ui::Hovered(slot))
 			DrawItemTooltip(item, 0, q.reward.count, false, false);
@@ -900,13 +917,12 @@ void Game::DrawQuestTracker()
 		return;
 
 	// 머리글
-	ui::TextShadow("퀘스트", Vector2{ x + 4.f, y }, 15.f, ui::theme::kTitle);
 	{
-		const Rectangle key{ x + w - 72.f, y + 1.f, 18.f, 17.f };
-		DrawRectangleRounded(key, 0.3f, 4, Color{ 20, 16, 12, 200 });
-		DrawRectangleRoundedLinesEx(key, 0.3f, 4, 1.f, ui::theme::kBorder);
-		ui::Text("L", Vector2{ key.x + 9.f, key.y + 1.f }, 13.f, ui::theme::kGold, Align::Center);
-		ui::Text("일지", Vector2{ key.x + 24.f, key.y + 1.f }, 13.f, ui::theme::kTextDim);
+		ui::TextStyle hs; hs.size = 13.f; hs.color = ui::theme::kTextHi; hs.face = ui::Face::Strong; hs.spacing = 0.5f; hs.shadow = 1.f; hs.shadowColor = Color{ 0, 0, 0, 170 };
+		const float hw = ui::Fonts().Draw("퀘스트", Vector2{ x + 2.f, y }, hs);
+		ui::Keycap(Rectangle{ x + w - 52.f, y + 1.f, 15.f, 14.f }, "L");
+		ui::Text("일지", Vector2{ x + w - 33.f, y }, 12.f, ui::theme::kTextDim, Align::Left, true);
+		ui::Rule(x + hw + 10.f, x + w - 60.f, y + 8.f, util::WithA(ui::theme::kLineStrong, 0.8f));
 	}
 	y += 22.f;
 
@@ -931,12 +947,12 @@ void Game::DrawQuestTracker()
 		const float in = util::EaseOutCubic(util::Clamp01(static_cast<float>((m_now - v->acceptedAt) / 0.35)));
 		const float ox = (1.f - in) * 60.f;
 		const Rectangle bb{ b.x + ox, b.y, b.width, b.height };
-		DrawRectangleRounded(bb, 0.12f, 6, Color{ 12, 10, 14, static_cast<unsigned char>(hover ? 200 : 150) });
-		DrawRectangle(static_cast<int>(bb.x), static_cast<int>(bb.y + 4), isFocus ? 3 : 2, static_cast<int>(bb.height - 8), util::WithA(kc, isFocus ? 1.f : 0.55f));
+		ui::Plate(bb, Color{ 12, 15, 18, static_cast<unsigned char>(hover ? 205 : 160) }, BLANK, 3.f, 0.f);
+		DrawRectangleRec(Rectangle{ std::round(bb.x), std::round(bb.y + 4), isFocus ? 2.f : 1.f, std::round(bb.height - 8) }, util::WithA(kc, isFocus ? 1.f : 0.6f));
 		if (ready)
 		{
 			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 4.f);
-			DrawRectangleRoundedLinesEx(bb, 0.12f, 6, 1.5f, util::WithA(Rgb(0xFFD84A), 0.35f + 0.4f * pulse));
+			ui::Plate(bb, BLANK, util::WithA(ui::theme::kDawn, 0.35f + 0.4f * pulse), 3.f, 1.f);
 		}
 		ui::Block(b);
 		if (ui::Clicked(b))
@@ -951,15 +967,18 @@ void Game::DrawQuestTracker()
 			sfx::Play(sfx::Id::Open, 0.6f);
 		}
 		float ly = bb.y + 5.f;
-		ui::Text(KindGlyph(q->kind), Vector2{ bb.x + 10.f, ly }, 13.f, kc);
-		ui::Text(q->name, Vector2{ bb.x + 26.f, ly - 1.f }, 15.f, ready ? Rgb(0xFFE070) : util::Shade(kc, 1.25f), Align::Left, true);
+		ui::Text(KindGlyph(q->kind), Vector2{ bb.x + 10.f, ly + 1.f }, 11.f, kc);
+		{
+			ui::TextStyle ns; ns.size = 14.f; ns.color = ready ? ui::theme::kDawnHi : ui::theme::kTextHi; ns.face = ui::Face::Strong;
+			ui::Fonts().Draw(q->name, Vector2{ bb.x + 26.f, ly - 1.f }, ns);
+		}
 		if (isFocus)
-			ui::Text("◎", Vector2{ bb.x + w - 10.f, ly }, 13.f, util::WithA(kc, 0.9f), Align::Right);
+			ui::Text("◎", Vector2{ bb.x + w - 10.f, ly }, 12.f, util::WithA(kc, 0.9f), Align::Right);
 		ly += 21.f;
 		if (ready)
 		{
 			const std::string t = q->turnIn ? "→ " + NpcName(q->turnIn) + "에게 보고" : std::string("→ 일지(L)에서 보상 받기");
-			ui::Text(t, Vector2{ bb.x + 26.f, ly }, 13.f, Rgb(0xFFD84A));
+			ui::Text(t, Vector2{ bb.x + 26.f, ly }, 12.5f, ui::theme::kDawn);
 		}
 		else
 		{
@@ -970,16 +989,20 @@ void Game::DrawQuestTracker()
 				const int n = v->progress[static_cast<size_t>(i)];
 				const bool done = n >= o.count;
 				const float bump = static_cast<float>(std::max(0.0, 0.6 - (m_now - v->bumpAt[static_cast<size_t>(i)])) / 0.6);
-				const Color c = done ? Rgb(0x8ACB7A) : util::Mix(Rgb(0xD8D0C0), Rgb(0xFFE070), bump);
+				const Color c = done ? ui::theme::kGood : util::Mix(ui::theme::kText, ui::theme::kDawnHi, bump);
 				std::string label = ObjectiveLabel(o);
 				// 너무 길면 줄인다
-				while (ui::Fonts().Measure(label, 13.f).x > w - 92.f && label.size() > 4) ui::PopUtf8(label);
+				while (ui::Fonts().Measure(label, 12.5f).x > w - 92.f && label.size() > 4) ui::PopUtf8(label);
 				if (label != ObjectiveLabel(o)) label += "…";
-				ui::Text(label, Vector2{ bb.x + 26.f + bump * 2.f, ly }, 13.f, c);
+				ui::Text(label, Vector2{ bb.x + 26.f + bump * 2.f, ly }, 12.5f, c);
 				if (done)
-					Check(Vector2{ bb.x + w - 16.f, ly + 7.f }, 10.f, Rgb(0x9AE88A));
+					Check(Vector2{ bb.x + w - 16.f, ly + 7.f }, 10.f, ui::theme::kGood);
 				else if (o.count > 1)
-					ui::Text(Fmt("%d/%d", n, o.count), Vector2{ bb.x + w - 10.f, ly - bump * 2.f }, 13.f + bump * 2.f, util::Mix(Rgb(0xE8C888), WHITE, bump), Align::Right);
+				{
+					ui::TextStyle ns; ns.size = 14.f + bump * 2.f; ns.color = util::Mix(ui::theme::kTextHi, ui::theme::kDawnHi, bump); ns.face = ui::Face::Number;
+					const std::string cnt = Fmt("%d/%d", n, o.count);
+					ui::Fonts().Draw(cnt, Vector2{ bb.x + w - 10.f - ui::Fonts().Measure(cnt, ns.size, 0.f, ui::Face::Number).x, ly - 1.f - bump * 2.f }, ns);
+				}
 				ly += 18.f;
 			}
 		}
@@ -987,18 +1010,19 @@ void Game::DrawQuestTracker()
 	}
 	if (static_cast<int>(list.size()) > shown)
 	{
-		ui::Text(Fmt("+%d개 더 — L", static_cast<int>(list.size()) - shown), Vector2{ x + w - 6.f, y }, 12.f, ui::theme::kTextDim, Align::Right);
+		ui::Text(Fmt("+%d개 더 — L", static_cast<int>(list.size()) - shown), Vector2{ x + w - 6.f, y }, 12.f, ui::theme::kTextDim, Align::Right, true);
 		y += 18.f;
 	}
 	if (!hint.empty())
 	{
 		const Rectangle b{ x, y, w, 28.f };
 		const float pulse = hintBright ? 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 3.5f) : 0.f;
-		DrawRectangleRounded(b, 0.2f, 6, Color{ 12, 10, 14, 160 });
-		if (hintBright)
-			DrawRectangleRoundedLinesEx(b, 0.2f, 6, 1.2f, util::WithA(Rgb(0xFFD84A), 0.3f + 0.5f * pulse));
-		ui::Text(hintBright ? "!" : "…", Vector2{ b.x + 14.f, b.y + 5.f }, 15.f, hintBright ? Rgb(0xFFD84A) : ui::theme::kTextDim, Align::Center, true);
-		ui::Text(hint, Vector2{ b.x + 26.f, b.y + 6.f }, 14.f, hintBright ? util::Mix(Rgb(0xFFE08A), WHITE, pulse * 0.4f) : ui::theme::kTextDim);
+		ui::Plate(b, Color{ 12, 15, 18, 170 }, hintBright ? util::WithA(ui::theme::kDawn, 0.3f + 0.5f * pulse) : BLANK, 3.f, 1.f);
+		{
+			ui::TextStyle gs; gs.size = 15.f; gs.color = hintBright ? ui::theme::kDawnHi : ui::theme::kTextDim; gs.face = ui::Face::Bold;
+			ui::Fonts().DrawCentered(hintBright ? "!" : "…", Vector2{ b.x + 14.f, b.y + b.height * 0.5f }, gs);
+		}
+		ui::Text(hint, Vector2{ b.x + 26.f, b.y + 7.f }, 13.f, hintBright ? util::Mix(ui::theme::kDawnHi, ui::theme::kTextHi, pulse * 0.4f) : ui::theme::kTextDim);
 		y += 34.f;
 	}
 	m_trackerBottom = y;
@@ -1028,18 +1052,21 @@ void Game::DrawQuestDialog(const WorldData::NpcRow& npc)
 	// 초상화 아래: 이 이야기의 자리(장 · 종류)
 	{
 		const Color kc = KindColor(q->kind);
-		ui::Text(KindGlyph(q->kind), Vector2{ r.x + 76.f, r.y + 218.f }, 18.f, kc, Align::Center);
-		ui::Text(KindName(q->kind), Vector2{ r.x + 76.f, r.y + 240.f }, 13.f, util::Shade(kc, 0.9f), Align::Center);
+		ui::Text(KindGlyph(q->kind), Vector2{ r.x + 76.f, r.y + 220.f }, 16.f, kc, Align::Center);
+		ui::Text(KindName(q->kind), Vector2{ r.x + 76.f, r.y + 242.f }, 12.f, kc, Align::Center);
 		if (q->kind == QuestKind::Main)
-			ui::Text(Fmt("제%d장", q->chapter), Vector2{ r.x + 76.f, r.y + 258.f }, 13.f, ui::theme::kTextDim, Align::Center);
+			ui::Text(Fmt("제%d장", q->chapter), Vector2{ r.x + 76.f, r.y + 260.f }, 12.f, ui::theme::kTextDim, Align::Center);
 	}
 
 	const float x0 = r.x + 152.f, cw = r.width - 170.f;
 	float y = r.y + 44.f;
-	ui::Text(ChapterTag(*q), Vector2{ x0, y }, 13.f, KindColor(q->kind));
+	ui::Text(ChapterTag(*q), Vector2{ x0, y }, 12.f, KindColor(q->kind));
 	y += 17.f;
-	ui::TextShadow(q->name, Vector2{ x0, y }, 21.f, ui::theme::kTitle);
-	y += 30.f;
+	{
+		ui::TextStyle ts; ts.size = 20.f; ts.color = ui::theme::kTextHi; ts.face = ui::Face::Display; ts.spacing = 0.6f;
+		ui::Fonts().Draw(q->name, Vector2{ x0, y }, ts);
+	}
+	y += 31.f;
 
 	// 이야기 — 한 글자씩(누르면 바로 다)
 	const char* text = mode == Mode::Offer ? q->offer : (mode == Mode::Done ? q->done : q->during);
@@ -1049,7 +1076,10 @@ void Game::DrawQuestDialog(const WorldData::NpcRow& npc)
 	std::string visible;
 	for (int i = 0; i < shown; ++i) ui::AppendUtf8(visible, cps[i]);
 	const Rectangle tr{ x0, y, cw, 86.f };
-	ui::TextWrapped(visible, tr, 15.f, ui::theme::kText, 5.f);
+	{
+		ui::FaceScope serif(ui::Face::Serif);
+		ui::TextWrapped(visible, tr, 15.f, ui::theme::kTextHi, 7.f);
+	}
 	const bool typing = shown < static_cast<int>(cps.size());
 	if (typing && ui::Clicked(tr))
 		m_dialogTextAt = m_now - 60.0;
@@ -1064,24 +1094,21 @@ void Game::DrawQuestDialog(const WorldData::NpcRow& npc)
 	const float leftW = cw * 0.55f;
 	const float rx = x0 + leftW + 14.f, rw = cw - leftW - 14.f;
 	const float colY = y;
-	ui::Text("목표", Vector2{ x0, colY }, 13.f, ui::theme::kGold);
-	ui::Divider(x0 + 34.f, x0 + leftW, colY + 9.f);
+	Section("목표", x0, colY, leftW);
 	if (mode == Mode::Done)
-		ui::Text("모든 목표를 이루었습니다.", Vector2{ x0 + 4.f, colY + 22.f }, 14.f, Rgb(0x9AE88A));
+		ui::Text("모든 목표를 이루었습니다.", Vector2{ x0 + 4.f, colY + 22.f }, 14.f, ui::theme::kGood);
 	else if (QuestData::ObjCount(*q) == 0)
 		ui::Text(NpcName(q->turnIn) + "에게 이야기를 전한다", Vector2{ x0 + 4.f, colY + 22.f }, 14.f, ui::theme::kText);
 	else
 		DrawQuestObjectives(x0 + 4.f, colY + 22.f, leftW - 8.f, *q, v, 14.f);
 	if (mode != Mode::During)
 	{
-		ui::Text("보상", Vector2{ rx, colY }, 13.f, ui::theme::kGold);
-		ui::Divider(rx + 34.f, rx + rw, colY + 9.f);
+		Section("보상", rx, colY, rw);
 		DrawQuestRewards(rx + 2.f, colY + 20.f, rw - 4.f, *q, true);
 	}
 	else
 	{
-		ui::Text("보고", Vector2{ rx, colY }, 13.f, ui::theme::kGold);
-		ui::Divider(rx + 34.f, rx + rw, colY + 9.f);
+		Section("보고", rx, colY, rw);
 		ui::TextWrapped(q->turnIn ? NpcName(q->turnIn) + (q->turnIn != npc.id ? "에게 돌아가세요" : "에게 다시 오세요") : std::string("목표를 이루면 그 자리에서 끝납니다"),
 			Rectangle{ rx + 4.f, colY + 22.f, rw - 8.f, 60.f }, 14.f, ui::theme::kText, 4.f);
 	}
@@ -1135,7 +1162,7 @@ void Game::DrawQuestLog()
 
 	// ── 왼쪽: 목록 ──
 	const Rectangle list{ r.x + 12.f, r.y + 44.f, 262.f, r.height - 56.f };
-	DrawRectangleRounded(list, 0.03f, 6, Color{ 10, 9, 12, 150 });
+	ui::Plate(list, Color{ 11, 13, 16, 200 }, ui::theme::kLine, 3.f, 1.f);
 	struct Row { const QuestRow* q; const QuestView* v; bool header; const char* title; bool past; };
 	std::vector<Row> rows;
 	const QuestKind order[] = { QuestKind::Main, QuestKind::Side, QuestKind::Daily, QuestKind::Class };
@@ -1180,8 +1207,7 @@ void Game::DrawQuestLog()
 	{
 		if (row.header)
 		{
-			ui::Text(row.title, Vector2{ list.x + 10.f, y + 4.f }, 13.f, row.past ? ui::theme::kTextDim : ui::theme::kGold);
-			ui::Divider(list.x + 10.f + ui::Fonts().Measure(row.title, 13.f).x + 8.f, list.x + list.width - 10.f, y + 13.f);
+			ui::SectionHeader(Vector2{ list.x + 10.f, y + 5.f }, list.width - 20.f, row.title);
 			y += 24.f;
 			continue;
 		}
@@ -1189,14 +1215,16 @@ void Game::DrawQuestLog()
 		const bool sel = row.q->id == m_questLogSel;
 		const bool hover = ui::Hovered(rr) && ui::Hovered(list);
 		if (sel || hover)
-			DrawRectangleRounded(rr, 0.2f, 6, sel ? Color{ 90, 70, 40, 200 } : Color{ 60, 50, 44, 150 });
+			ui::Plate(rr, sel ? ui::theme::kSurface3 : ui::theme::kSurface2, BLANK, 2.f, 0.f);
+		if (sel)
+			DrawRectangleRec(Rectangle{ std::round(rr.x), std::round(rr.y + 3.f), 2.f, std::round(rr.height - 6.f) }, ui::theme::kDawn);
 		const Color kc = row.past ? ui::theme::kTextDim : KindColor(row.q->kind);
-		ui::Text(KindGlyph(row.q->kind), Vector2{ rr.x + 10.f, rr.y + 5.f }, 12.f, kc);
+		ui::Text(KindGlyph(row.q->kind), Vector2{ rr.x + 10.f, rr.y + 6.f }, 11.f, kc);
 		std::string name = row.q->name;
-		ui::Text(name, Vector2{ rr.x + 26.f, rr.y + 4.f }, 14.f, row.past ? Rgb(0xB8B0A0) : ui::theme::kText);
+		ui::Text(name, Vector2{ rr.x + 26.f, rr.y + 5.f }, ui::type::kBodyS + 0.5f, row.past ? ui::theme::kTextDim : (sel ? ui::theme::kTextHi : ui::theme::kText));
 		if (row.v)
 		{
-			if (QuestReady(*row.v)) Check(Vector2{ rr.x + rr.width - 14.f, rr.y + 12.f }, 10.f, Rgb(0xFFD84A));
+			if (QuestReady(*row.v)) Check(Vector2{ rr.x + rr.width - 14.f, rr.y + 12.f }, 10.f, ui::theme::kDawnHi);
 			else
 			{
 				int done = 0, total = 0;
@@ -1220,29 +1248,38 @@ void Game::DrawQuestLog()
 	float dy = r.y + 48.f;
 	if (!q)
 	{
-		ui::TextWrapped("백 년을 뛰던 숲의 심장이 멈춘 날, 새벽은 길을 잃었다.\n\n여명의 마을 광장의 촌장 알데릭이 당신을 기다립니다.",
-			Rectangle{ x0, dy + 20.f, cw, 200.f }, 16.f, Rgb(0xE8DCC0), 7.f);
+		ui::FaceScope serif(ui::Face::Serif);
+		ui::TextWrapped("하르벤이 멈춘 뒤로, 새벽은 날마다 조금씩 늦게 왔다.\n\n데니차 광장의 촌장 고란이 당신을 기다립니다.",
+			Rectangle{ x0, dy + 20.f, cw, 200.f }, 16.f, ui::theme::kTextHi, 8.f);
 		return;
 	}
 	const QuestView* v = ActiveQuest(q->id);
 	const Color kc = KindColor(q->kind);
-	ui::Text(ChapterTag(*q), Vector2{ x0, dy }, 13.f, kc);
+	ui::Text(ChapterTag(*q), Vector2{ x0, dy }, 12.f, kc);
 	dy += 18.f;
-	ui::TextShadow(q->name, Vector2{ x0, dy }, 22.f, ui::theme::kTitle);
-	dy += 32.f;
+	{
+		ui::TextStyle ts; ts.size = 21.f; ts.color = ui::theme::kTextHi; ts.face = ui::Face::Display; ts.spacing = 0.6f;
+		ui::Fonts().Draw(q->name, Vector2{ x0, dy }, ts);
+	}
+	dy += 33.f;
 	if (!v)
 	{
 		// 지난 이야기 — 이야기책처럼 다시 읽기
-		ui::Text(q->summary, Vector2{ x0, dy }, 14.f, ui::theme::kTextDim);
+		ui::Text(q->summary, Vector2{ x0, dy }, ui::type::kBodyS, ui::theme::kTextDim);
 		dy += 26.f;
-		dy += ui::TextWrapped(q->done, Rectangle{ x0, dy, cw, 200.f }, 15.f, Rgb(0xE8DCC0), 6.f) + 16.f;
-		ui::Text(Fmt("주는 사람 · %s", NpcName(q->giver).c_str()), Vector2{ x0, dy }, 13.f, ui::theme::kTextDim);
+		{
+			ui::FaceScope serif(ui::Face::Serif);
+			dy += ui::TextWrapped(q->done, Rectangle{ x0, dy, cw, 200.f }, 15.f, ui::theme::kTextHi, 8.f) + 16.f;
+		}
+		ui::Text(Fmt("주는 사람 · %s", NpcName(q->giver).c_str()), Vector2{ x0, dy }, 12.f, ui::theme::kTextDim);
 		return;
 	}
-	dy += ui::TextWrapped(q->summary, Rectangle{ x0, dy, cw, 60.f }, 14.f, Rgb(0xD8C8A0), 4.f) + 10.f;
-	dy += ui::TextWrapped(q->offer, Rectangle{ x0, dy, cw, 140.f }, 13.f, ui::theme::kTextDim, 4.f) + 14.f;
-	ui::Text("목표", Vector2{ x0, dy }, 13.f, ui::theme::kGold);
-	ui::Divider(x0 + 34.f, x0 + cw, dy + 9.f);
+	dy += ui::TextWrapped(q->summary, Rectangle{ x0, dy, cw, 60.f }, ui::type::kBody, ui::theme::kTitle, 6.f) + 10.f;
+	{
+		ui::FaceScope serif(ui::Face::Serif);
+		dy += ui::TextWrapped(q->offer, Rectangle{ x0, dy, cw, 140.f }, 13.5f, ui::theme::kTextDim, 6.f) + 14.f;
+	}
+	Section("목표", x0, dy, cw);
 	dy += 22.f;
 	if (QuestData::ObjCount(*q) == 0)
 	{
@@ -1252,12 +1289,11 @@ void Game::DrawQuestLog()
 	else
 		dy += DrawQuestObjectives(x0 + 4.f, dy, cw - 8.f, *q, v, 14.f);
 	dy += 6.f;
-	ui::Text("보상", Vector2{ x0, dy }, 13.f, ui::theme::kGold);
-	ui::Divider(x0 + 34.f, x0 + cw, dy + 9.f);
+	Section("보상", x0, dy, cw);
 	dy += 22.f;
 	dy += DrawQuestRewards(x0 + 4.f, dy, cw - 8.f, *q) + 12.f;
 	const bool ready = QuestReady(*v);
-	ui::Text(q->turnIn ? "보고 · " + NpcName(q->turnIn) : std::string("목표를 이루면 그 자리에서 끝납니다"), Vector2{ x0, dy }, 13.f, ready ? Rgb(0xFFD84A) : ui::theme::kTextDim);
+	ui::Text(q->turnIn ? "보고 · " + NpcName(q->turnIn) : std::string("목표를 이루면 그 자리에서 끝납니다"), Vector2{ x0, dy }, ui::type::kCaption + 0.5f, ready ? ui::theme::kDawnHi : ui::theme::kTextDim);
 
 	// 버튼
 	float bx = x0;
@@ -1296,7 +1332,7 @@ void Game::DrawQuestWorld(bool groundPass)
 	if (!poi) return;
 	const Vector2 iso = TileToIso(m_questDest.tile);
 	const float t = m_time;
-	const Color gold = Rgb(0xFFD870);
+	const Color gold = ui::theme::kDawnHi;
 	if (groundPass)
 	{
 		// 이 안에 들어서면 된다 — 천천히 도는 점선 고리 + 은은한 바닥 빛
@@ -1336,7 +1372,7 @@ void Game::DrawQuestCompass(const Camera2D& cam)
 	const Rectangle inner{ 90.f, 90.f, W - 180.f, H - 250.f };
 	const int dist = Cheb(m_predX, m_predY, static_cast<int>(m_questDest.tile.x), static_cast<int>(m_questDest.tile.y));
 	const float t = static_cast<float>(m_now);
-	const Color gold = Rgb(0xFFD870);
+	const Color gold = ui::theme::kDawnHi;
 	if (CheckCollisionPointRec(sp, inner))
 	{
 		// 화면 안: NPC는 머리 위 ! ? 가 있으니 장소·사냥터만 떠 있는 표식
@@ -1346,10 +1382,11 @@ void Game::DrawQuestCompass(const Camera2D& cam)
 		DrawTriangle(Vector2{ c.x - 11.f, c.y - 8.f }, Vector2{ c.x, c.y + 10.f }, Vector2{ c.x + 11.f, c.y - 8.f }, Color{ 40, 24, 6, 220 });
 		DrawTriangle(Vector2{ c.x - 8.f, c.y - 6.f }, Vector2{ c.x, c.y + 6.f }, Vector2{ c.x + 8.f, c.y - 6.f }, gold);
 		ui::TextStyle st;
-		st.size = 14.f;
-		st.color = Rgb(0xFFE8B0);
-		st.outline = 1.6f;
-		st.outlineColor = Color{ 0, 0, 0, 210 };
+		st.size = 13.5f;
+		st.color = ui::theme::kTextHi;
+		st.outline = 1.4f;
+		st.outlineColor = Color{ 0, 0, 0, 200 };
+		st.face = ui::Face::Strong;
 		ui::Fonts().DrawCentered(m_questDest.label, Vector2{ c.x, c.y - 20.f }, st);
 		return;
 	}
@@ -1372,13 +1409,12 @@ void Game::DrawQuestCompass(const Camera2D& cam)
 	DrawTriangle(tip, b2, b1, Color{ 40, 24, 6, 230 });
 	DrawTriangle(util::Add(tip, util::Mul(d, -3.f)), util::Add(b2, util::Mul(util::Sub(p, b2), 0.25f)), util::Add(b1, util::Mul(util::Sub(p, b1), 0.25f)), gold);
 	const std::string label = m_questDest.label + Fmt(" · %d칸", dist);
-	const float tw = ui::Fonts().Measure(label, 13.f).x;
+	const float tw = ui::Fonts().Measure(label, 12.5f).x;
 	Vector2 lp = util::Add(p, util::Mul(d, -34.f));
 	lp.x = std::clamp(lp.x, tw * 0.5f + 12.f, W - tw * 0.5f - 12.f);
-	const Rectangle lb{ lp.x - tw * 0.5f - 8.f, lp.y - 11.f, tw + 16.f, 22.f };
-	DrawRectangleRounded(lb, 0.5f, 6, Color{ 14, 10, 8, 190 });
-	DrawRectangleRoundedLinesEx(lb, 0.5f, 6, 1.f, util::WithA(gold, 0.5f));
-	ui::Text(label, Vector2{ lp.x, lb.y + 3.f }, 13.f, Rgb(0xFFE8B0), Align::Center);
+	const Rectangle lb{ std::round(lp.x - tw * 0.5f - 9.f), std::round(lp.y - 11.f), std::round(tw + 18.f), 22.f };
+	ui::Plate(lb, Color{ 14, 17, 20, 210 }, util::WithA(ui::theme::kDawn, 0.6f), 3.f, 1.f);
+	ui::Text(label, Vector2{ lp.x, lb.y + 4.f }, 12.5f, ui::theme::kTextHi, Align::Center);
 }
 
 void Game::DrawQuestOverlay(const Camera2D& cam)
@@ -1417,27 +1453,33 @@ float Game::DrawQuestStackCards(float y0)
 {
 	const float W = static_cast<float>(m_screenW);
 	float y = y0;
-	auto centered = [&](const std::string& s, float cx, float cy, float size, Color c, float outline = 2.f)
+	// 글자: 계열(face)을 골라 쓴다 — 제목은 Display, 이야기 한 줄은 Serif, 라벨은 Strong
+	auto centered = [&](const std::string& s, float cx, float cy, float size, Color c, float outline = 0.f, ui::Face face = ui::Face::Display, float spacing = 0.f)
 	{
 		ui::TextStyle st;
 		st.size = size;
 		st.color = c;
 		st.outline = outline;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 220 }, c.a / 255.f);
-		ui::Fonts().DrawCentered(s, Vector2{ cx, cy }, st);
+		st.outlineColor = util::MulA(Color{ 0, 0, 0, 200 }, c.a / 255.f);
+		st.shadow = size >= 24.f ? 2.f : 1.f;
+		st.shadowColor = util::MulA(Color{ 0, 0, 0, 190 }, c.a / 255.f);
+		st.face = face;
+		st.spacing = spacing;
+		ui::Fonts().DrawCentered(s, Vector2{ cx + spacing * 0.5f, cy }, st);
 	};
+	// 지평선과 샛별(로고와 같은 표식)
 	auto ornament = [&](float cx, float cy, float halfW, Color c)
 	{
-		DrawRectangleGradientH(static_cast<int>(cx - halfW), static_cast<int>(cy), static_cast<int>(halfW - 14.f), 2, util::WithA(c, 0.f), c);
-		DrawRectangleGradientH(static_cast<int>(cx + 14.f), static_cast<int>(cy), static_cast<int>(halfW - 14.f), 2, c, util::WithA(c, 0.f));
-		const Vector2 m{ cx, cy + 1.f };
-		DrawTriangle(Vector2{ m.x, m.y - 6.f }, Vector2{ m.x - 6.f, m.y }, Vector2{ m.x + 6.f, m.y }, c);
-		DrawTriangle(Vector2{ m.x - 6.f, m.y }, Vector2{ m.x, m.y + 6.f }, Vector2{ m.x + 6.f, m.y }, c);
+		DrawRectangleGradientH(static_cast<int>(cx - halfW), static_cast<int>(cy), static_cast<int>(halfW - 11.f), 1, util::WithA(c, 0.f), c);
+		DrawRectangleGradientH(static_cast<int>(cx + 11.f), static_cast<int>(cy), static_cast<int>(halfW - 11.f), 1, c, util::WithA(c, 0.f));
+		const Vector2 m{ cx, cy + 0.5f };
+		DrawTriangle(Vector2{ m.x, m.y - 6.f }, Vector2{ m.x - 4.f, m.y }, Vector2{ m.x + 4.f, m.y }, c);
+		DrawTriangle(Vector2{ m.x - 4.f, m.y }, Vector2{ m.x, m.y + 6.f }, Vector2{ m.x + 4.f, m.y }, c);
 	};
 	auto band = [&](float top, float h, float a)
 	{
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f - 360.f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(BLACK, 0.f), util::WithA(Color{ 18, 12, 6, 255 }, 0.78f * a));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(Color{ 18, 12, 6, 255 }, 0.78f * a), util::WithA(BLACK, 0.f));
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f - 360.f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(BLACK, 0.f), util::WithA(Color{ 10, 12, 15, 255 }, 0.82f * a));
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(Color{ 10, 12, 15, 255 }, 0.82f * a), util::WithA(BLACK, 0.f));
 	};
 
 	// ── 새 장소(탐험) — 이야기책 한 줄 ──
@@ -1451,11 +1493,11 @@ float Game::DrawQuestStackCards(float y0)
 			const float a = util::Clamp01(t / 0.6f) * util::Clamp01((5.6f - t) / 0.8f);
 			const float h = 104.f;
 			band(y, h, a);
-			centered("새로운 장소", W * 0.5f, y + 14.f, 13.f, util::WithA(Rgb(0xC8B890), a), 1.2f);
+			centered("새로운 장소", W * 0.5f, y + 14.f, 12.f, util::WithA(ui::theme::kTextDim, a), 0.f, ui::Face::Strong, 3.f);
 			const float rise = (1.f - util::EaseOutCubic(util::Clamp01(t / 0.8f))) * 10.f;
-			centered(poi->name, W * 0.5f, y + 42.f + rise, 30.f, util::WithA(Rgb(0xFFE6A8), a), 2.4f);
-			ornament(W * 0.5f, y + 63.f, 220.f, util::WithA(Rgb(0xD8B070), a));
-			centered(poi->flavor, W * 0.5f, y + 84.f, 15.f, util::WithA(Rgb(0xE8DCC0), a * util::Clamp01((t - 0.7f) / 0.8f)), 1.6f);
+			centered(poi->name, W * 0.5f, y + 42.f + rise, 30.f, util::WithA(Color{ 238, 229, 208, 255 }, a), 0.f, ui::Face::Display, 2.f);
+			ornament(W * 0.5f, y + 63.f, 220.f, util::WithA(ui::theme::kDawn, a));
+			centered(poi->flavor, W * 0.5f, y + 84.f, 15.f, util::WithA(ui::theme::kText, a * util::Clamp01((t - 0.7f) / 0.8f)), 0.f, ui::Face::Serif);
 			y += h + 8.f;
 		}
 	}
@@ -1472,14 +1514,14 @@ float Game::DrawQuestStackCards(float y0)
 			const float h = 110.f;
 			band(y, h, a);
 			const Color kc = KindColor(q->kind);
-			centered("퀘스트 완료", W * 0.5f, y + 14.f, 14.f, util::WithA(Rgb(0xFFD870), a), 1.4f);
+			centered("퀘스트 완료", W * 0.5f, y + 14.f, 12.f, util::WithA(ui::theme::kDawn, a), 0.f, ui::Face::Strong, 3.f);
 			ornament(W * 0.5f, y + 27.f, 170.f, util::WithA(kc, a));
 			const float pop = util::EaseOutBack(util::Clamp01(t / 0.35f), 2.2f);
-			centered(q->name, W * 0.5f, y + 48.f, 25.f * (0.6f + 0.4f * pop), util::WithA(util::Shade(kc, 1.3f), a), 2.2f);
+			centered(q->name, W * 0.5f, y + 48.f, 25.f * (0.6f + 0.4f * pop), util::WithA(Color{ 238, 229, 208, 255 }, a), 0.f, ui::Face::Display, 1.f);
 			struct Chip { std::string text; Color color; uint16_t item; };
 			std::vector<Chip> chips;
-			if (f.exp) chips.push_back(Chip{ "경험치 +" + texts::Number(f.exp), Rgb(0xD8B8FF), 0 });
-			if (f.adena) chips.push_back(Chip{ "아데나 +" + texts::Number(f.adena), Rgb(0xFFE070), 0 });
+			if (f.exp) chips.push_back(Chip{ "경험치 +" + texts::Number(f.exp), ui::theme::kExp, 0 });
+			if (f.adena) chips.push_back(Chip{ "그로시 +" + texts::Number(f.adena), ui::theme::kTextHi, 0 });
 			if (f.item)
 			{
 				const ItemTableRow* row = ItemTableData::Find(f.item);
@@ -1498,15 +1540,15 @@ float Game::DrawQuestStackCards(float y0)
 				const auto& c = chips[i];
 				const float cw = ui::Fonts().Measure(c.text, 15.f).x + (c.item ? 40.f : 20.f);
 				const Rectangle r{ cx, y + 70.f + (1.f - cp) * 8.f, cw, 28.f };
-				DrawRectangleRounded(r, 0.5f, 6, util::WithA(Color{ 16, 12, 10, 255 }, 0.85f * a));
-				DrawRectangleRoundedLinesEx(r, 0.5f, 6, 1.2f, util::WithA(c.color, 0.8f * a));
+				ui::Plate(r, util::WithA(Color{ 16, 19, 23, 255 }, 0.9f * a), util::WithA(c.item ? c.color : ui::theme::kLine, 0.8f * a), 3.f, 1.f);
 				float tx = r.x + 10.f;
 				if (c.item)
 				{
 					icons::Draw(c.item, Rectangle{ r.x + 5.f, r.y + 1.f, 26.f, 26.f }, util::WithA(WHITE, a));
 					tx += 26.f;
 				}
-				ui::Text(c.text, Vector2{ tx, r.y + 5.f }, 15.f, util::WithA(c.color, a));
+				ui::TextStyle cs; cs.size = 14.f; cs.color = util::WithA(c.color, a); cs.face = ui::Face::Strong;
+				ui::Fonts().Draw(c.text, Vector2{ tx, r.y + 6.f }, cs);
 				cx += cw + 10.f;
 			}
 			y += h + 8.f;
@@ -1518,22 +1560,28 @@ float Game::DrawQuestStackCards(float y0)
 void Game::DrawQuestScreenFx()
 {
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	auto centered = [&](const std::string& s, float cx, float cy, float size, Color c, float outline = 2.f)
+	// 글자: 계열(face)을 골라 쓴다 — 제목은 Display, 이야기 한 줄은 Serif, 라벨은 Strong
+	auto centered = [&](const std::string& s, float cx, float cy, float size, Color c, float outline = 0.f, ui::Face face = ui::Face::Display, float spacing = 0.f)
 	{
 		ui::TextStyle st;
 		st.size = size;
 		st.color = c;
 		st.outline = outline;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 220 }, c.a / 255.f);
-		ui::Fonts().DrawCentered(s, Vector2{ cx, cy }, st);
+		st.outlineColor = util::MulA(Color{ 0, 0, 0, 200 }, c.a / 255.f);
+		st.shadow = size >= 24.f ? 2.f : 1.f;
+		st.shadowColor = util::MulA(Color{ 0, 0, 0, 190 }, c.a / 255.f);
+		st.face = face;
+		st.spacing = spacing;
+		ui::Fonts().DrawCentered(s, Vector2{ cx + spacing * 0.5f, cy }, st);
 	};
+	// 지평선과 샛별(로고와 같은 표식)
 	auto ornament = [&](float cx, float cy, float halfW, Color c)
 	{
-		DrawRectangleGradientH(static_cast<int>(cx - halfW), static_cast<int>(cy), static_cast<int>(halfW - 14.f), 2, util::WithA(c, 0.f), c);
-		DrawRectangleGradientH(static_cast<int>(cx + 14.f), static_cast<int>(cy), static_cast<int>(halfW - 14.f), 2, c, util::WithA(c, 0.f));
-		const Vector2 m{ cx, cy + 1.f };
-		DrawTriangle(Vector2{ m.x, m.y - 6.f }, Vector2{ m.x - 6.f, m.y }, Vector2{ m.x + 6.f, m.y }, c);
-		DrawTriangle(Vector2{ m.x - 6.f, m.y }, Vector2{ m.x, m.y + 6.f }, Vector2{ m.x + 6.f, m.y }, c);
+		DrawRectangleGradientH(static_cast<int>(cx - halfW), static_cast<int>(cy), static_cast<int>(halfW - 11.f), 1, util::WithA(c, 0.f), c);
+		DrawRectangleGradientH(static_cast<int>(cx + 11.f), static_cast<int>(cy), static_cast<int>(halfW - 11.f), 1, c, util::WithA(c, 0.f));
+		const Vector2 m{ cx, cy + 0.5f };
+		DrawTriangle(Vector2{ m.x, m.y - 6.f }, Vector2{ m.x - 4.f, m.y }, Vector2{ m.x + 4.f, m.y }, c);
+		DrawTriangle(Vector2{ m.x - 4.f, m.y }, Vector2{ m.x, m.y + 6.f }, Vector2{ m.x + 4.f, m.y }, c);
 	};
 
 	// ── 장 제목 카드 ──
@@ -1545,17 +1593,56 @@ void Game::DrawQuestScreenFx()
 		const auto& ch = QuestData::kChapters[m_chapterCard];
 		DrawRectangle(0, 0, m_screenW, m_screenH, util::WithA(BLACK, 0.72f * a));
 		const float cy = H * 0.42f;
-		DrawRectangleGradientV(0, static_cast<int>(cy - 120.f), static_cast<int>(W), 120, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.35f * a));
-		DrawRectangleGradientV(0, static_cast<int>(cy), static_cast<int>(W), 140, util::WithA(BLACK, 0.35f * a), util::WithA(BLACK, 0.f));
+		// 장 그림: 화면을 가로지르는 넓은 띠(영화 화면비)로 천천히 다가온다. 위아래 가장자리는 어둠에 녹인다.
+		if (const Texture2D* plate = art::Chapter(m_chapterCard))
+		{
+			struct PlateLook { float focusY; Vector2 glint; Color glintColor; };
+			static const PlateLook kLook[] = {
+				{ 0.50f, Vector2{ 0.f, 0.f },        BLANK },                          // (0 없음)
+				{ 0.52f, Vector2{ 0.363f, 0.069f },  Color{ 255, 226, 170, 255 } },    // 1 데니차 — 샛별
+				{ 0.45f, Vector2{ 0.184f, 0.098f },  Color{ 255, 226, 170, 255 } },    // 2 올벤 숲 — 샛별
+				{ 0.38f, Vector2{ 0.f, 0.f },        BLANK },                          // 3 캄파나 — 종탑
+				{ 0.42f, Vector2{ 0.f, 0.f },        BLANK },                          // 4 서약의 언덕
+				{ 0.56f, Vector2{ 0.498f, 0.355f },  Color{ 255, 150, 80, 255 } },     // 5 칼둔 균열 — 불씨(글자 위로 올라가게)
+			};
+			const PlateLook& look = kLook[std::min<int>(m_chapterCard, 5)];
+			const float bandH = std::round(std::min(H * 0.64f, W * 0.40f));
+			const Rectangle band{ 0.f, std::round(cy - bandH * 0.54f), W, bandH };
+			const float zoom = 1.02f + 0.06f * util::EaseOutCubic(util::Clamp01(t / 6.5f));
+			const Vector2 focus{ 0.5f, look.focusY };
+			art::DrawCover(*plate, band, util::WithA(WHITE, a), focus, zoom);
+			if (look.glintColor.a > 0)
+			{
+				const Vector2 g = art::CoverPoint(*plate, band, focus, zoom, look.glint);
+				if (g.y > band.y && g.y < band.y + band.height)
+					art::Glint(g, 4.5f * H / 720.f, look.glintColor, art::StarPulse(t, 3.f) * a);
+			}
+			// 가장자리: 띠 안쪽은 어둠으로 녹이고, 바깥쪽도 한 번 더 가라앉혀 경계선이 보이지 않게 한다
+			const int f = static_cast<int>(bandH * 0.24f);
+			const int o = static_cast<int>(H * 0.1f);
+			const int top = static_cast<int>(band.y), bottom = static_cast<int>(band.y + band.height);
+			DrawRectangleGradientV(0, top, m_screenW, f, util::WithA(BLACK, 0.9f * a), util::WithA(BLACK, 0.f));
+			DrawRectangleGradientV(0, bottom - f, m_screenW, f, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.9f * a));
+			DrawRectangleGradientV(0, top - o, m_screenW, o, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.75f * a));
+			DrawRectangleGradientV(0, bottom, m_screenW, o, util::WithA(BLACK, 0.75f * a), util::WithA(BLACK, 0.f));
+			// 글자 자리(가운데)는 조금 더 가라앉힌다
+			DrawRectangleGradientV(0, static_cast<int>(cy - 110.f), m_screenW, 110, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.5f * a));
+			DrawRectangleGradientV(0, static_cast<int>(cy), m_screenW, 130, util::WithA(BLACK, 0.5f * a), util::WithA(BLACK, 0.f));
+		}
+		else
+		{
+			DrawRectangleGradientV(0, static_cast<int>(cy - 120.f), static_cast<int>(W), 120, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.35f * a));
+			DrawRectangleGradientV(0, static_cast<int>(cy), static_cast<int>(W), 140, util::WithA(BLACK, 0.35f * a), util::WithA(BLACK, 0.f));
+		}
 		const float rise = (1.f - util::EaseOutCubic(util::Clamp01(t / 1.2f))) * 16.f;
-		centered(Fmt("제 %d 장", m_chapterCard), W * 0.5f, cy - 58.f + rise * 0.5f, 20.f, util::WithA(Rgb(0xD8B070), a), 1.5f);
-		ornament(W * 0.5f, cy - 40.f, 200.f, util::WithA(Rgb(0xC89A50), a));
-		centered(ch.title, W * 0.5f, cy - 4.f + rise, 46.f, util::WithA(Rgb(0xFFE8B8), a), 3.f);
-		centered(std::string("— ") + ch.place + " —", W * 0.5f, cy + 40.f, 17.f, util::WithA(Rgb(0xC8B890), a * util::Clamp01((t - 0.5f) / 0.8f)), 1.4f);
-		centered(ch.line, W * 0.5f, cy + 76.f, 17.f, util::WithA(Rgb(0xE8DCC0), a * util::Clamp01((t - 1.1f) / 0.9f)), 1.6f);
+		centered(Fmt("제%d장", m_chapterCard), W * 0.5f, cy - 60.f + rise * 0.5f, 17.f, util::WithA(ui::theme::kDawn, a), 0.f, ui::Face::Display, 6.f);
+		ornament(W * 0.5f, cy - 40.f, 200.f, util::WithA(ui::theme::kDawn, a * 0.9f));
+		centered(ch.title, W * 0.5f, cy - 4.f + rise, 46.f, util::WithA(Color{ 240, 231, 210, 255 }, a), 0.f, ui::Face::Display, 4.f);
+		centered(ch.place, W * 0.5f, cy + 40.f, 15.f, util::WithA(ui::theme::kTextDim, a * util::Clamp01((t - 0.5f) / 0.8f)), 0.f, ui::Face::Strong, 4.f);
+		centered(ch.line, W * 0.5f, cy + 76.f, 17.f, util::WithA(ui::theme::kText, a * util::Clamp01((t - 1.1f) / 0.9f)), 0.f, ui::Face::Serif);
 	}
 
-	// ── 엔딩: 숲의 심장이 다시 뛴다 ──
+	// ── 엔딩: 하르벤이 다시 뛴다 ──
 	if (m_endingAt > 0.0 && m_now >= m_endingAt)
 	{
 		const float t = static_cast<float>(m_now - m_endingAt);
@@ -1596,21 +1683,21 @@ void Game::DrawQuestScreenFx()
 		const float cy = H * 0.4f;
 		if (t < 3.6f)
 		{
-			if (t > 0.2f) centered("쿵.", W * 0.5f - 60.f, cy, 34.f, util::WithA(Rgb(0xFFE0B0), util::Clamp01((t - 0.2f) / 0.3f) * util::Clamp01((3.6f - t) / 0.6f)), 2.5f);
-			if (t > 1.45f) centered("…쿵.", W * 0.5f + 50.f, cy + 30.f, 34.f, util::WithA(Rgb(0xFFE0B0), util::Clamp01((t - 1.45f) / 0.3f) * util::Clamp01((3.6f - t) / 0.6f)), 2.5f);
+			if (t > 0.2f) centered("쿵.", W * 0.5f - 60.f, cy, 34.f, util::WithA(Rgb(0xF2DEB8), util::Clamp01((t - 0.2f) / 0.3f) * util::Clamp01((3.6f - t) / 0.6f)), 0.f, ui::Face::Serif);
+			if (t > 1.45f) centered("…쿵.", W * 0.5f + 50.f, cy + 30.f, 34.f, util::WithA(Rgb(0xF2DEB8), util::Clamp01((t - 1.45f) / 0.3f) * util::Clamp01((3.6f - t) / 0.6f)), 0.f, ui::Face::Serif);
 		}
 		else if (t < 10.4f)
 		{
 			const float a = util::Clamp01((t - 4.f) / 1.f) * util::Clamp01((10.4f - t) / 1.f);
-			centered("숲의 심장이 다시 뛴다", W * 0.5f, cy - 10.f, 42.f, util::WithA(Rgb(0xFFF0C8), a), 3.f);
-			centered("속삭임은 노래가 되고, 긴 밤 끝에 — 새벽이 왔다.", W * 0.5f, cy + 40.f, 20.f, util::WithA(Rgb(0xFFE6B0), a * util::Clamp01((t - 5.2f) / 1.f)), 1.8f);
+			centered("하르벤이 다시 뛴다", W * 0.5f, cy - 10.f, 42.f, util::WithA(Color{ 250, 240, 216, 255 }, a), 0.f, ui::Face::Display, 4.f);
+			centered("속삭임은 노래가 되고, 긴 밤 끝에 — 새벽이 왔다.", W * 0.5f, cy + 40.f, 19.f, util::WithA(Rgb(0xF6E6C2), a * util::Clamp01((t - 5.2f) / 1.f)), 0.f, ui::Face::Serif);
 		}
 		else
 		{
 			const float a = util::Clamp01((t - 10.6f) / 1.f) * util::Clamp01((16.f - t) / 1.4f);
-			centered("멈춘 심장 · 끝", W * 0.5f, cy, 30.f, util::WithA(Rgb(0xFFE6B0), a), 2.4f);
-			ornament(W * 0.5f, cy + 24.f, 180.f, util::WithA(Rgb(0xD8B070), a));
-			centered("그리고 모험은 계속됩니다", W * 0.5f, cy + 50.f, 17.f, util::WithA(Rgb(0xE8DCC0), a), 1.5f);
+			ui::Logo(Vector2{ W * 0.5f, cy - 20.f }, 0.8f, a, false);
+			centered("멈춘 심장 · 끝", W * 0.5f, cy + 58.f, 18.f, util::WithA(Rgb(0xF2DEB8), a), 0.f, ui::Face::Serif, 3.f);
+			centered("그리고 모험은 계속됩니다", W * 0.5f, cy + 86.f, 14.f, util::WithA(ui::theme::kText, a), 0.f, ui::Face::Body);
 		}
 	}
 }

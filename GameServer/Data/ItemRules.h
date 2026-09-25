@@ -56,11 +56,11 @@ enum class ItemProc : uint8_t
 {
 	None = 0,
 	Thunder,      // 천둥의 일격: 적중 시 확률로 벼락(마법 피해)
-	Lifesteal,    // 피의 갈증: 준 피해 일부를 HP로
+	Lifesteal,    // 생명 흡수: 준 피해 일부를 HP로
 	FrostTouch,   // 서리 손길: 적중 시 확률로 둔화(강화: 빙결)
 	Execution,    // 처형자: HP 30% 이하 대상에게 피해 증가
 	Echo,         // 메아리: 기술 적중 시 확률로 한 번 더
-	Guardian,     // 수호의 맹세: 맞을 때 확률로 철벽 태세
+	Guardian,     // 서약의 방패: 맞을 때 확률로 철벽 태세
 	Ember,        // 잔불: 적중 시 확률로 화상
 	Venom,        // 맹독: 적중 시 확률로 중독 1중첩
 	Count
@@ -129,7 +129,7 @@ struct ItemInstance
 struct GearExtras
 {
 	uint8_t  skillBoost[24] = {};        // 기술 id별 피해 +%
-	uint16_t adenaFind = 0;              // 아데나 획득 +%
+	uint16_t adenaFind = 0;              // 그로시 획득 +%(내부 이름 Adena 유지)
 	uint16_t itemFind  = 0;              // 희귀품 발견 +%
 	uint8_t  procPower[static_cast<size_t>(ItemProc::Count)] = {};   // 0 없음 · 1 보통 · 2 강화(신화)
 	uint8_t  setCount[4] = {};           // 세트별 착용 부위 수
@@ -147,7 +147,8 @@ namespace ItemRules
 {
 	// ── 희귀도 ────────────────────────────────────────────────────────────────
 	inline constexpr const char* kRarityName[] = { "일반", "고급", "희귀", "영웅", "전설", "신화" };
-	inline constexpr uint32_t kRarityColor[]   = { 0xDCD6C8, 0x7BDC6A, 0x4FA8FF, 0xB87AFF, 0xFFA43A, 0xFF4F62 };
+	// 희귀도 색: 관례적인 색 순서(회·녹·청·자·주·적)를 지키되 채도를 눌러 새김 UI 팔레트에 맞췄다
+	inline constexpr uint32_t kRarityColor[]   = { 0xCFC9BC, 0x8CC46E, 0x5F9FE0, 0xA985D8, 0xE4A04E, 0xE0604E };
 	inline constexpr uint8_t  kOptionCount[]   = { 0, 1, 2, 3, 3, 4 };
 	// 상점 매입가 배율(%) — 쓸 수 없는 좋은 물건도 팔면 보상이 된다
 	inline constexpr uint16_t kSellPercent[]   = { 100, 130, 170, 260, 420, 700 };
@@ -234,7 +235,7 @@ namespace ItemRules
 		{ "모든 공격력",    2,  5, 20, 1, 1 },   // AttackPercent(물리·마법 모두 %)
 		{ "상태이상 저항",  3,  8, 25, 1, 1 },
 		{ "기술 강화",      0,  0,  0, 1, 0 },   // SkillBoost(값이 기술·단계를 담는다)
-		{ "아데나 획득",    5, 15, 60, 1, 1 },
+		{ "그로시 획득",    5, 15, 60, 1, 1 },
 		{ "희귀품 발견",    3, 10, 40, 1, 1 },
 	};
 	static_assert(sizeof(kOptions) / sizeof(kOptions[0]) == static_cast<size_t>(ItemOption::Count));
@@ -317,11 +318,11 @@ namespace ItemRules
 			if (k == O::Str || k == O::Vit) return 30;
 			if (k == O::Magic || k == O::Int) return 3;
 			break;
-		case ClassId::RuneCaster:
+		case ClassId::Engraver:
 			if (k == O::Int || k == O::Wis) return 30;
 			if (k == O::Attack || k == O::Str) return 3;
 			break;
-		case ClassId::ShadowHunter:
+		case ClassId::NightHunter:
 			if (k == O::Dex || k == O::Luk) return 30;
 			if (k == O::Magic || k == O::Int) return 3;
 			break;
@@ -389,11 +390,11 @@ namespace ItemRules
 	{
 		{ "",            0,   0,   0,  0, 0xFFFFFF },
 		{ "천둥의 일격", 12,  18,  60, 90, 0x9AD8FF },   // 벼락: 공격력의 power% 마법 피해
-		{ "피의 갈증",  100, 100,   5,  8, 0xFF5A6A },   // 준 피해의 power% 흡수
+		{ "생명 흡수",  100, 100,   5,  8, 0xFF5A6A },   // 준 피해의 power% 흡수
 		{ "서리 손길",   12,  18,   0,  0, 0x8AD8FF },   // 둔화 2.5초(강화: 빙결 1.2초)
 		{ "처형자",     100, 100,  30, 50, 0xFF8A3A },   // HP 30% 이하 대상 피해 +power%
 		{ "메아리",      12,  18,  40, 60, 0xC8A8FF },   // 기술 적중 시 power% 피해로 한 번 더
-		{ "수호의 맹세", 10,  15,   0,  0, 0xFFD870 },   // 맞을 때 철벽 태세 3초(12초마다)
+		{ "서약의 방패", 10,  15,   0,  0, 0xFFD870 },   // 맞을 때 철벽 태세 3초(12초마다)
 		{ "잔불",        15,  22,   0,  0, 0xFF7A2A },   // 화상
 		{ "맹독",        20,  30,   0,  0, 0x7ADF4A },   // 중독 1중첩
 	};
@@ -442,15 +443,15 @@ namespace ItemRules
 	};
 	inline constexpr SetRow kSets[] =
 	{
-		{ 1, "여명의 파수꾼", { 47, 48, 49, 50 },
+		{ 1, "서약의 갑주", { 47, 48, 49, 50 },
 		  { { ItemOption::Vit, 4 }, { ItemOption::MaxHp, 12 } },
-		  { { ItemOption::Armor, 15 }, { ItemOption::StatusResist, 10 } }, ItemProc::Guardian, 0xFFD890 },
-		{ 2, "별빛 룬", { 51, 52, 53, 54 },
+		  { { ItemOption::Armor, 15 }, { ItemOption::StatusResist, 10 } }, ItemProc::Guardian, 0xD9B77A },
+		{ 2, "이레린의 노래", { 51, 52, 53, 54 },
 		  { { ItemOption::Int, 5 }, { ItemOption::MaxMp, 15 } },
-		  { { ItemOption::CooldownReduction, 8 }, { ItemOption::Magic, 20 } }, ItemProc::Thunder, 0x8AB8FF },
-		{ 3, "달그림자", { 55, 56, 57, 58 },
+		  { { ItemOption::CooldownReduction, 8 }, { ItemOption::Magic, 20 } }, ItemProc::Thunder, 0x7FC4B8 },
+		{ 3, "은늑대", { 55, 56, 57, 58 },
 		  { { ItemOption::Dex, 5 }, { ItemOption::CritChance, 30 } },
-		  { { ItemOption::CritDamage, 25 }, { ItemOption::MoveSpeed, 6 } }, ItemProc::Venom, 0xB88AFF },
+		  { { ItemOption::CritDamage, 25 }, { ItemOption::MoveSpeed, 6 } }, ItemProc::Venom, 0xB8C4CC },
 	};
 	inline constexpr int kSetCount = static_cast<int>(sizeof(kSets) / sizeof(kSets[0]));
 

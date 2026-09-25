@@ -38,10 +38,10 @@ public:
 	bool			DeleteInventorySlot(int playerId, uint16_t slotIndex);
 
 	// ── 리니지풍 컨텐츠 확장 ──
-	// 아데나/성향치는 name이 아니라 playerId 기준(인벤토리와 같은 샤드)으로 저장한다.
+	// 그로시/성향치는 name이 아니라 playerId 기준(인벤토리와 같은 샤드)으로 저장한다.
 	bool			SavePlayerAdena(int playerId, uint32_t adena);
 	bool			SavePlayerAlignment(int playerId, int16_t alignment, uint16_t pkCount);
-	// 상점 거래: 아데나 + 슬롯 하나를 하나의 SQL 트랜잭션으로 반영한다(ShopTransaction 프로시저).
+	// 상점 거래: 그로시 + 슬롯 하나를 하나의 SQL 트랜잭션으로 반영한다(ShopTransaction 프로시저).
 	bool			ShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot);
 	// V2 캐릭터 진행 데이터(직업·능력치 포인트·퀘스트 등)를 한 덩어리(버전 있는 바이너리)로
 	// 읽고 쓴다(PlayerProgress 테이블). 기능이 늘 때마다 컬럼을 늘리지 않기 위함.

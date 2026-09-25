@@ -86,7 +86,7 @@ namespace
 		case 4:  return 0.05 + 0.055 * tiles;
 		case 16: return 0.05 + 0.05 * tiles;
 		case 14: return 0.09;
-		default: return 0.0;   // 10 공간 도약: 순간이동
+		default: return 0.0;   // 10 옛길 도약: 순간이동
 		}
 	}
 
@@ -96,7 +96,7 @@ namespace
 		switch (id)
 		{
 		case 13: return 0.11;   // 연속 찌르기
-		case 18: return 0.13;   // 월영 난무
+		case 18: return 0.13;   // 그믐 베기
 		case 11: return 0.075;  // 번개 연쇄
 		case 9:  return 0.12;   // 증발 폭발(두 번째 폭발)
 		default: return 0.09;
@@ -110,7 +110,7 @@ namespace
 		switch (row.id)
 		{
 		case 6:  return 0.46;   // 처형: 힘을 모으는 동안 서 있는다
-		case 18: return 0.5;    // 월영 난무
+		case 18: return 0.5;    // 그믐 베기
 		case 3: case 9: return 0.24;
 		case 5:  return 0.12;
 		default: return 0.2;
@@ -403,7 +403,7 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 		if (sx == 0 && sy == 0) { sx = m_scriptKeyX; sy = m_scriptKeyY; }
 		if (row->id == 10)
 		{
-			// 공간 도약: 누르고 있는 방향(없으면 바라보는 방향)으로 dash칸
+			// 옛길 도약: 누르고 있는 방향(없으면 바라보는 방향)으로 dash칸
 			int dx = 0, dy = 0;
 			if (sx != 0 || sy != 0) { dx = std::clamp(sx + sy, -1, 1); dy = std::clamp(sy - sx, -1, 1); }
 			else FacingTile(*me, dx, dy);
@@ -560,7 +560,7 @@ void Game::HandleStats(const USER_STATS_INF_PACKET& p)
 	m_stats = p.stats;
 	m_mp = p.mp;
 	m_maxmp = p.stats.maxMp;
-	m_attack = m_classId == ClassId::RuneCaster ? p.stats.magicAttack : p.stats.attack;
+	m_attack = m_classId == ClassId::Engraver ? p.stats.magicAttack : p.stats.attack;
 	// 서버는 확장 세션의 이동속도를 능력치·장비로 계산한다(가속은 따로 더한다) — 예측도 같은 값으로
 	if (p.stats.moveSpeed > 0)
 		m_baseSpeedPercent = p.stats.moveSpeed;
@@ -730,7 +730,7 @@ void Game::HandleStatus(const STATUS_NFY_PACKET& p)
 		case StatusId::Stun:
 		case StatusId::Freeze:
 			e->stunShake = 1.f;
-			fx::Fx().FloatText(iso, h + 22.f, std::string(row.name) + "!", StatusColor(id), self || mine ? 21.f : 16.f, 1.0f);
+			fx::Fx().FloatText(iso, h + 22.f, row.name, StatusColor(id), self || mine ? 20.f : 16.f, 1.0f);
 			PlayAt(static_cast<int>(id == StatusId::Stun ? sfx::Id::Stun : sfx::Id::Freeze), e->pos, self ? 0.9f : 0.6f, 0.05f);
 			if (self)
 			{
@@ -771,7 +771,7 @@ void Game::HandleTelegraph(const MONSTER_TELEGRAPH_NFY_PACKET& p)
 			m->tele.active = false;
 			m->windup = 0.f;
 			const Vector2 iso = TileToIso(m->pos);
-			fx::Fx().FloatText(iso, EntityHeight(*m) + 30.f, "끊김!", Rgb(0x9AE8FF), 23.f, 1.1f);
+			fx::Fx().FloatText(iso, EntityHeight(*m) + 30.f, "끊김", Rgb(0x92D6CC), 22.f, 1.1f);
 			fx::Fx().Ring(iso, 8.f, 80.f, 0.3f, Rgb(0xC8F0FF, 220), 4.f);
 			PlayAt(static_cast<int>(sfx::Id::Interrupt), m->pos, 0.9f, 0.03f);
 			m_feelStop = std::max(m_feelStop, 0.06f);
@@ -911,7 +911,7 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 	// ── 회피: 숫자 대신 글자 ──
 	if (evade)
 	{
-		fx::Fx().FloatText(iso, h + 12.f, selfVictim ? "회피!" : "빗나감", selfVictim ? Rgb(0xC8B8FF) : Rgb(0xB8B8B8), selfVictim ? 20.f : 16.f, 0.9f);
+		fx::Fx().FloatText(iso, h + 12.f, selfVictim ? "회피" : "빗나감", selfVictim ? Rgb(0xC8D4E4) : Rgb(0xB0B0AC), selfVictim ? 19.f : 16.f, 0.9f);
 		if ((selfVictim || selfAttacker) && !throttleSfx)
 		{
 			PlayAt(static_cast<int>(sfx::Id::Miss), v->pos, 0.7f, 0.1f);
@@ -955,7 +955,7 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 	if (guard)
 		fx::Fx().Ring(util::Sub(iso, Vector2{ 0, h * 0.45f }), 10.f, 44.f, 0.25f, Rgb(0xFFD070, 230), 3.f);
 
-	// 번개 폭발: 앞 대상(또는 시전자 손끝)에서 이 대상으로 줄기를 긋는다
+	// 벼락 사슬: 앞 대상(또는 시전자 손끝)에서 이 대상으로 줄기를 긋는다
 	if (p.skillId == 11)
 	{
 		Vector2 from = a ? TileToIso(a->pos) : iso;
@@ -975,7 +975,7 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 		{
 			m_comboShownAt[cid % m_comboShownAt.size()] = m_now;
 			const std::string name = std::string(ComboTable::Name(cid)) + "!";
-			fx::Fx().FloatText(iso, h + 36.f, name, Rgb(0xFFD25A), (selfAttacker || selfVictim) ? 26.f : 18.f, 1.3f);
+			fx::Fx().FloatText(iso, h + 36.f, name, Rgb(0xF2C47C), (selfAttacker || selfVictim) ? 25.f : 18.f, 1.3f, ui::Face::Display);
 			if (selfAttacker)
 			{
 				m_comboName = ComboTable::Name(cid);

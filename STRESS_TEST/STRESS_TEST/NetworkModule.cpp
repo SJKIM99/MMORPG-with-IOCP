@@ -43,10 +43,10 @@ HANDLE g_hiocp = INVALID_HANDLE_VALUE;
 // 아이템 id는 서버의 GameServer/Item/ItemTable.cpp가 원본이다 — Protocol.h에는
 // 없는 값이라 여기 옮겨 적는다(클라이언트의 ITEM_ASSET_TABLE도 같은 방식).
 constexpr uint16_t INVALID_SLOT        = 0xFFFF;
-constexpr uint16_t HEALTH_POTION_ID    = 1;  // 봇이 쓰는 회복 물약(빨간 물약)
+constexpr uint16_t HEALTH_POTION_ID    = 1;  // 봇이 쓰는 회복 물약(약초 물약)
 
-// 장비(무기) 아이템 id. 예전에는 "2번부터 전부 장비"였지만, 리니지풍 확장으로 7번 이후에
-// 아데나/물약/주문서가 추가되면서 더 이상 성립하지 않는다(봇이 주운 주문서를 장착하려 들면
+// 장비(무기) 아이템 id. 예전에는 "2번부터 전부 장비"였지만, 컨텐츠 확장으로 7번 이후에
+// 그로시/물약/두루마리가 추가되면서 더 이상 성립하지 않는다(봇이 주운 두루마리를 장착하려 들면
 // 서버는 실패만 돌려주지만, 봇이 진짜 무기 슬롯을 잃어버려 부하 패턴이 바뀐다).
 // GameServer/Item/ItemTableData.h의 eEquipment 행(2~6, 15~20)과 같아야 한다 — 이 프로젝트는
 // Protocol.h만 절대경로로 참조해서 아이템 표 헤더를 직접 include하지 않는다.

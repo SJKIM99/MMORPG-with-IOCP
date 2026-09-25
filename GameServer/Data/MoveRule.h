@@ -23,7 +23,7 @@ namespace MoveRule
 {
 	inline constexpr uint32_t kBaseStepMs       = 280;    // 이동속도 100% 기준 직선 한 칸
 	inline constexpr uint32_t kDiagPermille     = 1414;   // 대각선 = 직선 × 1.414
-	inline constexpr uint32_t kHasteBonusPercent = 35;    // 초록 물약
+	inline constexpr uint32_t kHasteBonusPercent = 35;    // 바람걸음 물약
 	inline constexpr uint32_t kMinSpeedPercent  = 40;
 	inline constexpr uint32_t kMaxSpeedPercent  = 200;
 	inline constexpr uint32_t kSlackMs          = 150;

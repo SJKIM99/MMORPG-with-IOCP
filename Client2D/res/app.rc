@@ -1,0 +1,31 @@
+// Executable icon and version info (Windows). Icon art: horizon and morning star, the same mark as the logo (docs/DESIGN_SYSTEM.md).
+#include <winver.h>
+
+1 ICON "harven.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,9,0,0
+ PRODUCTVERSION 0,9,0,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041204b0"
+        BEGIN
+            VALUE "FileDescription", "HARVEN"
+            VALUE "FileVersion", "0.9.0"
+            VALUE "InternalName", "Client2D"
+            VALUE "OriginalFilename", "Client2D.exe"
+            VALUE "ProductName", "HARVEN"
+            VALUE "ProductVersion", "0.9.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x412, 1200
+    END
+END

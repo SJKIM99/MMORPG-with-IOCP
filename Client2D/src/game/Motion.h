@@ -48,7 +48,7 @@ namespace motion
 		void OnAck(uint16_t seq, int x, int y, MoveResult result, uint16_t stepMs, double now);
 		// 본인에 대한 SUBJECT_MOVE_NFY(존 이동 메아리·순간이동·부활). 순간이동이면 true.
 		bool OnServerPosition(int x, int y, double now);
-		// 기술 이동(돌진·잔상 회피·그림자 돌진·공간 도약) — 서버가 정한 도착 칸으로
+		// 기술 이동(돌진·잔상 회피·그늘 걸음·옛길 도약) — 서버가 정한 도착 칸으로
 		// duration초 동안 빠르게 옮긴다(0이면 순간이동). 기술을 쓰는 동안은 걸음을 보내지
 		// 않으므로(Game의 행동 잠금) 미응답 입력이 없다.
 		void Dash(int x, int y, double now, double duration);

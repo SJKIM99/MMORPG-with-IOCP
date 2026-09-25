@@ -484,8 +484,25 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 {
 	const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
 	ui::TextStyle st;
-	st.outline = 1.6f;
-	st.outlineColor = Color{ 0, 0, 0, 200 };
+	st.outline = 1.4f;
+	st.outlineColor = Color{ 0, 0, 0, 190 };
+	st.face = ui::Face::Strong;
+
+	// 말풍선: 먹빛 반투명 판 + 밝은 글씨(세계 위에 뜨는 모든 말이 같은 모양)
+	auto bubble = [&](const std::string& text, float cx, float bottom, float size, float maxW, float a, bool player)
+	{
+		const float tw = ui::Fonts().Measure(text, size, 0.f, ui::Face::Body).x;
+		const int lines = std::max(1, static_cast<int>(std::ceil(tw / maxW)));
+		const float w = std::round(std::min(tw, maxW) + 20.f);
+		const float bh = std::round(lines * (size + 5.f) + 11.f);
+		const Rectangle b{ std::round(cx - w * 0.5f), std::round(bottom - bh), w, bh };
+		const Color fill = util::MulA(player ? Color{ 24, 28, 33, 232 } : Color{ 16, 19, 23, 228 }, a);
+		ui::Plate(Rectangle{ b.x + 1, b.y + 3, b.width, b.height }, util::MulA(Color{ 0, 0, 0, 70 }, a), BLANK, 4.f, 0.f);
+		ui::Plate(b, fill, util::MulA(player ? ui::theme::kLineStrong : ui::theme::kLine, a), 4.f, 1.f);
+		DrawTriangle(Vector2{ cx - 5, b.y + b.height - 1 }, Vector2{ cx, b.y + b.height + 6 }, Vector2{ cx + 5, b.y + b.height - 1 }, fill);
+		ui::FaceScope body(ui::Face::Body);
+		ui::TextWrapped(text, Rectangle{ b.x + 10, b.y + 5, maxW, bh }, size, util::MulA(ui::theme::kTextHi, a), 5.f);
+	};
 
 	// NPC — 이름(가까이·가리킬 때), 역할, 말풍선. [F]는 F를 누르면 말을 걸 NPC 하나에만.
 	uint16_t interactNpc = 0;
@@ -511,19 +528,21 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		const QuestMark qm = NpcQuestMark(nid);
 		float y = head.y;
 		const char* role = npc.kind == WorldData::NpcKind::eMerchant ? "잡화 상점" : npc.kind == WorldData::NpcKind::eWeaponSmith ? "무기 상점"
-			: npc.kind == WorldData::NpcKind::eTeleporter ? "텔레포트" : npc.kind == WorldData::NpcKind::ePriest ? "치유의 기도"
+			: npc.kind == WorldData::NpcKind::eTeleporter ? "옛길 이동" : npc.kind == WorldData::NpcKind::ePriest ? "치유의 기도"
 			: npc.kind == WorldData::NpcKind::eInnkeeper ? "여관 · 수프" : "";
 		if (!animal || hovered || alt || d <= 3 || qm == QuestMark::Talk)
 		{
-			st.size = animal ? 13.f : 15.f;
-			st.color = animal ? Rgb(0xF0E0C0) : Rgb(0xB8F08A);
+			st.size = animal ? 13.f : 14.5f;
+			st.color = animal ? Rgb(0xD6CCB8) : (hovered ? ui::theme::kTextHi : Rgb(0xE8DDC4));
+			st.face = ui::Face::Strong;
 			ui::Fonts().DrawCentered(npc.name, Vector2{ head.x, y }, st);
 			y -= 15.f;
 		}
 		if (role[0])
 		{
-			st.size = 12.f;
-			st.color = Rgb(0xE8D8A0);
+			st.size = 11.5f;
+			st.color = Rgb(0xB4AA94);
+			st.face = ui::Face::Body;
 			ui::Fonts().DrawCentered(role, Vector2{ head.x, y }, st);
 			y -= 14.f;
 		}
@@ -531,16 +550,14 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		if (nid == interactNpc && !m_dead && m_dialogNpc == 0)
 		{
 			const float bob = std::sin(m_time * 5.f) * 2.f;
-			const Rectangle k{ head.x - 11.f, y - 20.f + bob, 22.f, 18.f };
-			DrawRectangleRounded(k, 0.3f, 6, Color{ 20, 16, 12, 210 });
-			DrawRectangleRoundedLinesEx(k, 0.3f, 6, 1.2f, Rgb(0xFFE08A));
-			ui::Text("F", Vector2{ head.x, k.y + 1.f }, 13.f, Rgb(0xFFE08A), ui::Align::Center);
+			const Rectangle k{ std::round(head.x - 10.f), std::round(y - 20.f + bob), 20.f, 18.f };
+			ui::Keycap(k, "F", true);
 			y -= 22.f;
 		}
 		else if (hovered && !animal && qm == QuestMark::None)
 		{
 			const float bob = std::sin(m_time * 5.f) * 3.f;
-			DrawTriangle(Vector2{ head.x - 6, y - 12 + bob }, Vector2{ head.x, y - 4 + bob }, Vector2{ head.x + 6, y - 12 + bob }, Rgb(0xFFE08A));
+			DrawTriangle(Vector2{ head.x - 6, y - 12 + bob }, Vector2{ head.x, y - 4 + bob }, Vector2{ head.x + 6, y - 12 + bob }, ui::theme::kDawn);
 			y -= 12.f;
 		}
 		// 퀘스트 표식(! 새 이야기 · ? 보고 · 말풍선 = 말을 걸어야 할 대상)
@@ -553,17 +570,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		if (v.barkT > 0.f && !v.bark.empty())
 		{
 			const float a = util::Clamp01(v.barkT / 0.4f) * util::Clamp01((v.barkLife - v.barkT) / 0.12f + 0.3f);
-			const float size = 14.f;
-			const float maxW = 200.f;
-			const float tw = ui::Fonts().Measure(v.bark, size).x;
-			const int lines = std::max(1, static_cast<int>(std::ceil(tw / maxW)));
-			const float w = std::min(tw, maxW) + 18.f;
-			const float bh = lines * (size + 4.f) + 10.f;
-			const Rectangle b{ head.x - w * 0.5f, y - bh - 8.f, w, bh };
-			DrawRectangleRounded(Rectangle{ b.x + 2, b.y + 3, b.width, b.height }, 0.3f, 6, util::MulA(Color{ 0, 0, 0, 80 }, a));
-			DrawRectangleRounded(b, 0.3f, 6, util::MulA(Color{ 252, 246, 232, 236 }, a));
-			DrawTriangle(Vector2{ head.x - 6, b.y + b.height - 1 }, Vector2{ head.x, b.y + b.height + 7 }, Vector2{ head.x + 6, b.y + b.height - 1 }, util::MulA(Color{ 252, 246, 232, 236 }, a));
-			ui::TextWrapped(v.bark, Rectangle{ b.x + 9, b.y + 5, maxW, bh }, size, util::MulA(Color{ 50, 36, 24, 255 }, a), 4.f);
+			bubble(v.bark, head.x, y - 8.f, 13.5f, 200.f, a, false);
 		}
 		// 쓰다듬은 동물: 하트가 떠오른다
 		if (v.heartT >= 0.f)
@@ -571,7 +578,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			const float u = v.heartT / 1.6f;
 			ui::TextStyle hs;
 			hs.size = 18.f + 6.f * util::Pulse(std::min(1.f, u * 3.f));
-			hs.color = util::MulA(Rgb(0xFF6A8A), 1.f - u);
+			hs.color = util::MulA(Rgb(0xE07A8A), 1.f - u);
 			hs.outline = 1.5f;
 			hs.outlineColor = util::MulA(Color{ 90, 10, 30, 200 }, 1.f - u);
 			ui::Fonts().DrawCentered("♥", Vector2{ head.x + std::sin(u * 9.f) * 4.f, y - 10.f - u * 30.f }, hs);
@@ -603,13 +610,13 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		if (showBar)
 		{
 			const float w = e.IsBoss() ? 90.f : 46.f;
-			const Rectangle r{ head.x - w * 0.5f, y - 2.f, w, e.IsBoss() ? 7.f : 5.f };
-			DrawRectangleRec(Rectangle{ r.x - 1, r.y - 1, r.width + 2, r.height + 2 }, Color{ 0, 0, 0, 180 });
-			DrawRectangleRec(r, Color{ 40, 16, 16, 230 });
-			if (e.hpLag > e.hpShown) DrawRectangleRec(Rectangle{ r.x, r.y, r.width * e.hpLag, r.height }, Color{ 255, 240, 220, 220 });
-			const Color fill = e.kind == EntityKind::Player ? Rgb(0x4AD86A) : (e.IsBoss() ? Rgb(0xFF6A2A) : Rgb(0xE83A2A));
-			DrawRectangleRec(Rectangle{ r.x, r.y, r.width * util::Clamp01(e.hpShown), r.height }, fill);
-			DrawRectangleRec(Rectangle{ r.x, r.y, r.width * util::Clamp01(e.hpShown), r.height * 0.4f }, Color{ 255, 255, 255, 60 });
+			const Rectangle r{ std::round(head.x - w * 0.5f), std::round(y - 2.f), w, e.IsBoss() ? 6.f : 4.f };
+			DrawRectangleRec(Rectangle{ r.x - 1, r.y - 1, r.width + 2, r.height + 2 }, Color{ 0, 0, 0, 190 });
+			DrawRectangleRec(r, Color{ 36, 16, 15, 235 });
+			if (e.hpLag > e.hpShown) DrawRectangleRec(Rectangle{ r.x, r.y, std::round(r.width * e.hpLag), r.height }, Color{ 236, 222, 200, 200 });
+			const Color fill = e.kind == EntityKind::Player ? ui::theme::kGood : (e.IsBoss() ? ui::theme::kEmber : Rgb(0xC8453A));
+			DrawRectangleRec(Rectangle{ r.x, r.y, std::round(r.width * util::Clamp01(e.hpShown)), r.height }, fill);
+			DrawRectangleRec(Rectangle{ r.x, r.y, std::round(r.width * util::Clamp01(e.hpShown)), 1.f }, util::WithA(util::Shade(fill, 1.4f), 0.8f));
 			y -= 8.f;
 		}
 		if (showName)
@@ -619,16 +626,17 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 				label += "  (+" + std::to_string(e.enchant) + ")";
 			if (e.kind == EntityKind::Monster && e.row && (hovered || targeted))
 				label = "Lv." + std::to_string(e.row->level) + " " + label;
-			st.size = e.IsBoss() ? 18.f : (e.kind == EntityKind::Item ? 13.f : 15.f);
+			st.size = e.IsBoss() ? 18.f : (e.kind == EntityKind::Item ? 13.f : 14.5f);
 			st.color = NameColor(e);
-			if (id == m_selfId) st.color = util::Mix(st.color, Rgb(0xFFF2C0), 0.35f);
+			st.face = e.IsBoss() ? ui::Face::Display : ui::Face::Strong;
+			if (id == m_selfId) st.color = util::Mix(st.color, ui::theme::kDawnHi, 0.25f);
 			ui::Fonts().DrawCentered(label, Vector2{ head.x, y - st.size * 0.5f - 2.f }, st);
 			if (e.IsBoss())
 			{
-				// 보스 표식
-				const Vector2 m = ui::Fonts().Measure(label, st.size);
-				DrawPoly(Vector2{ head.x - m.x * 0.5f - 12.f, y - st.size * 0.5f - 2.f }, 4, 6.f, 45.f, Rgb(0xFF6A2A));
-				DrawPoly(Vector2{ head.x + m.x * 0.5f + 12.f, y - st.size * 0.5f - 2.f }, 4, 6.f, 45.f, Rgb(0xFF6A2A));
+				// 보스 표식: 이름 양옆 작은 마름모(적대의 불씨색)
+				const Vector2 m = ui::Fonts().Measure(label, st.size, 0.f, ui::Face::Display);
+				DrawPoly(Vector2{ head.x - m.x * 0.5f - 11.f, y - st.size * 0.5f - 2.f }, 4, 4.5f, 45.f, ui::theme::kEmber);
+				DrawPoly(Vector2{ head.x + m.x * 0.5f + 11.f, y - st.size * 0.5f - 2.f }, 4, 4.5f, 45.f, ui::theme::kEmber);
 			}
 			y -= st.size + 4.f;
 		}
@@ -637,26 +645,16 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		{
 			const float bob = std::sin(m_time * 4.f + static_cast<float>(e.tx)) * 1.5f;
 			const Vector2 q{ head.x, y - 8.f + bob };
-			DrawPoly(q, 4, 7.f, 0.f, Color{ 40, 24, 6, 220 });
-			DrawPoly(q, 4, 5.f, 0.f, Rgb(0xFFD84A));
-			DrawPoly(Vector2{ q.x - 1.f, q.y - 1.5f }, 4, 1.8f, 0.f, Rgb(0xFFF6D0));
+			DrawPoly(q, 4, 6.5f, 0.f, Color{ 20, 14, 6, 220 });
+			DrawPoly(q, 4, 4.5f, 0.f, ui::theme::kDawn);
+			DrawPoly(Vector2{ q.x - 1.f, q.y - 1.5f }, 4, 1.6f, 0.f, ui::theme::kDawnHi);
 			y -= 16.f;
 		}
 		// 말풍선
 		if (e.chatT > 0.f && !e.chat.empty())
 		{
 			const float a = util::Clamp01(e.chatT / 0.4f);
-			const float size = 15.f;
-			const float maxW = 220.f;
-			float tw = ui::Fonts().Measure(e.chat, size).x;
-			const int lines = static_cast<int>(std::ceil(tw / maxW));
-			const float w = std::min(tw, maxW) + 20.f;
-			const float bh = lines * (size + 4.f) + 12.f;
-			const Rectangle b{ head.x - w * 0.5f, y - bh - 10.f, w, bh };
-			DrawRectangleRounded(Rectangle{ b.x + 2, b.y + 3, b.width, b.height }, 0.3f, 6, util::MulA(Color{ 0, 0, 0, 90 }, a));
-			DrawRectangleRounded(b, 0.3f, 6, util::MulA(Color{ 252, 248, 238, 240 }, a));
-			DrawTriangle(Vector2{ head.x - 7, b.y + b.height - 1 }, Vector2{ head.x, b.y + b.height + 8 }, Vector2{ head.x + 7, b.y + b.height - 1 }, util::MulA(Color{ 252, 248, 238, 240 }, a));
-			ui::TextWrapped(e.chat, Rectangle{ b.x + 10, b.y + 6, maxW, bh }, size, util::MulA(Color{ 40, 30, 20, 255 }, a), 4.f);
+			bubble(e.chat, head.x, y - 10.f, 14.f, 220.f, a, true);
 		}
 	}
 }

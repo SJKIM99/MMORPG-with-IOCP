@@ -7,6 +7,7 @@
 #include "render/Icons.h"
 #include "render/Props.h"
 #include "render/Assets.h"
+#include "render/Art.h"
 #include "audio/Sfx.h"
 #include "ui/Font.h"
 #include "core/Util.h"
@@ -59,27 +60,44 @@ namespace
 		return out;
 	}
 
+	// 그로시(두툼한 은화)
 	void CoinIcon(Vector2 c, float r)
 	{
-		DrawCircleV(Vector2{ c.x + 1, c.y + 1 }, r, Color{ 120, 80, 10, 255 });
-		DrawCircleV(c, r, Rgb(0xF2C23A));
-		DrawCircleV(Vector2{ c.x - r * 0.2f, c.y - r * 0.2f }, r * 0.55f, Rgb(0xFFE88A));
+		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, Color{ 0, 0, 0, 140 });
+		DrawCircleV(c, r, Color{ 128, 132, 138, 255 });
+		DrawCircleV(c, r - 1.2f, Color{ 196, 199, 202, 255 });
+		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, Color{ 232, 232, 226, 255 });
+		DrawRing(c, r * 0.55f, r * 0.68f, 20.f, 160.f, 10, Color{ 140, 144, 150, 200 });
 	}
 
+	// 지역 위험도: 샛별(◆) 다섯 개 — 채운 개수 = 단계
 	void Stars(Vector2 pos, int tier, float size)
 	{
 		for (int i = 0; i < 5; ++i)
 		{
-			const Color c = i < tier ? (tier >= 5 ? Rgb(0xFF6A3A) : (tier >= 4 ? Rgb(0xFFA040) : Rgb(0xFFD66A))) : Color{ 90, 84, 76, 255 };
-			DrawPoly(Vector2{ pos.x + i * (size + 3.f), pos.y }, 5, size * 0.55f, -90.f, c);
-			DrawPoly(Vector2{ pos.x + i * (size + 3.f), pos.y }, 5, size * 0.28f, -54.f, util::Shade(c, 1.2f));
+			const Vector2 c{ pos.x + i * (size + 3.f), pos.y };
+			const float h = size * 0.5f;
+			if (i < tier)
+			{
+				const Color col = tier >= 5 ? ui::theme::kEmber : (tier >= 4 ? Rgb(0xD98A4A) : ui::theme::kDawn);
+				DrawTriangle(Vector2{ c.x, c.y - h }, Vector2{ c.x - h * 0.7f, c.y }, Vector2{ c.x + h * 0.7f, c.y }, col);
+				DrawTriangle(Vector2{ c.x - h * 0.7f, c.y }, Vector2{ c.x, c.y + h }, Vector2{ c.x + h * 0.7f, c.y }, col);
+			}
+			else
+			{
+				const Color col = ui::theme::kTextMute;
+				DrawLineEx(Vector2{ c.x, c.y - h }, Vector2{ c.x + h * 0.7f, c.y }, 1.f, col);
+				DrawLineEx(Vector2{ c.x + h * 0.7f, c.y }, Vector2{ c.x, c.y + h }, 1.f, col);
+				DrawLineEx(Vector2{ c.x, c.y + h }, Vector2{ c.x - h * 0.7f, c.y }, 1.f, col);
+				DrawLineEx(Vector2{ c.x - h * 0.7f, c.y }, Vector2{ c.x, c.y - h }, 1.f, col);
+			}
 		}
 	}
 
 	const char* AlignmentLabel(int16_t a)
 	{
-		if (a < 0) return "카오틱";
-		if (a >= AlignmentRule::kLawfulLine) return "라우풀";
+		if (a < 0) return "악명";
+		if (a >= AlignmentRule::kLawfulLine) return "명예";
 		return "중립";
 	}
 
@@ -93,50 +111,52 @@ namespace
 	HudLayout Layout(float W, float H)
 	{
 		HudLayout L;
-		L.panel = Rectangle{ W * 0.5f - 390.f, H - 100.f, 780.f, 88.f };
-		L.hp = Rectangle{ L.panel.x + 14.f, L.panel.y + 12.f, 206.f, 22.f };
-		L.mp = Rectangle{ L.panel.x + 14.f, L.panel.y + 38.f, 206.f, 14.f };
+		L.panel = Rectangle{ std::round(W * 0.5f - 390.f), H - 98.f, 780.f, 86.f };
+		L.hp = Rectangle{ L.panel.x + 16.f, L.panel.y + 14.f, 202.f, 18.f };
+		L.mp = Rectangle{ L.panel.x + 16.f, L.panel.y + 37.f, 202.f, 12.f };
 		L.skillX = L.panel.x + 234.f;
-		L.skillY = L.panel.y + 18.f;
+		L.skillY = L.panel.y + 17.f;
 		L.quickX = L.skillX + 6 * L.skillStep + 14.f;
-		L.quickY = L.panel.y + 24.f;
+		L.quickY = L.panel.y + 23.f;
 		return L;
 	}
 
 	Color ClassColor(ClassId c) { return Rgb(ClassTable::Get(c).color); }
 
-	// 직업 문장(원 + 상징) — 화면 공간
+	// 직업 문장(원 + 상징) — 화면 공간. 바탕은 먹빛, 선과 상징만 직업 색.
 	void ClassEmblem(Vector2 c, float r, ClassId cls, float time)
 	{
 		const Color col = ClassColor(cls);
-		DrawCircleV(Vector2{ c.x + 1, c.y + 2 }, r, Color{ 0, 0, 0, 120 });
-		DrawCircleGradient(static_cast<int>(c.x), static_cast<int>(c.y), r, util::Shade(col, 0.55f), util::Shade(col, 0.18f));
-		DrawRing(c, r - 2.5f, r, 0.f, 360.f, 40, util::Shade(col, 1.1f));
+		DrawCircleV(Vector2{ c.x, c.y + 2 }, r, Color{ 0, 0, 0, 110 });
+		DrawCircleV(c, r, ui::theme::kSurface1);
+		DrawCircleGradient(static_cast<int>(c.x), static_cast<int>(c.y - r * 0.2f), r, util::WithA(util::Shade(col, 0.5f), 0.35f), Color{ 0, 0, 0, 0 });
+		DrawRing(c, r - 1.5f, r, 0.f, 360.f, 48, util::WithA(col, 0.75f));
 		const float k = r / 30.f;
+		const Color ink = util::Shade(col, 1.15f);
 		switch (cls)
 		{
 		case ClassId::Knight:   // 칼 + 방패
-			DrawLineEx(Vector2{ c.x - 12 * k, c.y + 14 * k }, Vector2{ c.x + 12 * k, c.y - 14 * k }, 4.f * k, util::Shade(col, 1.5f));
-			DrawLineEx(Vector2{ c.x - 6 * k, c.y + 2 * k }, Vector2{ c.x + 2 * k, c.y + 10 * k }, 3.f * k, util::Shade(col, 1.3f));
-			DrawCircleV(Vector2{ c.x - 7 * k, c.y - 3 * k }, 9 * k, util::Shade(col, 0.7f));
-			DrawRing(Vector2{ c.x - 7 * k, c.y - 3 * k }, 7.5f * k, 9.f * k, 0, 360, 24, util::Shade(col, 1.4f));
+			DrawLineEx(Vector2{ c.x - 12 * k, c.y + 14 * k }, Vector2{ c.x + 12 * k, c.y - 14 * k }, 3.5f * k, ink);
+			DrawLineEx(Vector2{ c.x - 6 * k, c.y + 2 * k }, Vector2{ c.x + 2 * k, c.y + 10 * k }, 2.6f * k, util::Shade(col, 0.9f));
+			DrawCircleV(Vector2{ c.x - 7 * k, c.y - 3 * k }, 8.5f * k, ui::theme::kSurface1);
+			DrawRing(Vector2{ c.x - 7 * k, c.y - 3 * k }, 7.f * k, 8.5f * k, 0, 360, 24, ink);
 			break;
-		case ClassId::RuneCaster:   // 도는 룬 삼각
+		case ClassId::Engraver:   // 도는 각인 삼각
 		{
 			for (int i = 0; i < 3; ++i)
 			{
-				const float a0 = time * 0.8f + i * util::kPi * 2.f / 3.f, a1 = a0 + util::kPi * 2.f / 3.f;
-				DrawLineEx(Vector2{ c.x + std::cos(a0) * 15 * k, c.y + std::sin(a0) * 15 * k }, Vector2{ c.x + std::cos(a1) * 15 * k, c.y + std::sin(a1) * 15 * k }, 3.f * k, util::Shade(col, 1.4f));
+				const float a0 = time * 0.6f + i * util::kPi * 2.f / 3.f, a1 = a0 + util::kPi * 2.f / 3.f;
+				DrawLineEx(Vector2{ c.x + std::cos(a0) * 14 * k, c.y + std::sin(a0) * 14 * k }, Vector2{ c.x + std::cos(a1) * 14 * k, c.y + std::sin(a1) * 14 * k }, 2.6f * k, ink);
 			}
-			DrawCircleV(c, 4.f * k, WHITE);
-			DrawRing(c, 17 * k, 19 * k, 0, 360, 32, util::WithA(util::Shade(col, 1.3f), 0.7f));
+			DrawCircleV(c, 3.2f * k, ui::theme::kTextHi);
+			DrawRing(c, 17 * k, 18.2f * k, 0, 360, 32, util::WithA(ink, 0.55f));
 			break;
 		}
-		case ClassId::ShadowHunter:   // 초승달 + 단검
+		case ClassId::NightHunter:   // 그믐달 + 단검
 		default:
-			DrawCircleV(Vector2{ c.x - 3 * k, c.y - 2 * k }, 13 * k, util::Shade(col, 1.35f));
-			DrawCircleV(Vector2{ c.x + 3 * k, c.y - 6 * k }, 12 * k, util::Shade(col, 0.28f));
-			DrawLineEx(Vector2{ c.x + 2 * k, c.y + 14 * k }, Vector2{ c.x + 13 * k, c.y - 1 * k }, 3.f * k, Rgb(0xE8E0FF));
+			DrawCircleV(Vector2{ c.x - 3 * k, c.y - 2 * k }, 12 * k, ink);
+			DrawCircleV(Vector2{ c.x + 3 * k, c.y - 6 * k }, 11.5f * k, ui::theme::kSurface1);
+			DrawLineEx(Vector2{ c.x + 2 * k, c.y + 14 * k }, Vector2{ c.x + 13 * k, c.y - 1 * k }, 2.6f * k, ui::theme::kTextHi);
 			break;
 		}
 	}
@@ -149,9 +169,9 @@ namespace
 	const char* StatHelp(int i)
 	{
 		static const char* h[6] = {
-			"물리 공격력과 방어력이 오른다. 기사의 주 능력치.",
-			"공격 속도·명중·회피·치명타가 오르고, 그림자 사냥꾼은 공격력도 오른다.",
-			"마법 공격력·마법 관통·최대 MP가 오른다. 룬술사의 주 능력치.",
+			"물리 공격력과 방어력이 오른다. 서약기사의 주 능력치.",
+			"공격 속도·명중·회피·치명타가 오르고, 밤사냥꾼은 공격력도 오른다.",
+			"마법 공격력·마법 관통·최대 MP가 오른다. 각인술사의 주 능력치.",
 			"최대 HP·방어력·상태이상 저항이 오른다. 오래 버티게 해 준다.",
 			"최대 MP·MP 회복·마법 방어·재사용 대기 감소가 오른다.",
 			"치명타 확률과 치명타 피해, 회피가 조금 오른다.",
@@ -163,7 +183,7 @@ namespace
 		switch (c)
 		{
 		case ClassId::Knight: return i == 0 || i == 3;
-		case ClassId::RuneCaster: return i == 2 || i == 4;
+		case ClassId::Engraver: return i == 2 || i == 4;
 		default: return i == 1 || i == 5;
 		}
 	}
@@ -172,14 +192,14 @@ namespace
 		switch (id)
 		{
 		case StatusId::Stun: return "움직이거나 공격할 수 없다.";
-		case StatusId::Freeze: return "움직일 수 없다. 화염에 맞으면 증발 폭발, 혜성에 맞으면 산산조각.";
-		case StatusId::Burn: return "매초 불 피해를 입는다. 번개가 더 멀리 튄다.";
-		case StatusId::Poison: return "매초 독 피해(중첩). 월영 난무가 한꺼번에 터뜨린다.";
+		case StatusId::Freeze: return "움직일 수 없다. 화염에 맞으면 증발 폭발, 낙성에 맞으면 산산조각.";
+		case StatusId::Burn: return "매초 불 피해를 입는다. 벼락 사슬이 더 멀리 튄다.";
+		case StatusId::Poison: return "매초 독 피해(중첩). 그믐 베기가 한꺼번에 터뜨린다.";
 		case StatusId::Slow: return "이동 속도가 느려진다.";
 		case StatusId::Guard: return "받는 피해가 절반, 맞을 때마다 반격한다.";
 		case StatusId::Ambush: return "다음 공격이 확정 치명타가 된다.";
 		case StatusId::Evade: return "잠깐 모든 공격을 피한다.";
-		case StatusId::Marked: return "번개 폭발이 이 대상을 거쳐 더 멀리 튄다.";
+		case StatusId::Marked: return "벼락 사슬이 이 대상을 거쳐 더 멀리 튄다.";
 		default: return "";
 		}
 	}
@@ -225,92 +245,154 @@ namespace
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 로그인 화면
+// 로그인 화면 — 대표 그림(심장나무 하르벤과 데니차 마을) 위에 로고와 접속 판.
+//   왼쪽 기둥: 로고 → 접속 판(접속 정보 · 새 캐릭터의 직업 · 접속하기).
+//   가운데와 오른쪽은 비워 둔다 — 심장나무 · 마을 · 샛별이 보이도록.
+//   그림 파일이 없으면 예전처럼 마을 위를 천천히 도는 카메라로 대신한다.
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawLogin()
 {
-	const Camera2D cam = m_cam.Get(m_screenW, m_screenH);
-	m_cam2d = cam;
-	const Vector2 center = gfx::IsoToTile(cam.target);
-	m_predX = static_cast<int>(center.x);
-	m_predY = static_cast<int>(center.y);
-	m_terrain.DrawGround(cam, m_screenW, m_screenH, center, m_time, false, 0.f);
-	BeginMode2D(cam);
-	DrawWorld(cam);
-	EndMode2D();
-	m_light.Apply(cam, m_screenW, m_screenH, props::FrameLights());
-	fx::Fx().DrawOverlay(cam);
-
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	DrawRectangleGradientV(0, 0, m_screenW, m_screenH / 2, Color{ 6, 6, 12, 150 }, Color{ 6, 6, 12, 60 });
-	DrawRectangleGradientV(0, m_screenH / 2, m_screenW, m_screenH / 2, Color{ 6, 6, 12, 60 }, Color{ 6, 6, 12, 190 });
-
-	// 제목
 	const float t = m_time;
-	ui::TextStyle title;
-	title.size = 66.f;
-	title.color = Rgb(0xFFE2A0);
-	title.outline = 3.f;
-	title.outlineColor = Color{ 60, 30, 0, 230 };
-	title.shadow = 5.f;
-	title.shadowColor = Color{ 0, 0, 0, 160 };
-	const float ty = H * 0.16f + std::sin(t * 1.2f) * 3.f;
-	ui::Fonts().DrawCentered("여명의 대지", Vector2{ W * 0.5f, ty }, title);
-	ui::Text("IOCP MMORPG  ·  리니지 스타일 2.5D 클라이언트", Vector2{ W * 0.5f, ty + 44.f }, 18.f, Rgb(0xE8D8B0), Align::Center, true);
-	// 제목 양옆 장식
-	for (int s = -1; s <= 1; s += 2)
+	const Color ink = ui::theme::kInk;
+
+	if (const Texture2D* key = art::KeyArt())
 	{
-		const float x = W * 0.5f + s * 210.f;
-		DrawLineEx(Vector2{ x, ty }, Vector2{ x + s * 90.f, ty }, 2.f, Rgb(0xC8A060, 180));
-		DrawPoly(Vector2{ x + s * 96.f, ty }, 4, 6.f, 45.f, Rgb(0xFFD070));
+		// 아주 느린 밀고 당기기(켄 번스) — 한 번 숨 쉬는 데 50초 남짓
+		const Rectangle full{ 0, 0, W, H };
+		const float zoom = 1.07f + 0.035f * std::sin(t * 0.12f);
+		const Vector2 focus{ 0.5f + 0.03f * std::sin(t * 0.07f + 1.f), 0.42f };
+		art::DrawCover(*key, full, WHITE, focus, zoom);
+		// 샛별(데니차): 그림 속 별이 숨 쉬듯 반짝인다 — 로고의 별과 같은 표식
+		const Vector2 star = art::CoverPoint(*key, full, focus, zoom, Vector2{ 0.7125f, 0.0543f });
+		art::Glint(star, 5.f * H / 720.f, Color{ 255, 226, 170, 255 }, art::StarPulse(t));
+		// 반딧불: 마을 쪽 아래에서 천천히 떠오르는 작은 빛(더하기 혼합, 아주 옅게)
+		BeginBlendMode(BLEND_ADDITIVE);
+		for (int i = 0; i < 26; ++i)
+		{
+			const float r0 = util::Hash01(i, 1, 77u), r1 = util::Hash01(i, 2, 77u), r2 = util::Hash01(i, 3, 77u);
+			const float period = 14.f + r0 * 12.f;
+			const float u = std::fmod(t / period + r1, 1.f);
+			const float x = W * (0.34f + 0.62f * r2) + std::sin(t * (0.35f + r0 * 0.5f) + i) * 16.f;
+			const float y = H * (0.98f - 0.42f * u);
+			const float a = std::sin(u * util::kPi) * (0.35f + 0.45f * r1) * (0.65f + 0.35f * std::sin(t * 2.6f + i * 1.7f));
+			const float rad = (1.3f + r0 * 1.3f) * H / 720.f;
+			DrawCircleGradient(static_cast<int>(x), static_cast<int>(y), rad * 5.f, util::WithA(ui::theme::kDawn, 0.2f * a), util::WithA(ui::theme::kDawn, 0.f));
+			DrawCircleV(Vector2{ x, y }, rad, util::WithA(ui::theme::kDawnHi, 0.95f * a));
+		}
+		EndBlendMode();
+	}
+	else
+	{
+		const Camera2D cam = m_cam.Get(m_screenW, m_screenH);
+		m_cam2d = cam;
+		const Vector2 center = gfx::IsoToTile(cam.target);
+		m_predX = static_cast<int>(center.x);
+		m_predY = static_cast<int>(center.y);
+		m_terrain.DrawGround(cam, m_screenW, m_screenH, center, m_time, false, 0.f);
+		BeginMode2D(cam);
+		DrawWorld(cam);
+		EndMode2D();
+		m_light.Apply(cam, m_screenW, m_screenH, props::FrameLights());
+		fx::Fx().DrawOverlay(cam);
 	}
 
-	// 입력 판넬(왼쪽) + 직업 고르기(오른쪽)
-	const Rectangle p{ W * 0.5f - 420.f, H * 0.34f, 400.f, 318.f };
-	{
-		const Rectangle cp{ W * 0.5f + 20.f, H * 0.34f, 420.f, 318.f };
-		ui::Panel(cp);
-		ui::TextShadow("직업 선택", Vector2{ cp.x + cp.width * 0.5f, cp.y + 16 }, 20.f, ui::theme::kTitle, Align::Center);
-		ui::Divider(cp.x + 20, cp.x + cp.width - 20, cp.y + 46);
-		DrawClassSelect(Rectangle{ cp.x + 14.f, cp.y + 56.f, cp.width - 28.f, cp.height - 70.f });
-	}
-	ui::Panel(p);
-	ui::TextShadow("모험을 시작하세요", Vector2{ p.x + p.width * 0.5f, p.y + 16 }, 20.f, ui::theme::kTitle, Align::Center);
-	ui::Divider(p.x + 20, p.x + p.width - 20, p.y + 46);
+	// 읽기 좋게 가라앉히기: 왼쪽 기둥(로고 · 판) · 아래(조작 안내) · 위 가장자리
+	DrawRectangleGradientH(0, 0, static_cast<int>(W * 0.5f), m_screenH, util::WithA(ink, 0.74f), util::WithA(ink, 0.f));
+	DrawRectangleGradientV(0, static_cast<int>(H * 0.7f), m_screenW, static_cast<int>(H * 0.3f) + 1, util::WithA(ink, 0.f), util::WithA(ink, 0.72f));
+	DrawRectangleGradientV(0, 0, m_screenW, static_cast<int>(H * 0.14f), util::WithA(ink, 0.45f), util::WithA(ink, 0.f));
 
-	float y = p.y + 60;
+	// ── 배치: 로고와 판을 한 덩어리로 세로 가운데(아래 안내 줄 몫은 뺀다) ──
+	const bool compact = H < 700.f;
+	const float k = compact ? 0.78f : (H >= 860.f ? 1.f : 0.9f);
+	const float PW = 392.f;
+	const float colX = std::round(std::max(32.f, W * 0.04f));
+	const float chipH = compact ? 82.f : 96.f;
+	const float classH = chipH + 10.f + 62.f;
+	const float PH = 52.f + 40.f * 3.f + 8.f + 22.f + classH + 54.f + 34.f + 6.f;
+	const float logoH = (31.f + (compact ? 70.f : 98.f)) * k;
+	const float gap = compact ? 18.f : 28.f;
+	const float top = std::max(14.f, std::round((H - 48.f - (logoH + gap + PH)) * 0.5f));
+
+	// 들어오는 연출: 화면이 밝아지고 → 로고 → 판이 조금 떠오르며 자리 잡는다
+	ui::Logo(Vector2{ colX + PW * 0.5f, top + 31.f * k }, k, util::Clamp01((t - 0.35f) / 1.1f), !compact);
+	const float slide = (1.f - util::EaseOutCubic(util::Clamp01((t - 0.5f) / 0.8f))) * 14.f;
+	const Rectangle p{ colX, std::round(top + logoH + gap + slide), PW, PH };
+	ui::Window(p, "접속", nullptr);
+
+	const float ix = p.x + 22.f, iw = PW - 44.f;
+	const float fx = ix + 78.f, fw = iw - 78.f;
+	float y = p.y + 52.f;
 	const bool busy = m_scene == Scene::Connecting;
-	auto label = [&](const char* s) { ui::Text(s, Vector2{ p.x + 24, y + 7 }, 15.f, ui::theme::kTextDim); };
+	auto label = [&](const char* s) { ui::Text(s, Vector2{ ix, y + 8.f }, ui::type::kBodyS, ui::theme::kTextDim); };
 	label("서버");
-	ui::InputText(Rectangle{ p.x + 104, y, 190, 32 }, m_fHost, "127.0.0.1");
-	ui::InputText(Rectangle{ p.x + 300, y, 76, 32 }, m_fPort, "4000");
-	y += 42;
+	ui::InputText(Rectangle{ fx, y, fw - 74.f, 32.f }, m_fHost, "127.0.0.1");
+	ui::InputText(Rectangle{ fx + fw - 68.f, y, 68.f, 32.f }, m_fPort, "4000");
+	y += 40.f;
 	label("캐릭터");
-	const bool enterName = ui::InputText(Rectangle{ p.x + 104, y, 272, 32 }, m_fName, "영문/숫자 2~12자", !busy && m_fName.text.empty());
-	y += 42;
+	const bool enterName = ui::InputText(Rectangle{ fx, y, fw, 32.f }, m_fName, "영문/숫자 2~12자", !busy && m_fName.text.empty());
+	y += 40.f;
 	label("비밀번호");
-	const bool enterPass = ui::InputText(Rectangle{ p.x + 104, y, 272, 32 }, m_fPass, "(선택)");
-	y += 50;
-	const bool go = ui::Button(Rectangle{ p.x + 24, y, p.width - 48, 42 }, busy ? "접속 중..." : "접속하기", ButtonKind::Primary, !busy, 19.f);
+	const bool enterPass = ui::InputText(Rectangle{ fx, y, fw, 32.f }, m_fPass, "(선택)");
+	y += 48.f;
+	ui::SectionHeader(Vector2{ ix, y }, iw, "새 캐릭터의 직업");
+	y += 22.f;
+	DrawClassSelect(Rectangle{ ix, y, iw, classH });
+	y += classH;
+	const bool go = ui::Button(Rectangle{ ix, y, iw, 44.f }, busy ? "접속 중…" : "접속하기", ButtonKind::Primary, !busy, 19.f);
 	if (!busy && (go || enterName || enterPass))
 		BeginConnect();
-	y += 54;
+	y += 54.f;
 	if (busy)
 	{
 		const float a = t * 4.f;
+		const float cx = p.x + PW * 0.5f - 76.f;
 		for (int i = 0; i < 8; ++i)
 		{
 			const float ang = a + i * util::kPi / 4.f;
-			DrawCircleV(Vector2{ p.x + p.width * 0.5f + std::cos(ang) * 10.f - 70.f, y + 8 + std::sin(ang) * 10.f }, 2.5f, Color{ 255, 220, 150, static_cast<unsigned char>(60 + i * 24) });
+			DrawCircleV(Vector2{ cx + std::cos(ang) * 7.f, y + 8.f + std::sin(ang) * 7.f }, 2.f, util::WithA(ui::theme::kDawnHi, (60 + i * 24) / 255.f));
 		}
-		ui::Text("서버에 연결하는 중...", Vector2{ p.x + p.width * 0.5f + 10.f, y }, 15.f, ui::theme::kText, Align::Center);
+		ui::Text("서버에 연결하는 중…", Vector2{ p.x + PW * 0.5f + 10.f, y }, ui::type::kBodyS, ui::theme::kText, Align::Center);
 	}
 	else if (!m_loginError.empty())
-		ui::TextWrapped(m_loginError, Rectangle{ p.x + 24, y, p.width - 48, 40 }, 15.f, ui::theme::kBad);
+		ui::TextWrapped(m_loginError, Rectangle{ ix, y, iw, 34.f }, ui::type::kBodyS, ui::theme::kBad, 4.f);
 	else
-		ui::Text("처음 쓰는 이름이면 고른 직업으로 새 캐릭터가 만들어집니다.", Vector2{ p.x + p.width * 0.5f, y }, 14.f, ui::theme::kTextDim, Align::Center);
+		ui::Text("처음 쓰는 이름이면 새 캐릭터로 시작합니다.", Vector2{ p.x + PW * 0.5f, y + 1.f }, ui::type::kCaption + 0.5f, ui::theme::kTextDim, Align::Center);
 
-	ui::Text("WASD 이동 · Space 공격 · 1~5 기술 · Tab 대상 · F 대화/줍기 · Q E R T 물약 · C 능력치 · I 소지품 · F1 도움말", Vector2{ W * 0.5f, H - 34 }, 14.f, Color{ 200, 190, 170, 200 }, Align::Center, true);
+	// ── 아래: 조작 안내(키캡 + 설명) ──
+	{
+		struct KeyHint { const char* key; const char* what; };
+		static constexpr KeyHint kHints[] = {
+			{ "WASD", "이동" }, { "Space", "공격" }, { "1~5", "기술" }, { "Tab", "대상" }, { "F", "대화 · 줍기" },
+			{ "Q E R T", "물약" }, { "C", "능력치" }, { "I", "소지품" }, { "F1", "도움말" },
+		};
+		const float ks = ui::type::kMicro, ls = ui::type::kCaption;
+		auto keyW = [&](const char* s) { return std::round(ui::Fonts().Measure(s, ks, 0.f, ui::Face::Strong).x + 10.f); };
+		float total = 0.f;
+		for (const auto& h : kHints)
+			total += keyW(h.key) + 5.f + ui::Fonts().Measure(h.what, ls, 0.f, ui::Face::Body).x + 16.f;
+		total -= 16.f;
+		float x = std::round(W * 0.5f - total * 0.5f);
+		const float hy = std::round(H - 32.f);
+		for (const auto& h : kHints)
+		{
+			const float kw = keyW(h.key);
+			ui::Keycap(Rectangle{ x, hy, kw, 16.f }, h.key);
+			x += kw + 5.f;
+			ui::TextStyle st; st.size = ls; st.color = Color{ 190, 184, 172, 215 }; st.face = ui::Face::Body;
+			x += ui::Fonts().Draw(h.what, Vector2{ x, hy + 1.f }, st) + 16.f;
+		}
+	}
+	ui::Text("v0.9  ·  MMORPG-with-IOCP", Vector2{ W - 16.f, H - 20.f }, 11.f, ui::theme::kTextMute, Align::Right);
+
+	// 로그인 화면은 한가하다 — 대화창 초상화를 한 프레임에 한 장씩 미리 읽어 둔다
+	if (t > 1.5f)
+		(void)art::PreloadStep();
+
+	// 처음 켰을 때: 어둠에서 천천히 밝아진다
+	const float intro = util::Clamp01(t / 1.2f);
+	if (intro < 1.f)
+		DrawRectangle(0, 0, m_screenW, m_screenH, util::WithA(BLACK, 1.f - util::EaseOutCubic(intro)));
 }
 
 void Game::DrawDisconnected()
@@ -338,68 +420,94 @@ void Game::DrawHud()
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
 	const HudLayout L = Layout(W, H);
 
-	// 경험치 바(화면 맨 아래 전체)
+	// 경험치(화면 맨 아래 가는 띠 — 새벽빛)
 	{
-		const Rectangle r{ 0, H - 7, W, 7 };
-		DrawRectangleRec(r, Color{ 12, 8, 18, 230 });
-		DrawRectangleGradientH(0, static_cast<int>(H - 7), static_cast<int>(W * m_expShown), 7, Rgb(0x6A3AB0), Rgb(0xC08AFF));
-		DrawRectangle(0, static_cast<int>(H - 7), static_cast<int>(W * m_expShown), 2, Color{ 255, 255, 255, 50 });
+		const Rectangle r{ 0, H - 5, W, 5 };
+		DrawRectangleRec(r, ui::theme::kInk);
+		const float fw = std::round(W * m_expShown);
+		DrawRectangleRec(Rectangle{ 0, H - 5, fw, 5 }, ui::theme::kExp);
+		DrawRectangleRec(Rectangle{ 0, H - 5, fw, 1 }, util::WithA(util::Shade(ui::theme::kExp, 1.4f), 0.8f));
 		for (int i = 1; i < 10; ++i)
-			DrawLine(static_cast<int>(W * i / 10.f), static_cast<int>(H - 7), static_cast<int>(W * i / 10.f), static_cast<int>(H), Color{ 0, 0, 0, 150 });
-		const Rectangle hit{ 0, H - 14, W, 14 };
+			DrawRectangle(static_cast<int>(W * i / 10.f), static_cast<int>(H - 5), 1, 5, Color{ 0, 0, 0, 120 });
+		const Rectangle hit{ 0, H - 12, W, 12 };
 		if (ui::Hovered(hit))
-			ui::Tooltip({ { Fmt("경험치 %s / %s (%.1f%%)", texts::Number(m_exp).c_str(), texts::Number(m_expToNext).c_str(), m_expShown * 100.f), Rgb(0xD8B8FF), 15.f } });
+			ui::Tooltip({ { "경험치", ui::theme::kTextHi, 15.f, ui::Face::Strong },
+				{ Fmt("%s / %s  (%.1f%%)", texts::Number(m_exp).c_str(), texts::Number(m_expToNext).c_str(), m_expShown * 100.f), ui::theme::kExp, 15.f, ui::Face::Number } });
 	}
 
-	// 아래 가운데 판넬: HP/MP · 기술 · 소모품
-	ui::Panel(L.panel);
+	// 아래 가운데 판: HP/MP · 기술 · 소모품
+	ui::Panel(L.panel, 0.94f, false);
 	{
 		const float pulse = (m_maxhp > 0 && m_hp * 4 < m_maxhp) ? 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 8.f) : 0.f;
-		ui::Bar(L.hp, m_hpShown, m_hpLag, util::Mix(Rgb(0xD8302A), Rgb(0xFF6A5A), pulse), Color{ 40, 12, 12, 255 },
+		ui::Bar(L.hp, m_hpShown, m_hpLag, util::Mix(ui::theme::kHp, Rgb(0xE0705A), pulse), Color{ 34, 14, 14, 255 },
 			Fmt("HP  %d / %d", m_hp, m_maxhp), 14.f);
 		const float mpFlash = static_cast<float>(std::max(0.0, 0.5 - (m_now - m_mpFlashAt)) * 2.0);
-		ui::Bar(L.mp, m_mpShown, m_mpShown, util::Mix(Rgb(0x2A62D8), Rgb(0x9AC8FF), mpFlash), Color{ 12, 16, 40, 255 },
+		ui::Bar(L.mp, m_mpShown, m_mpShown, util::Mix(ui::theme::kMp, Rgb(0x9AC0F0), mpFlash), Color{ 14, 18, 34, 255 },
 			Fmt("MP  %d / %d", m_mp, m_maxmp), 12.f);
 		if (mpFlash > 0.f)
-			DrawRectangleLinesEx(Rectangle{ L.mp.x - 2, L.mp.y - 2, L.mp.width + 4, L.mp.height + 4 }, 2.f, util::WithA(Rgb(0x9AC8FF), mpFlash));
-		// 주요 능력치 한 줄
-		const bool magic = m_classId == ClassId::RuneCaster;
-		ui::Text(Fmt("%s %d  방어 %d  치명 %.0f%%", magic ? "마공" : "공격", magic ? m_stats.magicAttack : m_stats.attack, m_stats.defense, m_stats.critChance / 10.f),
-			Vector2{ L.hp.x + 2.f, L.mp.y + 19.f }, 13.f, Rgb(0xE8D0A0));
+			ui::Plate(Rectangle{ L.mp.x - 3, L.mp.y - 3, L.mp.width + 6, L.mp.height + 6 }, BLANK, util::WithA(Rgb(0x9AC0F0), mpFlash), 2.f, 1.5f);
+		// 주요 능력치 한 줄(라벨은 흐리게, 값은 숫자 글꼴)
+		const bool magic = m_classId == ClassId::Engraver;
+		float sx = L.hp.x + 1.f;
+		const float sy = L.mp.y + 19.f;
+		auto stat = [&](const char* label, const std::string& value)
+		{
+			ui::TextStyle ls; ls.size = ui::type::kCaption; ls.color = ui::theme::kTextDim; ls.face = ui::Face::Body;
+			sx += ui::Fonts().Draw(label, Vector2{ sx, sy }, ls) + 4.f;
+			ui::TextStyle vs; vs.size = ui::type::kBodyS; vs.color = ui::theme::kText; vs.face = ui::Face::Number;
+			sx += ui::Fonts().Draw(value, Vector2{ sx, sy }, vs) + 12.f;
+		};
+		stat(magic ? "마법 공격" : "공격", std::to_string(magic ? m_stats.magicAttack : m_stats.attack));
+		stat("방어", std::to_string(m_stats.defense));
+		stat("치명", Fmt("%.0f%%", m_stats.critChance / 10.f));
 	}
 
-	// 왼쪽 위 캐릭터 정보(직업 문장 + 레벨)
+	// 왼쪽 위: 나(직업 문장 · 이름 · 그로시)
 	{
-		const Rectangle r{ 12.f, 12.f, 262.f, 92.f };
-		ui::Panel(r, 0.92f);
-		const Vector2 ec{ r.x + 44.f, r.y + 46.f };
-		ClassEmblem(ec, 30.f, m_classId, m_time);
-		DrawRing(ec, 31.f, 34.f, -90.f, -90.f + 360.f * m_expShown, 48, Rgb(0xC08AFF));
-		ui::Text(std::to_string(m_level), Vector2{ ec.x + 22.f, ec.y + 12.f }, 17.f, WHITE, Align::Center, true);
+		const Rectangle r{ 12.f, 12.f, 268.f, 80.f };
+		ui::Panel(r, 0.94f, false);
+		const Vector2 ec{ r.x + 40.f, r.y + 40.f };
+		ClassEmblem(ec, 26.f, m_classId, m_time);
+		DrawRing(ec, 28.f, 30.f, -90.f, -90.f + 360.f * m_expShown, 64, ui::theme::kExp);
+		{
+			// 레벨 배지
+			const std::string lv = std::to_string(m_level);
+			ui::TextStyle ls; ls.size = 13.f; ls.color = ui::theme::kTextHi; ls.face = ui::Face::Number;
+			const float lw = std::max(20.f, ui::Fonts().Measure(lv, ls.size, 0.f, ui::Face::Number).x + 10.f);
+			const Rectangle lb{ std::round(ec.x + 14.f), std::round(ec.y + 12.f), std::round(lw), 17.f };
+			ui::Plate(lb, ui::theme::kSurface2, ui::theme::kLineStrong, 2.f, 1.f);
+			ui::Fonts().Draw(lv, Vector2{ std::round(lb.x + (lb.width - ui::Fonts().Measure(lv, ls.size, 0.f, ui::Face::Number).x) * 0.5f), lb.y + 1.f }, ls);
+		}
 		Entity* me = Self();
-		const Color nc = me ? NameColor(*me) : WHITE;
-		ui::TextShadow(m_playerName, Vector2{ r.x + 86, r.y + 10 }, 19.f, nc);
-		ui::Text(Fmt("Lv.%d  %s", m_level, ClassTable::Get(m_classId).name), Vector2{ r.x + 86, r.y + 36 }, 15.f, util::Shade(ClassColor(m_classId), 1.2f));
-		const Color ac = m_alignment < 0 ? Rgb(0xFF6A5A) : (m_alignment >= AlignmentRule::kLawfulLine ? Rgb(0x7AB8FF) : ui::theme::kTextDim);
-		ui::Text(Fmt("%s %+d", AlignmentLabel(m_alignment), m_alignment), Vector2{ r.x + r.width - 12, r.y + 38 }, 13.f, ac, Align::Right);
-		CoinIcon(Vector2{ r.x + 94, r.y + 72 }, 7.f);
-		ui::Text(texts::Number(m_inv.adena), Vector2{ r.x + 108, r.y + 63 }, 16.f, Rgb(0xFFD84A));
+		const Color nc = me ? NameColor(*me) : ui::theme::kTextHi;
+		{
+			ui::TextStyle ns; ns.size = 16.f; ns.color = nc; ns.face = ui::Face::Strong;
+			ui::Fonts().Draw(m_playerName, Vector2{ r.x + 80, r.y + 12 }, ns);
+		}
+		ui::Text(ClassTable::Get(m_classId).name, Vector2{ r.x + 80, r.y + 35 }, ui::type::kCaption + 0.5f, util::Shade(ClassColor(m_classId), 1.1f));
+		const Color ac = m_alignment < 0 ? ui::theme::kBad : (m_alignment >= AlignmentRule::kLawfulLine ? ui::theme::kInfo : ui::theme::kTextDim);
+		ui::Text(Fmt("%s %+d", AlignmentLabel(m_alignment), m_alignment), Vector2{ r.x + r.width - 12, r.y + 14 }, ui::type::kCaption, ac, Align::Right);
+		CoinIcon(Vector2{ r.x + 86, r.y + 63 }, 6.f);
+		{
+			ui::TextStyle ms; ms.size = 15.f; ms.color = ui::theme::kTextHi; ms.face = ui::Face::Number;
+			ui::Fonts().Draw(texts::Number(m_inv.adena), Vector2{ r.x + 97, r.y + 55 }, ms);
+		}
 		if (m_pkCount > 0)
-			ui::Text(Fmt("PK %d", m_pkCount), Vector2{ r.x + r.width - 12, r.y + 64 }, 13.f, Rgb(0xFF6A5A), Align::Right);
+			ui::Text(Fmt("PK %d", m_pkCount), Vector2{ r.x + r.width - 12, r.y + 56 }, ui::type::kCaption, ui::theme::kBad, Align::Right);
 		// 남은 능력치 포인트 — 눌러서 캐릭터 창
 		if (m_freePoints > 0)
 		{
-			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 5.f);
-			const Rectangle b{ r.x + r.width - 58.f, r.y + 8.f, 50.f, 22.f };
-			DrawRectangleRounded(b, 0.5f, 8, util::Mix(Rgb(0x6A4A10), Rgb(0xC8962A), pulse));
-			DrawRectangleRoundedLinesEx(b, 0.5f, 8, 1.5f, Rgb(0xFFE08A));
-			ui::Text(Fmt("+%d", m_freePoints), Vector2{ b.x + b.width * 0.5f, b.y + 3.f }, 14.f, WHITE, Align::Center, true);
+			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 4.f);
+			const Rectangle b{ r.x + r.width - 50.f, r.y + 32.f, 38.f, 19.f };
+			ui::Plate(b, util::Mix(Color{ 44, 34, 20, 240 }, Color{ 74, 56, 30, 240 }, pulse), ui::theme::kDawn, 2.f, 1.f);
+			ui::TextStyle ps; ps.size = 13.f; ps.color = ui::theme::kDawnHi; ps.face = ui::Face::Number;
+			ui::Fonts().DrawCentered(Fmt("+%d", m_freePoints), Vector2{ b.x + b.width * 0.5f, b.y + b.height * 0.5f }, ps);
 			ui::Block(b);
-			if (ui::Hovered(b)) ui::Tooltip({ { "능력치 포인트", ui::theme::kGold, 16.f }, { "C를 누르거나 눌러서 캐릭터 창에서 찍으세요.", ui::theme::kText, 14.f } });
+			if (ui::Hovered(b)) ui::Tooltip({ { "능력치 포인트", ui::theme::kDawnHi, 15.f, ui::Face::Strong }, { "C를 누르거나 여기를 눌러 캐릭터 창에서 올리세요.", ui::theme::kText, 13.f } });
 			if (ui::Clicked(b)) { m_charOpen = true; sfx::Play(sfx::Id::Open, 0.6f); }
 		}
 	}
-	DrawStatusIcons(12.f, 112.f);
+	DrawStatusIcons(12.f, 100.f);
 
 	// 가운데 알림(위쪽 알림 띠가 길어지면 그 아래로)
 	float y = std::max(H * 0.27f, m_bannersBottom + 18.f);
@@ -409,12 +517,15 @@ void Game::DrawHud()
 		const float a = age > 2.1f ? 1.f - (age - 2.1f) / 0.5f : 1.f;
 		const float pop = age < 0.12f ? util::EaseOutBack(age / 0.12f) : 1.f;
 		ui::TextStyle st;
-		st.size = 20.f * pop;
+		st.size = 18.f * pop;
 		st.color = util::MulA(c.color, a);
-		st.outline = 2.f;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 220 }, a);
+		st.outline = 1.5f;
+		st.outlineColor = util::MulA(Color{ 0, 0, 0, 200 }, a);
+		st.shadow = 2.f;
+		st.shadowColor = util::MulA(Color{ 0, 0, 0, 120 }, a);
+		st.face = ui::Face::Strong;
 		ui::Fonts().DrawCentered(c.text, Vector2{ W * 0.5f, y }, st);
-		y += 28.f;
+		y += 27.f;
 	}
 }
 
@@ -447,11 +558,16 @@ void Game::DrawQuickBar()
 			BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width), static_cast<int>(r.height));
 			DrawCircleSector(Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, r.width * 0.75f, -90.f, -90.f + 360.f * util::Clamp01(frac), 32, Color{ 0, 0, 0, 150 });
 			EndScissorMode();
-			ui::Text(Fmt("%.1f", cdEnd - m_now), Vector2{ r.x + r.width * 0.5f, r.y + 11 }, 13.f, WHITE, Align::Center, true);
+			ui::TextStyle cs; cs.size = 14.f; cs.color = ui::theme::kTextHi; cs.outline = 1.2f; cs.face = ui::Face::Number;
+			ui::Fonts().DrawCentered(Fmt("%.1f", cdEnd - m_now), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, cs);
 		}
 		if (count > 0)
-			ui::Text(std::to_string(count), Vector2{ r.x + r.width - 3, r.y + r.height - 16 }, 12.f, WHITE, Align::Right, true);
-		ui::Text(keys[i], Vector2{ r.x + 3, r.y + 1 }, 12.f, Rgb(0xE8D8A0), Align::Left, true);
+		{
+			ui::TextStyle ns; ns.size = 13.f; ns.color = ui::theme::kTextHi; ns.outline = 1.2f; ns.face = ui::Face::Number;
+			const std::string cstr = std::to_string(count);
+			ui::Fonts().Draw(cstr, Vector2{ r.x + r.width - 3.f - ui::Fonts().Measure(cstr, ns.size, 0.f, ui::Face::Number).x, r.y + r.height - 15.f }, ns);
+		}
+		ui::Keycap(Rectangle{ r.x - 3.f, r.y - 5.f, 14.f, 13.f }, keys[i]);
 
 		// 입력: 클릭 사용 / 오른쪽 클릭 비우기 / 끌어서 옮기기(소지품의 소모품을 끌어다 등록)
 		if (ui::Pressed(r) && q.kind != 0)
@@ -505,25 +621,50 @@ void Game::DrawTargetFrame()
 	if (!t || t->kind == EntityKind::Item || t->removing)
 		return;
 	const float W = static_cast<float>(m_screenW);
-	const Rectangle r{ W * 0.5f - 170.f, 12.f, 340.f, 58.f };
+	const bool boss = t->IsBoss();
+	const Rectangle r{ std::round(W * 0.5f - 180.f), 12.f, 360.f, boss ? 62.f : 56.f };
 	ui::Panel(r, 0.95f, false);
-	std::string title = t->name;
-	if (t->kind == EntityKind::Monster && t->row)
-		title = Fmt("Lv.%d  ", t->row->level) + t->name + (t->IsBoss() ? "  [보스]" : (t->aggressive ? "  (선공)" : ""));
+	if (boss)
+		DrawRectangleRec(Rectangle{ r.x + 5, r.y + 1, r.width - 10, 2 }, ui::theme::kEmber);
+
+	// 이름줄: [레벨] 이름 · 별칭/표시
+	float x = r.x + 14.f;
+	const float ty = r.y + 9.f;
+	std::string level;
+	if (t->kind == EntityKind::Monster && t->row) level = Fmt("Lv.%d", t->row->level);
+	else if (t->kind == EntityKind::Player) level = Fmt("Lv.%d", t->level);
+	if (!level.empty())
+	{
+		ui::TextStyle ls; ls.size = 14.f; ls.color = ui::theme::kTextDim; ls.face = ui::Face::Number;
+		x += ui::Fonts().Draw(level, Vector2{ x, ty + 1.f }, ls) + 8.f;
+	}
+	ui::TextStyle ns; ns.size = boss ? 17.f : 15.f; ns.color = NameColor(*t); ns.face = boss ? ui::Face::Display : ui::Face::Strong;
+	x += ui::Fonts().Draw(t->name, Vector2{ x, boss ? ty - 1.f : ty }, ns) + 10.f;
+	std::string tag;
+	Color tagColor = ui::theme::kTextDim;
+	if (t->kind == EntityKind::Monster)
+	{
+		if (boss) { tag = t->row ? MonsterTable::BossEpithet(t->row->id) : ""; tagColor = Rgb(0xC8A48A); }
+		else if (t->aggressive) { tag = "선공"; tagColor = Rgb(0xC87A6A); }
+	}
 	else if (t->kind == EntityKind::Player)
-		title = Fmt("Lv.%d  ", t->level) + t->name + "  (" + AlignmentLabel(t->alignment) + ")";
-	ui::TextShadow(title, Vector2{ r.x + r.width * 0.5f, r.y + 8 }, 16.f, NameColor(*t), Align::Center);
-	const Rectangle bar{ r.x + 14, r.y + 32, r.width - 28, 16 };
-	const Color fill = t->kind == EntityKind::Player ? Rgb(0x4AD86A) : (t->IsBoss() ? Rgb(0xFF6A2A) : Rgb(0xD8302A));
-	ui::Bar(bar, t->hpShown, t->hpLag, fill, Color{ 30, 12, 12, 255 }, t->dead ? "쓰러짐" : Fmt("%d / %d", std::max(0, t->hp), t->maxhp), 13.f);
+		tag = AlignmentLabel(t->alignment);
+	if (!tag.empty())
+	{
+		ui::TextStyle gs; gs.size = ui::type::kCaption + 0.5f; gs.color = tagColor; gs.face = boss ? ui::Face::Serif : ui::Face::Body;
+		ui::Fonts().Draw(tag, Vector2{ x, ty + 2.f }, gs);
+	}
+	const Rectangle bar{ r.x + 14, r.y + (boss ? 38.f : 33.f), r.width - 28, boss ? 14.f : 12.f };
+	const Color fill = t->kind == EntityKind::Player ? ui::theme::kGood : (boss ? ui::theme::kEmber : ui::theme::kHp);
+	ui::Bar(bar, t->hpShown, t->hpLag, fill, Color{ 30, 13, 13, 255 }, t->dead ? "쓰러짐" : Fmt("%d / %d", std::max(0, t->hp), t->maxhp), boss ? 13.f : 12.f);
 }
 
 void Game::DrawMinimap()
 {
 	const float W = static_cast<float>(m_screenW);
 	const float size = 184.f;
-	const Rectangle r{ W - size - 14.f, 12.f, size, size + 50.f };
-	ui::Panel(r, 0.95f);
+	const Rectangle r{ std::round(W - size - 14.f), 12.f, size, size + 50.f };
+	ui::Panel(r, 0.95f, false);
 	const Rectangle m{ r.x + 8, r.y + 8, size - 16, size - 16 };
 	constexpr int kRange = 30;
 	const float k = m.width / (kRange * 2.f + 1.f) * 0.72f;   // 타일 1칸 → 마름모 반폭(px)
@@ -571,11 +712,11 @@ void Game::DrawMinimap()
 	{
 		if (id == m_selfId || e.dead || e.removing) continue;
 		const Vector2 p = toMap(e.pos.x - m_predX, e.pos.y - m_predY);
-		Color col = Rgb(0xFF4A3A);
+		Color col = Rgb(0xD8604F);
 		float rad = 2.2f;
 		if (e.kind == EntityKind::Player) { col = NameColor(e); rad = 2.6f; }
-		else if (e.kind == EntityKind::Item) { col = Rgb(0xFFD84A); rad = 1.6f; }
-		else if (e.IsBoss()) { col = Rgb(0xFF8A2A); rad = 4.5f + std::sin(static_cast<float>(m_now) * 6.f); }
+		else if (e.kind == EntityKind::Item) { col = ui::theme::kGold; rad = 1.6f; }
+		else if (e.IsBoss()) { col = ui::theme::kEmber; rad = 4.5f + std::sin(static_cast<float>(m_now) * 6.f); }
 		DrawCircleV(p, rad + 0.8f, Color{ 0, 0, 0, 160 });
 		DrawCircleV(p, rad, col);
 	}
@@ -589,9 +730,10 @@ void Game::DrawMinimap()
 		{
 			ui::TextStyle st;
 			st.size = 13.f;
-			st.color = Rgb(0xFFD84A);
+			st.color = ui::theme::kDawnHi;
 			st.outline = 1.5f;
-			st.outlineColor = Color{ 40, 24, 6, 230 };
+			st.outlineColor = Color{ 20, 14, 6, 230 };
+			st.face = ui::Face::Bold;
 			ui::Fonts().DrawCentered(qm == QuestMark::Ready ? "?" : "!", Vector2{ p.x, p.y - 2.f }, st);
 			continue;
 		}
@@ -599,7 +741,7 @@ void Game::DrawMinimap()
 		const bool service = v.row->kind == WorldData::NpcKind::eMerchant || v.row->kind == WorldData::NpcKind::eWeaponSmith
 			|| v.row->kind == WorldData::NpcKind::eTeleporter || v.row->kind == WorldData::NpcKind::ePriest || v.row->kind == WorldData::NpcKind::eInnkeeper;
 		DrawCircleV(p, service ? 3.2f : 2.4f, Color{ 0, 0, 0, 160 });
-		DrawCircleV(p, service ? 2.4f : 1.7f, qm == QuestMark::Talk ? Rgb(0xFFD84A) : (service ? Rgb(0xFFE08A) : Rgb(0x9AF06A)));
+		DrawCircleV(p, service ? 2.4f : 1.7f, qm == QuestMark::Talk ? ui::theme::kDawnHi : (service ? Rgb(0xE8D8B8) : Rgb(0x8DBF6E)));
 	}
 	// 퀘스트 목적지(밖이면 가장자리에 붙인다)
 	if (m_questDestValid)
@@ -617,14 +759,14 @@ void Game::DrawMinimap()
 			if (d.y < -1e-4f) k = std::min(k, (in.y - c.y) / d.y);
 			p = util::Add(c, util::Mul(d, k));
 			const Vector2 n{ -d.y, d.x };
-			DrawTriangle(util::Add(p, util::Mul(d, 6.f)), util::Add(util::Add(p, util::Mul(d, -3.f)), util::Mul(n, -5.f)), util::Add(util::Add(p, util::Mul(d, -3.f)), util::Mul(n, 5.f)), Rgb(0xFFD84A));
+			DrawTriangle(util::Add(p, util::Mul(d, 6.f)), util::Add(util::Add(p, util::Mul(d, -3.f)), util::Mul(n, -5.f)), util::Add(util::Add(p, util::Mul(d, -3.f)), util::Mul(n, 5.f)), ui::theme::kDawn);
 		}
 		else
 		{
 			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 5.f);
-			DrawCircleV(p, 6.f + pulse * 3.f, Color{ 255, 216, 74, static_cast<unsigned char>(90 * (1.f - pulse)) });
-			DrawTriangle(Vector2{ p.x, p.y - 5.f }, Vector2{ p.x - 5.f, p.y }, Vector2{ p.x + 5.f, p.y }, Rgb(0xFFD84A));
-			DrawTriangle(Vector2{ p.x - 5.f, p.y }, Vector2{ p.x, p.y + 5.f }, Vector2{ p.x + 5.f, p.y }, Rgb(0xFFD84A));
+			DrawCircleV(p, 6.f + pulse * 3.f, util::WithA(ui::theme::kDawn, 0.35f * (1.f - pulse)));
+			DrawTriangle(Vector2{ p.x, p.y - 5.f }, Vector2{ p.x - 5.f, p.y }, Vector2{ p.x + 5.f, p.y }, ui::theme::kDawn);
+			DrawTriangle(Vector2{ p.x - 5.f, p.y }, Vector2{ p.x, p.y + 5.f }, Vector2{ p.x + 5.f, p.y }, ui::theme::kDawn);
 		}
 	}
 	// 나(바라보는 방향 화살표)
@@ -638,35 +780,47 @@ void Game::DrawMinimap()
 		DrawTriangle(Vector2{ p.x + d.x * 7, p.y + d.y * 7 }, Vector2{ p.x - d.x * 4 + n.x * 4, p.y - d.y * 4 + n.y * 4 }, Vector2{ p.x - d.x * 4 - n.x * 4, p.y - d.y * 4 - n.y * 4 }, WHITE);
 	}
 	EndScissorMode();
-	DrawRectangleLinesEx(m, 1.f, Color{ 214, 176, 104, 120 });
+	DrawRectangleLinesEx(Rectangle{ m.x - 1, m.y - 1, m.width + 2, m.height + 2 }, 1.f, ui::theme::kLine);
 
 	// 지역/좌표/시계
 	const int region = Region();
 	const auto* row = WorldData::FindRegion(region);
 	const std::string place = InTown() ? std::string(WorldData::kTownName) : (row ? row->name : "");
-	ui::TextShadow(place, Vector2{ r.x + 12, r.y + size - 2 }, 16.f, InTown() ? Rgb(0x9AF06A) : ui::theme::kTitle);
+	{
+		ui::TextStyle ps; ps.size = 15.f; ps.color = ui::theme::kTextHi; ps.face = ui::Face::Display; ps.spacing = 0.4f;
+		ui::Fonts().Draw(place, Vector2{ r.x + 12, r.y + size - 2 }, ps);
+	}
 	if (row && !InTown())
-		Stars(Vector2{ r.x + r.width - 70.f, r.y + size + 7.f }, row->tier, 10.f);
-	ui::Text(Fmt("(%d, %d)", m_predX, m_predY), Vector2{ r.x + 12, r.y + size + 20 }, 13.f, ui::theme::kTextDim);
+		Stars(Vector2{ r.x + r.width - 66.f, r.y + size + 6.f }, row->tier, 8.f);
+	else if (InTown())
+		ui::Text("안전 지대", Vector2{ r.x + r.width - 12.f, r.y + size - 0.f }, ui::type::kCaption, ui::theme::kGood, Align::Right);
+	{
+		ui::TextStyle cs; cs.size = 13.f; cs.color = ui::theme::kTextDim; cs.face = ui::Face::Number;
+		ui::Fonts().Draw(Fmt("%d, %d", m_predX, m_predY), Vector2{ r.x + 12, r.y + size + 21 }, cs);
+	}
 	const float hour = m_light.Hour();
 	const int hh = static_cast<int>(hour), mm = static_cast<int>((hour - hh) * 60.f);
 	const bool night = m_light.Night() > 0.5f;
 	const Vector2 ic{ r.x + r.width - 62.f, r.y + size + 28.f };
 	if (night)
 	{
-		DrawCircleV(ic, 6.f, Rgb(0xF2E8C0));
-		DrawCircleV(Vector2{ ic.x + 3, ic.y - 2 }, 5.f, Color{ 24, 20, 28, 255 });
+		DrawCircleV(ic, 6.f, Rgb(0xE8E2D0));
+		DrawCircleV(Vector2{ ic.x + 3, ic.y - 2 }, 5.f, ui::theme::kSurface0);
 	}
 	else
 	{
-		DrawCircleV(ic, 5.f, Rgb(0xFFD84A));
+		DrawCircleV(ic, 4.5f, ui::theme::kDawn);
 		for (int i = 0; i < 8; ++i)
 		{
 			const float a = i * util::kPi / 4.f;
-			DrawLineEx(Vector2{ ic.x + std::cos(a) * 7, ic.y + std::sin(a) * 7 }, Vector2{ ic.x + std::cos(a) * 9.5f, ic.y + std::sin(a) * 9.5f }, 1.5f, Rgb(0xFFD84A));
+			DrawLineEx(Vector2{ ic.x + std::cos(a) * 6.5f, ic.y + std::sin(a) * 6.5f }, Vector2{ ic.x + std::cos(a) * 8.5f, ic.y + std::sin(a) * 8.5f }, 1.2f, ui::theme::kDawn);
 		}
 	}
-	ui::Text(Fmt("%02d:%02d", hh, mm), Vector2{ r.x + r.width - 12, r.y + size + 20 }, 13.f, ui::theme::kText, Align::Right);
+	{
+		ui::TextStyle hs; hs.size = 14.f; hs.color = ui::theme::kText; hs.face = ui::Face::Number;
+		const std::string clock = Fmt("%02d:%02d", hh, mm);
+		ui::Fonts().Draw(clock, Vector2{ r.x + r.width - 12.f - ui::Fonts().Measure(clock, hs.size, 0.f, ui::Face::Number).x, r.y + size + 20 }, hs);
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -680,12 +834,9 @@ void Game::DrawChat()
 	const bool hover = ui::Hovered(log);
 	const bool open = m_chatOpen && ui::Focused() == &m_chatField;
 	if (open || hover)
-	{
-		DrawRectangleRounded(log, 0.04f, 6, Color{ 8, 6, 10, 150 });
-		DrawRectangleRoundedLinesEx(log, 0.04f, 6, 1.f, Color{ 214, 176, 104, 70 });
-	}
+		ui::Plate(log, Color{ 12, 15, 18, 170 }, util::WithA(ui::theme::kLine, 0.9f), 4.f, 1.f);
 	// 최신 줄이 아래
-	const float size = 15.f;
+	const float size = 14.f;
 	float y = log.y + log.height - 6.f;
 	BeginScissorMode(static_cast<int>(log.x), static_cast<int>(log.y), static_cast<int>(log.width), static_cast<int>(log.height));
 	for (auto it = m_chat.rbegin(); it != m_chat.rend() && y > log.y; ++it)
@@ -731,26 +882,41 @@ void Game::DrawChat()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawNpcPortrait(Rectangle pr, const WorldData::NpcRow& npc)
 {
-	// 초상화(NPC를 크게 다시 그린다 — 말하는 동안 살짝 움직인다)
-	DrawRectangleRounded(pr, 0.06f, 6, Color{ 30, 26, 34, 255 });
-	DrawRectangleGradientV(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height), Color{ 70, 60, 50, 120 }, Color{ 10, 8, 12, 0 });
-	BeginScissorMode(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height));
+	ui::Plate(pr, ui::theme::kSurface1, BLANK, 4.f, 0.f);
+	// 그린 초상화가 있으면 그것을(말하는 동안 아주 조금 숨 쉰다), 없으면(동물 등) NPC를 크게 다시 그린다
+	if (const Texture2D* tex = art::Portrait(npc.id))
 	{
-		actors::Pose pose;
-		const bool small = WorldData::IsAnimal(npc.kind) || npc.kind == WorldData::NpcKind::eChild;
-		pose.base = Vector2{ pr.x + pr.width * 0.5f, pr.y + pr.height + (small ? -8.f : 18.f) };
-		pose.scale = small ? 2.2f : 1.7f;
-		pose.time = m_time;
-		pose.faceRight = true;
-		pose.seed = npc.id;
-		gfx::BeginWorld(0.f, pose.scale);
-		gfx::ResetMod();
-		gfx::SetDepthRaw(-0.5f);
-		actors::DrawNpc(pose, npc);
-		gfx::Flush();
+		const float breath = 1.02f + 0.012f * std::sin(m_time * 1.5f + npc.id);
+		BeginScissorMode(static_cast<int>(pr.x + 1.f), static_cast<int>(pr.y + 1.f), static_cast<int>(pr.width - 2.f), static_cast<int>(pr.height - 2.f));
+		art::DrawCover(*tex, Rectangle{ pr.x + 1.f, pr.y + 1.f, pr.width - 2.f, pr.height - 2.f }, WHITE, Vector2{ 0.5f, 0.42f }, breath);
+		EndScissorMode();
+		// 아래를 판 색으로 녹이고, 위에 옅은 빛(판에 끼운 그림처럼)
+		const int gh = static_cast<int>(pr.height * 0.3f);
+		DrawRectangleGradientV(static_cast<int>(pr.x + 1.f), static_cast<int>(pr.y + pr.height) - gh - 1, static_cast<int>(pr.width - 2.f), gh,
+			util::WithA(ui::theme::kSurface0, 0.f), util::WithA(ui::theme::kSurface0, 0.85f));
+		ui::Rule(pr.x + 5.f, pr.x + pr.width - 5.f, pr.y + 1.f, Color{ 255, 255, 255, 22 });
 	}
-	EndScissorMode();
-	DrawRectangleRoundedLinesEx(pr, 0.06f, 6, 1.5f, ui::theme::kBorder);
+	else
+	{
+		DrawRectangleGradientV(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height), Color{ 60, 66, 70, 90 }, Color{ 10, 12, 14, 0 });
+		BeginScissorMode(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height));
+		{
+			actors::Pose pose;
+			const bool small = WorldData::IsAnimal(npc.kind) || npc.kind == WorldData::NpcKind::eChild;
+			pose.base = Vector2{ pr.x + pr.width * 0.5f, pr.y + pr.height + (small ? -8.f : 18.f) };
+			pose.scale = small ? 2.2f : 1.7f;
+			pose.time = m_time;
+			pose.faceRight = true;
+			pose.seed = npc.id;
+			gfx::BeginWorld(0.f, pose.scale);
+			gfx::ResetMod();
+			gfx::SetDepthRaw(-0.5f);
+			actors::DrawNpc(pose, npc);
+			gfx::Flush();
+		}
+		EndScissorMode();
+	}
+	ui::Plate(pr, BLANK, ui::theme::kLineStrong, 4.f, 1.f);
 }
 
 void Game::DrawNpcDialog()
@@ -799,15 +965,18 @@ void Game::DrawNpcDialog()
 	const int shown = std::min<int>(static_cast<int>(cps.size()), static_cast<int>((m_now - m_dialogTextAt) * 42.0));
 	std::string visible;
 	for (int i = 0; i < shown; ++i) ui::AppendUtf8(visible, cps[i]);
-	const Rectangle tr{ r.x + 152, r.y + 50, r.width - 170, 100 };
-	ui::TextWrapped(visible, tr, 17.f, ui::theme::kText, 6.f);
+	const Rectangle tr{ r.x + 154, r.y + 52, r.width - 174, 100 };
+	{
+		ui::FaceScope serif(ui::Face::Serif);
+		ui::TextWrapped(visible, tr, 16.f, ui::theme::kTextHi, 8.f);
+	}
 	if (shown < static_cast<int>(cps.size()) && ui::Clicked(tr))
 		m_dialogTextAt = m_now - 60.0;
 	if (shown >= static_cast<int>(cps.size()))
 	{
 		// 다 읽었으면 작은 화살표가 깜빡인다
 		const float blink = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 6.f);
-		DrawTriangle(Vector2{ r.x + r.width - 30, r.y + 142 }, Vector2{ r.x + r.width - 24, r.y + 150 }, Vector2{ r.x + r.width - 18, r.y + 142 }, util::WithA(ui::theme::kGold, blink));
+		DrawTriangle(Vector2{ r.x + r.width - 30, r.y + 142 }, Vector2{ r.x + r.width - 24, r.y + 149 }, Vector2{ r.x + r.width - 18, r.y + 142 }, util::WithA(ui::theme::kDawn, blink));
 	}
 
 	// 퀘스트 목록 — 누르면 그 이야기를 펼친다
@@ -817,11 +986,16 @@ void Game::DrawNpcDialog()
 		const Rectangle er{ r.x + 152.f, r.y + 156.f + i * 30.f, r.width - 170.f, 27.f };
 		const bool hover = ui::Hovered(er);
 		const bool bright = e.mark == QuestMark::Ready || e.mark == QuestMark::Available;
-		DrawRectangleRounded(er, 0.25f, 6, hover ? Color{ 80, 62, 36, 220 } : Color{ 34, 28, 26, 210 });
-		if (bright) DrawRectangleRoundedLinesEx(er, 0.25f, 6, 1.f, util::WithA(ui::theme::kGold, hover ? 0.9f : 0.45f));
+		ui::Plate(er, hover ? ui::theme::kSurface3 : ui::theme::kSurface1, bright ? util::WithA(ui::theme::kDawn, hover ? 0.9f : 0.5f) : ui::theme::kLine, 3.f, 1.f);
 		const char* glyph = e.mark == QuestMark::Ready || e.mark == QuestMark::Active ? "?" : (e.mark == QuestMark::None ? "…" : "!");
-		ui::Text(glyph, Vector2{ er.x + 14.f, er.y + 3.f }, 17.f, bright ? ui::theme::kGold : ui::theme::kTextDim, Align::Center, true);
-		ui::Text(e.q->name, Vector2{ er.x + 30.f, er.y + 5.f }, 15.f, bright ? Rgb(0xFFE8B0) : ui::theme::kText);
+		{
+			ui::TextStyle gs; gs.size = 16.f; gs.color = bright ? ui::theme::kDawnHi : ui::theme::kTextDim; gs.face = ui::Face::Bold;
+			ui::Fonts().DrawCentered(glyph, Vector2{ er.x + 15.f, er.y + er.height * 0.5f }, gs);
+		}
+		{
+			ui::TextStyle qs; qs.size = 14.f; qs.color = bright ? ui::theme::kTextHi : ui::theme::kText; qs.face = ui::Face::Strong;
+			ui::Fonts().Draw(e.q->name, Vector2{ er.x + 30.f, er.y + 6.f }, qs);
+		}
 		std::string tag;
 		switch (e.mark)
 		{
@@ -831,7 +1005,7 @@ void Game::DrawNpcDialog()
 		case QuestMark::Low: tag = Fmt("Lv.%d부터", e.q->minLevel); break;
 		default: tag = "내일 다시"; break;
 		}
-		ui::Text(tag, Vector2{ er.x + er.width - 10.f, er.y + 6.f }, 13.f, bright ? ui::theme::kGold : ui::theme::kTextDim, Align::Right);
+		ui::Text(tag, Vector2{ er.x + er.width - 10.f, er.y + 7.f }, ui::type::kCaption, bright ? ui::theme::kDawn : ui::theme::kTextDim, Align::Right);
 		if (ui::Clicked(er))
 		{
 			OpenQuestInDialog(e.q->id);
@@ -865,7 +1039,7 @@ void Game::DrawNpcDialog()
 		if (button(92, "판매")) { m_shopMode = ShopMode::Sell; m_sellSlot = -1; m_invOpen = true; sfx::Play(sfx::Id::Open, 0.6f); }
 		break;
 	case WorldData::NpcKind::eTeleporter:
-		if (button(120, "순간이동", ButtonKind::Primary))
+		if (button(120, "옛길 이동", ButtonKind::Primary))
 		{
 			m_shopMode = ShopMode::Teleport;
 			m_teleportSel = -1;
@@ -886,7 +1060,7 @@ void Game::DrawNpcDialog()
 	case WorldData::NpcKind::eInnkeeper:
 	{
 		const double remain = m_npcServiceReadyAt[static_cast<int>(WorldData::NpcService::Soup)] - m_now;
-		const std::string label = remain > 0.0 ? Fmt("수프 (%.0f초)", remain) : std::string("수프 (30 아데나)");
+		const std::string label = remain > 0.0 ? Fmt("수프 (%.0f초)", remain) : std::string("수프 (30 그로시)");
 		if (button(140, label.c_str(), ButtonKind::Primary)) RequestNpcService(npc->id, WorldData::NpcService::Soup);
 		break;
 	}
@@ -924,11 +1098,13 @@ void Game::DrawShop()
 		++idx;
 		const Rectangle it{ r.x + 12 + col * (cardW + 8.f), r.y + 46 + line * 47.f, cardW, 44 };
 		const bool hover = ui::Hovered(it), sel = m_buyItem == id;
-		DrawRectangleRounded(it, 0.12f, 6, sel ? Color{ 90, 70, 40, 220 } : (hover ? Color{ 60, 50, 44, 200 } : Color{ 30, 26, 30, 200 }));
-		if (sel) DrawRectangleRoundedLinesEx(it, 0.12f, 6, 1.5f, ui::theme::kBorderHi);
-		ui::SlotFrame(Rectangle{ it.x + 6, it.y + 4, 36, 36 }, false, false);
-		icons::Draw(id, Rectangle{ it.x + 8, it.y + 6, 32, 32 });
-		ui::TextShadow(row->displayName, Vector2{ it.x + 50, it.y + 4 }, twoCols ? 14.f : 16.f, icons::ItemNameColor(id));
+		ui::Plate(it, sel ? ui::theme::kSurface3 : (hover ? ui::theme::kSurface2 : ui::theme::kSurface1), sel ? ui::theme::kDawn : ui::theme::kLine, 3.f, 1.f);
+		ui::SlotFrame(Rectangle{ it.x + 5, it.y + 4, 36, 36 }, false, false);
+		icons::Draw(id, Rectangle{ it.x + 7, it.y + 6, 32, 32 });
+		{
+			ui::TextStyle ns; ns.size = twoCols ? 13.5f : 14.5f; ns.color = icons::ItemNameColor(id); ns.face = ui::Face::Strong;
+			ui::Fonts().Draw(row->displayName, Vector2{ it.x + 50, it.y + 5 }, ns);
+		}
 		std::string desc;
 		if (row->type == ItemType::eEquipment)
 		{
@@ -943,12 +1119,18 @@ void Game::DrawShop()
 		else if (row->effect == ItemEffect::eHeal) desc = Fmt("HP %d 회복", row->healAmount);
 		else if (row->effect == ItemEffect::eHaste) desc = Fmt("%d초 가속", row->effectValue);
 		else if (row->effect == ItemEffect::eReturnTown) desc = "마을로 귀환";
-		else if (row->effect == ItemEffect::eTeleportRandom) desc = "지역 내 순간이동";
-		else if (row->effect == ItemEffect::eEnchantWeapon) desc = "무기 강화";
-		ui::Text(desc, Vector2{ it.x + 50, it.y + 25 }, twoCols ? 12.f : 13.f, ui::theme::kTextDim);
+		else if (row->effect == ItemEffect::eTeleportRandom) desc = "지역 안 옛길 이동";
+		else if (row->effect == ItemEffect::eEnchantWeapon) desc = "무기 각인 강화";
+		ui::Text(desc, Vector2{ it.x + 50, it.y + 25 }, twoCols ? 11.5f : ui::type::kCaption, ui::theme::kTextDim);
 		const bool affordable = m_inv.adena >= row->buyPrice;
-		if (!twoCols) CoinIcon(Vector2{ it.x + it.width - 110, it.y + 22 }, 6.f);
-		ui::Text(texts::Number(row->buyPrice), Vector2{ it.x + it.width - 8, it.y + (twoCols ? 4.f : 13.f) }, twoCols ? 14.f : 16.f, affordable ? Rgb(0xFFD84A) : ui::theme::kBad, Align::Right);
+		{
+			ui::TextStyle ps; ps.size = twoCols ? 14.f : 16.f; ps.color = affordable ? ui::theme::kTextHi : ui::theme::kBad; ps.face = ui::Face::Number;
+			const std::string price = texts::Number(row->buyPrice);
+			const float pw = ui::Fonts().Measure(price, ps.size, 0.f, ui::Face::Number).x;
+			const float py = it.y + (twoCols ? 5.f : 13.f);
+			ui::Fonts().Draw(price, Vector2{ it.x + it.width - 10.f - pw, py }, ps);
+			if (!twoCols) CoinIcon(Vector2{ it.x + it.width - 20.f - pw, py + ps.size * 0.5f + 1.f }, 5.5f);
+		}
 		ui::Block(it);
 		if (ui::Clicked(it)) { m_buyItem = id; m_buyCount = 1; sfx::Play(sfx::Id::Click, 0.6f); }
 		if (hover) DrawItemTooltip(id, 0, 1, false, false);
@@ -962,17 +1144,24 @@ void Game::DrawShop()
 	const int affordableMax = sel && sel->buyPrice > 0 ? static_cast<int>(std::min<uint32_t>(m_inv.adena / sel->buyPrice, 999u)) : 0;
 	const int maxCount = std::max(1, std::min(maxStack, std::max(1, affordableMax)));
 	m_buyCount = std::clamp(m_buyCount, 1, maxCount);
-	ui::Text("수량", Vector2{ r.x + 16, fy + 10 }, 15.f, ui::theme::kTextDim);
+	ui::Text("수량", Vector2{ r.x + 16, fy + 11 }, ui::type::kBodyS, ui::theme::kTextDim);
 	if (ui::Button(Rectangle{ r.x + 60, fy + 4, 34, 32 }, "-", ButtonKind::Normal, sel != nullptr)) m_buyCount = std::max(1, m_buyCount - 1);
-	DrawRectangleRounded(Rectangle{ r.x + 98, fy + 4, 60, 32 }, 0.2f, 6, Color{ 10, 9, 12, 220 });
-	ui::Text(std::to_string(m_buyCount), Vector2{ r.x + 128, fy + 10 }, 17.f, WHITE, Align::Center);
+	ui::Plate(Rectangle{ r.x + 98, fy + 4, 60, 32 }, Color{ 12, 15, 18, 235 }, ui::theme::kLine, 3.f, 1.f);
+	{
+		ui::TextStyle qs; qs.size = 17.f; qs.color = ui::theme::kTextHi; qs.face = ui::Face::Number;
+		ui::Fonts().DrawCentered(std::to_string(m_buyCount), Vector2{ r.x + 128, fy + 20 }, qs);
+	}
 	if (ui::Button(Rectangle{ r.x + 162, fy + 4, 34, 32 }, "+", ButtonKind::Normal, sel != nullptr)) m_buyCount = std::min(maxCount, m_buyCount + 1);
 	if (ui::Button(Rectangle{ r.x + 200, fy + 4, 48, 32 }, "×10", ButtonKind::Normal, sel != nullptr)) m_buyCount = std::min(maxCount, m_buyCount + 10);
 	if (ui::Button(Rectangle{ r.x + 252, fy + 4, 52, 32 }, "최대", ButtonKind::Normal, sel != nullptr)) m_buyCount = maxCount;
 	const uint64_t total = sel ? static_cast<uint64_t>(sel->buyPrice) * m_buyCount : 0;
-	CoinIcon(Vector2{ r.x + 22, fy + 58 }, 7.f);
-	ui::Text("합계 " + texts::Number(static_cast<long long>(total)), Vector2{ r.x + 36, fy + 49 }, 17.f, total <= m_inv.adena ? Rgb(0xFFD84A) : ui::theme::kBad);
-	ui::Text("보유 " + texts::Number(m_inv.adena), Vector2{ r.x + 36, fy + 72 }, 13.f, ui::theme::kTextDim);
+	ui::Text("합계", Vector2{ r.x + 16, fy + 53 }, ui::type::kBodyS, ui::theme::kTextDim);
+	CoinIcon(Vector2{ r.x + 58, fy + 62 }, 6.f);
+	{
+		ui::TextStyle ts; ts.size = 19.f; ts.color = total <= m_inv.adena ? ui::theme::kTextHi : ui::theme::kBad; ts.face = ui::Face::Number;
+		ui::Fonts().Draw(texts::Number(static_cast<long long>(total)), Vector2{ r.x + 70, fy + 50 }, ts);
+	}
+	ui::Text("보유 " + texts::Number(m_inv.adena), Vector2{ r.x + 16, fy + 76 }, ui::type::kCaption, ui::theme::kTextDim);
 	const bool can = sel && total <= m_inv.adena;
 	if (ui::Button(Rectangle{ r.x + r.width - 144, fy + 48, 130, 42 }, "구매하기", ButtonKind::Primary, can, 18.f))
 		m_lastShopSeq = m_net.SendShopBuy(npc->id, m_buyItem, static_cast<uint16_t>(m_buyCount));
@@ -994,7 +1183,7 @@ void Game::DrawSell()
 	if (m_sellSlot < 0 || m_inv.slots[m_sellSlot].Empty())
 	{
 		m_sellSlot = -1;
-		ui::TextWrapped("오른쪽 소지품 창에서 팔 물건을 클릭하세요.\n착용 중인 장비와 아데나는 팔 수 없습니다.", Rectangle{ r.x + 24, r.y + 70, r.width - 48, 120 }, 16.f, ui::theme::kText, 8.f);
+		ui::TextWrapped("오른쪽 소지품 창에서 팔 물건을 클릭하세요.\n착용 중인 장비와 그로시는 팔 수 없습니다.", Rectangle{ r.x + 24, r.y + 70, r.width - 48, 120 }, 16.f, ui::theme::kText, 8.f);
 	}
 	else
 	{
@@ -1005,21 +1194,31 @@ void Game::DrawSell()
 		const Rarity rar = SlotRarity(s);
 		ui::SlotFrame(Rectangle{ r.x + 20, r.y + 52, 64, 64 }, false, true, rar != Rarity::Common ? icons::RarityColor(rar) : ui::theme::kBorder);
 		icons::Draw(s.itemId, Rectangle{ r.x + 24, r.y + 56, 56, 56 });
-		ui::TextShadow(texts::ItemNameFull(s.itemId, s.enchant, s.extra), Vector2{ r.x + 98, r.y + 58 }, 18.f, icons::ItemNameColor(s.itemId, s.extra));
-		ui::Text("개당 " + texts::Number(unit) + " 아데나" + (row && row->type == ItemType::eEquipment && rar > Rarity::Common
+		{
+			ui::TextStyle ns; ns.size = 16.f; ns.color = icons::ItemNameColor(s.itemId, s.extra); ns.face = ui::Face::Strong;
+			ui::Fonts().Draw(texts::ItemNameFull(s.itemId, s.enchant, s.extra), Vector2{ r.x + 98, r.y + 58 }, ns);
+		}
+		ui::Text("개당 " + texts::Number(unit) + " 그로시" + (row && row->type == ItemType::eEquipment && rar > Rarity::Common
 			? Fmt("  (%s ×%.1f)", ItemRules::RarityName(rar), ItemRules::kSellPercent[ItemRules::Idx(rar)] / 100.f) : std::string()),
-			Vector2{ r.x + 98, r.y + 86 }, 15.f, Rgb(0xFFD84A));
+			Vector2{ r.x + 98, r.y + 86 }, ui::type::kBodyS, ui::theme::kText);
 		m_sellCount = std::clamp(m_sellCount, 1, static_cast<int>(s.count));
 		const float fy = r.y + 136;
-		ui::Text("수량", Vector2{ r.x + 20, fy + 8 }, 15.f, ui::theme::kTextDim);
+		ui::Text("수량", Vector2{ r.x + 20, fy + 8 }, ui::type::kBodyS, ui::theme::kTextDim);
 		if (ui::Button(Rectangle{ r.x + 64, fy, 34, 32 }, "-")) m_sellCount = std::max(1, m_sellCount - 1);
-		DrawRectangleRounded(Rectangle{ r.x + 102, fy, 60, 32 }, 0.2f, 6, Color{ 10, 9, 12, 220 });
-		ui::Text(std::to_string(m_sellCount), Vector2{ r.x + 132, fy + 6 }, 17.f, WHITE, Align::Center);
+		ui::Plate(Rectangle{ r.x + 102, fy, 60, 32 }, Color{ 12, 15, 18, 235 }, ui::theme::kLine, 3.f, 1.f);
+		{
+			ui::TextStyle qs; qs.size = 17.f; qs.color = ui::theme::kTextHi; qs.face = ui::Face::Number;
+			ui::Fonts().DrawCentered(std::to_string(m_sellCount), Vector2{ r.x + 132, fy + 16 }, qs);
+		}
 		if (ui::Button(Rectangle{ r.x + 166, fy, 34, 32 }, "+")) m_sellCount = std::min(static_cast<int>(s.count), m_sellCount + 1);
 		if (ui::Button(Rectangle{ r.x + 204, fy, 52, 32 }, "전부")) m_sellCount = s.count;
 		const uint64_t total = static_cast<uint64_t>(unit) * m_sellCount;
-		CoinIcon(Vector2{ r.x + 26, fy + 62 }, 7.f);
-		ui::Text("받을 금액 " + texts::Number(static_cast<long long>(total)), Vector2{ r.x + 40, fy + 53 }, 18.f, Rgb(0xFFD84A));
+		ui::Text("받을 금액", Vector2{ r.x + 20, fy + 56 }, ui::type::kBodyS, ui::theme::kTextDim);
+		CoinIcon(Vector2{ r.x + 92, fy + 65 }, 6.f);
+		{
+			ui::TextStyle ts; ts.size = 19.f; ts.color = ui::theme::kTextHi; ts.face = ui::Face::Number;
+			ui::Fonts().Draw(texts::Number(static_cast<long long>(total)), Vector2{ r.x + 104, fy + 53 }, ts);
+		}
 		if (ui::Button(Rectangle{ r.x + r.width - 144, r.y + r.height - 58, 130, 42 }, "판매하기", ButtonKind::Primary, true, 18.f))
 			m_lastShopSeq = m_net.SendShopSell(npc->id, static_cast<uint16_t>(m_sellSlot), static_cast<uint16_t>(m_sellCount));
 	}
@@ -1034,7 +1233,7 @@ void Game::DrawTeleport()
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
 	const Rectangle r{ W * 0.5f - 280.f, std::max(12.f, H * 0.5f - 300.f), 560.f, std::min(H - 130.f, 600.f) };
 	bool open = true;
-	ui::Window(r, "텔레포트 — 목적지 선택", &open);
+	ui::Window(r, "옛길 이동 — 목적지", &open);
 	if (!open) { CloseNpcWindows(); return; }
 
 	float y = r.y + 44;
@@ -1044,27 +1243,39 @@ void Game::DrawTeleport()
 		if (reg.teleportFee == 0) continue;   // 마을 지역
 		const Rectangle it{ r.x + 12, y, r.width - 24, rowH - 3 };
 		const bool hover = ui::Hovered(it), sel = m_teleportSel == reg.zoneId;
-		DrawRectangleRounded(it, 0.15f, 6, sel ? Color{ 90, 70, 40, 220 } : (hover ? Color{ 60, 50, 44, 200 } : Color{ 30, 26, 30, 180 }));
-		const float ty = it.y + (it.height - 15.f) * 0.5f - 1.f;
-		ui::TextShadow(reg.name, Vector2{ it.x + 12, ty }, 15.f, sel ? ui::theme::kTitle : ui::theme::kText);
-		Stars(Vector2{ it.x + 150, it.y + it.height * 0.5f }, reg.tier, 9.f);
+		// 옛길(청록)이 이 창의 강조색 — 선택한 줄만 청록 테두리
+		ui::Plate(it, sel ? ui::theme::kSurface3 : (hover ? ui::theme::kSurface2 : ui::theme::kSurface1), sel ? ui::theme::kOldway : ui::theme::kLine, 3.f, 1.f);
+		const float ty = it.y + (it.height - 14.5f) * 0.5f;
+		{
+			ui::TextStyle ns; ns.size = 14.5f; ns.color = sel ? ui::theme::kTextHi : ui::theme::kText; ns.face = ui::Face::Strong;
+			ui::Fonts().Draw(reg.name, Vector2{ it.x + 12, ty }, ns);
+		}
+		Stars(Vector2{ it.x + 150, it.y + it.height * 0.5f }, reg.tier, 8.f);
 		if (reg.bossSpecies)
-			ui::Text("보스: " + texts::MonsterName(reg.bossSpecies), Vector2{ it.x + 222, ty + 1 }, 13.f, Rgb(0xFF8A6A));
+			ui::Text("보스 " + texts::MonsterName(reg.bossSpecies), Vector2{ it.x + 222, ty + 1 }, ui::type::kCaption, Rgb(0xC88A74));
 		if (QuestWantsRegion(reg.zoneId))
 		{
 			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 4.f);
-			ui::Text("◆ 퀘스트", Vector2{ it.x + it.width - 96, ty + 1 }, 13.f, util::Mix(Rgb(0xE8B840), Rgb(0xFFE890), pulse), Align::Right);
+			ui::Text("◆ 퀘스트", Vector2{ it.x + it.width - 96, ty + 1 }, ui::type::kCaption, util::Mix(ui::theme::kDawn, ui::theme::kDawnHi, pulse), Align::Right);
 		}
 		const bool affordable = m_inv.adena >= reg.teleportFee;
-		ui::Text(texts::Number(reg.teleportFee), Vector2{ it.x + it.width - 12, ty }, 15.f, affordable ? Rgb(0xFFD84A) : ui::theme::kBad, Align::Right);
+		{
+			ui::TextStyle fs; fs.size = 15.f; fs.color = affordable ? ui::theme::kTextHi : ui::theme::kBad; fs.face = ui::Face::Number;
+			const std::string fee = texts::Number(reg.teleportFee);
+			ui::Fonts().Draw(fee, Vector2{ it.x + it.width - 12.f - ui::Fonts().Measure(fee, fs.size, 0.f, ui::Face::Number).x, ty }, fs);
+		}
 		ui::Block(it);
 		if (ui::Clicked(it)) { m_teleportSel = reg.zoneId; sfx::Play(sfx::Id::Click, 0.6f); }
 		y += rowH;
 	}
 	const float fy = r.y + r.height - 60;
 	ui::Divider(r.x + 12, r.x + r.width - 12, fy - 8);
-	CoinIcon(Vector2{ r.x + 24, fy + 20 }, 7.f);
-	ui::Text("보유 " + texts::Number(m_inv.adena), Vector2{ r.x + 38, fy + 11 }, 16.f, Rgb(0xFFD84A));
+	ui::Text("보유", Vector2{ r.x + 16, fy + 14 }, ui::type::kBodyS, ui::theme::kTextDim);
+	CoinIcon(Vector2{ r.x + 56, fy + 23 }, 6.f);
+	{
+		ui::TextStyle ms; ms.size = 17.f; ms.color = ui::theme::kTextHi; ms.face = ui::Face::Number;
+		ui::Fonts().Draw(texts::Number(m_inv.adena), Vector2{ r.x + 68, fy + 12 }, ms);
+	}
 	const auto* dest = WorldData::FindRegion(m_teleportSel);
 	const bool can = dest && dest->teleportFee > 0 && m_inv.adena >= dest->teleportFee;
 	if (ui::Button(Rectangle{ r.x + r.width - 154, fy, 140, 44 }, dest ? "이동하기" : "목적지 선택", ButtonKind::Primary, can, 18.f))
@@ -1082,7 +1293,12 @@ void Game::DrawEnchant()
 	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 0, 0, 0, 120 });
 	const Rectangle r{ W * 0.5f - 230.f, H * 0.5f - 190.f, 460.f, 360.f };
 	ui::Panel(r);
-	ui::TextShadow("무기 강화", Vector2{ r.x + r.width * 0.5f, r.y + 14 }, 21.f, ui::theme::kTitle, Align::Center);
+	{
+		ui::TextStyle ts; ts.size = ui::type::kDisplayS; ts.color = ui::theme::kTextHi; ts.face = ui::Face::Display; ts.spacing = 1.f;
+		ui::Fonts().DrawCentered("각인 강화", Vector2{ r.x + r.width * 0.5f, r.y + 26 }, ts);
+		ui::Rule(r.x + r.width * 0.5f - 60.f, r.x + r.width * 0.5f + 60.f, r.y + 44.f, ui::theme::kLine);
+		DrawRectangleRec(Rectangle{ std::round(r.x + r.width * 0.5f - 11.f), std::round(r.y + 43.f), 22.f, 2.f }, ui::theme::kDawn);
+	}
 	const Vector2 c{ r.x + r.width * 0.5f, r.y + 118 };
 	const float t = static_cast<float>(m_now - m_enchant.start);
 	const ItemTableRow* scroll = ItemTableData::Find(m_enchant.scrollId);
@@ -1094,11 +1310,19 @@ void Game::DrawEnchant()
 		const uint32_t chance = EnchantRule::SuccessPercent(static_cast<uint8_t>(before));
 		DrawCircleGradient(static_cast<int>(c.x), static_cast<int>(c.y), 70.f, Color{ 255, 220, 140, 60 }, Color{ 255, 220, 140, 0 });
 		icons::Draw(m_enchant.itemId, Rectangle{ c.x - 48, c.y - 48, 96, 96 });
-		ui::TextShadow(texts::ItemNameEnchanted(m_enchant.itemId, before) + "  →  +" + std::to_string(before + 1), Vector2{ c.x, c.y + 60 }, 18.f, icons::ItemNameColor(m_enchant.itemId), Align::Center);
-		const Color cc = chance >= 100 ? ui::theme::kGood : (chance >= 30 ? Rgb(0xFFD070) : ui::theme::kBad);
-		ui::TextShadow(Fmt("성공 확률 %u%%", chance), Vector2{ c.x, c.y + 88 }, 19.f, cc, Align::Center);
-		std::string note = chance >= 100 ? "안전 강화 구간입니다(+6까지 실패 없음)." : "실패하면 무기가 증발합니다!";
-		if (blessed) note += "  축복: 크게 오를 수 있음";
+		{
+			ui::TextStyle ns; ns.size = 16.f; ns.color = icons::ItemNameColor(m_enchant.itemId); ns.face = ui::Face::Strong;
+			ui::Fonts().DrawCentered(texts::ItemNameEnchanted(m_enchant.itemId, before) + "  →  +" + std::to_string(before + 1), Vector2{ c.x, c.y + 68 }, ns);
+		}
+		const Color cc = chance >= 100 ? ui::theme::kGood : (chance >= 30 ? ui::theme::kWarn : ui::theme::kBad);
+		{
+			ui::TextStyle ps; ps.size = 13.f; ps.color = ui::theme::kTextDim; ps.face = ui::Face::Body;
+			ui::Fonts().DrawCentered("성공 확률", Vector2{ c.x - 26.f, c.y + 97 }, ps);
+			ui::TextStyle vs; vs.size = 20.f; vs.color = cc; vs.face = ui::Face::Number;
+			ui::Fonts().DrawCentered(Fmt("%u%%", chance), Vector2{ c.x + 30.f, c.y + 96 }, vs);
+		}
+		std::string note = chance >= 100 ? "안전한 단계입니다(+6까지 실패 없음)." : "실패하면 무기가 부서집니다.";
+		if (blessed) note += "  축성: 크게 오를 수 있음";
 		ui::Text(note, Vector2{ c.x, c.y + 116 }, 14.f, chance >= 100 ? ui::theme::kTextDim : ui::theme::kBad, Align::Center);
 		if (ui::Button(Rectangle{ r.x + 40, r.y + r.height - 60, 180, 44 }, "강화하기", chance >= 100 ? ButtonKind::Primary : ButtonKind::Danger, true, 18.f))
 		{
@@ -1128,7 +1352,7 @@ void Game::DrawEnchant()
 		}
 		EndBlendMode();
 		icons::Draw(m_enchant.itemId, Rectangle{ sc.x - 48, sc.y - 48, 96, 96 });
-		ui::TextShadow("주문서의 힘이 무기에 스며듭니다...", Vector2{ c.x, c.y + 80 }, 17.f, Rgb(0xFFE8B0), Align::Center);
+		ui::TextShadow("각인이 날에 스며듭니다…", Vector2{ c.x, c.y + 80 }, 17.f, Rgb(0xFFE8B0), Align::Center);
 		return;
 	}
 	// 결과
@@ -1146,12 +1370,15 @@ void Game::DrawEnchant()
 		const float pop = util::EaseOutBack(util::Clamp01(t / 0.35f));
 		icons::Draw(m_enchant.itemId, Rectangle{ c.x - 48 * pop, c.y - 48 * pop, 96 * pop, 96 * pop });
 		ui::TextStyle st;
-		st.size = 30.f * pop;
-		st.color = Rgb(0x9AD8FF);
-		st.outline = 2.5f;
-		st.outlineColor = Color{ 10, 20, 50, 230 };
-		ui::Fonts().DrawCentered("강화 성공!", Vector2{ c.x, c.y + 78 }, st);
-		ui::TextShadow(texts::ItemNameEnchanted(m_enchant.itemId, m_enchant.after), Vector2{ c.x, c.y + 104 }, 18.f, icons::ItemNameColor(m_enchant.itemId), Align::Center);
+		st.size = 28.f * pop;
+		st.color = ui::theme::kDawnHi;
+		st.shadow = 2.f;
+		st.shadowColor = Color{ 0, 0, 0, 160 };
+		st.face = ui::Face::Display;
+		st.spacing = 2.f;
+		ui::Fonts().DrawCentered("각인 성공", Vector2{ c.x, c.y + 78 }, st);
+		ui::TextStyle ns; ns.size = 16.f; ns.color = icons::ItemNameColor(m_enchant.itemId); ns.face = ui::Face::Strong;
+		ui::Fonts().DrawCentered(texts::ItemNameEnchanted(m_enchant.itemId, m_enchant.after), Vector2{ c.x, c.y + 110 }, ns);
 	}
 	else
 	{
@@ -1166,11 +1393,13 @@ void Game::DrawEnchant()
 		}
 		ui::TextStyle st;
 		st.size = 26.f;
-		st.color = Rgb(0xC08AFF);
-		st.outline = 2.5f;
-		st.outlineColor = Color{ 30, 10, 40, 230 };
-		ui::Fonts().DrawCentered("강화 실패...", Vector2{ c.x, c.y + 60 }, st);
-		ui::TextShadow(texts::Josa(texts::ItemNameEnchanted(m_enchant.itemId, m_enchant.before), "이", "가") + " 증발했습니다.", Vector2{ c.x, c.y + 94 }, 16.f, ui::theme::kTextDim, Align::Center);
+		st.color = ui::theme::kBad;
+		st.shadow = 2.f;
+		st.shadowColor = Color{ 0, 0, 0, 160 };
+		st.face = ui::Face::Display;
+		st.spacing = 2.f;
+		ui::Fonts().DrawCentered("각인 실패", Vector2{ c.x, c.y + 60 }, st);
+		ui::TextShadow(texts::Josa(texts::ItemNameEnchanted(m_enchant.itemId, m_enchant.before), "이", "가") + " 부서졌습니다.", Vector2{ c.x, c.y + 94 }, 15.f, ui::theme::kTextDim, Align::Center);
 	}
 	if (ui::Button(Rectangle{ r.x + r.width * 0.5f - 80, r.y + r.height - 60, 160, 44 }, "확인", ButtonKind::Primary) || t > 4.f)
 		m_enchant = EnchantFlow{};
@@ -1182,16 +1411,22 @@ void Game::DrawDiscard()
 	if (s.Empty()) { m_discard.open = false; return; }
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
 	const Rectangle r{ W * 0.5f - 180.f, H * 0.5f - 100.f, 360.f, 200.f };
-	ui::Panel(r);
-	ui::TextShadow("버리기", Vector2{ r.x + r.width * 0.5f, r.y + 14 }, 19.f, ui::theme::kTitle, Align::Center);
-	icons::Draw(s.itemId, Rectangle{ r.x + 20, r.y + 50, 48, 48 });
-	ui::TextShadow(texts::ItemNameFull(s.itemId, s.enchant, s.extra), Vector2{ r.x + 80, r.y + 50 }, 17.f, icons::ItemNameColor(s.itemId, s.extra));
+	ui::Window(r, "버리기", nullptr);
+	ui::SlotFrame(Rectangle{ r.x + 18, r.y + 50, 52, 52 }, false, false, SlotRarity(s) != Rarity::Common ? icons::RarityColor(SlotRarity(s)) : ui::theme::kBorder);
+	icons::Draw(s.itemId, Rectangle{ r.x + 20, r.y + 52, 48, 48 });
+	{
+		ui::TextStyle ns; ns.size = 15.f; ns.color = icons::ItemNameColor(s.itemId, s.extra); ns.face = ui::Face::Strong;
+		ui::Fonts().Draw(texts::ItemNameFull(s.itemId, s.enchant, s.extra), Vector2{ r.x + 80, r.y + 52 }, ns);
+	}
 	if (s.equipped || SlotRarity(s) >= Rarity::Rare || s.enchant > 0)
 		ui::Text(s.equipped ? "착용 중인 장비입니다. 정말 버릴까요?" : std::string(ItemRules::RarityName(SlotRarity(s))) + " 등급 장비입니다. 정말 버릴까요?",
-			Vector2{ r.x + 80, r.y + 72 }, 13.f, Rgb(0xFF9A8A));
+			Vector2{ r.x + 80, r.y + 74 }, ui::type::kCaption, ui::theme::kBad);
 	m_discard.count = std::clamp(m_discard.count, 1, static_cast<int>(s.count));
 	if (ui::Button(Rectangle{ r.x + 80, r.y + 96, 34, 30 }, "-")) m_discard.count = std::max(1, m_discard.count - 1);
-	ui::Text(std::to_string(m_discard.count) + " / " + std::to_string(s.count), Vector2{ r.x + 160, r.y + 101 }, 16.f, WHITE, Align::Center);
+	{
+		ui::TextStyle cs; cs.size = 16.f; cs.color = ui::theme::kTextHi; cs.face = ui::Face::Number;
+		ui::Fonts().DrawCentered(std::to_string(m_discard.count) + " / " + std::to_string(s.count), Vector2{ r.x + 160, r.y + 111 }, cs);
+	}
 	if (ui::Button(Rectangle{ r.x + 206, r.y + 96, 34, 30 }, "+")) m_discard.count = std::min(static_cast<int>(s.count), m_discard.count + 1);
 	if (ui::Button(Rectangle{ r.x + 246, r.y + 96, 60, 30 }, "전부")) m_discard.count = s.count;
 	if (ui::Button(Rectangle{ r.x + 30, r.y + r.height - 56, 140, 42 }, "버리기", ButtonKind::Danger))
@@ -1208,25 +1443,28 @@ void Game::DrawDeath()
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
 	const float t = static_cast<float>(m_now - m_deadAt);
 	const float a = util::Clamp01(t / 1.2f);
-	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 20, 0, 0, static_cast<unsigned char>(150 * a) });
-	const unsigned char band = static_cast<unsigned char>(120 * a);
-	DrawRectangleGradientV(0, static_cast<int>(H * 0.2f), m_screenW, static_cast<int>(H * 0.16f), Color{ 60, 0, 0, 0 }, Color{ 60, 0, 0, band });
-	DrawRectangleGradientV(0, static_cast<int>(H * 0.36f), m_screenW, static_cast<int>(H * 0.16f), Color{ 60, 0, 0, band }, Color{ 60, 0, 0, 0 });
+	// 화면이 먹빛으로 가라앉고, 가운데 띠에만 붉은 기운이 남는다
+	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 8, 6, 8, static_cast<unsigned char>(170 * a) });
+	const unsigned char band = static_cast<unsigned char>(90 * a);
+	DrawRectangleGradientV(0, static_cast<int>(H * 0.22f), m_screenW, static_cast<int>(H * 0.14f), Color{ 70, 16, 12, 0 }, Color{ 70, 16, 12, band });
+	DrawRectangleGradientV(0, static_cast<int>(H * 0.36f), m_screenW, static_cast<int>(H * 0.14f), Color{ 70, 16, 12, band }, Color{ 70, 16, 12, 0 });
 	if (t < 0.6f) return;
 	const float k = util::EaseOutCubic(util::Clamp01((t - 0.6f) / 0.6f));
 	ui::TextStyle st;
-	st.size = 52.f;
-	st.color = util::MulA(Rgb(0xFF5A4A), k);
-	st.outline = 3.f;
-	st.outlineColor = util::MulA(Color{ 30, 0, 0, 255 }, k);
-	st.shadow = 5.f;
-	ui::Fonts().DrawCentered("사망하였습니다", Vector2{ W * 0.5f, H * 0.36f - (1.f - k) * 20.f }, st);
+	st.size = 44.f;
+	st.color = util::MulA(Rgb(0xD0584A), k);
+	st.shadow = 3.f;
+	st.shadowColor = util::MulA(Color{ 0, 0, 0, 200 }, k);
+	st.face = ui::Face::Display;
+	st.spacing = 4.f;
+	ui::Fonts().DrawCentered("쓰러졌습니다", Vector2{ W * 0.5f, H * 0.36f - (1.f - k) * 16.f }, st);
+	ui::Rule(W * 0.5f - 110.f, W * 0.5f + 110.f, H * 0.36f + 30.f, util::MulA(Color{ 208, 88, 74, 120 }, k));
 	const int remain = std::max(0, 30 - static_cast<int>(t));
-	ui::Text(Fmt("%d초 뒤 자동으로 %s에서 다시 시작합니다.", remain, WorldData::kTownName), Vector2{ W * 0.5f, H * 0.36f + 44.f }, 16.f, util::MulA(ui::theme::kText, k), Align::Center, true);
+	ui::Text(Fmt("%d초 뒤 %s에서 다시 눈을 뜹니다.", remain, WorldData::kTownName), Vector2{ W * 0.5f, H * 0.36f + 44.f }, 15.f, util::MulA(ui::theme::kText, k), Align::Center, true);
 	if (t > 1.2f)
 	{
 		const Rectangle b{ W * 0.5f - 130.f, H * 0.36f + 84.f, 260.f, 50.f };
-		if (ui::Button(b, m_restartSent ? "부활 중..." : "마을에서 다시 시작", ButtonKind::Primary, !m_restartSent, 19.f))
+		if (ui::Button(b, m_restartSent ? "돌아가는 중…" : "데니차에서 다시 시작", ButtonKind::Primary, !m_restartSent, 19.f))
 		{
 			m_net.SendRestart();
 			m_restartSent = true;
@@ -1249,18 +1487,19 @@ void Game::DrawBanners()
 		const float out = age > b.life - 0.5f ? 1.f - (age - (b.life - 0.5f)) / 0.5f : 1.f;
 		const float a = util::Clamp01(out);
 		const float yy = y - (1.f - in) * 30.f;
-		const float w = std::min(W - 40.f, ui::Fonts().Measure(b.text, 20.f).x + 160.f);
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, util::MulA(b.color, 0.f), util::MulA(Color{ 20, 12, 8, 220 }, a));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, util::MulA(Color{ 20, 12, 8, 220 }, a), util::MulA(b.color, 0.f));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.4f), static_cast<int>(yy), static_cast<int>(w * 0.4f), 2, util::MulA(b.color, 0.f), util::MulA(b.color, a));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.4f), 2, util::MulA(b.color, a), util::MulA(b.color, 0.f));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.4f), static_cast<int>(yy + 36), static_cast<int>(w * 0.4f), 2, util::MulA(b.color, 0.f), util::MulA(b.color, a));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy + 36), static_cast<int>(w * 0.4f), 2, util::MulA(b.color, a), util::MulA(b.color, 0.f));
+		// 알림 띠: 가운데만 짙은 먹빛 + 아래 가는 선 한 줄(색은 알림 종류)
+		const float w = std::min(W - 40.f, ui::Fonts().Measure(b.text, 19.f, 1.f, ui::Face::Display).x + 200.f);
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, Color{ 10, 12, 15, 0 }, util::MulA(Color{ 10, 12, 15, 215 }, a));
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, util::MulA(Color{ 10, 12, 15, 215 }, a), Color{ 10, 12, 15, 0 });
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.35f), static_cast<int>(yy + 37), static_cast<int>(w * 0.35f), 1, util::MulA(b.color, 0.f), util::MulA(b.color, a * 0.8f));
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy + 37), static_cast<int>(w * 0.35f), 1, util::MulA(b.color, a * 0.8f), util::MulA(b.color, 0.f));
 		ui::TextStyle st;
-		st.size = 20.f;
-		st.color = util::MulA(util::Shade(b.color, 1.15f), a);
-		st.outline = 1.8f;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 220 }, a);
+		st.size = 19.f;
+		st.color = util::MulA(util::Mix(b.color, ui::theme::kTextHi, 0.35f), a);
+		st.shadow = 1.f;
+		st.shadowColor = util::MulA(Color{ 0, 0, 0, 200 }, a);
+		st.face = ui::Face::Display;
+		st.spacing = 1.f;
 		ui::Fonts().DrawCentered(b.text, Vector2{ W * 0.5f, yy + 19.f }, st);
 		y += 44.f;
 	}
@@ -1277,12 +1516,13 @@ void Game::DrawToasts()
 		const float age = static_cast<float>(m_now - t.start);
 		const float in = util::EaseOutCubic(util::Clamp01(age / 0.25f));
 		const float a = age > 3.f ? 1.f - (age - 3.f) / 0.5f : 1.f;
-		const float w = ui::Fonts().Measure(t.text, 15.f).x + 64.f;
-		const Rectangle r{ x1 - w + (1.f - in) * 60.f, y, w, 38.f };
-		DrawRectangleRounded(r, 0.25f, 6, util::MulA(Color{ 16, 12, 18, 220 }, a));
-		DrawRectangleRoundedLinesEx(r, 0.25f, 6, 1.f, util::MulA(t.color, a * 0.7f));
-		icons::Draw(t.itemId, Rectangle{ r.x + 6, r.y + 3, 32, 32 }, util::MulA(WHITE, a));
-		ui::Text(t.text, Vector2{ r.x + 46, r.y + 10 }, 15.f, util::MulA(t.color, a), Align::Left, true);
+		const float w = ui::Fonts().Measure(t.text, 14.f, 0.f, ui::Face::Strong).x + 62.f;
+		const Rectangle r{ std::round(x1 - w + (1.f - in) * 60.f), y, w, 38.f };
+		ui::Plate(r, util::MulA(Color{ 15, 18, 22, 228 }, a), util::MulA(ui::theme::kLine, a), 3.f, 1.f);
+		DrawRectangleRec(Rectangle{ r.x + 1, r.y + 4, 2, r.height - 8 }, util::MulA(t.color, a));
+		icons::Draw(t.itemId, Rectangle{ r.x + 8, r.y + 3, 32, 32 }, util::MulA(WHITE, a));
+		ui::TextStyle ts; ts.size = 14.f; ts.color = util::MulA(t.color, a); ts.face = ui::Face::Strong;
+		ui::Fonts().Draw(t.text, Vector2{ r.x + 46, r.y + 11 }, ts);
 		y += 42.f;
 	}
 }
@@ -1298,25 +1538,26 @@ void Game::DrawHelp()
 		{ "1 ~ 5", "직업 기술 (사거리 밖이면 다가가서 쓴다 · 쿨다운 직전에 눌러 두면 풀리는 순간)" },
 		{ "Tab / Esc", "가까운 순서로 대상 바꾸기 / 대상 해제" },
 		{ "L", "퀘스트 일지 — 머리 위 ! 새 이야기 · ? 보고" },
-		{ "Ctrl + 공격·기술", "다른 모험가 공격(PK) — 성향치와 보라돌이 규칙 주의" },
+		{ "Ctrl + 공격·기술", "다른 모험가 공격(PK) — 성향과 적대 표시 규칙 주의" },
 		{ "F", "가까운 NPC와 대화 · 발밑 아이템 줍기" },
-		{ "Q E R T / F5~F8", "물약·주문서 칸 (소지품에서 끌어다 등록)" },
+		{ "Q E R T / F5~F8", "물약·두루마리 칸 (소지품에서 끌어다 등록)" },
 		{ "Z", "주변 아이템 줍기" },
 		{ "C / I / M", "캐릭터(능력치) / 소지품 / 월드 지도" },
 		{ "마우스", "창·상점·대화 · NPC/아이템 클릭 · 바닥 클릭 이동 (전투는 키보드)" },
 		{ "Enter", "채팅 (&로 시작하면 전체 채팅)" },
 		{ "Alt / 휠", "이름 모두 보기 / 확대·축소" },
 	};
-	float y = r.y + 50;
+	float y = r.y + 52;
 	for (const auto& [k, v] : rows)
 	{
-		ui::TextShadow(k, Vector2{ r.x + 24, y }, 15.f, ui::theme::kTitle);
-		ui::Text(v, Vector2{ r.x + 184, y }, 14.f, ui::theme::kText);
+		ui::TextStyle ks; ks.size = 14.f; ks.color = ui::theme::kTextHi; ks.face = ui::Face::Strong;
+		ui::Fonts().Draw(k, Vector2{ r.x + 24, y }, ks);
+		ui::Text(v, Vector2{ r.x + 184, y }, ui::type::kBodyS + 0.5f, ui::theme::kText);
 		y += 28;
 	}
 	ui::Divider(r.x + 20, r.x + r.width - 20, y + 4);
-	ui::TextWrapped("마을(여명의 마을)은 안전지대입니다. 텔레포터 루시엔에게 가면 다른 지역으로 이동할 수 있고, "
-		"잡화상인 그레타와 대장장이 브론에게서 물약·주문서·무기를 사고팔 수 있습니다.",
+	ui::TextWrapped("데니차 성벽 안은 안전지대입니다. 길잡이 마테오에게 가면 옛길로 다른 지역에 갈 수 있고, "
+		"잡화상 라다와 대장장이 도브란에게서 물약·두루마리·장비를 사고팔 수 있습니다.",
 		Rectangle{ r.x + 24, y + 14, r.width - 48, 80 }, 14.f, ui::theme::kTextDim, 5.f);
 }
 
@@ -1336,25 +1577,33 @@ void Game::DrawWorldMap()
 		const Color dark{ static_cast<unsigned char>(pal.b[0] * 200), static_cast<unsigned char>(pal.b[1] * 200), static_cast<unsigned char>(pal.b[2] * 200), 255 };
 		DrawRectangleGradientEx(c, base, dark, util::Shade(dark, 0.8f), util::Shade(base, 0.9f));
 		const bool hover = ui::Hovered(c);
-		DrawRectangleLinesEx(c, hover ? 2.f : 1.f, hover ? ui::theme::kBorderHi : Color{ 0, 0, 0, 120 });
-		ui::TextShadow(reg.name, Vector2{ c.x + 8, c.y + 8 }, 15.f, WHITE);
-		Stars(Vector2{ c.x + 14, c.y + 36 }, reg.tier, 9.f);
+		// 지역 칸: 위쪽을 조금 어둡게 눌러 이름이 읽히게
+		DrawRectangleGradientV(static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(c.width), 44, Color{ 8, 10, 12, 150 }, Color{ 8, 10, 12, 0 });
+		DrawRectangleLinesEx(c, hover ? 2.f : 1.f, hover ? ui::theme::kDawn : Color{ 0, 0, 0, 130 });
+		{
+			ui::TextStyle ns; ns.size = 14.f; ns.color = ui::theme::kTextHi; ns.face = ui::Face::Display; ns.shadow = 1.f; ns.shadowColor = Color{ 0, 0, 0, 200 };
+			ui::Fonts().Draw(reg.name, Vector2{ c.x + 8, c.y + 7 }, ns);
+		}
+		Stars(Vector2{ c.x + 13, c.y + 32 }, reg.tier, 7.f);
+		const std::string feeLine = "옛길 이동 " + texts::Number(reg.teleportFee) + " 그로시";
 		if (reg.bossSpecies)
 		{
-			DrawCircleV(Vector2{ c.x + c.width - 16, c.y + c.height - 16 }, 9.f, Rgb(0x8A1A1A));
-			ui::Text("보", Vector2{ c.x + c.width - 16, c.y + c.height - 25 }, 12.f, WHITE, Align::Center);
+			const Vector2 bc{ c.x + c.width - 14, c.y + c.height - 14 };
+			DrawTriangle(Vector2{ bc.x, bc.y - 7 }, Vector2{ bc.x - 5, bc.y }, Vector2{ bc.x + 5, bc.y }, ui::theme::kEmber);
+			DrawTriangle(Vector2{ bc.x - 5, bc.y }, Vector2{ bc.x, bc.y + 7 }, Vector2{ bc.x + 5, bc.y }, ui::theme::kEmber);
 			if (hover)
-				ui::Tooltip({ { reg.name, ui::theme::kTitle, 17.f }, { "필드 보스: " + texts::MonsterName(reg.bossSpecies), Rgb(0xFF8A6A), 15.f },
-					{ "텔레포트 " + texts::Number(reg.teleportFee) + " 아데나", Rgb(0xFFD84A), 14.f } });
+				ui::Tooltip({ { reg.name, ui::theme::kTextHi, 16.f, ui::Face::Display },
+					{ texts::MonsterName(reg.bossSpecies) + " — " + MonsterTable::BossEpithet(reg.bossSpecies), Rgb(0xD08A74), 13.f },
+					{ feeLine, ui::theme::kText, 13.f } });
 		}
 		else if (hover && reg.teleportFee > 0)
-			ui::Tooltip({ { reg.name, ui::theme::kTitle, 17.f }, { "텔레포트 " + texts::Number(reg.teleportFee) + " 아데나", Rgb(0xFFD84A), 14.f } });
+			ui::Tooltip({ { reg.name, ui::theme::kTextHi, 16.f, ui::Face::Display }, { feeLine, ui::theme::kText, 13.f } });
 		if (reg.zoneId == WorldData::kTownZoneId)
 		{
 			const Vector2 tp{ c.x + (WorldData::kTownX0 + 22 - 500.f) / 500.f * cell, c.y + (WorldData::kTownY0 + 22 - 500.f) / 500.f * cell };
 			DrawRectangleV(Vector2{ tp.x - 7, tp.y - 5 }, Vector2{ 14, 10 }, Rgb(0xC8B8A0));
 			DrawTriangle(Vector2{ tp.x - 8, tp.y - 5 }, Vector2{ tp.x + 8, tp.y - 5 }, Vector2{ tp.x, tp.y - 12 }, Rgb(0xB8483A));
-			ui::Text(WorldData::kTownName, Vector2{ tp.x, tp.y + 8 }, 12.f, Rgb(0x9AF06A), Align::Center, true);
+			ui::Text(WorldData::kTownName, Vector2{ tp.x, tp.y + 8 }, 12.f, ui::theme::kTextHi, Align::Center, true);
 		}
 	}
 	// 퀘스트: 사냥할 지역은 금빛 테두리, 이야기 속 장소는 ◆
@@ -1367,31 +1616,31 @@ void Game::DrawWorldMap()
 				if (o.kind != QuestData::ObjKind::Kill && o.kind != QuestData::ObjKind::KillIn && o.kind != QuestData::ObjKind::Collect && o.kind != QuestData::ObjKind::Boss) continue;
 				const Rectangle c{ x0 + (o.zone % 4) * cell, y0 + (o.zone / 4) * cell, cell - 3, cell - 3 };
 				const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 3.f);
-				DrawRectangleLinesEx(c, 2.f + pulse, util::WithA(Rgb(0xFFD84A), 0.5f + 0.4f * pulse));
+				DrawRectangleLinesEx(c, 2.f + pulse, util::WithA(ui::theme::kDawn, 0.5f + 0.4f * pulse));
 			}
 	for (const auto& poi : QuestData::kPois)
 	{
 		const Vector2 pp{ x0 + poi.x / 500.f * cell, y0 + poi.y / 500.f * cell };
 		const bool dest = m_questDestValid && m_questDest.poi && static_cast<int>(m_questDest.tile.x) == poi.x && static_cast<int>(m_questDest.tile.y) == poi.y;
 		const float s = dest ? 6.f + std::sin(static_cast<float>(m_now) * 5.f) * 1.5f : 4.f;
-		const Color col = dest ? Rgb(0xFFD84A) : Rgb(0xE8DCC0, 200);
+		const Color col = dest ? ui::theme::kDawnHi : Rgb(0xE8DCC0, 200);
 		DrawTriangle(Vector2{ pp.x, pp.y - s }, Vector2{ pp.x - s, pp.y }, Vector2{ pp.x + s, pp.y }, col);
 		DrawTriangle(Vector2{ pp.x - s, pp.y }, Vector2{ pp.x, pp.y + s }, Vector2{ pp.x + s, pp.y }, col);
 		const Rectangle hit{ pp.x - 8.f, pp.y - 8.f, 16.f, 16.f };
 		if (dest || ui::Hovered(hit))
 			ui::Text(poi.name, Vector2{ pp.x, pp.y + 7.f }, 11.f, col, Align::Center, true);
 		if (ui::Hovered(hit))
-			ui::Tooltip({ { poi.name, ui::theme::kTitle, 16.f }, { poi.flavor, ui::theme::kText, 13.f } });
+			ui::Tooltip({ { poi.name, ui::theme::kTextHi, 16.f, ui::Face::Display }, { poi.flavor, ui::theme::kText, 13.f, ui::Face::Serif } });
 	}
 	if (m_questDestValid && !m_questDest.poi)
 	{
 		const Vector2 dp{ x0 + m_questDest.tile.x / 500.f * cell, y0 + m_questDest.tile.y / 500.f * cell };
 		const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 5.f);
-		DrawCircleLinesV(dp, 6.f + pulse * 4.f, Rgb(0xFFD84A));
-		DrawCircleV(dp, 3.f, Rgb(0xFFD84A));
+		DrawCircleLinesV(dp, 6.f + pulse * 4.f, ui::theme::kDawn);
+		DrawCircleV(dp, 3.f, ui::theme::kDawn);
 	}
 	if (m_questDestValid)
-		ui::Text("목적지 · " + m_questDest.label, Vector2{ r.x + r.width * 0.5f, r.y + r.height - 54 }, 13.f, Rgb(0xFFD84A), Align::Center);
+		ui::Text("목적지 · " + m_questDest.label, Vector2{ r.x + r.width * 0.5f, r.y + r.height - 54 }, ui::type::kBodyS, ui::theme::kDawn, Align::Center);
 
 	// 내 위치
 	const float px = x0 + m_predX / 500.f * cell, py = y0 + m_predY / 500.f * cell;
@@ -1409,8 +1658,8 @@ void Game::DrawSkillTooltip(const SkillRow& row)
 {
 	std::vector<ui::TooltipLine> lines;
 	const Color cc = Rgb(row.color);
-	lines.push_back({ row.name, util::Shade(cc, 1.15f), 18.f });
-	lines.push_back({ row.slot == 0 ? "기본 공격 · Space (대상에게 계속)" : Fmt("기술 %d · 단축키 %d", row.slot, row.slot), ui::theme::kTextDim, 13.f });
+	lines.push_back({ row.name, util::Mix(cc, ui::theme::kTextHi, 0.35f), 17.f, ui::Face::Strong });
+	lines.push_back({ row.slot == 0 ? "기본 공격 · Space (대상에게 계속)" : Fmt("기술 %d · 단축키 %d", row.slot, row.slot), ui::theme::kTextDim, 12.f });
 	const bool magic = row.kind == DamageKind::Magic;
 	const int power = magic ? m_stats.magicAttack : m_stats.attack;
 	std::string cost;
@@ -1419,21 +1668,22 @@ void Game::DrawSkillTooltip(const SkillRow& row)
 	else cost += Fmt("재사용 %.1f초", SkillTable::CooldownMs(row, m_stats.cooldownReduction) / 1000.f);
 	if (row.range > 0) cost += Fmt(" · 사거리 %d칸", row.range);
 	if (row.castMs > 0) cost += Fmt(" · 예고 %.1f초", row.castMs / 1000.f);
-	lines.push_back({ cost, Rgb(0x9AC8FF), 14.f });
+	lines.push_back({ "---", WHITE });
+	lines.push_back({ cost, ui::theme::kInfo, 13.f });
 	const GearExtras gx = MyGearExtras();
 	const int boost = row.id < sizeof(gx.skillBoost) ? gx.skillBoost[row.id] : 0;
 	if (row.coeff > 0)
 	{
 		const int each = power * row.coeff / 100 * (100 + boost) / 100;
-		lines.push_back({ row.hits > 1 ? Fmt("피해 약 %d × %d회 (%s)", each, row.hits, magic ? "마법" : "물리") : Fmt("피해 약 %d (%s)", each, magic ? "마법" : "물리"), Rgb(0xFFD8A0), 14.f });
+		lines.push_back({ row.hits > 1 ? Fmt("피해 약 %d × %d회 (%s)", each, row.hits, magic ? "마법" : "물리") : Fmt("피해 약 %d (%s)", each, magic ? "마법" : "물리"), ui::theme::kTextHi, 13.f });
 	}
 	if (boost > 0)
-		lines.push_back({ Fmt("◈ 장비 기술 강화 +%d%%", boost), Rgb(0xFFD870), 14.f });
-	lines.push_back({ row.desc, ui::theme::kText, 14.f });
+		lines.push_back({ Fmt("◈ 장비 기술 강화 +%d%%", boost), ui::theme::kDawn, 13.f });
+	lines.push_back({ row.desc, ui::theme::kText, 13.f });
 	if (row.combo && row.combo[0])
-		lines.push_back({ std::string("연계: ") + row.combo, Rgb(0xFFD25A), 14.f });
+		lines.push_back({ std::string("연계 · ") + row.combo, ui::theme::kDawn, 13.f });
 	if (m_level < row.unlockLevel)
-		lines.push_back({ Fmt("Lv.%d에 배울 수 있습니다", row.unlockLevel), Rgb(0xFF7A6A), 14.f });
+		lines.push_back({ Fmt("Lv.%d에 배울 수 있습니다", row.unlockLevel), ui::theme::kBad, 13.f });
 	ui::Tooltip(std::move(lines));
 }
 
@@ -1460,7 +1710,7 @@ void Game::DrawSkillBar()
 		ui::Block(base);
 
 		const Color cc = Rgb(row->color);
-		DrawRectangleRounded(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, 0.16f, 6, Color{ 10, 8, 12, 240 });
+		ui::Plate(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, Color{ 10, 12, 15, 245 }, BLANK, 3.f, 0.f);
 		skillfx::DrawSkillIcon(row->id, Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, r.width - 4.f, m_time, locked);
 		// 쿨다운(시계 방향으로 걷히는 그늘)
 		if (cooling)
@@ -1470,31 +1720,40 @@ void Game::DrawSkillBar()
 			DrawCircleSector(Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, r.width * 0.75f, -90.f, -90.f + 360.f * util::Clamp01(frac), 36, Color{ 0, 0, 0, 165 });
 			EndScissorMode();
 			if (slot != 0 && remain > 0.5)
-				ui::Text(remain >= 10.0 ? Fmt("%.0f", remain) : Fmt("%.1f", remain), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f - 10.f }, 17.f, WHITE, Align::Center, true);
+			{
+				ui::TextStyle cs; cs.size = 19.f; cs.color = ui::theme::kTextHi; cs.outline = 1.5f; cs.outlineColor = Color{ 0, 0, 0, 210 }; cs.face = ui::Face::Number;
+				ui::Fonts().DrawCentered(remain >= 10.0 ? Fmt("%.0f", remain) : Fmt("%.1f", remain), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, cs);
+			}
 		}
 		if (noMana)
-			DrawRectangleRounded(r, 0.12f, 6, Color{ 20, 40, 140, 120 });
+			ui::Plate(r, Color{ 20, 36, 90, 130 }, BLANK, 2.f, 0.f);
 		// 방금 쿨다운이 끝났다: 반짝 + 퍼지는 테
 		const double flash = m_now - m_skillFlash[slot];
 		if (flash < 0.4)
 		{
 			const float u = static_cast<float>(flash / 0.4);
 			BeginBlendMode(BLEND_ADDITIVE);
-			DrawRectangleRounded(r, 0.12f, 6, util::WithA(util::Shade(cc, 1.4f), 0.55f * (1.f - u)));
+			ui::Plate(r, util::WithA(util::Mix(cc, WHITE, 0.4f), 0.45f * (1.f - u)), BLANK, 2.f, 0.f);
 			EndBlendMode();
-			DrawRectangleRoundedLinesEx(Rectangle{ r.x - 6 * u, r.y - 6 * u, r.width + 12 * u, r.height + 12 * u }, 0.2f, 6, 2.f, util::WithA(util::Shade(cc, 1.3f), 1.f - u));
+			ui::Plate(Rectangle{ r.x - 5 * u, r.y - 5 * u, r.width + 10 * u, r.height + 10 * u }, BLANK, util::WithA(util::Mix(cc, WHITE, 0.5f), 1.f - u), 3.f, 1.5f);
 		}
 		// 예약·선입력 중이면 테두리가 맥동
 		const bool queued = (m_queuedSkill == slot) || (m_bufferSlot == slot);
 		const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 12.f);
-		DrawRectangleRoundedLinesEx(r, 0.12f, 6, queued ? 2.5f : 1.5f,
-			queued ? util::Mix(Rgb(0xFFD070), WHITE, pulse) : (hover ? ui::theme::kBorderHi : util::Shade(cc, locked ? 0.4f : 0.8f)));
+		ui::Plate(r, BLANK, queued ? util::Mix(ui::theme::kDawn, WHITE, 0.3f * pulse) : (hover ? ui::theme::kTextDim : (locked ? ui::theme::kLine : ui::theme::kLineStrong)), 2.f, queued ? 2.f : 1.f);
 		// 단축키 · MP · 잠금
-		ui::Text(slot == 0 ? "Spc" : std::to_string(slot), Vector2{ r.x + 3, r.y + 1 }, 12.f, Rgb(0xFFF0C8), Align::Left, true);
+		ui::Keycap(Rectangle{ r.x - 4.f, r.y - 6.f, slot == 0 ? 26.f : 14.f, 13.f }, slot == 0 ? "Spc" : std::to_string(slot), queued);
 		if (row->mp > 0 && !locked)
-			ui::Text(std::to_string(row->mp), Vector2{ r.x + r.width - 3, r.y + r.height - 15 }, 11.f, noMana ? Rgb(0xFF8A8A) : Rgb(0x9AC8FF), Align::Right, true);
+		{
+			ui::TextStyle ms; ms.size = 12.f; ms.color = noMana ? Rgb(0xE08A80) : Rgb(0x9DB8E8); ms.outline = 1.2f; ms.face = ui::Face::Number;
+			const std::string mp = std::to_string(row->mp);
+			ui::Fonts().Draw(mp, Vector2{ r.x + r.width - 3.f - ui::Fonts().Measure(mp, ms.size, 0.f, ui::Face::Number).x, r.y + r.height - 14.f }, ms);
+		}
 		if (locked)
-			ui::Text(Fmt("Lv.%d", row->unlockLevel), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f - 8.f }, 13.f, Rgb(0xE8D0B0), Align::Center, true);
+		{
+			ui::TextStyle ls; ls.size = 13.f; ls.color = ui::theme::kTextDim; ls.outline = 1.2f; ls.face = ui::Face::Number;
+			ui::Fonts().DrawCentered(Fmt("Lv.%d", row->unlockLevel), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, ls);
+		}
 		if (hover && !ui::Dragging())
 		{
 			DrawSkillTooltip(*row);
@@ -1515,7 +1774,7 @@ void Game::DrawStatusIcons(float x, float y)
 	auto icon = [&](Color col, float remain, float total, int stacks, const std::string& title, const char* help, auto&& glyph)
 	{
 		const Rectangle b{ x, y, S, S };
-		DrawRectangleRounded(b, 0.25f, 6, util::Shade(col, 0.22f));
+		ui::Plate(b, util::Mix(ui::theme::kSurface1, col, 0.18f), BLANK, 3.f, 0.f);
 		glyph(Vector2{ b.x + S * 0.5f, b.y + S * 0.5f }, S * 0.32f, col);
 		if (total > 0.f && remain > 0.f)
 		{
@@ -1527,11 +1786,20 @@ void Game::DrawStatusIcons(float x, float y)
 		// 곧 끝나면 깜빡인다
 		const bool ending = remain > 0.f && remain < 2.f;
 		const float blink = ending ? 0.5f + 0.5f * std::sin(nowf * 14.f) : 1.f;
-		DrawRectangleRoundedLinesEx(b, 0.25f, 6, 1.5f, util::WithA(col, 0.4f + 0.6f * blink));
-		if (stacks > 1) ui::Text(std::to_string(stacks), Vector2{ b.x + S - 2, b.y + S - 14 }, 12.f, WHITE, Align::Right, true);
-		if (remain > 0.f) ui::Text(Fmt("%.0f", std::ceil(remain)), Vector2{ b.x + S * 0.5f, b.y + S + 1 }, 11.f, ui::theme::kTextDim, Align::Center, true);
+		ui::Plate(b, BLANK, util::WithA(col, 0.35f + 0.55f * blink), 3.f, 1.f);
+		if (stacks > 1)
+		{
+			ui::TextStyle ss; ss.size = 12.f; ss.color = ui::theme::kTextHi; ss.outline = 1.2f; ss.face = ui::Face::Number;
+			const std::string sstr = std::to_string(stacks);
+			ui::Fonts().Draw(sstr, Vector2{ b.x + S - 2.f - ui::Fonts().Measure(sstr, ss.size, 0.f, ui::Face::Number).x, b.y + S - 13.f }, ss);
+		}
+		if (remain > 0.f)
+		{
+			ui::TextStyle rs; rs.size = 11.5f; rs.color = ui::theme::kTextDim; rs.outline = 1.f; rs.face = ui::Face::Number;
+			ui::Fonts().DrawCentered(Fmt("%.0f", std::ceil(remain)), Vector2{ b.x + S * 0.5f, b.y + S + 8.f }, rs);
+		}
 		if (ui::Hovered(b))
-			ui::Tooltip({ { title, col, 16.f }, { help, ui::theme::kText, 14.f } });
+			ui::Tooltip({ { title, util::Mix(col, ui::theme::kTextHi, 0.3f), 15.f, ui::Face::Strong }, { help, ui::theme::kText, 13.f } });
 		x += S + 6.f;
 	};
 	for (const auto& st : me->statuses)
@@ -1544,14 +1812,14 @@ void Game::DrawStatusIcons(float x, float y)
 			[&](Vector2 c, float rr, Color cl) { StatusGlyph(id, c, rr, cl, nowf); });
 	}
 	if (m_hasteUntil > m_now)
-		icon(Rgb(0x7AFF9A), static_cast<float>(m_hasteUntil - m_now), 0.f, 0, "가속", "이동 속도 증가",
+		icon(Rgb(0x8DBF6E), static_cast<float>(m_hasteUntil - m_now), 0.f, 0, "바람걸음", "이동 속도 증가",
 			[&](Vector2 c, float rr, Color cl)
 			{
 				DrawTriangle(Vector2{ c.x - rr, c.y - rr }, Vector2{ c.x - rr, c.y + rr }, Vector2{ c.x, c.y }, cl);
 				DrawTriangle(Vector2{ c.x, c.y - rr }, Vector2{ c.x, c.y + rr }, Vector2{ c.x + rr, c.y }, cl);
 			});
 	if (m_flags & SUBJECT_EX_PURPLE)
-		icon(Rgb(0xD890FF), 0.f, 0.f, 0, "보라돌이", "먼저 공격한 상태입니다. 상대가 반격해도 벌칙이 없습니다.",
+		icon(ui::theme::kEmber, 0.f, 0.f, 0, "적대", "먼저 공격한 상태입니다. 상대가 반격해도 벌칙이 없습니다.",
 			[&](Vector2 c, float rr, Color cl) { ui::Text("!", Vector2{ c.x, c.y - rr * 1.1f }, rr * 2.2f, cl, Align::Center); });
 }
 
@@ -1568,18 +1836,22 @@ void Game::DrawComboCounter()
 		const float a = age > 2.2 ? static_cast<float>(1.0 - (age - 2.2) / 0.8) : 1.f;
 		const float punch = age < 0.12 ? 1.f + 0.4f * static_cast<float>(1.0 - age / 0.12) : 1.f;
 		const float heat = util::Clamp01(m_comboHits / 40.f);
-		const Color col = util::Mix(Rgb(0xFFE8B0), Rgb(0xFF7A3A), heat);
+		const Color col = util::Mix(ui::theme::kTextHi, ui::theme::kDawn, 0.3f + 0.7f * heat);
 		ui::TextStyle st;
-		st.size = (38.f + 10.f * heat) * punch;
+		st.size = (40.f + 12.f * heat) * punch;
 		st.color = util::MulA(col, a);
-		st.outline = 3.f;
-		st.outlineColor = util::MulA(Color{ 40, 14, 0, 230 }, a);
-		st.shadow = 3.f;
-		ui::Fonts().DrawCentered(std::to_string(m_comboHits), Vector2{ cx, cy }, st);
-		st.size = 16.f;
-		st.color = util::MulA(Rgb(0xFFF0D0), a);
 		st.outline = 2.f;
-		ui::Fonts().DrawCentered("HIT", Vector2{ cx, cy + 30.f }, st);
+		st.outlineColor = util::MulA(Color{ 12, 8, 4, 220 }, a);
+		st.shadow = 3.f;
+		st.face = ui::Face::NumberBold;
+		ui::Fonts().DrawCentered(std::to_string(m_comboHits), Vector2{ cx, cy }, st);
+		st.size = 14.f;
+		st.color = util::MulA(ui::theme::kTextDim, a);
+		st.outline = 1.5f;
+		st.shadow = 0.f;
+		st.face = ui::Face::Strong;
+		st.spacing = 2.f;
+		ui::Fonts().DrawCentered("연속", Vector2{ cx, cy + 30.f }, st);
 		// 남은 시간 막대(3초 안에 다시 때리면 이어진다)
 		const float left = util::Clamp01(1.f - static_cast<float>(age / 3.0));
 		DrawRectangle(static_cast<int>(cx - 40), static_cast<int>(cy + 44), 80, 3, util::MulA(Color{ 0, 0, 0, 160 }, a));
@@ -1593,10 +1865,14 @@ void Game::DrawComboCounter()
 		const float pop = nameAge < 0.15 ? util::EaseOutBack(static_cast<float>(nameAge / 0.15), 3.f) : 1.f;
 		ui::TextStyle st;
 		st.size = 22.f * pop;
-		st.color = util::MulA(Rgb(0xFFD25A), a);
-		st.outline = 2.5f;
-		st.outlineColor = util::MulA(Color{ 50, 20, 0, 230 }, a);
-		ui::Fonts().DrawCentered("연계  " + m_comboName + "!", Vector2{ cx, cy + 70.f }, st);
+		st.color = util::MulA(ui::theme::kDawnHi, a);
+		st.outline = 1.8f;
+		st.outlineColor = util::MulA(Color{ 20, 12, 4, 230 }, a);
+		st.face = ui::Face::Display;
+		st.spacing = 1.f;
+		ui::Fonts().DrawCentered(m_comboName, Vector2{ cx, cy + 70.f }, st);
+		ui::TextStyle ls; ls.size = 11.5f; ls.color = util::MulA(ui::theme::kTextDim, a); ls.outline = 1.2f; ls.face = ui::Face::Strong; ls.spacing = 2.f;
+		ui::Fonts().DrawCentered("연계", Vector2{ cx, cy + 52.f }, ls);
 	}
 }
 
@@ -1612,29 +1888,42 @@ void Game::DrawCharacter()
 	const Color cc = ClassColor(m_classId);
 
 	// 왼쪽: 직업 소개
-	ClassEmblem(Vector2{ r.x + 50.f, r.y + 88.f }, 32.f, m_classId, m_time);
-	ui::TextShadow(cls.name, Vector2{ r.x + 92.f, r.y + 60.f }, 22.f, util::Shade(cc, 1.2f));
-	ui::Text(cls.role, Vector2{ r.x + 92.f, r.y + 90.f }, 14.f, ui::theme::kTextDim);
-	ui::TextWrapped(cls.desc, Rectangle{ r.x + 20.f, r.y + 130.f, 260.f, 70.f }, 14.f, ui::theme::kText, 4.f);
+	ClassEmblem(Vector2{ r.x + 50.f, r.y + 88.f }, 30.f, m_classId, m_time);
+	{
+		ui::TextStyle ns; ns.size = ui::type::kDisplayS + 2.f; ns.color = ui::theme::kTextHi; ns.face = ui::Face::Display; ns.spacing = 1.f;
+		ui::Fonts().Draw(cls.name, Vector2{ r.x + 92.f, r.y + 62.f }, ns);
+	}
+	ui::Text(cls.role, Vector2{ r.x + 92.f, r.y + 92.f }, ui::type::kCaption, util::Shade(cc, 1.05f));
+	ui::TextWrapped(cls.desc, Rectangle{ r.x + 20.f, r.y + 132.f, 262.f, 70.f }, ui::type::kBodyS, ui::theme::kText, 6.f);
 	ui::Divider(r.x + 18.f, r.x + 282.f, r.y + 204.f);
 
 	// 능력치 6개 + 분배
 	const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-	ui::Text(m_freePoints > 0 ? Fmt("남은 포인트  %d", m_freePoints) : "레벨이 오르면 포인트를 얻습니다", Vector2{ r.x + 20.f, r.y + 214.f }, 15.f,
-		m_freePoints > 0 ? ui::theme::kGold : ui::theme::kTextDim);
+	ui::Text(m_freePoints > 0 ? Fmt("남은 포인트  %d", m_freePoints) : "레벨이 오르면 포인트를 얻습니다", Vector2{ r.x + 20.f, r.y + 214.f }, ui::type::kBodyS,
+		m_freePoints > 0 ? ui::theme::kDawnHi : ui::theme::kTextDim);
 	for (int i = 0; i < 6; ++i)
 	{
 		const float y = r.y + 244.f + i * 34.f;
 		const int base = m_baseStats.v[i], alloc = m_allocStats.v[i], gear = m_gearStats.v[i];
 		const Rectangle row{ r.x + 16.f, y - 4.f, 268.f, 30.f };
 		const bool hover = ui::Hovered(row);
-		if (hover) DrawRectangleRounded(row, 0.2f, 6, Color{ 255, 230, 180, 18 });
+		if (hover) ui::Plate(row, Color{ 255, 255, 255, 10 }, BLANK, 2.f, 0.f);
 		const bool main = IsMainStat(m_classId, i);
-		ui::Text(StatName(i), Vector2{ r.x + 24.f, y }, 16.f, main ? util::Shade(cc, 1.2f) : ui::theme::kText);
-		if (main) ui::Text("★", Vector2{ r.x + 10.f, y }, 12.f, util::Shade(cc, 1.2f));
-		ui::Text(std::to_string(base + alloc + gear), Vector2{ r.x + 176.f, y }, 17.f, WHITE, Align::Right, true);
+		ui::Text(StatName(i), Vector2{ r.x + 24.f, y + 1.f }, ui::type::kBody, main ? ui::theme::kTextHi : ui::theme::kText);
+		if (main)
+		{
+			// 주 능력치 표시: 직업 색 작은 마름모
+			const Vector2 d{ r.x + 13.f, y + 9.f };
+			DrawTriangle(Vector2{ d.x, d.y - 4 }, Vector2{ d.x - 3, d.y }, Vector2{ d.x + 3, d.y }, cc);
+			DrawTriangle(Vector2{ d.x - 3, d.y }, Vector2{ d.x, d.y + 4 }, Vector2{ d.x + 3, d.y }, cc);
+		}
+		{
+			ui::TextStyle vs; vs.size = 17.f; vs.color = ui::theme::kTextHi; vs.face = ui::Face::Number;
+			const std::string v = std::to_string(base + alloc + gear);
+			ui::Fonts().Draw(v, Vector2{ r.x + 176.f - ui::Fonts().Measure(v, vs.size, 0.f, ui::Face::Number).x, y - 1.f }, vs);
+		}
 		if (alloc > 0 || gear != 0)
-			ui::Text(Fmt("(%+d%s)", alloc + gear, gear != 0 ? " 장비" : ""), Vector2{ r.x + 184.f, y + 2.f }, 12.f, Rgb(0x9AE89A));
+			ui::Text(Fmt("(%+d%s)", alloc + gear, gear != 0 ? " 장비" : ""), Vector2{ r.x + 184.f, y + 2.f }, ui::type::kCaption, ui::theme::kGood);
 		if (m_freePoints > 0)
 		{
 			const Rectangle b{ r.x + 250.f, y - 2.f, 26.f, 24.f };
@@ -1645,7 +1934,7 @@ void Game::DrawCharacter()
 			}
 		}
 		if (hover)
-			ui::Tooltip({ { StatName(i), util::Shade(cc, 1.2f), 16.f },
+			ui::Tooltip({ { StatName(i), ui::theme::kTextHi, 15.f, ui::Face::Strong },
 				{ StatHelp(i), ui::theme::kText, 14.f },
 				{ Fmt("직업 %d + 분배 %d + 장비 %d", base, alloc, gear), ui::theme::kTextDim, 13.f },
 				{ "Shift + 클릭: 5씩", ui::theme::kTextDim, 12.f } });
@@ -1653,8 +1942,8 @@ void Game::DrawCharacter()
 
 	// 오른쪽: 전투 능력치
 	const float x2 = r.x + 306.f;
-	DrawLineEx(Vector2{ x2 - 12.f, r.y + 54.f }, Vector2{ x2 - 12.f, r.y + r.height - 18.f }, 1.f, Color{ 214, 176, 104, 60 });
-	ui::TextShadow("전투 능력치", Vector2{ x2, r.y + 54.f }, 17.f, ui::theme::kTitle);
+	DrawRectangleRec(Rectangle{ std::round(x2 - 12.f), r.y + 54.f, 1.f, r.height - 72.f }, ui::theme::kLine);
+	ui::SectionHeader(Vector2{ x2, r.y + 56.f }, r.x + r.width - 20.f - x2, "전투 능력치");
 	struct Line { const char* name; std::string value; const char* help; };
 	const DerivedStats& d = m_stats;
 	const Line lines[] = {
@@ -1679,10 +1968,13 @@ void Game::DrawCharacter()
 	{
 		const Rectangle row{ x2 - 4.f, y - 3.f, r.x + r.width - x2 - 12.f, 24.f };
 		const bool hover = ui::Hovered(row);
-		if (hover) DrawRectangleRounded(row, 0.2f, 6, Color{ 255, 230, 180, 18 });
-		ui::Text(ln.name, Vector2{ x2, y }, 14.f, ui::theme::kTextDim);
-		ui::Text(ln.value, Vector2{ r.x + r.width - 20.f, y }, 15.f, ui::theme::kText, Align::Right);
-		if (hover) ui::Tooltip({ { ln.name, ui::theme::kTitle, 15.f }, { ln.help, ui::theme::kText, 14.f } });
+		if (hover) ui::Plate(row, Color{ 255, 255, 255, 10 }, BLANK, 2.f, 0.f);
+		ui::Text(ln.name, Vector2{ x2, y }, ui::type::kBodyS, ui::theme::kTextDim);
+		{
+			ui::TextStyle vs; vs.size = 15.f; vs.color = ui::theme::kTextHi; vs.face = ui::Face::Number;
+			ui::Fonts().Draw(ln.value, Vector2{ r.x + r.width - 20.f - ui::Fonts().Measure(ln.value, vs.size, 0.f, ui::Face::Number).x, y - 1.f }, vs);
+		}
+		if (hover) ui::Tooltip({ { ln.name, ui::theme::kTextHi, 15.f, ui::Face::Strong }, { ln.help, ui::theme::kText, 13.f } });
 		y += 24.f;
 	}
 
@@ -1698,9 +1990,9 @@ void Game::DrawCharacter()
 		for (int sk = 1; sk < static_cast<int>(sizeof(ex.skillBoost)); ++sk)
 			if (ex.skillBoost[sk] > 0)
 				if (const SkillRow* row = SkillTable::Find(static_cast<uint16_t>(sk)))
-					list.push_back({ Fmt("◈ %s +%d%%", row->name, ex.skillBoost[sk]), Rgb(0xFFD870) });
-		if (ex.itemFind > 0) list.push_back({ Fmt("희귀품 발견 +%d%%", ex.itemFind), Rgb(0x8AC8FF) });
-		if (ex.adenaFind > 0) list.push_back({ Fmt("아데나 획득 +%d%%", ex.adenaFind), Rgb(0xFFD84A) });
+					list.push_back({ Fmt("◈ %s +%d%%", row->name, ex.skillBoost[sk]), ui::theme::kDawn });
+		if (ex.itemFind > 0) list.push_back({ Fmt("희귀품 발견 +%d%%", ex.itemFind), ui::theme::kInfo });
+		if (ex.adenaFind > 0) list.push_back({ Fmt("그로시 획득 +%d%%", ex.adenaFind), ui::theme::kGold });
 		for (const auto& set : ItemRules::kSets)
 			if (ex.setCount[set.id] >= 2)
 				list.push_back({ Fmt("%s %d/4%s", set.name, ex.setCount[set.id], ex.setCount[set.id] >= 4 ? " 완성" : ""), Rgb(set.color) });
@@ -1708,9 +2000,8 @@ void Game::DrawCharacter()
 		float yy = r.y + 454.f;
 		if (yy + 40.f < r.y + r.height)
 		{
-			ui::Divider(r.x + 18.f, r.x + 282.f, yy);
-			ui::TextShadow("장비 효과", Vector2{ r.x + 20.f, yy + 8.f }, 15.f, ui::theme::kTitle);
-			yy += 32.f;
+			ui::SectionHeader(Vector2{ r.x + 20.f, yy + 6.f }, 262.f, "장비 효과");
+			yy += 30.f;
 			if (list.empty())
 				ui::TextWrapped("특수 효과는 전설·신화 장비에, 기술 강화는 전설 이상 무기·목걸이에 붙는다.", Rectangle{ r.x + 20.f, yy, 262.f, 60.f }, 13.f, ui::theme::kTextDim, 3.f);
 			float xx = r.x + 20.f;
@@ -1731,61 +2022,77 @@ void Game::DrawCharacter()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawClassSelect(Rectangle area)
 {
-	const float cardH = (area.height - 16.f) / 3.f;
+	// 직업 세 칸(움직이는 미리보기 + 이름) 아래에 고른 직업의 역할 · 설명.
+	// 고른 칸은 직업 색 테두리 + 아래 띠, 미리보기는 기술을 차례로 보여 준다.
+	const float gapX = 9.f;
+	const float chipH = area.height - 72.f;
+	const float chipW = std::floor((area.width - gapX * 2.f) / 3.f);
 	for (int i = 0; i < 3; ++i)
 	{
 		const ClassId id = static_cast<ClassId>(i);
 		const ClassRow& cls = ClassTable::Get(id);
 		const Color cc = Rgb(cls.color);
-		const Rectangle card{ area.x, area.y + i * (cardH + 8.f), area.width, cardH };
+		const Rectangle card{ std::round(area.x + i * (chipW + gapX)), std::round(area.y), chipW, chipH };
 		const bool sel = m_newClassId == i;
 		const bool hover = ui::Hovered(card);
 		ui::Block(card);
-		DrawRectangleRounded(card, 0.1f, 8, sel ? util::Shade(cc, 0.22f) : Color{ 20, 16, 24, 220 });
-		if (sel)
-		{
-			const float pulse = 0.5f + 0.5f * std::sin(m_time * 3.f);
-			DrawRectangleRoundedLinesEx(card, 0.1f, 8, 2.5f, util::Mix(cc, WHITE, 0.25f * pulse));
-		}
-		else
-			DrawRectangleRoundedLinesEx(card, 0.1f, 8, 1.f, hover ? ui::theme::kBorderHi : ui::theme::kBorder);
+		ui::Plate(card, sel ? util::Mix(ui::theme::kSurface1, cc, 0.14f) : (hover ? ui::theme::kSurface2 : ui::theme::kSurface1),
+			sel ? cc : (hover ? ui::theme::kTextDim : ui::theme::kLine), 4.f, sel ? 1.5f : 1.f);
+		const Rectangle pv{ card.x + 3.f, card.y + 3.f, card.width - 6.f, chipH - 30.f };
+		if (sel)   // 아래에서 번지는 직업 색(아주 옅게) — 이름 칸까지 이어서 경계가 생기지 않게
+			DrawRectangleGradientV(static_cast<int>(card.x + 2.f), static_cast<int>(card.y + chipH * 0.3f), static_cast<int>(card.width - 4.f), static_cast<int>(chipH * 0.7f - 2.f),
+				util::WithA(cc, 0.f), util::WithA(cc, 0.17f));
 
-		// 미리보기: 고른 직업은 기술을 차례로 보여 준다
-		const Rectangle pv{ card.x + 6.f, card.y + 4.f, 86.f, card.height - 8.f };
 		BeginScissorMode(static_cast<int>(pv.x), static_cast<int>(pv.y), static_cast<int>(pv.width), static_cast<int>(pv.height));
 		{
 			actors::Pose pose;
-			pose.base = Vector2{ pv.x + pv.width * 0.5f, pv.y + pv.height - 8.f };
-			pose.scale = 1.25f;
+			// 가장 키 큰 모습(각인술사의 두건 · 지팡이)까지 칸 안에 들어오는 배율
+			pose.scale = std::clamp(pv.height / 66.f, 0.75f, 1.2f) * 0.98f;
+			pose.base = Vector2{ pv.x + pv.width * 0.5f, pv.y + pv.height - 5.f };
 			pose.time = m_time + i * 1.3f;
 			pose.faceRight = true;
 			pose.seed = 7u + static_cast<uint32_t>(i);
 			if (sel || hover)
 			{
 				const float cycle = 1.35f;
-				const int k = static_cast<int>(m_time / cycle) % 5;
-				pose.skill = cls.skills[1 + k];
+				const int s = static_cast<int>(m_time / cycle) % 5;
+				pose.skill = cls.skills[1 + s];
 				pose.skillT = std::fmod(m_time, cycle) / cycle * 1.25f;
 				if (pose.skillT > 1.f) pose.skillT = -1.f;
 				const SkillRow* sr = SkillTable::Find(pose.skill);
 				pose.skillHold = sr ? (sr->castMs / 1000.f) / (cycle / 1.25f) : 0.f;
 			}
-			gfx::BeginWorld(0.f, 1.25f);
+			gfx::BeginWorld(0.f, pose.scale);
 			gfx::ResetMod();
 			gfx::SetDepthRaw(-0.5f);
-			gfx::EllipseGrad(pose.base, 22.f, 8.f, Rgb(0x000000, 120), Rgb(0x000000, 0));
+			gfx::EllipseGrad(pose.base, 20.f, 7.f, Rgb(0x000000, 120), Rgb(0x000000, 0));
 			actors::DrawPlayer(pose, actors::LookForPlayer(0x5EEDu * (i + 3), cls.starterWeapon, 0, static_cast<uint8_t>(i)));
 			gfx::Flush();
 		}
 		EndScissorMode();
 
-		ui::TextShadow(cls.name, Vector2{ card.x + 100.f, card.y + 10.f }, 19.f, sel ? util::Shade(cc, 1.3f) : util::Shade(cc, 1.05f));
-		ui::Text(cls.role, Vector2{ card.x + 100.f, card.y + 36.f }, 13.f, ui::theme::kTextDim);
-		ui::TextWrapped(cls.desc, Rectangle{ card.x + 100.f, card.y + 56.f, card.width - 110.f, card.height - 60.f }, 13.f, ui::theme::kText, 3.f);
+		ui::TextStyle ns;
+		ns.size = 15.5f;
+		ns.color = sel ? ui::theme::kTextHi : (hover ? ui::theme::kText : ui::theme::kTextDim);
+		ns.face = ui::Face::Display;
+		ns.spacing = 0.6f;
+		ui::Fonts().DrawCentered(cls.name, Vector2{ card.x + card.width * 0.5f + 0.3f, card.y + chipH - 15.f }, ns);
+		if (sel)
+			DrawRectangleRec(Rectangle{ card.x + 8.f, card.y + chipH - 3.f, card.width - 16.f, 2.f }, cc);
 		if (ui::Clicked(card) && !sel)
 		{
 			m_newClassId = static_cast<uint8_t>(i);
 			sfx::Play(sfx::Id::Equip, 0.6f);
 		}
 	}
+
+	// 고른 직업: 역할(직업 색) + 설명
+	const ClassRow& cls = ClassTable::Get(static_cast<ClassId>(m_newClassId));
+	const float dy = std::round(area.y + chipH + 10.f);
+	ui::TextStyle rs;
+	rs.size = 12.5f;
+	rs.color = util::Shade(Rgb(cls.color), 1.1f);
+	rs.face = ui::Face::Strong;
+	ui::Fonts().Draw(cls.role, Vector2{ area.x, dy }, rs);
+	ui::TextWrapped(cls.desc, Rectangle{ area.x, dy + 20.f, area.width, 42.f }, 12.5f, ui::theme::kText, 4.5f);
 }

@@ -91,15 +91,17 @@ namespace fx
 			return p;
 		}
 
-		void DrawNumber(const std::string& text, Vector2 center, float size, Color fill, Color outline, float alpha)
+		// 피해 숫자는 Barlow Condensed ExtraBold(좁고 단단한 숫자) — 수치가 한눈에 읽히게.
+		void DrawNumber(const std::string& text, Vector2 center, float size, Color fill, Color outline, float alpha, ui::Face face = ui::Face::NumberBold)
 		{
 			ui::TextStyle st;
 			st.size = size;
 			st.color = util::MulA(fill, alpha);
-			st.outline = std::max(1.5f, size * 0.09f);
+			st.outline = std::max(1.4f, size * 0.07f);
 			st.outlineColor = util::MulA(outline, alpha);
-			st.shadow = size * 0.08f;
-			st.shadowColor = Color{ 0, 0, 0, static_cast<unsigned char>(120 * alpha) };
+			st.shadow = std::max(1.f, size * 0.06f);
+			st.shadowColor = Color{ 0, 0, 0, static_cast<unsigned char>(110 * alpha) };
+			st.face = face;
 			ui::Fonts().DrawCentered(text, center, st);
 		}
 	}
@@ -160,9 +162,9 @@ namespace fx
 		m_damage.push_back(n);
 	}
 
-	void Effects::FloatText(Vector2 iso, float height, const std::string& text, Color color, float size, float life)
+	void Effects::FloatText(Vector2 iso, float height, const std::string& text, Color color, float size, float life, ui::Face face)
 	{
-		m_floats.push_back({ iso, height, text, color, size, 0.f, life });
+		m_floats.push_back({ iso, height, text, color, size, 0.f, life, face });
 	}
 
 	void Effects::Ring(Vector2 iso, float r0, float r1, float life, Color color, float thickness)
@@ -703,7 +705,7 @@ namespace fx
 			const float pop = u < 0.15f ? util::EaseOutBack(u / 0.15f) : 1.f;
 			const float a = u > 0.7f ? 1.f - (u - 0.7f) / 0.3f : 1.f;
 			const Vector2 s = GetWorldToScreen2D(Vector2{ f.iso.x, f.iso.y - f.h - rise }, cam);
-			DrawNumber(f.text, s, f.size * pop, f.color, Color{ 20, 14, 8, 255 }, a);
+			DrawNumber(f.text, s, f.size * pop, f.color, Color{ 12, 10, 8, 255 }, a, f.face);
 		}
 		for (const auto& d : m_damage)
 		{
@@ -712,17 +714,18 @@ namespace fx
 			Color fill = WHITE, line = Color{ 30, 20, 10, 255 };
 			switch (d.style)
 			{
-			case DamageStyle::Normal: size = 24.f; fill = Rgb(0xFFF4E0); break;
-			case DamageStyle::Crit: size = 36.f; fill = Rgb(0xFFC23A); line = Rgb(0x5A1A00); break;
-			case DamageStyle::Skill: size = 28.f; fill = Rgb(0x9AE0FF); line = Rgb(0x0A2A4A); break;
-			case DamageStyle::Taken: size = 24.f; fill = Rgb(0xFF5A4A); line = Rgb(0x3A0000); break;
-			case DamageStyle::TakenCrit: size = 32.f; fill = Rgb(0xFF3A2A); line = Rgb(0x2A0000); break;
-			case DamageStyle::Heal: size = 22.f; fill = Rgb(0x7AFF8A); line = Rgb(0x0A3A10); break;
-			case DamageStyle::Other: size = 18.f; fill = Rgb(0xD8D8D8); break;
-			case DamageStyle::Exp: size = 18.f; fill = Rgb(0xC8A0FF); line = Rgb(0x2A1040); break;
-			case DamageStyle::DotBurn: size = 17.f; fill = Rgb(0xFFA85A); line = Rgb(0x3A1400); break;
-			case DamageStyle::DotPoison: size = 17.f; fill = Rgb(0xA8F07A); line = Rgb(0x0E2A08); break;
-			case DamageStyle::Guarded: size = 20.f; fill = Rgb(0xFFD890); line = Rgb(0x3A2400); break;
+			// 색 체계: 평타 = 흰 종이빛, 치명 = 새벽빛, 기술 = 옛길 청록, 받은 피해 = 불씨 붉은빛
+			case DamageStyle::Normal: size = 26.f; fill = Rgb(0xF4EEE2); line = Rgb(0x16120E); break;
+			case DamageStyle::Crit: size = 38.f; fill = Rgb(0xF2C47C); line = Rgb(0x361E06); break;
+			case DamageStyle::Skill: size = 30.f; fill = Rgb(0x92D6CC); line = Rgb(0x082420); break;
+			case DamageStyle::Taken: size = 25.f; fill = Rgb(0xE26050); line = Rgb(0x2A0804); break;
+			case DamageStyle::TakenCrit: size = 33.f; fill = Rgb(0xEC4638); line = Rgb(0x220402); break;
+			case DamageStyle::Heal: size = 23.f; fill = Rgb(0x8DCE78); line = Rgb(0x0A2A0C); break;
+			case DamageStyle::Other: size = 19.f; fill = Rgb(0xC8C8C4); break;
+			case DamageStyle::Exp: size = 19.f; fill = Rgb(0xD4AA60); line = Rgb(0x2A1C06); break;
+			case DamageStyle::DotBurn: size = 18.f; fill = Rgb(0xE8965A); line = Rgb(0x2E1204); break;
+			case DamageStyle::DotPoison: size = 18.f; fill = Rgb(0xA0D66E); line = Rgb(0x0E2408); break;
+			case DamageStyle::Guarded: size = 21.f; fill = Rgb(0xD6C496); line = Rgb(0x2A2006); break;
 			}
 			// 합쳐진 숫자는 타수만큼 조금씩 커진다(최대 +45%) + 합쳐지는 순간 튄다
 			if (d.hits > 1) size *= 1.f + std::min(0.45f, (d.hits - 1) * 0.09f);
@@ -736,9 +739,9 @@ namespace fx
 			const float shake = (d.style == DamageStyle::Crit && u < 0.2f) ? std::sin(d.t * 90.f) * 3.f : 0.f;
 			DrawNumber(d.text, Vector2{ s.x + shake, s.y }, size * pop, fill, line, a);
 			if (d.style == DamageStyle::Crit || d.style == DamageStyle::TakenCrit)
-				DrawNumber("치명타!", Vector2{ s.x, s.y - size * 0.9f }, 15.f * pop, Rgb(0xFFF0C0), line, a);
+				DrawNumber("치명", Vector2{ s.x, s.y - size * 0.82f }, 14.f * pop, d.style == DamageStyle::Crit ? Rgb(0xF6DCA8) : Rgb(0xF0B0A4), line, a, ui::Face::Strong);
 			if (d.hits > 1)
-				DrawNumber(std::to_string(d.hits) + " HIT", Vector2{ s.x + size * 0.9f + 18.f, s.y + size * 0.3f }, 13.f * pop, Rgb(0xFFE8B0), line, a * 0.9f);
+				DrawNumber("×" + std::to_string(d.hits), Vector2{ s.x + size * 0.9f + 14.f, s.y + size * 0.3f }, 16.f * pop, Rgb(0xE8DCC4), line, a * 0.9f, ui::Face::Number);
 		}
 	}
 

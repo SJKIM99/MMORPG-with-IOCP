@@ -201,13 +201,13 @@ GO
 
 -- ----------------------------------------
 -- 3-1. 리니지풍 컨텐츠 확장 컬럼 (1회성 마이그레이션 — 기존 데이터 보존)
---    Players.adena     : 아데나(지갑). 인벤토리 슬롯이 아니라 플레이어 단위 값이다.
---    Players.alignment : 성향치(+ 라우풀 / - 카오틱). SMALLINT(-32768 ~ 32767)
+--    Players.adena     : 그로시(지갑, 컬럼 이름은 예전 그대로 adena). 인벤토리 슬롯이 아니라 플레이어 단위 값이다.
+--    Players.alignment : 성향(+ 명예 / - 악명). SMALLINT(-32768 ~ 32767)
 --    Players.pkCount   : PK 횟수
 --    Inventory.enchant : 무기 강화 수치(+0 ~ +15). 장비 슬롯에만 의미가 있다.
 --
---    아데나/성향치는 서버가 playerId 기준 DB 샤드로 저장한다(인벤토리와 같은 샤드).
---    그래서 한 플레이어의 "아데나 변경"과 "슬롯 변경"이 넣은 순서 그대로 커밋된다.
+--    그로시/성향은 서버가 playerId 기준 DB 샤드로 저장한다(인벤토리와 같은 샤드).
+--    그래서 한 플레이어의 "그로시 변경"과 "슬롯 변경"이 넣은 순서 그대로 커밋된다.
 -- ----------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'Players') AND name = N'adena')
     ALTER TABLE Players ADD adena INT NOT NULL CONSTRAINT DF_Players_adena DEFAULT 0;
@@ -615,7 +615,7 @@ GO
 --   호출: EXEC SavePlayerAdena ?, ?
 --   파라미터: @playerId, @adena (절대값 — 서버 메모리의 최신 지갑)
 --
---   DBConnection::SavePlayerAdena() 에서 호출. 아데나 줍기/텔레포트 요금처럼
+--   DBConnection::SavePlayerAdena() 에서 호출. 그로시 줍기/옛길 이동 요금처럼
 --   슬롯 변화 없이 지갑만 바뀐 경우. 델타가 아니라 절대값이라 같은 샤드 안의
 --   순서만 지켜지면 마지막 커밋이 곧 최신 상태다(메모리가 권위, DB는 저널).
 -- ----------------------------------------
@@ -665,11 +665,11 @@ GO
 --   호출: EXEC ShopTransaction ?, ?, ?, ?, ?, ?, ?, ?
 --   파라미터: @playerId, @adena, @slotIndex, @hasItem, @itemId, @count, @equipped, @enchant
 --
---   DBConnection::ShopTransaction() 에서 호출. 상점 구매/판매는 "아데나"와 "슬롯"이
+--   DBConnection::ShopTransaction() 에서 호출. 상점 구매/판매는 "그로시"와 "슬롯"이
 --   반드시 함께 바뀌어야 하는 동작이다 — 따로 저장하다 그 사이에 서버가 죽으면
 --   "돈만 나가고 물건이 없음" 또는 "물건은 생겼는데 돈이 그대로(복사)"가 DB에 남는다.
 --   그래서 하나의 트랜잭션으로 묶는다. (서버는 한 슬롯에 다 들어가는 거래만 받는다 —
---   Inventory::TryBuy 참고 — 그래서 슬롯 하나 + 아데나로 충분하다.)
+--   Inventory::TryBuy 참고 — 그래서 슬롯 하나 + 그로시로 충분하다.)
 -- ----------------------------------------
 IF OBJECT_ID(N'ShopTransaction', N'P') IS NOT NULL
     DROP PROCEDURE ShopTransaction;
@@ -716,7 +716,7 @@ GO
 -- ============================================================
 -- 4-1. V2 캐릭터 진행 데이터 (직업·능력치 포인트·퀘스트 등)
 --   기능이 늘 때마다 Players에 컬럼을 늘리는 대신, 서버가 버전 있는 바이너리 한
---   덩어리로 읽고 쓴다(User::SerializeProgress). 없으면 기본값(황혼의 기사)으로 시작.
+--   덩어리로 읽고 쓴다(User::SerializeProgress). 없으면 기본값(서약기사)으로 시작.
 -- ============================================================
 IF OBJECT_ID(N'PlayerProgress', N'U') IS NULL
 BEGIN

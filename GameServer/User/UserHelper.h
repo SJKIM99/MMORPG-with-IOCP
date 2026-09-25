@@ -68,7 +68,7 @@ namespace UserHelper
 	void SendSERVER_CONFIG_INF(const shared_ptr<User>& user);
 	void HandleMoveEx(const shared_ptr<User>& player, uint8_t dir, uint16_t seq);
 	void SendSUBJECT_INFO_EX_NFY(Subject::SharedPtr viewer, Subject::SharedPtr target);
-	// player의 확장 정보가 바뀌었을 때(레벨/성향치/보라돌이/가속/무기 강화) 본인과
+	// player의 확장 정보가 바뀌었을 때(레벨/성향치/적대/가속/무기 강화) 본인과
 	// 주변의 확장 세션에 다시 알린다.
 	void BroadcastInfoEx(const shared_ptr<User>& player);
 	void SendITEM_LIST_EX_ACK(const shared_ptr<User>& user);

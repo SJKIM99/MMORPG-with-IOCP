@@ -183,7 +183,7 @@ namespace
 		const uint16_t lastProgress[QuestData::kMaxObjs] = { slot.progress[0], slot.progress[1], slot.progress[2] };
 		slot = User::QuestSlot{};
 
-		// 3) 알림(보상 내역) → 아데나 → 경험치(레벨업 연출은 완료 연출 뒤에 온다)
+		// 3) 알림(보상 내역) → 그로시 → 경험치(레벨업 연출은 완료 연출 뒤에 온다)
 		const uint32_t exp = QuestData::RewardExp(q, levelBefore);
 		auto p = MakeUpdate(q.id, lastProgress, QuestEvent::Completed);
 		p.exp = exp;
