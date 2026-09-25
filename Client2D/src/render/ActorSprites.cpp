@@ -146,6 +146,11 @@ namespace actorspr
 			return 0;
 		}
 
+		// 걸음 그림을 쓸지: 몸이 실제로 움직이는 동안만. moving(자세 크기)은 멈춘 뒤 0.4초 동안 천천히 줄어서,
+		// 그것만 보면 마지막 걸음 · 달리기 프레임(발을 든 자세)으로 굳어 있다가 서기로 튀었다(1-D 녹화 — 자체 검토).
+		// gait(지금 속도)가 규칙 속도의 20% 밑이면 곧바로 서기 — 멈춤 흔들림(settle)이 그 전환을 덮는다.
+		bool Stepping(const actors::Pose& p) { return p.moving > 0.05f && (p.gait < 0.f || p.gait > 0.2f); }
+
 		void ApplyWalk(Anim& a, const actors::Pose& p, float bobPx, float leanPx)
 		{
 			const float m = util::Clamp01(p.moving);
@@ -225,7 +230,7 @@ namespace actorspr
 			a.s = idle;
 
 			// 걷기 · 숨쉬기
-			if (p.moving > 0.05f && !back && set.runN > 0)
+			if (Stepping(p) && !back && set.runN > 0)
 			{
 				// 달리기 한 주기: 걸음 위상(이동 거리 ÷ 보폭)으로 프레임을 고른다 — 영상의 발 쓸림이 보폭과 같으면
 				// (tools/assetgen/motion.py 검사) 디딘 발이 땅에 붙는다. 0번 프레임 = walk1 자세 = 위상 π/2(첫 발 디딤).
@@ -235,7 +240,7 @@ namespace actorspr
 				a.s = set.run[std::min(set.runN - 1, static_cast<int>(u * static_cast<float>(set.runN)))];
 				ApplyWalk(a, p, 0.6f, cls == 2 ? 4.f : 2.5f);
 			}
-			else if (p.moving > 0.05f)
+			else if (Stepping(p))
 			{
 				const int f = StepFrame(p.walk);
 				a.s = f == 1 ? walk1 : (f == 2 ? walk2 : idle);
@@ -395,7 +400,7 @@ namespace actorspr
 			const bool blob = row.archetype == MonsterArchetype::eBlob;
 			const bool ghost = row.archetype == MonsterArchetype::eGhost;
 			const float size = row.scale / 100.f;
-			if (p.moving > 0.05f)
+			if (Stepping(p))
 			{
 				// 걷는 그림 한 장 + 서기 그림 — 발 위상의 반쪽씩
 				a.s = std::sin(p.walk) > 0.f ? set.s[MMove] : set.s[MIdle];
@@ -495,7 +500,7 @@ namespace actorspr
 		{
 			Anim a;
 			a.s = set.s[NIdle];
-			if (p.moving > 0.05f)
+			if (Stepping(p))
 			{
 				const int f = StepFrame(p.walk);
 				a.s = f == 1 ? set.s[NWalk1] : (f == 2 ? set.s[NWalk2] : set.s[NIdle]);

@@ -87,7 +87,8 @@ namespace motion
 		float turn = 1.f;          // 가로 배율: +1 오른쪽 · −1 왼쪽(60ms에 걸쳐 0을 지난다)
 		bool  faceRight = true, faceBack = false;
 		float stride = 0.f;        // 걸음 위상(라디안) = 이동 거리 ÷ 보폭 × 2π
-		float moving = 0.f;        // 0~1 서기 ↔ 걷기
+		float moving = 0.f;        // 0~1 서기 ↔ 걷기(천천히 — 자세 · 흔들기 크기)
+		float gait = 0.f;          // 지금 속도 ÷ 규칙 속도(33ms로 거름) — 걸음 그림 ↔ 서기 그림을 가른다. 몸이 서면 곧 0
 		float run = 0.f;           // 0~1 달리기 ↔ 빠른 달리기(바람걸음)
 		float speed = 0.f;         // 화면 속도(칸/초)
 		float lean = 0.f;          // 앞기울기(도, + 앞) — 출발 가속 · 달리는 자세

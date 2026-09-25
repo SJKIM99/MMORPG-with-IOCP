@@ -318,6 +318,7 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	pose.lean = e.dead ? 0.f : e.body.lean;
 	pose.bank = e.dead ? 0.f : e.body.bank;
 	pose.settle = e.body.settle;
+	pose.gait = e.body.gait;
 	pose.walk = e.walkPhase;
 	pose.moving = e.moving;
 	pose.hurt = e.hurtT;
@@ -546,6 +547,7 @@ void Game::DrawNpcs()
 		pose.turn = v.body.turn;
 		pose.lean = v.body.lean * 0.6f;
 		pose.settle = v.body.settle;
+		pose.gait = v.body.gait;
 		pose.faceBack = v.faceBack;
 		// 말하는 중(대화창 · 혼잣말): 손짓하는 그림으로
 		if (nid == m_dialogNpc || (v.barkT > 0.f && !v.bark.empty()))

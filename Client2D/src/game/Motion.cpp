@@ -118,6 +118,10 @@ namespace motion
 		turn = want > turn ? std::min(want, turn + step) : std::max(want, turn - step);
 
 		// 걸음 위상 = 이동 거리 ÷ 보폭 — 속도가 바뀌어도 발이 미끄러지지 않는다. 발이 닿는 순간(보폭이 가장 벌어진 위상)
+		// 서 있다가(서기 그림) 출발하면 첫 발 디딤 자세(walk1 · 달리기 0번 = π/2)부터 — 멈췄던 위상의 아무 자세로나 시작하지 않게
+		if (gait < 0.2f && inst > 0.3f)
+			stride = kPi * 0.5f;
+		gait = util::Damp(gait, inst / std::max(0.5f, nominalSpeed), 30.f, dt);
 		const float before = stride;
 		stride += dist / kStrideTiles * 2.f * kPi;
 		if (std::floor((before - kPi * 0.5f) / kPi) != std::floor((stride - kPi * 0.5f) / kPi) && moving > 0.3f)
