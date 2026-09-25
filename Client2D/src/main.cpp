@@ -10,7 +10,12 @@
 //   테스트용
 //     --screenshot out.png --after 8  지정 시간 뒤 스크린샷 저장 후 종료
 //     --hour 22                       게임 시각 고정
-//     --lag 120 --jitter 60           인공 네트워크 지연(한쪽 방향 ms)·지터 — 조작감 검증용
+//     --netsim latency=150,jitter=40,spike=2   나쁜 네트워크 흉내(한쪽 방향 ms · 패킷 100개당 재전송)
+//     --lag 120 --jitter 60           (옛 이름) 인공 지연 · 지터
+//     --record 폴더 --seconds 12 --fps 30 [--record-after 2 --record-scale 0.5 --fixed-step]
+//                                     화면 녹화(ffmpeg가 있으면 capture.mp4, 없으면 프레임) — tools/record
+//     --f3                            처음부터 개발 정보(F3) 표시
+//     --sandbox-clock /dev/shm/harven_clock   샌드박스 공유 시계(서버 · 봇과 한 시계, tools/sandbox)
 //     --class 0|1|2                   새 캐릭터 직업(0 서약기사 · 1 각인술사 · 2 밤사냥꾼)
 //     --script hunt|town|inventory|map|help|enchant|chat|combat|charwin
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,6 +41,9 @@
 #include "ui/Font.h"
 #include "ui/Ui.h"
 #include "core/Util.h"
+#include "core/Perf.h"
+#include "core/Recorder.h"
+#include "core/Clock.h"
 
 #include <algorithm>
 #include <cmath>
@@ -205,8 +213,11 @@ namespace
 int main(int argc, char** argv)
 {
 	Game::Options opts;
+	rec::Options recOpts;
 	int width = 1280, height = 720;
 	bool gallery = false;
+	bool noMsaa = false;
+	std::string sandboxClock;
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string a = argv[i];
@@ -225,6 +236,40 @@ int main(int argc, char** argv)
 		else if (a == "--trace-move") opts.traceMove = next("move.csv");
 		else if (a == "--jitter") opts.jitterMs = std::atoi(next("0").c_str());
 		else if (a == "--gallery") gallery = true;
+		else if (a == "--f3") opts.debugOverlay = true;
+		else if (a == "--no-msaa") noMsaa = true;
+		else if (a == "--record") recOpts.dir = next("record");
+		else if (a == "--seconds") recOpts.seconds = static_cast<float>(std::atof(next("10").c_str()));
+		else if (a == "--fps") recOpts.fps = std::clamp(std::atoi(next("30").c_str()), 1, 120);
+		else if (a == "--record-after") recOpts.after = static_cast<float>(std::atof(next("0").c_str()));
+		else if (a == "--record-scale") recOpts.scale = static_cast<float>(std::atof(next("1").c_str()));
+		else if (a == "--record-frames") recOpts.frames = true;
+		else if (a == "--fixed-step") recOpts.fixedStep = true;
+		else if (a == "--sandbox-clock") sandboxClock = next("/dev/shm/harven_clock");
+		else if (a == "--netsim")
+		{
+			// latency=150,jitter=40,spike=2  (spike = 패킷 100개당 재전송 흉내 개수)
+			const std::string spec = next("latency=150,jitter=40,spike=2");
+			size_t pos = 0;
+			while (pos < spec.size())
+			{
+				const size_t comma = spec.find(',', pos);
+				const std::string kv = spec.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+				const size_t eq = kv.find('=');
+				if (eq != std::string::npos)
+				{
+					const std::string k = kv.substr(0, eq);
+					const double v = std::atof(kv.c_str() + eq + 1);
+					if (k == "latency" || k == "lag") opts.netsim.latencyMs = static_cast<int>(v);
+					else if (k == "jitter") opts.netsim.jitterMs = static_cast<int>(v);
+					else if (k == "spike") opts.netsim.spikePercent = static_cast<float>(v);
+					else if (k == "spikemin") opts.netsim.spikeMinMs = static_cast<int>(v);
+					else if (k == "spikemax") opts.netsim.spikeMaxMs = static_cast<int>(v);
+				}
+				if (comma == std::string::npos) break;
+				pos = comma + 1;
+			}
+		}
 		else if (a == "--class") opts.classId = std::clamp(std::atoi(next("0").c_str()), 0, 2);
 		else if (a == "--size")
 		{
@@ -233,7 +278,8 @@ int main(int argc, char** argv)
 		}
 	}
 
-	SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
+	// --no-msaa: 소프트웨어 렌더링(샌드박스 녹화)에서는 4배 표본이 그대로 4배 비용이다
+	SetConfigFlags((noMsaa ? 0u : static_cast<unsigned>(FLAG_MSAA_4X_HINT)) | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
 	InitWindow(width, height, "하르벤");
 	if (!IsWindowReady())
 	{
@@ -258,6 +304,10 @@ int main(int argc, char** argv)
 	}
 	SetExitKey(KEY_NULL);
 	SetTargetFPS(144);
+	perf::InstallGlHooks();
+	if (!sandboxClock.empty() && clk::AttachShared(sandboxClock.c_str(), recOpts.fps))
+		recOpts.fixedStep = true;   // 공유 시계 = 한 프레임에 정확히 1/fps초
+	rec::Configure(recOpts);
 	rlDisableBackfaceCulling();
 	HideCursor();
 

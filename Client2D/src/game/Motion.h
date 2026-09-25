@@ -70,6 +70,8 @@ namespace motion
 		[[nodiscard]] bool Snapped() { const bool s = m_snapped; m_snapped = false; return s; }
 		[[nodiscard]] double NextStepAt() const { return m_nextStepAt; }
 		[[nodiscard]] uint32_t StepMs(int dir) const;
+		// 아직 응답이 오지 않은 요청의 보낸 시각(왕복 시간 계산용). 없으면 -1
+		[[nodiscard]] double SentAt(uint16_t seq) const;
 
 		// 검증용 통계
 		struct Stats { int steps = 0, acks = 0, rejects = 0, corrections = 0, maxPending = 0, teleports = 0; float maxCorrection = 0.f; };

@@ -45,8 +45,10 @@ public:
 		std::string script;             // 테스트: 자동 조작 시나리오 이름
 		bool        mute = false;
 		std::string traceMove;          // 테스트: 내 이동(논리/표시 위치)을 프레임마다 CSV로 기록
-		int         lagMs = 0;          // 테스트: 인공 지연(한쪽 방향, ms)
+		int         lagMs = 0;          // 테스트: 인공 지연(한쪽 방향, ms) — --netsim의 옛 이름
 		int         jitterMs = 0;
+		net::NetClient::NetSim netsim;  // 테스트: --netsim latency=150,jitter=40,spike=2
+		bool        debugOverlay = false;   // --f3: 처음부터 F3 정보 표시
 		int         classId = -1;       // 새 캐릭터 직업(-1이면 로그인 화면에서 고른다)
 	};
 
@@ -283,6 +285,7 @@ private:
 	void DrawWorldMap();
 	void DrawItemTooltip(uint16_t itemId, uint8_t enchant, int count, bool equipped, bool forSell);   // 상점 등(인스턴스 없음)
 	void DrawCursor();
+	void DrawDebugOverlay();                            // F3: 프레임 시간 그래프 · 드로우콜 · 입자 · 네트워크 · 이동
 
 	// ── 도우미 ──
 	Entity* Self();
@@ -483,6 +486,15 @@ private:
 	double           m_dialogAutoAt = 0.0;
 	int              m_endingStage = 0;
 	float            m_questLogScroll = 0.f;
+
+	// F3 디버그 정보
+	bool             m_debugOverlay = false;
+	float            m_moveRttMs = 0.f;             // 이동 요청 → 응답 왕복(지수 평균)
+	float            m_moveRttLastMs = 0.f;
+	uint64_t         m_netBytesInPrev = 0, m_netBytesOutPrev = 0;
+	uint32_t         m_netPacketsPrev = 0;
+	double           m_netRateAt = 0.0;
+	float            m_netInKBs = 0.f, m_netOutKBs = 0.f, m_netPps = 0.f;
 
 	// 테스트 자동화
 	float            m_runTime = 0.f;

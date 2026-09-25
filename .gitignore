@@ -79,3 +79,6 @@ crash.log
 # [ Python ]
 __pycache__/
 *.pyc
+
+# [ 샌드박스 빌드 · 녹화 산출물 ] tools/sandbox
+/build/

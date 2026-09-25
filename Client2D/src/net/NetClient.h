@@ -27,9 +27,19 @@ namespace net
 
 		void SetHandler(PacketHandler handler) { m_handler = std::move(handler); }
 
-		// 테스트: 인공 지연(ms, 한쪽 방향)과 지터. 받은 패킷·보낼 패킷을 순서를 지킨 채
-		// 늦게 전달해 나쁜 네트워크에서의 조작감/보정을 확인한다.
-		void SetSimulatedLag(int oneWayMs, int jitterMs) { m_lagMs = oneWayMs; m_jitterMs = jitterMs; }
+		// 테스트: 나쁜 네트워크 흉내(--netsim latency=150,jitter=40,spike=2).
+		//   latency  한쪽 방향 지연(ms) — 보내는 쪽 · 받는 쪽 모두
+		//   jitter   패킷마다 ±ms(고르게)
+		//   spike    패킷 100개 중 몇 개를 200~450ms 더 늦게(TCP 재전송 흉내)
+		// TCP처럼 순서는 지킨다 — 한 패킷이 늦으면 뒤따르는 패킷도 그 뒤에 몰려 온다(머리 막힘).
+		struct NetSim { int latencyMs = 0, jitterMs = 0; float spikePercent = 0.f; int spikeMinMs = 200, spikeMaxMs = 450; };
+		void SetNetSim(const NetSim& s) { m_sim = s; }
+		void SetSimulatedLag(int oneWayMs, int jitterMs) { m_sim.latencyMs = oneWayMs; m_sim.jitterMs = jitterMs; }
+		[[nodiscard]] const NetSim& GetNetSim() const noexcept { return m_sim; }
+		[[nodiscard]] bool NetSimOn() const noexcept { return m_sim.latencyMs > 0 || m_sim.jitterMs > 0 || m_sim.spikePercent > 0.f; }
+		[[nodiscard]] uint32_t SpikesIn() const noexcept { return m_spikes; }
+		// 흉내 지연을 재는 시계(기본: 실제 시계). 샌드박스 공유 시계로 녹화할 때는 게임 시계를 넘긴다.
+		void SetTimeSource(double (*now)()) { m_timeSource = now; }
 
 		[[nodiscard]] TcpSocket::State GetState() const noexcept { return m_socket.GetState(); }
 		[[nodiscard]] bool IsConnected() const noexcept { return m_socket.GetState() == TcpSocket::State::Connected; }
@@ -81,7 +91,10 @@ namespace net
 
 		struct Delayed { double at; std::vector<char> bytes; };
 		std::deque<Delayed> m_delayedIn, m_delayedOut;
-		int               m_lagMs = 0, m_jitterMs = 0;
+		NetSim            m_sim;
+		uint32_t          m_spikes = 0;
+		double          (*m_timeSource)() = nullptr;
+		[[nodiscard]] double Now() const;
 		double            m_lastInAt = 0.0, m_lastOutAt = 0.0;
 
 		TcpSocket         m_socket;

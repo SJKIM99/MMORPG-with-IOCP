@@ -11,6 +11,10 @@
 #include "audio/Voice.h"
 #include "platform/Ime.h"
 #include "core/Util.h"
+#include "core/Clock.h"
+#include "core/Perf.h"
+#include "core/Recorder.h"
+#include "game/Input.h"
 
 #include "rlgl.h"
 #include <algorithm>
@@ -45,6 +49,9 @@ bool Game::Init(const Options& opts)
 	m_chatField.maxBytes = CHAT_SIZE - 1;
 
 	m_net.SetHandler([this](const char* data, uint16_t size) { OnPacket(data, size); });
+	if (clk::Shared())
+		m_net.SetTimeSource(&clk::Now);   // 흉내 지연도 공유 시계로(샌드박스 녹화)
+	m_debugOverlay = opts.debugOverlay;
 	if (opts.classId >= 0)
 		m_newClassId = static_cast<uint8_t>(opts.classId);
 	m_terrain.Init();
@@ -67,6 +74,14 @@ bool Game::Init(const Options& opts)
 
 void Game::Shutdown()
 {
+	rec::Finish();
+	perf::Print(stdout, "perf");
+	{
+		const auto& st = m_mover.GetStats();
+		std::printf("[move-stats] steps=%d acks=%d rejects=%d corrections=%d maxCorr=%.2f maxPending=%d teleports=%d rtt=%.0fms\n",
+			st.steps, st.acks, st.rejects, st.corrections, st.maxCorrection, st.maxPending, st.teleports, m_moveRttMs);
+		std::fflush(stdout);
+	}
 	if (m_traceFile) { std::fclose(m_traceFile); m_traceFile = nullptr; }
 	SaveQuickSlots();
 	m_net.Disconnect();
@@ -76,7 +91,12 @@ void Game::Shutdown()
 
 void Game::BeginConnect()
 {
-	m_net.SetSimulatedLag(m_opts.lagMs, m_opts.jitterMs);
+	{
+		net::NetClient::NetSim sim = m_opts.netsim;
+		if (m_opts.lagMs > 0 && sim.latencyMs == 0) sim.latencyMs = m_opts.lagMs;
+		if (m_opts.jitterMs > 0 && sim.jitterMs == 0) sim.jitterMs = m_opts.jitterMs;
+		m_net.SetNetSim(sim);
+	}
 	std::string name = m_fName.text;
 	if (name.size() < 2)
 	{
@@ -156,10 +176,13 @@ void Game::ResetWorld()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::Frame()
 {
+	perf::BeginFrame();
+	clk::BeginFrame();
+	in::BeginFrame();
 	m_screenW = GetScreenWidth();
 	m_screenH = GetScreenHeight();
-	const float dt = std::min(GetFrameTime(), 0.05f);
-	m_now = GetTime();
+	const float dt = std::min(clk::FrameDt(), 0.05f);
+	m_now = clk::Now();
 	m_runTime += dt;
 
 	m_net.Update();
@@ -202,7 +225,20 @@ void Game::Frame()
 	case Scene::Disconnected: DrawGame(); DrawDisconnected(); break;
 	}
 	ui::EndFrame();
+	if (m_debugOverlay)
+		DrawDebugOverlay();
 	DrawCursor();
+	perf::MarkWorkEnd();
+	perf::NoteParticles(static_cast<int>(fx::Particles().Count()));
+
+	// 녹화(--record): 게임 화면에 들어오면 시작 기준점을 잡고, 다 뜨면 끝낸다
+	if (rec::Enabled() && m_scene == Scene::Game)
+	{
+		rec::Arm(m_now);
+		rec::Capture(m_now);
+		if (rec::Finished() && m_opts.screenshot.empty())
+			m_quit = true;
+	}
 
 	if (!m_opts.screenshot.empty() && !m_shotTaken && m_runTime >= m_opts.screenshotAfter + m_shotIndex * m_opts.screenshotEvery)
 	{
@@ -217,14 +253,11 @@ void Game::Frame()
 		if (++m_shotIndex >= m_opts.screenshotCount)
 		{
 			m_shotTaken = true;
-			m_quit = true;
-			const auto& st = m_mover.GetStats();
-			std::printf("[move-stats] steps=%d acks=%d rejects=%d corrections=%d maxCorr=%.2f maxPending=%d teleports=%d\n",
-				st.steps, st.acks, st.rejects, st.corrections, st.maxCorrection, st.maxPending, st.teleports);
-			std::fflush(stdout);
+			m_quit = true;   // 이동 · 성능 통계는 Shutdown이 찍는다
 		}
 	}
 	EndDrawing();
+	perf::EndFrame(GetFrameTime());
 }
 
 void Game::UpdateLogin(float dt)
@@ -381,7 +414,7 @@ void Game::UpdateGame(float dt)
 	// ── 이동(내 캐릭터: 예측·보정·스무딩 / 다른 개체: 걸음 시간대로 보간) ──
 	// 서버 걸음을 재생하는 시간은 프레임 시간 상한(0.05초)에 묶이면 안 된다 — FPS가 낮을 때
 	// 다른 개체가 느려지고 밀린다. 실제 경과 시간(히트스톱만 반영)을 쓴다.
-	const float netDt = std::min(GetFrameTime(), 0.25f) * fx::Fx().TimeScale();
+	const float netDt = std::min(clk::FrameDt(), 0.25f) * fx::Fx().TimeScale();
 	m_mover.SetSpeedPercent(m_baseSpeedPercent + (m_hasteUntil > m_now ? MoveRule::kHasteBonusPercent : 0u));
 	m_mover.Update(m_now, sdt);
 	SyncMover();
@@ -558,6 +591,8 @@ void Game::UpdateGame(float dt)
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::HandleHotkeys()
 {
+	if (IsKeyPressed(KEY_F3))
+		m_debugOverlay = !m_debugOverlay;
 	// Enter: 채팅 열기/보내기(입력칸이 처리) · Esc: 창/대상 해제
 	if (!ui::TextFocused())
 	{
@@ -630,7 +665,7 @@ void Game::PickUnderMouse()
 	m_hoverX = m_hoverY = -1;
 	if (ui::MouseOverUi())
 		return;
-	const Vector2 mouseIso = GetScreenToWorld2D(GetMousePosition(), m_cam2d);
+	const Vector2 mouseIso = GetScreenToWorld2D(in::MousePos(), m_cam2d);
 	const Vector2 t = gfx::IsoToTile(mouseIso);
 	m_hoverX = static_cast<int>(std::floor(t.x + 0.5f));
 	m_hoverY = static_cast<int>(std::floor(t.y + 0.5f));
@@ -698,7 +733,7 @@ void Game::HandleWorldInput()
 	if (m_enchant.stage == 1)
 		return;
 
-	if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !overUi)
+	if (in::MousePressed(MOUSE_BUTTON_LEFT) && !overUi)
 	{
 		m_mouseHeld = false;
 		// 마우스는 이동·대화·줍기 같은 "전투 밖" 상호작용만 — 몬스터/사람을 눌러도 공격하지 않는다.
@@ -722,7 +757,7 @@ void Game::HandleWorldInput()
 	// 누르고 있으면 계속 따라 걷기(리니지식)
 	if (m_mouseHeld)
 	{
-		if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+		if (!in::MouseDown(MOUSE_BUTTON_LEFT))
 			m_mouseHeld = false;
 		else if (m_now > m_holdRepathAt && m_hoverX >= 0 && !overUi)
 		{
@@ -1634,6 +1669,51 @@ void Game::RunScript(float dt)
 	else if (s == "watch")
 	{
 		// 가만히 서서 다른 플레이어의 움직임을 본다(원격 보간 검증)
+	}
+	else if (s.rfind("runline", 0) == 0 || s == "runcircle" || s.rfind("runcircle:", 0) == 0 || s.rfind("follow:", 0) == 0)
+	{
+		// 녹화용 이동 시나리오(Phase 1 전/후 비교) — 사람처럼 **마우스로** 조작한다(in::SetScriptMouse).
+		//   runline[:dx,dy[,초]]  화면 방향(dx,dy)으로 커서를 두고 좌클릭을 누른 채 달린다(기본 오른쪽 6초)
+		//   runcircle[:초]         분수 둘레를 도는 점을 커서로 앞서 가리키며 누른 채 달린다(기본 30초)
+		//   follow:이름            그 플레이어 위에 커서를 두고 누른 채 따라간다
+		Entity* me = Self();
+		if (!me) return;
+		const Vector2 meScr = GetWorldToScreen2D(TileToIso(me->pos, 0.f), m_cam2d);
+		const float start = 1.5f;
+		if (m_scriptT < start) { in::SetScriptMouse(Vector2{ meScr.x, meScr.y - 200.f }, false); return; }
+		if (s.rfind("runline", 0) == 0)
+		{
+			float dx = 1.f, dy = 0.f, secs = 6.f;
+			if (s.size() > 8) std::sscanf(s.c_str() + 8, "%f,%f,%f", &dx, &dy, &secs);
+			const float l = std::max(0.001f, std::sqrt(dx * dx + dy * dy));
+			const bool hold = m_scriptT < start + secs;
+			in::SetScriptMouse(Vector2{ meScr.x + dx / l * 240.f, meScr.y - 30.f + dy / l * 240.f }, hold);
+		}
+		else if (s.rfind("runcircle", 0) == 0)
+		{
+			float secs = 30.f;
+			if (s.size() > 10) secs = static_cast<float>(std::atof(s.c_str() + 10));
+			const Vector2 c{ WorldData::kTownX0 + 21.5f, WorldData::kTownY0 + 21.5f };   // 분수 가운데
+			const float R = 5.f;
+			const float a = std::atan2(me->pos.y - c.y, me->pos.x - c.x) + 0.9f;          // 도는 쪽으로 약 50° 앞
+			const Vector2 aim{ c.x + std::cos(a) * R, c.y + std::sin(a) * R };
+			const Vector2 scr = GetWorldToScreen2D(TileToIso(aim, 0.f), m_cam2d);
+			in::SetScriptMouse(scr, m_scriptT < start + secs);
+		}
+		else
+		{
+			const std::string who = s.substr(7);
+			Entity* t = nullptr;
+			for (auto& [id, e] : m_ents)
+				if (e.kind == EntityKind::Player && id != m_selfId && e.name == who) { t = &e; break; }
+			if (t)
+			{
+				const Vector2 scr = GetWorldToScreen2D(TileToIso(t->pos, 0.f), m_cam2d);
+				in::SetScriptMouse(Vector2{ scr.x, scr.y - 24.f }, true);
+			}
+			else
+				in::SetScriptMouse(Vector2{ meScr.x, meScr.y - 200.f }, false);
+		}
 	}
 	else if (s == "behind")
 	{

@@ -681,6 +681,11 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 
 void Game::HandleMoveAck(const USER_MOVE_EX_ACK_PACKET& p)
 {
+	if (const double sent = m_mover.SentAt(p.seq); sent >= 0.0)
+	{
+		m_moveRttLastMs = static_cast<float>((m_now - sent) * 1000.0);
+		m_moveRttMs = m_moveRttMs <= 0.f ? m_moveRttLastMs : m_moveRttMs + (m_moveRttLastMs - m_moveRttMs) * 0.15f;
+	}
 	m_mover.OnAck(p.seq, p.x, p.y, static_cast<MoveResult>(p.result), p.stepMs, m_now);
 	SyncMover();
 	if (static_cast<MoveResult>(p.result) != MoveResult::Ok)

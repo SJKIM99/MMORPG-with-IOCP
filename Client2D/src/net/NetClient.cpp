@@ -45,17 +45,27 @@ namespace net
 		m_delayedOut.clear();
 	}
 
+	double NetClient::Now() const { return m_timeSource ? m_timeSource() : NowSec(); }
+
 	double NetClient::DelayFor()
 	{
-		const int j = m_jitterMs > 0 ? (std::rand() % (m_jitterMs * 2 + 1)) - m_jitterMs : 0;
-		return std::max(0, m_lagMs + j) / 1000.0;
+		const int j = m_sim.jitterMs > 0 ? (std::rand() % (m_sim.jitterMs * 2 + 1)) - m_sim.jitterMs : 0;
+		int ms = std::max(0, m_sim.latencyMs + j);
+		if (m_sim.spikePercent > 0.f && (std::rand() % 10000) < static_cast<int>(m_sim.spikePercent * 100.f))
+		{
+			// 재전송: 이 패킷(과 순서상 뒤따르는 패킷)이 한참 늦는다
+			const int span = std::max(0, m_sim.spikeMaxMs - m_sim.spikeMinMs);
+			ms += m_sim.spikeMinMs + (span > 0 ? std::rand() % (span + 1) : 0);
+			++m_spikes;
+		}
+		return ms / 1000.0;
 	}
 
 	void NetClient::QueueRaw(const char* raw, size_t size)
 	{
-		if (m_lagMs > 0)
+		if (NetSimOn())
 		{
-			const double at = std::max(m_lastOutAt, NowSec() + DelayFor());
+			const double at = std::max(m_lastOutAt, Now() + DelayFor());
 			m_lastOutAt = at;
 			m_delayedOut.push_back(Delayed{ at, std::vector<char>(raw, raw + size) });
 			return;
@@ -66,7 +76,7 @@ namespace net
 
 	void NetClient::DeliverDelayed()
 	{
-		const double now = NowSec();
+		const double now = Now();
 		while (!m_delayedOut.empty() && m_delayedOut.front().at <= now)
 		{
 			const auto& d = m_delayedOut.front().bytes;
@@ -121,10 +131,10 @@ namespace net
 			if (m_recvLen - offset < size)
 				break;
 			++m_packetsIn;
-			if (m_lagMs > 0)
+			if (NetSimOn())
 			{
 				// 테스트 지연: 순서를 지키며(앞 패킷보다 먼저 오지 않게) 늦게 전달
-				const double at = std::max(m_lastInAt, NowSec() + DelayFor());
+				const double at = std::max(m_lastInAt, Now() + DelayFor());
 				m_lastInAt = at;
 				m_delayedIn.push_back(Delayed{ at, std::vector<char>(m_recvBuf.data() + offset, m_recvBuf.data() + offset + size) });
 			}

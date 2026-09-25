@@ -11,6 +11,7 @@
 #include "render/Assets.h"
 #include "ui/Font.h"
 #include "core/Util.h"
+#include "game/Input.h"
 
 #include "rlgl.h"
 #include <algorithm>
@@ -670,7 +671,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 
 void Game::DrawCursor()
 {
-	const Vector2 m = GetMousePosition();
+	const Vector2 m = in::MousePos();
 	enum { Arrow, Attack, Pickup, Talk, Enchant } kind = Arrow;
 	if (m_scene == Scene::Game && !ui::MouseOverUi())
 	{

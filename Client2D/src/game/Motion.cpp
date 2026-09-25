@@ -43,6 +43,13 @@ namespace motion
 		return MoveRule::IsDiagonal(dir) ? base * m_diagPermille / 1000u : base;
 	}
 
+	double LocalMover::SentAt(uint16_t seq) const
+	{
+		for (const Pending& p : m_pending)
+			if (p.seq == seq) return p.sentAt;
+		return -1.0;
+	}
+
 	bool LocalMover::CanStep(double now) const
 	{
 		return static_cast<int>(m_pending.size()) < kMaxPending && now + 0.004 >= m_nextStepAt;
