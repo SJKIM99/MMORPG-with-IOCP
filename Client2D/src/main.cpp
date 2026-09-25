@@ -246,6 +246,12 @@ int main(int argc, char** argv)
 		else if (a == "--record-frames") recOpts.frames = true;
 		else if (a == "--fixed-step") recOpts.fixedStep = true;
 		else if (a == "--sandbox-clock") sandboxClock = next("/dev/shm/harven_clock");
+		else if (a == "--frame-jitter")
+		{
+			float j = 0.f, h = 0.f;
+			std::sscanf(next("0.3,2").c_str(), "%f,%f", &j, &h);
+			clk::SetFrameJitter(j, h);
+		}
 		else if (a == "--netsim")
 		{
 			// latency=150,jitter=40,spike=2  (spike = 패킷 100개당 재전송 흉내 개수)

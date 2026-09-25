@@ -423,16 +423,21 @@ void Game::UpdateGame(float dt)
 		if (!m_traceFile)
 		{
 			m_traceFile = std::fopen(m_opts.traceMove.c_str(), "w");
-			if (m_traceFile) std::fprintf(m_traceFile, "t,lx,ly,vx,vy,speed,pending,keyx,keyy,rx,ry\n");
+			if (m_traceFile) std::fprintf(m_traceFile, "t,lx,ly,vx,vy,speed,pending,keyx,keyy,rx,ry,camx,camy,zoom,face,rface\n");
 		}
 		if (m_traceFile)
 		{
 			const Vector2 l = m_mover.Logical(), v = m_mover.Visual();
 			// 다른 플레이어 하나(원격 보간 확인용)
 			Vector2 r{ -1, -1 };
+			int rface = -1;
 			for (const auto& [oid, o] : m_ents)
-				if (oid != m_selfId && o.kind == EntityKind::Player) { r = o.pos; break; }
-			std::fprintf(m_traceFile, "%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%d,%d,%d,%.4f,%.4f\n", m_now, l.x, l.y, v.x, v.y, m_mover.Speed(), m_mover.PendingCount(), m_scriptKeyX, m_scriptKeyY, r.x, r.y);
+				if (oid != m_selfId && o.kind == EntityKind::Player) { r = o.pos; rface = (o.faceRight ? 1 : 0) | (o.faceBack ? 2 : 0); break; }
+			int face = -1;
+			if (const Entity* me = Self()) face = (me->faceRight ? 1 : 0) | (me->faceBack ? 2 : 0);
+			const Vector2 cam = m_cam.Target();
+			std::fprintf(m_traceFile, "%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%d,%d,%d,%.4f,%.4f,%.3f,%.3f,%.4f,%d,%d\n", m_now, l.x, l.y, v.x, v.y, m_mover.Speed(), m_mover.PendingCount(),
+				m_scriptKeyX, m_scriptKeyY, r.x, r.y, cam.x, cam.y, m_cam.Zoom(), face, rface);
 		}
 	}
 

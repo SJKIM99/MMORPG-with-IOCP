@@ -21,7 +21,19 @@ namespace clk
 		bool g_started = false;
 		volatile int64_t* g_shared = nullptr;   // 공유 시계(나노초)
 		float g_sharedStep = 1.f / 30.f;
+		float g_jitter = 0.f, g_hitch = 0.f;
+		uint32_t g_rng = 0x9E3779B9u;
+		float Rand01() { g_rng = g_rng * 1664525u + 1013904223u; return static_cast<float>(g_rng >> 8) / 16777216.f; }
+		float Shake(float step)
+		{
+			float dt = step;
+			if (g_jitter > 0.f) dt *= 1.f + (Rand01() * 2.f - 1.f) * g_jitter;
+			if (g_hitch > 0.f && Rand01() * 100.f < g_hitch) dt *= 3.f;
+			return dt;
+		}
 	}
+
+	void SetFrameJitter(float jitter, float hitchPercent) { g_jitter = jitter; g_hitch = hitchPercent; }
 
 	bool AttachShared(const char* path, int fps)
 	{
@@ -54,14 +66,14 @@ namespace clk
 	{
 		if (g_shared != nullptr)
 		{
-			g_dt = g_sharedStep;
+			g_dt = Shake(g_sharedStep);
 			g_now += g_dt;
 			g_shared[0] = static_cast<int64_t>(g_now * 1e9);
 			return;
 		}
 		if (rec::FixedStep())
 		{
-			g_dt = rec::StepSeconds();
+			g_dt = Shake(rec::StepSeconds());
 			g_now = g_started ? g_now + g_dt : GetTime();
 			g_started = true;
 			return;

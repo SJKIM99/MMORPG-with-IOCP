@@ -6,7 +6,7 @@
 #   run.sh stop                  서버 · 봇 모두 내림
 #   run.sh bot <봇 인자…>         봇 하나를 뒤에서(공유 시계가 있으면 자동으로 씀)
 #   run.sh client <클라 인자…>    클라이언트(Xvfb :99, 소프트웨어 렌더링). 공유 시계가 있으면 --sandbox-clock
-#   run.sh gif <mp4> <gif> [폭] [시작초] [길이초]   영상 → GIF(팔레트 2패스)
+#   run.sh gif <mp4> <gif> [폭] [시작초] [길이초] [가운데 비율] [fps]   영상 → GIF(팔레트 2패스)
 #
 # 환경 변수: BUILD(기본 저장소/build) — server/GameServer.exe · client/Client2D · harven_bot 위치
 # ─────────────────────────────────────────────────────────────────────────────
@@ -64,12 +64,14 @@ client)
 	cd "$BUILD/client" && DISPLAY=:99 ./Client2D --mute --no-msaa "${extra[@]}" "$@"
 	;;
 gif)
-	in="$2"; out="$3"; w="${4:-720}"; ss="${5:-0}"; t="${6:-}"
+	# run.sh gif <mp4> <gif> [폭=560] [시작초=0] [길이초] [잘라낼 가운데 비율=0.62] [fps=15]
+	in="$2"; out="$3"; w="${4:-560}"; ss="${5:-0}"; t="${6:-}"; crop="${7:-0.62}"; fps="${8:-15}"
 	dur=()
 	[ -n "$t" ] && dur=(-t "$t")
 	pal="$(mktemp --suffix=.png)"
-	ffmpeg -y -loglevel error -ss "$ss" "${dur[@]}" -i "$in" -vf "fps=20,scale=$w:-1:flags=lanczos,palettegen=stats_mode=diff" "$pal"
-	ffmpeg -y -loglevel error -ss "$ss" "${dur[@]}" -i "$in" -i "$pal" -lavfi "fps=20,scale=$w:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" "$out"
+	vf="crop=iw*$crop:ih*$crop,fps=$fps,scale=$w:-1:flags=lanczos"
+	ffmpeg -y -loglevel error -ss "$ss" "${dur[@]}" -i "$in" -vf "$vf,palettegen=max_colors=128:stats_mode=diff" "$pal"
+	ffmpeg -y -loglevel error -ss "$ss" "${dur[@]}" -i "$in" -i "$pal" -lavfi "$vf[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" "$out"
 	rm -f "$pal"
 	ls -la "$out"
 	;;
