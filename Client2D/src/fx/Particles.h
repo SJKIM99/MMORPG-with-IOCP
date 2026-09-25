@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 namespace fx
 {
-	enum class Shape : uint8_t { Glow, Soft, Smoke, Spark, Star, Ring, Chunk, Leaf, Flake, Coin };
+	enum class Shape : uint8_t { Glow, Soft, Smoke, Spark, Star, Ring, Chunk, Leaf, Flake, Coin, Tex };
 
 	struct Particle
 	{
@@ -32,6 +32,13 @@ namespace fx
 		bool    stretch = false;    // 속도 방향으로 늘여 그림(불꽃)
 		float   wobble = 0.f;       // 좌우 흔들림(잎/눈)
 		float   seed = 0.f;
+		// Shape::Tex(그린 효과 — render/FxArt)
+		const Texture2D* tex = nullptr;
+		float   aspect = 1.f;       // 가로 / 세로(바닥에 눕히면 세로를 0.5배)
+		float   squash = 1.f;       // 세로 배율(바닥 문양 = 0.5)
+		bool    flipX = false;
+		bool    ground = false;     // 바닥 문양: 캐릭터 발밑(깊이 맨 뒤)에 그린다
+		float   pop = 0.f;          // 처음 pop초 동안 0 → 1로 튀어나오듯 커진다(EaseOutBack)
 	};
 
 	class ParticleSystem
@@ -49,4 +56,7 @@ namespace fx
 	};
 
 	ParticleSystem& Particles();
+
+	// 그린 효과 한 장(fxId = fxart::Id). 그림이 없으면 nullptr — 부르는 쪽은 절차적 효과만으로 충분하다.
+	Particle* EmitTex(int fxId, Vector2 iso, float z, float size0, float size1, float life, Color c0, Color c1, bool additive);
 }

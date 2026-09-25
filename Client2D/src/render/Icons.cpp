@@ -4,6 +4,10 @@
 
 #include "rlgl.h"
 #include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace icons
@@ -21,6 +25,30 @@ namespace icons
 		constexpr int kUnknownSlot = kCols * kRows - 1;
 		Texture2D g_atlas{};
 		int g_slotOf[256];   // iconId → 아틀라스 칸(Build가 표를 읽어 차례로 배정)
+
+		// 그린 아이콘 아틀라스(128px 칸, 16열)
+		Texture2D g_painted{};
+		std::unordered_map<std::string, int> g_paintedIdx;
+		constexpr int kPaintedCell = 128;
+		constexpr int kPaintedCols = 16;
+
+		const int* PaintedIndex(std::string_view name)
+		{
+			if (g_painted.id == 0) return nullptr;
+			auto it = g_paintedIdx.find(std::string(name));
+			return it == g_paintedIdx.end() ? nullptr : &it->second;
+		}
+		Rectangle PaintedSrc(int idx)
+		{
+			return Rectangle{ static_cast<float>((idx % kPaintedCols) * kPaintedCell), static_cast<float>((idx / kPaintedCols) * kPaintedCell),
+				static_cast<float>(kPaintedCell), static_cast<float>(kPaintedCell) };
+		}
+		std::string ItemKey(uint16_t itemId)
+		{
+			char k[24];
+			std::snprintf(k, sizeof(k), "item_%u", static_cast<unsigned>(itemId));
+			return k;
+		}
 
 		int SlotOf(uint8_t iconId)
 		{
@@ -949,6 +977,48 @@ namespace icons
 		if (g_atlas.id != 0)
 			UnloadTexture(g_atlas);
 		g_atlas = Texture2D{};
+		if (g_painted.id != 0)
+			UnloadTexture(g_painted);
+		g_painted = Texture2D{};
+		g_paintedIdx.clear();
+	}
+
+	void LoadPainted(const std::string& dir)
+	{
+		const std::string png = dir + "/icons.png", txt = dir + "/icons.txt";
+		if (!FileExists(png.c_str()) || !FileExists(txt.c_str()))
+			return;
+		char* text = LoadFileText(txt.c_str());
+		if (!text)
+			return;
+		for (char* line = std::strtok(text, "\r\n"); line; line = std::strtok(nullptr, "\r\n"))
+		{
+			if (line[0] == '#') continue;
+			char name[64];
+			int idx = -1;
+			if (std::sscanf(line, "%63s %d", name, &idx) == 2 && idx >= 0)
+				g_paintedIdx[name] = idx;
+		}
+		UnloadFileText(text);
+		g_painted = LoadTexture(png.c_str());
+		if (g_painted.id == 0)
+		{
+			g_paintedIdx.clear();
+			return;
+		}
+		GenTextureMipmaps(&g_painted);
+		SetTextureFilter(g_painted, TEXTURE_FILTER_TRILINEAR);
+		TraceLog(LOG_INFO, "ICONS: %d painted icons", static_cast<int>(g_paintedIdx.size()));
+	}
+
+	bool HasPainted(std::string_view name) { return PaintedIndex(name) != nullptr; }
+
+	bool DrawPainted(std::string_view name, Rectangle dst, Color tint)
+	{
+		const int* idx = PaintedIndex(name);
+		if (!idx) return false;
+		DrawTexturePro(g_painted, PaintedSrc(*idx), dst, Vector2{ 0, 0 }, 0.f, tint);
+		return true;
 	}
 
 	static Rectangle SrcFor(uint16_t itemId)
@@ -960,12 +1030,16 @@ namespace icons
 
 	void Draw(uint16_t itemId, Rectangle dst, Color tint)
 	{
+		if (DrawPainted(ItemKey(itemId), dst, tint)) return;
 		if (g_atlas.id == 0) return;
 		DrawTexturePro(g_atlas, SrcFor(itemId), dst, Vector2{ 0, 0 }, 0.f, tint);
 	}
 
 	void DrawQuestItem(uint8_t questIcon, Rectangle dst, Color tint)
 	{
+		char k[24];
+		std::snprintf(k, sizeof(k), "quest_%u", static_cast<unsigned>(questIcon));
+		if (DrawPainted(k, dst, tint)) return;
 		if (g_atlas.id == 0) return;
 		const int slot = SlotOf(static_cast<uint8_t>(kQuestIconBase + questIcon));
 		const Rectangle src{ static_cast<float>((slot % kCols) * kCell), static_cast<float>((slot / kCols) * kCell), static_cast<float>(kCell), static_cast<float>(kCell) };
@@ -974,6 +1048,11 @@ namespace icons
 
 	void DrawWorld(uint16_t itemId, Vector2 center, float size, float rot, Color tint)
 	{
+		if (const int* idx = PaintedIndex(ItemKey(itemId)))
+		{
+			gfx::TexQuadSrc(g_painted, PaintedSrc(*idx), center, Vector2{ size, size }, rot, tint);
+			return;
+		}
 		if (g_atlas.id == 0) return;
 		gfx::TexQuadSrc(g_atlas, SrcFor(itemId), center, Vector2{ size, size }, rot, tint);
 	}

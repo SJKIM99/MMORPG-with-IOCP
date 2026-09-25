@@ -1,0 +1,491 @@
+{
+ "fx_fire": {
+  "job": "eebebc55-e64f-4574-ab6b-2d812a902c18",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105657_eebebc55-e64f-4574-ab6b-2d812a902c18.png"
+ },
+ "fx_holy": {
+  "job": "d8217ab3-6168-48e2-ba2a-705cda772658",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105921_d8217ab3-6168-48e2-ba2a-705cda772658.png"
+ },
+ "fx_ice": {
+  "job": "fb393819-ca19-4533-bbc0-6f256c162595",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105657_fb393819-ca19-4533-bbc0-6f256c162595.png"
+ },
+ "fx_impact": {
+  "job": "879621e8-c48d-44b5-97aa-91b8d36576f9",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105658_879621e8-c48d-44b5-97aa-91b8d36576f9.png"
+ },
+ "fx_lightning": {
+  "job": "21177e56-1480-4f14-8a84-cc741c5f6bcb",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105658_21177e56-1480-4f14-8a84-cc741c5f6bcb.png"
+ },
+ "fx_loot": {
+  "job": "9d24a135-658e-4b4d-ab68-f3a8245817ec",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105921_9d24a135-658e-4b4d-ab68-f3a8245817ec.png"
+ },
+ "fx_magic": {
+  "job": "c796aed7-34e6-4bec-8320-7128906f3472",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105657_c796aed7-34e6-4bec-8320-7128906f3472.png"
+ },
+ "fx_shadow": {
+  "job": "0aba42a1-85ad-420b-b1c9-496f49384f22",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105921_0aba42a1-85ad-420b-b1c9-496f49384f22.png"
+ },
+ "fx_slash": {
+  "job": "6013ba6d-d3a8-41fe-8a68-9e8355cc7191",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105657_6013ba6d-d3a8-41fe-8a68-9e8355cc7191.png"
+ },
+ "fx_smoke": {
+  "job": "1ed68e90-d648-4146-8d07-6cff9b13c0e4",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105922_1ed68e90-d648-4146-8d07-6cff9b13c0e4.png"
+ },
+ "ground_anthill": {
+  "job": "eb3ec285-1dd2-40a1-9c5d-1f2cfd3d2ba9",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072937_eb3ec285-1dd2-40a1-9c5d-1f2cfd3d2ba9.png"
+ },
+ "ground_beach": {
+  "job": "50a6d3e2-dbe3-4567-b48b-b096469d7a60",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072937_50a6d3e2-dbe3-4567-b48b-b096469d7a60.png"
+ },
+ "ground_canyon": {
+  "job": "b4e26912-b790-4f86-85dd-ef0f035562af",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_b4e26912-b790-4f86-85dd-ef0f035562af.png"
+ },
+ "ground_desert": {
+  "job": "84a1e0a1-f79a-4216-8745-e9fac976d964",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072937_84a1e0a1-f79a-4216-8745-e9fac976d964.png"
+ },
+ "ground_fairy": {
+  "job": "f872413f-ccb4-4704-9223-979a334509ae",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_f872413f-ccb4-4704-9223-979a334509ae.png"
+ },
+ "ground_forest": {
+  "job": "76dd3ccf-6f24-4bde-ac1f-0d9fb08db112",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_76dd3ccf-6f24-4bde-ac1f-0d9fb08db112.png"
+ },
+ "ground_graveyard": {
+  "job": "e06f921d-ed0a-48a1-bbde-c00067b58aae",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072937_e06f921d-ed0a-48a1-bbde-c00067b58aae.png"
+ },
+ "ground_hell": {
+  "job": "c3968b72-596f-42ff-9ae3-5cc7fda7f55a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073238_c3968b72-596f-42ff-9ae3-5cc7fda7f55a.png"
+ },
+ "ground_meadow": {
+  "job": "56714c82-a7dc-424a-bb8e-4a7ff294ab91",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_56714c82-a7dc-424a-bb8e-4a7ff294ab91.png"
+ },
+ "ground_orcfort": {
+  "job": "ef913f79-eaa0-425e-82b0-3838d985f0f8",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072938_ef913f79-eaa0-425e-82b0-3838d985f0f8.png"
+ },
+ "ground_ruins": {
+  "job": "c5dc8afa-b9b7-437b-b359-7b943fb34b23",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072937_c5dc8afa-b9b7-437b-b359-7b943fb34b23.png"
+ },
+ "ground_snow": {
+  "job": "3bc82505-26f0-4570-b65c-83bd1a6a48e6",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_3bc82505-26f0-4570-b65c-83bd1a6a48e6.png"
+ },
+ "ground_swamp": {
+  "job": "b9928c89-2569-4fb0-b68e-37e19ecc47a5",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072937_b9928c89-2569-4fb0-b68e-37e19ecc47a5.png"
+ },
+ "ground_volcanic": {
+  "job": "6ec29eea-ce9f-4aa0-8a8a-f5cc8017d123",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_6ec29eea-ce9f-4aa0-8a8a-f5cc8017d123.png"
+ },
+ "ground_wasteland": {
+  "job": "5efdd110-5fc7-4e53-a81d-22223ceeeade",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072939_5efdd110-5fc7-4e53-a81d-22223ceeeade.png"
+ },
+ "icons_armor_a": {
+  "job": "9a6f2f84-68be-4f9a-9c17-c1ad375148f2",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105246_9a6f2f84-68be-4f9a-9c17-c1ad375148f2.png"
+ },
+ "icons_armor_b": {
+  "job": "76455777-5be0-4116-ac98-3a40c4b30967",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105246_76455777-5be0-4116-ac98-3a40c4b30967.png"
+ },
+ "icons_consumables": {
+  "job": "fd1b6e41-ee23-40e6-8a06-97cdb86134e2",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_fd1b6e41-ee23-40e6-8a06-97cdb86134e2.png"
+ },
+ "icons_sets": {
+  "job": "eba8ad98-47e2-4190-90cf-6e1aadf20c96",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105246_eba8ad98-47e2-4190-90cf-6e1aadf20c96.png"
+ },
+ "icons_sets_b": {
+  "job": "a076d341-af8d-4b0b-b6fd-6c1d622c0d9a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105245_a076d341-af8d-4b0b-b6fd-6c1d622c0d9a.png"
+ },
+ "icons_skills_a": {
+  "job": "c9e69b13-64dd-45a6-a2d2-c4a6a41a6f54",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105246_c9e69b13-64dd-45a6-a2d2-c4a6a41a6f54.png"
+ },
+ "icons_skills_b": {
+  "job": "bee4a077-b78e-4ace-a85b-26733aef7587",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105246_bee4a077-b78e-4ace-a85b-26733aef7587.png"
+ },
+ "icons_skills_c": {
+  "job": "b2f9510a-72f6-4472-a420-5d665c8a6d6f",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105657_b2f9510a-72f6-4472-a420-5d665c8a6d6f.png"
+ },
+ "icons_status_b": {
+  "job": "f95786b7-bd3e-43ff-9fb5-c9d3cea392f8",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105657_f95786b7-bd3e-43ff-9fb5-c9d3cea392f8.png"
+ },
+ "icons_staves_daggers": {
+  "job": "a8ebea5f-23c0-4260-8a7f-b6ef3dd512fb",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105246_a8ebea5f-23c0-4260-8a7f-b6ef3dd512fb.png"
+ },
+ "icons_swords": {
+  "job": "62af9ef5-f542-4672-a102-3f41eb231849",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105247_62af9ef5-f542-4672-a102-3f41eb231849.png"
+ },
+ "mon_01_sap_blob": {
+  "job": "623ac63c-081d-4167-bf64-ff3ebd1e185f",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_623ac63c-081d-4167-bf64-ff3ebd1e185f.png"
+ },
+ "mon_02_grak_raider": {
+  "job": "d3c510dc-ba12-4e08-af27-cde81c4aa67e",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_d3c510dc-ba12-4e08-af27-cde81c4aa67e.png"
+ },
+ "mon_03_wild_dog": {
+  "job": "3f03105d-1789-40a0-bb27-4d0db214546a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_3f03105d-1789-40a0-bb27-4d0db214546a.png"
+ },
+ "mon_04_redcap": {
+  "job": "f58b9799-15d3-4c96-a567-b1a3462d1b46",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_f58b9799-15d3-4c96-a567-b1a3462d1b46.png"
+ },
+ "mon_05_grey_wolf": {
+  "job": "3fc0d933-85e4-42c3-99ff-f86ff7f8b778",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_3fc0d933-85e4-42c3-99ff-f86ff7f8b778.png"
+ },
+ "mon_06_brown_bear": {
+  "job": "dfff70e0-32e1-45ba-854b-3d7a118dc1b8",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_dfff70e0-32e1-45ba-854b-3d7a118dc1b8.png"
+ },
+ "mon_07_dew_blob": {
+  "job": "7d696cdf-71bc-4abe-bbf4-b54abb2222e3",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_7d696cdf-71bc-4abe-bbf4-b54abb2222e3.png"
+ },
+ "mon_08_grak_spearman": {
+  "job": "59604cef-314d-473b-adf3-a99f459a566a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065148_59604cef-314d-473b-adf3-a99f459a566a.png"
+ },
+ "mon_09_sand_scorpion": {
+  "job": "8d068572-d6a7-434e-a0ad-488ed3d96998",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_8d068572-d6a7-434e-a0ad-488ed3d96998.png"
+ },
+ "mon_10_armored_crab": {
+  "job": "4a0039c9-7ff5-4aaa-b86b-3d1bac6f39cf",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_4a0039c9-7ff5-4aaa-b86b-3d1bac6f39cf.png"
+ },
+ "mon_11_leaf_spirit": {
+  "job": "c75883b5-5210-405d-a22a-c746abcbe8fd",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_c75883b5-5210-405d-a22a-c746abcbe8fd.png"
+ },
+ "mon_12_grak_warrior": {
+  "job": "e5386f3f-a5d1-4251-bfc5-4b70b1b8d429",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_e5386f3f-a5d1-4251-bfc5-4b70b1b8d429.png"
+ },
+ "mon_13_bone_sentry": {
+  "job": "6bb2b5b4-a7e5-4b64-a8a6-20eaacc4d879",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_6bb2b5b4-a7e5-4b64-a8a6-20eaacc4d879.png"
+ },
+ "mon_14_frost_wolf": {
+  "job": "b3807ca4-b6ea-4d20-ac10-031d58a2461d",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_b3807ca4-b6ea-4d20-ac10-031d58a2461d.png"
+ },
+ "mon_15_ice_stoneborn": {
+  "job": "6d52bb71-844d-4dd8-8873-44233d387dd2",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_6d52bb71-844d-4dd8-8873-44233d387dd2.png"
+ },
+ "mon_16_mud_blob": {
+  "job": "1011cda8-ee41-4c31-bb5d-ebfebfff74f7",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065510_1011cda8-ee41-4c31-bb5d-ebfebfff74f7.png"
+ },
+ "mon_17_burrow_ant": {
+  "job": "e8baed40-95bf-489a-a185-bed692954a28",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_e8baed40-95bf-489a-a185-bed692954a28.png"
+ },
+ "mon_18_wraith": {
+  "job": "eb93f737-5fcd-49fa-8bc5-e311b45ee5ca",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_eb93f737-5fcd-49fa-8bc5-e311b45ee5ca.png"
+ },
+ "mon_19_ancient_stoneborn": {
+  "job": "ed68dd8d-8ee9-4692-be57-b6c4233d2ac7",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_ed68dd8d-8ee9-4692-be57-b6c4233d2ac7.png"
+ },
+ "mon_20_walking_dead": {
+  "job": "69e229dc-0a07-4efc-8bc1-e045b49464cd",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_69e229dc-0a07-4efc-8bc1-e045b49464cd.png"
+ },
+ "mon_21_oathbreaker": {
+  "job": "13f752d9-9763-4e75-9b64-55bc9faa749c",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_13f752d9-9763-4e75-9b64-55bc9faa749c.png"
+ },
+ "mon_22_shade_spider": {
+  "job": "9e3e8912-4817-45cf-b32e-224af1bd7aa1",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_9e3e8912-4817-45cf-b32e-224af1bd7aa1.png"
+ },
+ "mon_23_crimson_scorpion": {
+  "job": "a7e85d4b-2066-4fc1-aefe-78e074ffb82e",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_a7e85d4b-2066-4fc1-aefe-78e074ffb82e.png"
+ },
+ "mon_24_young_wyvern": {
+  "job": "830e1c6a-e385-4409-afa3-9538e8ebf198",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065905_830e1c6a-e385-4409-afa3-9538e8ebf198.png"
+ },
+ "mon_25_wyvern": {
+  "job": "2acde465-e823-42ec-a450-dfefb8353c26",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_2acde465-e823-42ec-a450-dfefb8353c26.png"
+ },
+ "mon_26_lava_stoneborn": {
+  "job": "3a02af71-f147-4cae-adcb-347d513269a0",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_3a02af71-f147-4cae-adcb-347d513269a0.png"
+ },
+ "mon_27_kaldun_hound": {
+  "job": "676383ca-33ff-4c7a-b739-ee3c88e7d739",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_676383ca-33ff-4c7a-b739-ee3c88e7d739.png"
+ },
+ "mon_28_kaldun_warrior": {
+  "job": "b57a448c-4866-41aa-8394-7c5f941817a1",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_b57a448c-4866-41aa-8394-7c5f941817a1.png"
+ },
+ "mon_29_moroz": {
+  "job": "c333ffe8-cff2-4f4c-8fb3-632c649e16ee",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_c333ffe8-cff2-4f4c-8fb3-632c649e16ee.png"
+ },
+ "mon_30_urgan": {
+  "job": "c4042808-9d86-4e55-b9ff-3dddaba8a982",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_c4042808-9d86-4e55-b9ff-3dddaba8a982.png"
+ },
+ "mon_31_severin": {
+  "job": "0acf7c17-3415-49fe-997c-b1049aabaa60",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_0acf7c17-3415-49fe-997c-b1049aabaa60.png"
+ },
+ "mon_32_burrow_queen": {
+  "job": "af9deb5a-c58f-46c2-acec-4c444f1b2f21",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070200_af9deb5a-c58f-46c2-acec-4c444f1b2f21.png"
+ },
+ "mon_33_zmaj": {
+  "job": "cb0b6fcb-33c0-4329-ab4c-9c8d0d71fbb5",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070956_cb0b6fcb-33c0-4329-ab4c-9c8d0d71fbb5.png"
+ },
+ "mon_34_gramok": {
+  "job": "af8495e0-b954-420f-bbff-d047316a529a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070958_af8495e0-b954-420f-bbff-d047316a529a.png"
+ },
+ "npc_anka": {
+  "job": "b03f8ece-7f0d-4ecf-ab6f-51821aab288b",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071826_b03f8ece-7f0d-4ecf-ab6f-51821aab288b.png"
+ },
+ "npc_bojan": {
+  "job": "17dfe50d-d383-4613-b1d8-7ba1af878001",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071826_17dfe50d-d383-4613-b1d8-7ba1af878001.png"
+ },
+ "npc_cat": {
+  "job": "8507591b-76c8-451e-b998-9db9fd02a747",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_8507591b-76c8-451e-b998-9db9fd02a747.png"
+ },
+ "npc_chicken": {
+  "job": "4d6bd656-5ca4-458a-ad2f-74f77401b02a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_072110_4d6bd656-5ca4-458a-ad2f-74f77401b02a.png"
+ },
+ "npc_danilo": {
+  "job": "0faa8fff-92ca-4d49-9c4e-017c174ff5dd",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071827_0faa8fff-92ca-4d49-9c4e-017c174ff5dd.png"
+ },
+ "npc_dobran": {
+  "job": "db20286b-a64f-4a02-b956-c53e0e93f296",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070956_db20286b-a64f-4a02-b956-c53e0e93f296.png"
+ },
+ "npc_dog": {
+  "job": "36fd40c4-43d5-471e-a32c-57b12924370e",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071826_36fd40c4-43d5-471e-a32c-57b12924370e.png"
+ },
+ "npc_goran": {
+  "job": "b3d59cfd-c070-4ac6-8cb7-9a2a9fe63891",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070957_b3d59cfd-c070-4ac6-8cb7-9a2a9fe63891.png"
+ },
+ "npc_guard": {
+  "job": "18c248c4-85d4-495f-a51a-857f2ac63b02",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070957_18c248c4-85d4-495f-a51a-857f2ac63b02.png"
+ },
+ "npc_lada": {
+  "job": "9cc98342-a415-4eab-9125-4d47b81b1f04",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070956_9cc98342-a415-4eab-9125-4d47b81b1f04.png"
+ },
+ "npc_marfa": {
+  "job": "6247a2e2-9284-400b-89b0-76dc31a1d73a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071827_6247a2e2-9284-400b-89b0-76dc31a1d73a.png"
+ },
+ "npc_mateo": {
+  "job": "905353ae-1867-4bdd-bdcd-c0d96e9661aa",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070957_905353ae-1867-4bdd-bdcd-c0d96e9661aa.png"
+ },
+ "npc_milena": {
+  "job": "819964a5-a646-4a2b-9fa0-b59dde2329d7",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071827_819964a5-a646-4a2b-9fa0-b59dde2329d7.png"
+ },
+ "npc_misha": {
+  "job": "9bb2d023-ce1a-4f59-a33c-4da8a64d37ab",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071826_9bb2d023-ce1a-4f59-a33c-4da8a64d37ab.png"
+ },
+ "npc_vesna": {
+  "job": "7f49e232-1032-4a28-919f-de802af00e05",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_071826_7f49e232-1032-4a28-919f-de802af00e05.png"
+ },
+ "npc_yaro": {
+  "job": "2ba58c6c-351f-45c4-94e2-01f194114458",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_070958_2ba58c6c-351f-45c4-94e2-01f194114458.png"
+ },
+ "player_engraver_act": {
+  "job": "c167d57f-47fd-44b0-9288-d51c34f6c788",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065032_c167d57f-47fd-44b0-9288-d51c34f6c788.png"
+ },
+ "player_engraver_back": {
+  "job": "ebc092b6-1374-4ab6-8068-95d15a85d845",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065032_ebc092b6-1374-4ab6-8068-95d15a85d845.png"
+ },
+ "player_engraver_base": {
+  "job": "42a942b8-82c7-44ce-90d7-b52bf700d1c5",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_063947_42a942b8-82c7-44ce-90d7-b52bf700d1c5.png"
+ },
+ "player_engraver_cmb": {
+  "job": "bb6fd7d1-31e3-43ff-ad62-a761f1dd681e",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065032_bb6fd7d1-31e3-43ff-ad62-a761f1dd681e.png"
+ },
+ "player_hunter_act": {
+  "job": "eacf03fc-f9ef-4e73-864e-e7a22f44a979",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065032_eacf03fc-f9ef-4e73-864e-e7a22f44a979.png"
+ },
+ "player_hunter_back": {
+  "job": "a74769fc-cbe9-4e71-92c2-f1eb18666159",
+  "replaced": "77c493a3-6ba3-4cfd-b3ab-200a5e396fe3",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073238_a74769fc-cbe9-4e71-92c2-f1eb18666159.png"
+ },
+ "player_hunter_base": {
+  "job": "f1f8b7f3-753c-40fc-922f-f964cf02002a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_063947_f1f8b7f3-753c-40fc-922f-f964cf02002a.png"
+ },
+ "player_hunter_cmb": {
+  "job": "5695c3cc-5f2f-42f5-a9e3-206653903f21",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065032_5695c3cc-5f2f-42f5-a9e3-206653903f21.png"
+ },
+ "player_knight_act": {
+  "job": "8449d4c6-d6a9-47ea-b895-53d126bcaced",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_064144_8449d4c6-d6a9-47ea-b895-53d126bcaced.png"
+ },
+ "player_knight_back": {
+  "job": "85fe93cd-e394-426e-8a79-8670ef8308e6",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065032_85fe93cd-e394-426e-8a79-8670ef8308e6.png"
+ },
+ "player_knight_base": {
+  "job": "c8d36895-8b3c-4c20-8a7e-9551a02dac5d",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_063947_c8d36895-8b3c-4c20-8a7e-9551a02dac5d.png"
+ },
+ "player_knight_cmb": {
+  "job": "b445804d-b891-437a-b9a8-13f44bbc7f6f",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_065033_b445804d-b891-437a-b9a8-13f44bbc7f6f.png"
+ },
+ "props_camp": {
+  "job": "11b3c891-75c1-4833-ad92-64ec8ae8005c",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_11b3c891-75c1-4833-ad92-64ec8ae8005c.png"
+ },
+ "props_magic": {
+  "job": "036ad823-1354-4660-a82f-fc1b96fe764c",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_036ad823-1354-4660-a82f-fc1b96fe764c.png"
+ },
+ "props_misc": {
+  "job": "f35691d8-4e29-4603-b0fd-5094a8b8324b",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_f35691d8-4e29-4603-b0fd-5094a8b8324b.png"
+ },
+ "props_plants": {
+  "job": "1c759142-233c-45da-9920-a256f3b4bfaa",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_1c759142-233c-45da-9920-a256f3b4bfaa.png"
+ },
+ "props_rocks_a": {
+  "job": "24bd3c27-34ce-44d4-87bf-aa59f5439199",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_24bd3c27-34ce-44d4-87bf-aa59f5439199.png"
+ },
+ "props_rocks_b": {
+  "job": "9c21fef0-e133-44d2-b1d3-882565df71c9",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_9c21fef0-e133-44d2-b1d3-882565df71c9.png"
+ },
+ "props_ruins": {
+  "job": "83dd8e0f-e9ef-407a-8d11-54f403f60643",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_83dd8e0f-e9ef-407a-8d11-54f403f60643.png"
+ },
+ "props_town": {
+  "job": "d1773351-2331-4231-b5d2-86dae3c38beb",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_d1773351-2331-4231-b5d2-86dae3c38beb.png"
+ },
+ "props_trees_a": {
+  "job": "409a7740-fbf4-48c6-8bf9-9a82efe33bcb",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073237_409a7740-fbf4-48c6-8bf9-9a82efe33bcb.png"
+ },
+ "props_trees_b": {
+  "job": "85cbad6e-0be2-4f1f-8ce1-d411f302457e",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104202_85cbad6e-0be2-4f1f-8ce1-d411f302457e.png"
+ },
+ "roof_red": {
+  "job": "1492271c-7309-49fd-99e0-a66acb24f989",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_1492271c-7309-49fd-99e0-a66acb24f989.png"
+ },
+ "roof_slate": {
+  "job": "cce04269-594d-45a1-a0cf-dd0980ee0c51",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_cce04269-594d-45a1-a0cf-dd0980ee0c51.png"
+ },
+ "town_cobble": {
+  "job": "126b37fb-ef97-437b-9b13-6626dd07f702",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073237_126b37fb-ef97-437b-9b13-6626dd07f702.png"
+ },
+ "town_dirt": {
+  "job": "2b384601-6311-4e9a-abf1-14d974543ff9",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073237_2b384601-6311-4e9a-abf1-14d974543ff9.png"
+ },
+ "town_flowerbed": {
+  "job": "0fabfb23-4524-4b74-ae45-e5b104c7a528",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073237_0fabfb23-4524-4b74-ae45-e5b104c7a528.png"
+ },
+ "town_plaza": {
+  "job": "5e384b24-8f47-40bb-977b-2ae9ec2555c1",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073237_5e384b24-8f47-40bb-977b-2ae9ec2555c1.png"
+ },
+ "town_stone": {
+  "job": "81c915b8-acac-43e8-a95d-6bb9c262a636",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_073237_81c915b8-acac-43e8-a95d-6bb9c262a636.png"
+ },
+ "ui_cursors": {
+  "job": "e2f86fea-e171-41a9-a231-b005769c7ff1",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105921_e2f86fea-e171-41a9-a231-b005769c7ff1.png"
+ },
+ "ui_ornaments": {
+  "job": "241702fc-1b7e-4669-8f46-ea309c944f64",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105922_241702fc-1b7e-4669-8f46-ea309c944f64.png"
+ },
+ "ui_panel_tex": {
+  "job": "1455c13b-9a9c-4076-9164-2b3baceb37e1",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_105922_1455c13b-9a9c-4076-9164-2b3baceb37e1.png"
+ },
+ "wall_plaster": {
+  "job": "21380519-916b-4217-b6af-0587e0d7e16a",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_21380519-916b-4217-b6af-0587e0d7e16a.png"
+ },
+ "wall_stone": {
+  "job": "fe4ff37e-bfb1-46a2-a9a7-9bbeb8080d5e",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_fe4ff37e-bfb1-46a2-a9a7-9bbeb8080d5e.png"
+ },
+ "wall_town": {
+  "job": "b11a1ab3-b6fe-48eb-81ee-461c20ee8ac7",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_b11a1ab3-b6fe-48eb-81ee-461c20ee8ac7.png"
+ },
+ "wood_planks": {
+  "job": "7d09f9e7-a434-4020-a0ff-dce4b24909e7",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_7d09f9e7-a434-4020-a0ff-dce4b24909e7.png"
+ }
+}

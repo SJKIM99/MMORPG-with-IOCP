@@ -32,4 +32,5 @@ private:
 	static inline float s_fogStart = 5.8f, s_fogEnd = 10.5f;
 	int m_locPalA = -1, m_locPalB = -1, m_locPalC = -1;
 	int m_locTown = -1, m_locNoise = -1, m_locTownOrigin = -1, m_locTownSize = -1;
+	int m_locGround = -1, m_locGroundOn = -1, m_locGroundSize = -1;
 };

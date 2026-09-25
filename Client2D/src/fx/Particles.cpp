@@ -1,6 +1,7 @@
 #include "fx/Particles.h"
 #include "render/Draw.h"
 #include "render/Assets.h"
+#include "render/FxArt.h"
 #include "core/Util.h"
 
 #include <cmath>
@@ -22,6 +23,25 @@ namespace fx
 		Particle& p = m_parts.back();
 		p.seed = util::RandF(0.f, 100.f);
 		return p;
+	}
+
+	Particle* EmitTex(int fxId, Vector2 iso, float z, float size0, float size1, float life, Color c0, Color c1, bool additive)
+	{
+		const Texture2D* t = fxart::Get(static_cast<fxart::Id>(fxId));
+		if (!t) return nullptr;
+		Particle& p = Particles().Emit();
+		p.pos = iso;
+		p.z = z;
+		p.life = p.maxLife = life;
+		p.size0 = size0;
+		p.size1 = size1;
+		p.c0 = c0;
+		p.c1 = c1;
+		p.shape = Shape::Tex;
+		p.tex = t;
+		p.aspect = t->height > 0 ? static_cast<float>(t->width) / static_cast<float>(t->height) : 1.f;
+		p.additive = additive;
+		return &p;
 	}
 
 	void ParticleSystem::Update(float dt)
@@ -83,7 +103,12 @@ namespace fx
 				if (p.additive != additive)
 					continue;
 				const float t = 1.f - util::Clamp01(p.life / p.maxLife);
-				const float size = util::Lerp(p.size0, p.size1, t);
+				float size = util::Lerp(p.size0, p.size1, t);
+				if (p.pop > 0.f)
+				{
+					const float age = p.maxLife - p.life;
+					if (age < p.pop) size *= util::EaseOutBack(age / p.pop, 2.2f);
+				}
 				if (size <= 0.2f)
 					continue;
 				Color c = util::Mix(p.c0, p.c1, t);
@@ -92,7 +117,8 @@ namespace fx
 				c.a = static_cast<unsigned char>(c.a * fade);
 				if (c.a == 0)
 					continue;
-				gfx::SetDepth(p.pos.y / gfx::kHalfH + 0.35f);
+				if (p.ground) gfx::SetDepthRaw(-0.965f);
+				else gfx::SetDepth(p.pos.y / gfx::kHalfH + 0.35f);
 				const Vector2 s{ p.pos.x, p.pos.y - p.z };
 				switch (p.shape)
 				{
@@ -131,6 +157,13 @@ namespace fx
 				}
 				case Shape::Flake:
 					gfx::Circle(s, size * 0.5f, c);
+					break;
+				case Shape::Tex:
+					if (!p.tex) break;
+					if (p.squash != 1.f)
+						gfx::TexQuadGround(*p.tex, s, Vector2{ size * p.aspect * (p.flipX ? -1.f : 1.f), size }, p.rot, p.squash, c);
+					else
+						gfx::TexQuad(*p.tex, s, Vector2{ size * p.aspect * (p.flipX ? -1.f : 1.f), size }, p.rot, c);
 					break;
 				case Shape::Coin:
 				{

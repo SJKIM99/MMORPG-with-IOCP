@@ -1,4 +1,5 @@
 #include "render/Actors.h"
+#include "render/ActorSprites.h"
 #include "render/Draw.h"
 #include "render/Icons.h"
 #include "render/Props.h"
@@ -995,6 +996,7 @@ namespace actors
 
 	void DrawPlayer(const Pose& p, const PlayerLook& look)
 	{
+		if (actorspr::DrawPlayer(p, look)) return;   // 그린 동작판이 있으면 그것으로
 		switch (look.cls)
 		{
 		case 1: DrawRuneCaster(p, look); break;
@@ -1688,6 +1690,7 @@ namespace actors
 
 	void DrawMonster(const Pose& p, const MonsterTableRow& row)
 	{
+		if (actorspr::DrawMonster(p, row)) return;
 		Rig g = MakeRig(p, row.scale / 100.f);
 		const Color c1 = Rgb(row.color1), c2 = Rgb(row.color2);
 		// 몸이 쓰러지는 대신 납작해지는 종류
@@ -1730,6 +1733,7 @@ namespace actors
 
 	void DrawNpc(const Pose& p, const WorldData::NpcRow& npc)
 	{
+		if (actorspr::DrawNpc(p, npc)) return;
 		using WorldData::NpcKind;
 		Rig g = MakeRig(p);
 		const Walk w = WalkOf(p);

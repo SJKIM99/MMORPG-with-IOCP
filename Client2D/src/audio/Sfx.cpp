@@ -160,28 +160,44 @@ namespace sfx
 			{ Buf b(0.2f); Tone(b, 0, 0.18f, Osc::Square, Const(150), 0.6f, 0.005f, 12.f, 18.f, 0.05f); Tone(b, 0, 0.18f, Osc::Square, Const(113), 0.5f, 0.005f, 12.f); Load(Id::Error, b, 0.3f); }
 
 			// ── 전투 ──
-			{ Buf b(0.22f); Noise(b, 0, 0.2f, [](float u) { return 400.f + 3500.f * std::sin(u * 3.14159f); }, 1.f, 0.03f, 9.f, 300.f); Load(Id::Swing, b, 0.45f); }
+			// 휘두름: 칼바람이 귀를 스치듯(대역이 올라갔다 내려오고, 끝에 짧은 쉿)
 			{
-				Buf b(0.18f);
-				Tone(b, 0, 0.14f, Osc::Sine, ExpSweep(140, 55), 1.f, 0.001f, 22.f);
-				Noise(b, 0, 0.05f, Const(2600), 0.9f, 0.f, 60.f);
-				Tone(b, 0, 0.04f, Osc::Square, ExpSweep(900, 300), 0.15f, 0.f, 70.f);
-				Load(Id::Hit, b, 0.7f);
+				Buf b(0.24f);
+				Noise(b, 0, 0.22f, [](float u) { return 500.f + 4200.f * std::sin(u * 3.14159f); }, 1.f, 0.035f, 8.f, 350.f);
+				Noise(b, 0.06f, 0.1f, Sweep(7000, 3000), 0.35f, 0.01f, 30.f, 2500.f);
+				Load(Id::Swing, b, 0.45f);
 			}
+			// 타격 — 네 겹: ①딱(3ms 고역 딸깍) ②퍽(낮은 몸통 쿵) ③살·갑옷 부딪는 바삭함 ④칼날의 짧은 쇳소리
 			{
-				Buf b(0.35f);
-				Tone(b, 0, 0.3f, Osc::Sine, ExpSweep(120, 38), 1.f, 0.001f, 11.f);
-				Noise(b, 0, 0.1f, Sweep(5000, 800), 1.1f, 0.f, 28.f);
-				Tone(b, 0.005f, 0.25f, Osc::Sine, Const(2450), 0.25f, 0.f, 14.f);
-				Tone(b, 0.005f, 0.25f, Osc::Sine, Const(3710), 0.15f, 0.f, 18.f);
-				Load(Id::HitHeavy, b, 0.85f);
+				Buf b(0.24f);
+				Noise(b, 0, 0.006f, Const(9500), 1.2f, 0.f, 380.f, 2200.f);
+				Tone(b, 0, 0.18f, Osc::Sine, ExpSweep(185, 50), 1.15f, 0.001f, 19.f);
+				Noise(b, 0.002f, 0.07f, Sweep(3400, 900), 0.85f, 0.001f, 42.f, 280.f);
+				Tone(b, 0.003f, 0.09f, Osc::Tri, ExpSweep(1500, 700), 0.13f, 0.f, 45.f);
+				Tone(b, 0.004f, 0.12f, Osc::Sine, Const(2830), 0.07f, 0.f, 32.f);
+				Load(Id::Hit, b, 0.78f);
 			}
+			// 강타 · 치명타: 위에 땅울림(서브 베이스) · 긴 꼬리 · 금속 배음 셋
 			{
-				Buf b(0.4f);
-				Noise(b, 0, 0.08f, Const(3000), 1.f, 0.f, 40.f);
-				Tone(b, 0.02f, 0.3f, Osc::Square, ExpSweep(620, 140), 0.35f, 0.002f, 9.f);
-				Tone(b, 0.02f, 0.3f, Osc::Sine, ExpSweep(310, 70), 0.6f, 0.002f, 8.f);
-				Load(Id::Kill, b, 0.55f);
+				Buf b(0.45f);
+				Noise(b, 0, 0.008f, Const(10000), 1.4f, 0.f, 300.f, 1800.f);
+				Tone(b, 0, 0.38f, Osc::Sine, ExpSweep(150, 38), 1.2f, 0.001f, 9.5f);
+				Tone(b, 0.002f, 0.4f, Osc::Sine, Const(47), 0.7f, 0.004f, 7.f);
+				Noise(b, 0.002f, 0.14f, Sweep(5200, 600), 1.2f, 0.f, 22.f, 180.f);
+				Tone(b, 0.005f, 0.3f, Osc::Sine, Const(2450), 0.22f, 0.f, 13.f);
+				Tone(b, 0.005f, 0.3f, Osc::Sine, Const(3710), 0.14f, 0.f, 16.f);
+				Tone(b, 0.005f, 0.22f, Osc::Sine, Const(5230), 0.08f, 0.f, 22.f);
+				Load(Id::HitHeavy, b, 0.92f);
+			}
+			// 처치: 부서짐 + 낮은 쿵 + 내려가는 음(쓰러짐이 귀로 들린다)
+			{
+				Buf b(0.5f);
+				Noise(b, 0, 0.01f, Const(9000), 1.2f, 0.f, 250.f, 1500.f);
+				Noise(b, 0, 0.12f, Sweep(4200, 700), 1.f, 0.f, 26.f, 200.f);
+				Tone(b, 0, 0.35f, Osc::Sine, ExpSweep(120, 36), 0.9f, 0.002f, 8.f);
+				Tone(b, 0.02f, 0.3f, Osc::Square, ExpSweep(620, 140), 0.3f, 0.002f, 9.f);
+				Tone(b, 0.02f, 0.34f, Osc::Sine, ExpSweep(310, 70), 0.55f, 0.002f, 7.f);
+				Load(Id::Kill, b, 0.62f);
 			}
 			{
 				Buf b(0.2f);

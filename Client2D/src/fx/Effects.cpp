@@ -2,6 +2,7 @@
 #include "fx/Particles.h"
 #include "render/Draw.h"
 #include "render/Assets.h"
+#include "render/FxArt.h"
 #include "ui/Font.h"
 #include "core/Util.h"
 
@@ -88,6 +89,27 @@ namespace fx
 			p.c0 = c; p.c1 = WithA(c, 0.f);
 			p.rot = RandF(0.f, 6.28f); p.vrot = RandF(-1.f, 1.f);
 			p.shape = Shape::Smoke;
+			return p;
+		}
+
+		// ── 그린 효과(fxart) 한 장 — 없으면 아무 일도 없다(절차적 효과가 이미 있다) ──
+		Particle* Tx(fxart::Id id, Vector2 iso, float z, float s0, float s1, float life, Color c0, Color c1, bool additive,
+			float rot = 0.f, float vrot = 0.f, float pop = 0.f)
+		{
+			Particle* p = EmitTex(id, iso, z, s0, s1, life, c0, c1, additive);
+			if (p) { p->rot = rot; p->vrot = vrot; p->pop = pop; }
+			return p;
+		}
+		// 바닥에 눕힌 효과(인장 · 충격파): 캐릭터 발밑에
+		Particle* TxGround(fxart::Id id, Vector2 iso, float s0, float s1, float life, Color c0, Color c1, bool additive, float rot = 0.f, float vrot = 0.f)
+		{
+			Particle* p = Tx(id, iso, 0.f, s0, s1, life, c0, c1, additive, rot, vrot);
+			if (p)
+			{
+				p->ground = true;
+				// 위에서 본 원(각인 · 후광)만 눕힌다 — 불 고리 · 충격파는 그림이 이미 비스듬하다
+				p->squash = (id == fxart::FireRing || id == fxart::HitRing || id == fxart::Halo) ? 1.f : 0.5f;
+			}
 			return p;
 		}
 
@@ -185,6 +207,19 @@ namespace fx
 	void Effects::Slash(Vector2 iso, float height, float dirSign, bool back, Color color, float scale)
 	{
 		m_slashes.push_back({ iso, height, dirSign, back, 0.f, 0.22f, scale, color });
+		// 그린 칼 궤적: 휘두르는 쪽으로 튀어나왔다가 늘어나며 사라진다
+		const Vector2 at{ iso.x + dirSign * 16.f * scale, iso.y + 2.f };
+		const Color c0 = util::Mix(Rgb(0xFFFFFF, 245), color, 0.35f);
+		if (Particle* s = Tx(scale >= 1.15f ? fxart::SlashHeavy : fxart::SlashArc, at, height, 64.f * scale, 112.f * scale, 0.2f,
+			c0, WithA(color, 0.f), true, dirSign * (back ? -0.45f : 0.25f), dirSign * 1.6f, 0.05f))
+			s->flipX = dirSign > 0.f;   // 그림의 초승달은 왼쪽으로 볼록 — 오른쪽을 볼 때 뒤집어 앞으로 볼록하게
+	}
+
+	void Effects::ClawMarks(Vector2 iso, float height, float dirSign, Color color)
+	{
+		// 짐승 · 용 · 벌레의 할퀴기: 세 줄 자국이 번쩍
+		if (Particle* s = Tx(fxart::Claw, iso, height * 0.55f, 54.f, 86.f, 0.24f, util::Mix(Rgb(0xFFF0E0, 250), color, 0.3f), WithA(color, 0.f), true, dirSign * 0.35f, 0.f, 0.05f))
+			s->flipX = dirSign < 0.f;
 	}
 
 	void Effects::Flash(Color color, float strength, float duration)
@@ -203,6 +238,14 @@ namespace fx
 	void Effects::HitSpark(Vector2 iso, float height, Color color, bool crit, float dirSign)
 	{
 		const float z = height * 0.55f;
+		// 그린 타격 섬광: 맞는 순간 크게 튀어나온다 — 히트스톱 동안 이 한 장이 멈춰 보이는 것이 "손맛"의 핵심
+		if (crit)
+		{
+			Tx(fxart::HitCrit, iso, z, 80.f, 170.f, 0.28f, Rgb(0xFFFFFF, 255), Rgb(0xFFB040, 0), true, RandF(0.f, 6.28f), RandF(-2.f, 2.f), 0.06f);
+			Tx(fxart::HitRing, iso, z, 20.f, 100.f, 0.34f, Rgb(0xFFE6B0, 230), Rgb(0xFF9030, 0), true);
+		}
+		else
+			Tx(fxart::HitStar, iso, z, 48.f, 96.f, 0.17f, util::Mix(Rgb(0xFFFFFF, 245), Rgb(0xFFE0A0), 0.3f), Rgb(0xFFC060, 0), true, RandF(0.f, 6.28f), RandF(-3.f, 3.f), 0.04f);
 		const int n = crit ? 18 : 9;
 		for (int i = 0; i < n; ++i)
 		{
@@ -230,6 +273,19 @@ namespace fx
 	void Effects::DeathBurst(Vector2 iso, float height, Color c1, Color c2, float scale, bool boss)
 	{
 		const float z = height * 0.45f;
+		// 그린 연기 뭉치 + 바닥 충격파
+		for (int i = 0; i < (boss ? 7 : 3); ++i)
+		{
+			const float a = RandF(0.f, 6.28f), sp = RandF(15.f, 45.f) * scale;
+			if (Particle* s = Tx(fxart::Smoke, Vector2{ iso.x + std::cos(a) * 10.f, iso.y + std::sin(a) * 5.f }, z * RandF(0.4f, 1.1f),
+				44.f * scale, 120.f * scale, RandF(0.8f, 1.2f), util::Mix(Rgb(0xD8D0C8, 190), c1, 0.25f), Rgb(0x8A8278, 0), false, RandF(0.f, 6.28f), RandF(-0.8f, 0.8f)))
+			{
+				s->vel = Vector2{ std::cos(a) * sp, std::sin(a) * sp * 0.5f };
+				s->vz = RandF(10.f, 40.f);
+				s->drag = 1.4f;
+			}
+		}
+		TxGround(fxart::HitRing, iso, 20.f * scale, 95.f * scale, 0.4f, WithA(util::Shade(c1, 1.5f), 0.8f), WithA(c1, 0.f), true);
 		const int puffs = boss ? 28 : 12;
 		for (int i = 0; i < puffs; ++i)
 		{
@@ -257,6 +313,11 @@ namespace fx
 
 	void Effects::LevelUp(Vector2 iso)
 	{
+		Tx(fxart::PillarGold, iso, 150.f, 260.f, 330.f, 1.4f, Rgb(0xFFF0C0, 235), Rgb(0xFFC040, 0), true, 0.f, 0.f, 0.12f);
+		TxGround(fxart::Halo, iso, 24.f, 90.f, 0.9f, Rgb(0xFFE8A0, 230), Rgb(0xFFB030, 0), true);
+		for (int i = 0; i < 6; ++i)
+			if (Particle* g = Tx(fxart::Glint, Vector2{ iso.x + RandF(-40.f, 40.f), iso.y + RandF(-10.f, 10.f) }, RandF(20.f, 140.f), 10.f, 34.f, RandF(0.5f, 0.9f), Rgb(0xFFFFFF, 255), Rgb(0xFFD070, 0), true, RandF(0.f, 1.f), RandF(-3.f, 3.f)))
+				g->vz = RandF(20.f, 60.f);
 		Beam(iso, 70.f, 420.f, 1.4f, Rgb(0xFFD66A, 230));
 		Ring(iso, 10.f, 110.f, 0.7f, Rgb(0xFFE08A, 240), 6.f);
 		Ring(iso, 10.f, 170.f, 1.1f, Rgb(0xFFFFFF, 160), 3.f);
@@ -296,10 +357,14 @@ namespace fx
 			p.additive = true;
 		}
 		GlowP(iso, height * 0.5f, 30.f, 50.f, Rgb(0x6AFF8A, 120), 0.4f);
+		if (Particle* m = Tx(fxart::HealMotes, iso, height * 0.55f, 60.f, 96.f, 1.0f, Rgb(0xC8FFD0, 230), Rgb(0x6AFF8A, 0), true))
+			m->vz = 28.f;
 	}
 
 	void Effects::TeleportOut(Vector2 iso)
 	{
+		Tx(fxart::PillarTeal, iso, 120.f, 220.f, 260.f, 0.7f, Rgb(0xE0FAFF, 235), Rgb(0x4AB8FF, 0), true, 0.f, 0.f, 0.08f);
+		TxGround(fxart::RuneCircle, iso, 120.f, 60.f, 0.7f, Rgb(0xBFF0FF, 235), Rgb(0x4AB8FF, 0), true, 0.f, 3.f);
 		Beam(iso, 46.f, 360.f, 0.6f, Rgb(0x9AD8FF, 230));
 		Ring(iso, 40.f, 6.f, 0.4f, Rgb(0xBFE8FF, 220), 4.f);
 		for (int i = 0; i < 30; ++i)
@@ -320,6 +385,8 @@ namespace fx
 
 	void Effects::TeleportIn(Vector2 iso)
 	{
+		Tx(fxart::PillarTeal, iso, 120.f, 260.f, 220.f, 0.8f, Rgb(0xE0FAFF, 235), Rgb(0x4AB8FF, 0), true, 0.f, 0.f, 0.1f);
+		TxGround(fxart::RuneCircle, iso, 50.f, 130.f, 0.9f, Rgb(0xBFF0FF, 235), Rgb(0x4AB8FF, 0), true, 0.f, -2.f);
 		Beam(iso, 52.f, 380.f, 0.7f, Rgb(0xBFE8FF, 230));
 		Ring(iso, 6.f, 90.f, 0.5f, Rgb(0xBFE8FF, 220), 5.f);
 		for (int i = 0; i < 26; ++i)
@@ -377,6 +444,9 @@ namespace fx
 	{
 		if (success)
 		{
+			Tx(fxart::PillarGold, iso, 150.f, 250.f, 320.f, 1.2f, Rgb(0xFFFFFF, 240), Rgb(0x9AD8FF, 0), true, 0.f, 0.f, 0.1f);
+			for (int i = 0; i < 5; ++i)
+				Tx(fxart::Glint, Vector2{ iso.x + RandF(-30.f, 30.f), iso.y }, RandF(30.f, 120.f), 8.f, 40.f, RandF(0.4f, 0.8f), Rgb(0xFFFFFF, 255), Rgb(0x9AD8FF, 0), true, RandF(0.f, 1.f), RandF(-4.f, 4.f));
 			Beam(iso, 60.f, 400.f, 1.0f, Rgb(0x9AD8FF, 230));
 			Ring(iso, 10.f, 130.f, 0.6f, Rgb(0xBFE8FF, 240), 6.f);
 			for (int i = 0; i < 36; ++i)
@@ -384,6 +454,9 @@ namespace fx
 		}
 		else
 		{
+			for (int i = 0; i < 3; ++i)
+				if (Particle* s = Tx(fxart::ShadowSmoke, iso, RandF(20.f, 60.f), 50.f, 130.f, RandF(0.8f, 1.2f), Rgb(0xC8A0E0, 200), Rgb(0x3A2050, 0), false, RandF(0.f, 6.f), RandF(-1.f, 1.f)))
+					s->vz = RandF(20.f, 50.f);
 			for (int i = 0; i < 14; ++i)
 				Smoke(iso, RandF(20.f, 50.f), Rgb(0x5A3A6A), 16.f, 50.f, RandF(0.7f, 1.2f), Vector2{ RandF(-40.f, 40.f), RandF(-20.f, 20.f) }, RandF(20.f, 60.f));
 			for (int i = 0; i < 16; ++i)
@@ -420,6 +493,13 @@ namespace fx
 	void Effects::BossSlamImpact(Vector2 iso, int radiusTiles)
 	{
 		const float r = (radiusTiles + 0.5f) * 45.f;
+		TxGround(fxart::HitRing, iso, 20.f, r * 1.6f, 0.55f, Rgb(0xFFD8A0, 240), Rgb(0xFF8030, 0), true);
+		for (int i = 0; i < 4; ++i)
+		{
+			const float a = RandF(0.f, 6.28f);
+			if (Particle* d = Tx(fxart::Dirt, Vector2{ iso.x + std::cos(a) * r * 0.5f, iso.y + std::sin(a) * r * 0.25f }, 6.f, 60.f, 150.f, RandF(0.6f, 0.9f), Rgb(0xE0D0C0, 230), Rgb(0x8A7A6A, 0), false, RandF(-0.4f, 0.4f)))
+				d->vz = RandF(30.f, 80.f);
+		}
 		Ring(iso, 10.f, r * 1.6f, 0.5f, Rgb(0xFFB060, 240), 10.f);
 		Ring(iso, 10.f, r * 2.2f, 0.8f, Rgb(0xFFFFFF, 150), 5.f);
 		for (int i = 0; i < 36; ++i)
@@ -460,6 +540,15 @@ namespace fx
 	void Effects::Dust(Vector2 iso, float amount)
 	{
 		const int n = std::max(1, static_cast<int>(amount * 3.f));
+		// 그린 먼지(발걸음 · 착지): 한두 장이면 충분하다
+		if (amount >= 1.f || RandF() < 0.35f)
+			if (Particle* d = Tx(fxart::Dust, Vector2{ iso.x + RandF(-5.f, 5.f), iso.y + 2.f }, 3.f, 14.f * std::min(2.5f, 0.6f + amount * 0.4f), 34.f * std::min(2.5f, 0.6f + amount * 0.4f),
+				RandF(0.45f, 0.7f), Rgb(0xD8C8A8, 150), Rgb(0xB8A888, 0), false, RandF(0.f, 6.f), RandF(-0.5f, 0.5f)))
+			{
+				d->vel = Vector2{ RandF(-14.f, 14.f), RandF(-4.f, 4.f) };
+				d->vz = RandF(6.f, 16.f);
+				d->drag = 2.f;
+			}
 		for (int i = 0; i < n; ++i)
 			Smoke(Vector2{ iso.x + RandF(-6.f, 6.f), iso.y + RandF(-2.f, 2.f) }, 2.f, Rgb(0xC8B89A, 120), 6.f, 18.f, RandF(0.35f, 0.6f),
 				Vector2{ RandF(-20.f, 20.f), RandF(-6.f, 6.f) }, RandF(8.f, 22.f));
@@ -483,10 +572,15 @@ namespace fx
 			p.shape = Shape::Coin;
 		}
 		GlowP(iso, 12.f, 20.f, 40.f, Rgb(0xFFD84A, 180), 0.25f);
+		Tx(fxart::CoinSpray, iso, 22.f, 30.f, 70.f, 0.45f, Rgb(0xFFF4D0, 230), Rgb(0xFFC040, 0), true, 0.f, 0.f, 0.05f);
 	}
 
 	void Effects::LootSparkle(Vector2 iso, Color color)
 	{
+		if (RandF() < 0.5f)
+			if (Particle* g = Tx(fxart::Glint, Vector2{ iso.x + RandF(-10.f, 10.f), iso.y + RandF(-5.f, 5.f) }, RandF(6.f, 26.f), 6.f, 24.f, RandF(0.4f, 0.7f),
+				util::Shade(color, 1.6f), WithA(color, 0.f), true, RandF(0.f, 1.f), RandF(-2.f, 2.f)))
+				g->vz = RandF(10.f, 30.f);
 		Particle& p = Particles().Emit();
 		p.pos = { iso.x + RandF(-10.f, 10.f), iso.y + RandF(-5.f, 5.f) };
 		p.z = RandF(4.f, 20.f);

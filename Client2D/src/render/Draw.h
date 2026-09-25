@@ -50,11 +50,16 @@ namespace gfx
 	void SetAlpha(float alpha);
 	void ResetMod();
 	Color Mod(Color c);                 // 현재 변조 적용
+	[[nodiscard]] float Alpha();        // 현재 알파(SetAlpha)
+	[[nodiscard]] Color Tint();         // 현재 틴트(SetTint)
+	[[nodiscard]] float Flash();        // 현재 번쩍임 양
+	[[nodiscard]] Color FlashColor();
 
 	// ── 렌더 상태(배치를 비우고 바꾼다) ──
 	void Flush();
 	void DepthTest(bool on);
 	void DepthWrite(bool on);
+	[[nodiscard]] bool DepthWriteOn();
 	void Additive(bool on);
 	// 깊이 비교를 GREATER로(가려진 부분에만 그리기 — 실루엣). GlExtra.cpp
 	void DepthGreater(bool on);
@@ -85,10 +90,37 @@ namespace gfx
 	void FaceTri(P3 a, P3 b, P3 c, Color col);
 	// 축 정렬 상자: 보이는 세 면(윗면, 남(+Y)면, 동(+X)면)만 그린다.
 	void Box(float x0, float y0, float x1, float y1, float z0, float z1, Color top, Color south, Color east);
+	// 텍스처를 입힌 면(건물 벽 · 지붕 · 성벽). bl→br가 텍스처 가로(u), tl→bl이 세로(v, 위가 0).
+	// repU · repV = 면 전체에 텍스처가 몇 번 반복되는가. 반복마다 작은 면으로 나눠 텍스처 좌표를 0~1에 둔다
+	// (월드 셰이더가 텍스처 좌표의 정수부를 번쩍임 · 알파 테스트 표시로 쓰기 때문).
+	void FaceTex(const Texture2D& tex, P3 bl, P3 br, P3 tr, P3 tl, float repU, float repV, Color col);
+	// 텍스처 상자(윗면 · 남면 · 동면). 음영은 면마다 곱하는 색으로.
+	void BoxTex(const Texture2D& tex, float x0, float y0, float x1, float y1, float z0, float z1, float texUnit, Color top, Color south, Color east);
 	// 바닥 타일 마름모(데칼용, 현재 깊이)
 	void Diamond(float X, float Y, float scale, Color col);
 
 	// ── 텍스처 쿼드(현재 깊이) ──
 	void TexQuad(const Texture2D& tex, Vector2 center, Vector2 size, float rot, Color col);
 	void TexQuadSrc(const Texture2D& tex, Rectangle src, Vector2 center, Vector2 size, float rot, Color col);
+	// 바닥에 눕힌 텍스처(바닥 평면에서 rot만큼 돌린 뒤 세로를 squash배 — 아이소 바닥의 원 = 가로 2 : 세로 1)
+	void TexQuadGround(const Texture2D& tex, Vector2 center, Vector2 size, float rot, float squash, Color col);
+
+	// ── 그린 스프라이트(캐릭터 · 소품) ──
+	// 발(anchor)을 base에 놓고, 세로 띠 여섯 칸짜리 메시로 그린다 — 윗부분만 기울이기(lean) · 눌림(squash) ·
+	// 늘림(stretch) · 발 기준 회전(rot)을 비트는 데 쓴다. 현재 깊이 · 틴트 · 알파 · 번쩍임(SetFlash)을 따른다.
+	// 번쩍임은 정점 색이 아니라 텍스처 좌표의 정수부에 실어 월드 셰이더(SpriteShader)가 풀어 쓴다.
+	struct SpriteXform
+	{
+		float lean = 0.f;       // px: 머리가 앞(+) · 뒤(-)로 쏠리는 양(발은 고정)
+		float squash = 1.f;     // 세로 배율(발 기준)
+		float stretch = 1.f;    // 가로 배율(음수면 뒤집힌 것처럼 — 돌기 연출)
+		float rot = 0.f;        // 발 기준 회전(라디안, + = 앞으로 넘어짐)
+		Vector2 offset{};       // 발 위치 이동(px, 화면)
+		bool flip = false;      // 왼쪽을 보게(그림은 오른쪽을 보고 있다)
+		bool cutout = true;     // 알파 테스트(깊이를 쓰는 본 그림). 잔상 · 몸빛처럼 깊이를 안 쓰는 겹은 false — 가장자리가 부드럽다
+	};
+	void SpriteMesh(const Texture2D& tex, Rectangle src, Vector2 anchor, Vector2 base, float scale, const SpriteXform& xf);
+	// 번쩍임 색 팔레트(셰이더 uniform과 같은 순서) — SetFlashColor를 가장 가까운 색으로 옮긴다
+	inline constexpr int kFlashPaletteSize = 8;
+	const float* FlashPalette();   // rgb * 8
 }

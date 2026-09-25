@@ -34,6 +34,11 @@ uniform sampler2D uTown;
 uniform sampler2D uNoise;
 uniform vec2  uTownOrigin;
 uniform float uTownSize;
+uniform sampler2D uGround;     // painted ground atlas (5x4 cells of 512 + 32 wrap padding)
+uniform float uGroundOn;
+uniform vec2  uGroundSize;
+vec2 gDx;                      // screen derivatives of the tile uv (set once in main, uniform control flow)
+vec2 gDy;
 
 float nz(vec2 p) { return texture(uNoise, p).r; }
 float fbm(vec2 p)
@@ -87,8 +92,57 @@ float dots(vec2 uv, float scale, float density, float radius, out float pick)
     return 1.0 - smoothstep(radius * 0.6, radius, d);
 }
 
+// one cell of the ground atlas, repeated. p = continuous repeat coords, dp = its screen derivatives
+vec3 cellTex(int idx, vec2 p, vec2 dpx, vec2 dpy)
+{
+    vec2 org = vec2(float(idx % 5), float(idx / 5)) * 576.0 + 32.0;
+    vec2 g = org + fract(p) * 512.0;
+    vec2 dx = dpx * 512.0;
+    vec2 dy = dpy * 512.0;
+    float m = max(length(dx), length(dy));
+    if (m > 20.0) { float k = 20.0 / m; dx *= k; dy *= k; }   // stay inside the 32px padding at far zoom
+    return textureGrad(uGround, g / uGroundSize, dx / uGroundSize, dy / uGroundSize).rgb;
+}
+// painted ground: two rotated scales blended by noise so the repeat never lines up
+vec3 groundTex(int idx, vec2 uv)
+{
+    const float S1 = 0.2;
+    const float S2 = 0.149;
+    vec2 p1 = uv * S1;
+    vec2 p2 = vec2(uv.y, -uv.x) * S2 + vec2(0.37, 0.61);
+    vec3 a = cellTex(idx, p1, gDx * S1, gDy * S1);
+    vec3 b = cellTex(idx, p2, vec2(gDx.y, -gDx.x) * S2, vec2(gDy.y, -gDy.x) * S2);
+    float m = smoothstep(0.32, 0.68, nz(uv * 0.037 + vec2(0.13, 0.71)));
+    vec3 c = mix(a, b, m);
+    return c * (0.9 + 0.2 * nz(uv * 0.011 + vec2(0.4, 0.2)));
+}
+
 vec3 ground(int style, vec3 A, vec3 B, vec3 C, vec2 uv, vec2 cell, vec2 loc)
 {
+    if (uGroundOn > 0.5)
+    {
+        vec3 t = groundTex(style, uv);
+        float pk;
+        if (style == 4 || style == 14)       // molten cracks breathe
+        {
+            float hot = smoothstep(0.25, 0.6, t.r - t.b);
+            float pulse = sin(uTime * 2.0 + hashCell(floor(uv * 0.45)) * 6.28);
+            t += t * hot * pulse * 0.35;
+        }
+        else if (style == 5)                 // fairy specks twinkle
+        {
+            float sp = dots(uv, 3.0, 0.08, 0.1, pk);
+            float tw = 0.5 + 0.5 * sin(uTime * 3.0 + pk * 30.0);
+            t = mix(t, C, sp * (0.3 + 0.5 * tw));
+        }
+        else if (style == 2)                 // snow glints
+        {
+            float tw = hashCell(floor(uv * 6.0) + floor(uTime * 1.5));
+            float sp = dots(uv, 6.0, 0.05, 0.12, pk);
+            t += vec3(0.6, 0.7, 0.8) * sp * step(0.6, tw) * 0.5;
+        }
+        return t;
+    }
     float n = fbm(uv);
     float fine = nz(uv * 1.9);
     vec3 col = mix(A, B, smoothstep(0.3, 0.75, n));
@@ -213,6 +267,14 @@ int regionAt(vec2 p)
 
 vec3 townGround(int code, vec2 uv, vec2 cell, vec2 loc, vec3 grass)
 {
+    if (uGroundOn > 0.5)
+    {
+        if (code == 1 || code == 3) return groundTex(15, uv) * (code == 3 ? 0.86 : 1.0);
+        if (code == 2 || code == 8 || code == 10 || code == 12 || code == 13) return groundTex(16, uv);
+        if (code == 11) return groundTex(17, uv);
+        if (code == 4 || code == 5 || code == 6 || code == 7) return groundTex(19, uv) * 0.92;
+        return grass * vec3(1.03, 1.05, 1.0);
+    }
     float fine = nz(uv * 2.3);
     if (code == 1 || code == 3)       // road / gate: cobbles
     {
@@ -267,6 +329,8 @@ void main()
     vec2 uv = vec2((a + b) * 0.5, (b - a) * 0.5);   // continuous tile coords (centers at integers)
     vec2 cell = floor(uv + 0.5);
     vec2 loc = uv - cell;                           // [-0.5, 0.5]
+    gDx = dFdx(uv);
+    gDy = dFdy(uv);
 
     if (cell.x < 0.0 || cell.y < 0.0 || cell.x > 1999.0 || cell.y > 1999.0)
     {
@@ -306,7 +370,7 @@ void main()
         float fade = 1.0 - smoothstep(60.0, 140.0, distOut);
         float road = max((1.0 - smoothstep(1.6, 2.4, hx)) * step(abs(uv.y - tc.y), abs(uv.x - tc.x)),
                          (1.0 - smoothstep(1.6, 2.4, vx)) * step(abs(uv.x - tc.x), abs(uv.y - tc.y)));
-        vec3 dirt = vec3(0.55, 0.45, 0.33) * (0.9 + nz(uv * 1.3) * 0.2);
+        vec3 dirt = uGroundOn > 0.5 ? groundTex(18, uv) : vec3(0.55, 0.45, 0.33) * (0.9 + nz(uv * 1.3) * 0.2);
         col = mix(col, dirt, road * fade * 0.9);
     }
 

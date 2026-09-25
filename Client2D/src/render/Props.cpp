@@ -1,5 +1,7 @@
 #include "render/Props.h"
 #include "render/Draw.h"
+#include "render/Sprites.h"
+#include "render/EnvArt.h"
 #include "core/Util.h"
 
 #include <cmath>
@@ -17,6 +19,27 @@ namespace props
 
 		inline Vector2 Off(Vector2 b, float dx, float dy) { return Vector2{ b.x + dx, b.y + dy }; }
 		inline float H01(int x, int y, uint32_t salt) { return util::Hash01(x, y, salt); }
+
+		// ── 그린 소품(Higgsfield) ─────────────────────────────────────────────────
+		// 발을 base에, 키 worldH(px)로. 바람(lean)에 윗부분만 흔들리고, 칸마다 좌우를 뒤집어 같은 그림이 줄지어 보이지 않게 한다.
+		// widthPx > 0이면 키 대신 너비로 맞춘다(여러 칸짜리 구조물). 그림이 없으면 false — 예전 도형으로 그린다.
+		bool PropSprite(const char* name, Vector2 base, float worldH, float lean, bool flip, Color mul = WHITE, float widthPx = 0.f)
+		{
+			const sprites::Sprite* s = sprites::Find(name);
+			if (!s) return false;
+			const Color t0 = gfx::Tint();
+			const bool tinted = mul.r != 255 || mul.g != 255 || mul.b != 255 || mul.a != 255;
+			if (tinted)
+				gfx::SetTint(Color{ static_cast<unsigned char>(t0.r * mul.r / 255), static_cast<unsigned char>(t0.g * mul.g / 255),
+					static_cast<unsigned char>(t0.b * mul.b / 255), static_cast<unsigned char>(t0.a * mul.a / 255) });
+			gfx::SpriteXform xf;
+			xf.lean = lean;
+			xf.flip = flip;
+			const float h = widthPx > 0.f ? widthPx * s->ref / std::max(1.f, s->src.width) : worldH;
+			sprites::Draw(*s, base, h, xf);
+			if (tinted) gfx::SetTint(t0);
+			return true;
+		}
 
 		// ── 기본 조각 ────────────────────────────────────────────────────────────
 		void Trunk(Vector2 base, float w, float h, Color c, float lean = 0.f)
@@ -384,22 +407,38 @@ namespace props
 			return Shade(base, 1.f + v);
 		}
 
+		// 그린 성벽 텍스처가 있으면 돌 면에 입힌다(없으면 단색 상자 + 줄눈)
+		const Texture2D* WallTex() { return envart::Get(envart::Tex::TownWall); }
+
+		void StoneBox(float x0, float y0, float x1, float y1, float z0, float z1, Color st, float unit = 1.1f)
+		{
+			if (const Texture2D* tex = WallTex())
+			{
+				// 텍스처 색 위에 밝기만 곱한다(윗면 밝게, 동쪽 면 어둡게 — 빛은 왼쪽 위에서)
+				const float v = std::min(1.f, (st.r + st.g + st.b) / (3.f * 150.f));
+				gfx::BoxTex(*tex, x0, y0, x1, y1, z0, z1, unit, Shade(WHITE, 1.0f * v), Shade(WHITE, 0.86f * v), Shade(WHITE, 0.66f * v));
+			}
+			else
+				gfx::Box(x0, y0, x1, y1, z0, z1, Shade(st, 1.18f), Shade(st, 0.92f), Shade(st, 0.72f));
+		}
+
 		void Wall(int x, int y, bool tall)
 		{
 			const float X = static_cast<float>(x), Y = static_cast<float>(y);
 			const Color st = StoneVar(x, y, Rgb(0x9C958A));
 			const float h = tall ? 2.35f : 1.55f;
-			gfx::Box(X - 0.5f, Y - 0.5f, X + 0.5f, Y + 0.5f, 0.f, h, Shade(st, 1.18f), Shade(st, 0.92f), Shade(st, 0.72f));
-			// 돌 줄눈
-			for (int i = 1; i < (tall ? 5 : 3); ++i)
-			{
-				const float z = h * i / (tall ? 5.f : 3.f);
-				gfx::Face({ X - 0.5f, Y + 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z + 0.02f }, { X - 0.5f, Y + 0.5f, z + 0.02f }, Shade(st, 0.7f));
-				gfx::Face({ X + 0.5f, Y - 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z + 0.02f }, { X + 0.5f, Y - 0.5f, z + 0.02f }, Shade(st, 0.55f));
-			}
+			StoneBox(X - 0.5f, Y - 0.5f, X + 0.5f, Y + 0.5f, 0.f, h, st);
+			// 돌 줄눈(텍스처가 없을 때만)
+			if (!WallTex())
+				for (int i = 1; i < (tall ? 5 : 3); ++i)
+				{
+					const float z = h * i / (tall ? 5.f : 3.f);
+					gfx::Face({ X - 0.5f, Y + 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z + 0.02f }, { X - 0.5f, Y + 0.5f, z + 0.02f }, Shade(st, 0.7f));
+					gfx::Face({ X + 0.5f, Y - 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z - 0.02f }, { X + 0.5f, Y + 0.5f, z + 0.02f }, { X + 0.5f, Y - 0.5f, z + 0.02f }, Shade(st, 0.55f));
+				}
 			// 흉벽(총안)
 			if (!tall && (x + y) % 2 == 0)
-				gfx::Box(X - 0.3f, Y - 0.3f, X + 0.3f, Y + 0.3f, h, h + 0.35f, Shade(st, 1.2f), Shade(st, 0.9f), Shade(st, 0.7f));
+				StoneBox(X - 0.3f, Y - 0.3f, X + 0.3f, Y + 0.3f, h, h + 0.35f, st);
 			if (tall)
 			{
 				// 작은 지붕
@@ -421,7 +460,7 @@ namespace props
 			const float x0 = X0 - 0.5f, y0 = Y0 - 0.5f, x1 = X0 + 1.5f, y1 = Y0 + 1.5f;
 			const Color st = Rgb(0x8E887E);
 			const float h = 3.0f;
-			gfx::Box(x0, y0, x1, y1, 0.f, h, Shade(st, 1.2f), Shade(st, 0.95f), Shade(st, 0.72f));
+			StoneBox(x0, y0, x1, y1, 0.f, h, st);
 			// 창문(화살 구멍)
 			for (float z : { 1.2f, 2.2f })
 			{
@@ -447,15 +486,21 @@ namespace props
 		void GateArch(float X0, float Y0, bool horizontal)   // 4칸 폭 문 위의 들보
 		{
 			const Color wood = Rgb(0x6A4A2E);
+			const Texture2D* planks = envart::Get(envart::Tex::Wood);
+			auto beam = [&](float ax, float ay, float bx, float by)
+			{
+				if (planks) gfx::BoxTex(*planks, ax, ay, bx, by, 2.0f, 2.45f, 0.9f, Shade(WHITE, 1.05f), Shade(WHITE, 0.85f), Shade(WHITE, 0.62f));
+				else gfx::Box(ax, ay, bx, by, 2.0f, 2.45f, Shade(wood, 1.2f), wood, Shade(wood, 0.75f));
+			};
 			if (horizontal)
 			{
-				gfx::Box(X0 - 0.5f, Y0 - 0.45f, X0 + 3.5f, Y0 + 0.45f, 2.0f, 2.45f, Shade(wood, 1.2f), wood, Shade(wood, 0.75f));
-				gfx::Box(X0 - 0.5f, Y0 - 0.5f, X0 + 3.5f, Y0 + 0.5f, 2.45f, 2.6f, Rgb(0x8E887E), Rgb(0x7A746A), Rgb(0x6A645A));
+				beam(X0 - 0.5f, Y0 - 0.45f, X0 + 3.5f, Y0 + 0.45f);
+				StoneBox(X0 - 0.5f, Y0 - 0.5f, X0 + 3.5f, Y0 + 0.5f, 2.45f, 2.6f, Rgb(0x8E887E));
 			}
 			else
 			{
-				gfx::Box(X0 - 0.45f, Y0 - 0.5f, X0 + 0.45f, Y0 + 3.5f, 2.0f, 2.45f, Shade(wood, 1.2f), wood, Shade(wood, 0.75f));
-				gfx::Box(X0 - 0.5f, Y0 - 0.5f, X0 + 0.5f, Y0 + 3.5f, 2.45f, 2.6f, Rgb(0x8E887E), Rgb(0x7A746A), Rgb(0x6A645A));
+				beam(X0 - 0.45f, Y0 - 0.5f, X0 + 0.45f, Y0 + 3.5f);
+				StoneBox(X0 - 0.5f, Y0 - 0.5f, X0 + 0.5f, Y0 + 3.5f, 2.45f, 2.6f, Rgb(0x8E887E));
 			}
 		}
 
@@ -602,86 +647,120 @@ namespace props
 		const float s = 0.85f + H01(x, y, 14) * 0.35f;
 		const int seed = static_cast<int>(util::Hash2(x, y, 5) & 0xFFFF);
 		const float sway = std::sin(time * 1.2f + seed * 0.01f) * 1.6f;
+		const bool flip = (seed & 1) != 0;
+
+		// 그린 소품: 나무는 바람에 윗부분이 흔들린다(절차적 흔들림의 2.5배 — 그림이 더 크다)
+		auto tree = [&](const char* name, float h, Color mul = WHITE) { return PropSprite(name, base, h * s, sway * 2.5f, flip, mul); };
+		auto thing = [&](const char* name, float h, Color mul = WHITE) { return PropSprite(name, base, h * s, 0.f, flip, mul); };
+		auto glow = [&](Color c, float r, float k) { g_lights.push_back({ Off(base, 0, -10 * s), r * s, c, k }); };
+		const float pulse = 0.7f + 0.3f * std::sin(time * 2.f + seed);
 
 		switch (biome)
 		{
 		case Biome::eMeadow:
-			if (pick < 0.45f) RoundTree(base, s, Rgb(0x5FA040), Rgb(0x7A5634), sway, false, seed);
-			else if (pick < 0.72f) Bush(base, s, Rgb(0x4F9A3A), pick > 0.6f, seed);
-			else Rock(base, s * 0.8f, Rgb(0x9A968A), seed, pick > 0.9f, false);
+			// 들녘은 탁 트여야 한다 — 그린 나무는 크고 무거우니 덤불 · 바위를 더 많이
+			if (pick < 0.26f) { if (!tree("prop_tree_oak", 128.f)) RoundTree(base, s, Rgb(0x5FA040), Rgb(0x7A5634), sway, false, seed); }
+			else if (pick < 0.68f) { if (!thing(pick > 0.52f ? "prop_bush_flower" : "prop_bush", 52.f)) Bush(base, s, Rgb(0x4F9A3A), pick > 0.52f, seed); }
+			else if (!thing(pick > 0.9f ? "prop_rock_moss" : "prop_rock_grey", 46.f)) Rock(base, s * 0.8f, Rgb(0x9A968A), seed, pick > 0.9f, false);
 			break;
 		case Biome::eForest:
-			if (pick < 0.4f) RoundTree(base, s * 1.1f, Rgb(0x3E7A30), Rgb(0x5A3E26), sway, false, seed);
-			else if (pick < 0.78f) PineTree(base, s * 1.1f, Rgb(0x2E6A3A), Rgb(0x5A3E26), sway, false);
-			else if (pick < 0.9f) Stump(base, s);
-			else Rock(base, s * 0.8f, Rgb(0x7E7A70), seed, true, false);
+			if (pick < 0.4f) { if (!tree("prop_tree_forest", 140.f)) RoundTree(base, s * 1.1f, Rgb(0x3E7A30), Rgb(0x5A3E26), sway, false, seed); }
+			else if (pick < 0.78f) { if (!tree("prop_tree_pine", 155.f)) PineTree(base, s * 1.1f, Rgb(0x2E6A3A), Rgb(0x5A3E26), sway, false); }
+			else if (pick < 0.9f) { if (!thing("prop_stump", 30.f)) Stump(base, s); }
+			else if (!thing("prop_rock_moss", 46.f)) Rock(base, s * 0.8f, Rgb(0x7E7A70), seed, true, false);
 			break;
 		case Biome::eSnow:
-			if (pick < 0.55f) PineTree(base, s * 1.1f, Rgb(0x2E5A4A), Rgb(0x4A3A2E), sway * 0.5f, true);
-			else if (pick < 0.85f) Rock(base, s * 0.85f, Rgb(0xA8C0D8), seed, false, true);
-			else if (pick < 0.856f) Snowman(base, s);
-			else DeadTree(base, s, Rgb(0x6A6A70), seed, false);
+			if (pick < 0.55f) { if (!tree("prop_tree_pine_snow", 150.f)) PineTree(base, s * 1.1f, Rgb(0x2E5A4A), Rgb(0x4A3A2E), sway * 0.5f, true); }
+			else if (pick < 0.85f) { if (!thing("prop_rock_snow", 48.f)) Rock(base, s * 0.85f, Rgb(0xA8C0D8), seed, false, true); }
+			else if (pick < 0.856f) { if (!thing("prop_snowman", 52.f)) Snowman(base, s); }
+			else if (!tree("prop_tree_dead", 125.f, Rgb(0xDCE6F0))) DeadTree(base, s, Rgb(0x6A6A70), seed, false);
 			break;
 		case Biome::eCanyon:
-			if (pick < 0.55f) Rock(base, s, Rgb(0xB0603A), seed, false, false);
-			else if (pick < 0.85f) Spike(base, s * 0.9f, Rgb(0xA05A38), seed, false, time);
-			else DeadTree(base, s * 0.8f, Rgb(0x6A4A34), seed, false);
+			if (pick < 0.55f) { if (!thing("prop_rock_red", 54.f)) Rock(base, s, Rgb(0xB0603A), seed, false, false); }
+			else if (pick < 0.85f) { if (!thing("prop_spire_red", 112.f)) Spike(base, s * 0.9f, Rgb(0xA05A38), seed, false, time); }
+			else if (!tree("prop_tree_dead", 120.f, Rgb(0xE8C8A8))) DeadTree(base, s * 0.8f, Rgb(0x6A4A34), seed, false);
 			break;
 		case Biome::eVolcanic:
-			if (pick < 0.45f) Spike(base, s, Rgb(0x2E2A2E), seed, pick < 0.2f, time);
-			else if (pick < 0.7f) LavaVent(base, s, time, seed);
-			else DeadTree(base, s, Rgb(0x2A2222), seed, false);
+			if (pick < 0.45f)
+			{
+				if (thing("prop_spike_obsidian", 100.f)) { if (pick < 0.2f) glow(Rgb(0xFF7020), 80.f, 0.6f * pulse); }
+				else Spike(base, s, Rgb(0x2E2A2E), seed, pick < 0.2f, time);
+			}
+			else if (pick < 0.7f)
+			{
+				if (thing("prop_lava_vent", 42.f)) g_lights.push_back({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
+				else LavaVent(base, s, time, seed);
+			}
+			else if (!tree("prop_tree_burnt", 110.f)) DeadTree(base, s, Rgb(0x2A2222), seed, false);
 			break;
 		case Biome::eFairy:
-			if (pick < 0.4f) Mushroom(base, s, pick < 0.2f ? Rgb(0xE05AB0) : Rgb(0x5AB0F0), seed, time);
-			else if (pick < 0.7f) Crystal(base, s, pick < 0.55f ? Rgb(0x9AE8F0) : Rgb(0xE0A0F8), seed, time);
-			else RoundTree(base, s, Rgb(0x4ABFA0), Rgb(0x6A5A7A), sway, true, seed);
+			if (pick < 0.4f)
+			{
+				const bool pink = pick < 0.2f;
+				if (thing(pink ? "prop_mushroom_pink" : "prop_mushroom_blue", 82.f)) glow(pink ? Rgb(0xE05AB0) : Rgb(0x5AB0F0), 60.f, 0.35f + 0.1f * std::sin(time * 1.7f + seed));
+				else Mushroom(base, s, pink ? Rgb(0xE05AB0) : Rgb(0x5AB0F0), seed, time);
+			}
+			else if (pick < 0.7f)
+			{
+				const bool cyan = pick < 0.55f;
+				if (thing(cyan ? "prop_crystal_cyan" : "prop_crystal_violet", 78.f)) glow(cyan ? Rgb(0x9AE8F0) : Rgb(0xE0A0F8), 70.f, 0.55f * pulse);
+				else Crystal(base, s, cyan ? Rgb(0x9AE8F0) : Rgb(0xE0A0F8), seed, time);
+			}
+			else if (!tree("prop_tree_oak", 145.f, Rgb(0x9AE0D0))) RoundTree(base, s, Rgb(0x4ABFA0), Rgb(0x6A5A7A), sway, true, seed);
 			break;
 		case Biome::eRuins:
-			if (pick < 0.45f) Pillar(base, s, seed);
-			else if (pick < 0.8f) Rock(base, s * 0.85f, Rgb(0x8A8494), seed, pick > 0.7f, false);
-			else DeadTree(base, s, Rgb(0x5A4E4A), seed, false);
+			if (pick < 0.45f) { if (!thing("prop_pillar", 105.f)) Pillar(base, s, seed); }
+			else if (pick < 0.8f) { if (!thing(pick > 0.7f ? "prop_rock_moss" : "prop_rock_grey", 46.f)) Rock(base, s * 0.85f, Rgb(0x8A8494), seed, pick > 0.7f, false); }
+			else if (!tree("prop_tree_dead", 125.f)) DeadTree(base, s, Rgb(0x5A4E4A), seed, false);
 			break;
 		case Biome::eOrcFort:
-			if (pick < 0.45f) Palisade(base, s, seed);
-			else if (pick < 0.7f) Barrel(base, s);
-			else if (pick < 0.85f) Rock(base, s * 0.8f, Rgb(0x8A7A62), seed, false, false);
-			else DeadTree(base, s, Rgb(0x5A4432), seed, false);
+			if (pick < 0.45f) { if (!thing("prop_palisade", 80.f)) Palisade(base, s, seed); }
+			else if (pick < 0.7f) { if (!thing("prop_barrel", 44.f)) Barrel(base, s); }
+			else if (pick < 0.85f) { if (!thing("prop_rock_sand", 44.f)) Rock(base, s * 0.8f, Rgb(0x8A7A62), seed, false, false); }
+			else if (!tree("prop_tree_dead", 125.f)) DeadTree(base, s, Rgb(0x5A4432), seed, false);
 			break;
 		case Biome::eSwamp:
-			if (pick < 0.35f) DeadTree(base, s * 1.1f, Rgb(0x4A4A36), seed, true);
-			else if (pick < 0.7f) Reeds(base, s, time, seed);
-			else Rock(base, s * 0.8f, Rgb(0x5E6450), seed, true, false);
+			if (pick < 0.35f) { if (!tree("prop_tree_swamp", 140.f)) DeadTree(base, s * 1.1f, Rgb(0x4A4A36), seed, true); }
+			else if (pick < 0.7f) { if (!PropSprite("prop_reeds", base, 62.f * s, sway * 1.5f, flip)) Reeds(base, s, time, seed); }
+			else if (!thing("prop_rock_moss", 44.f, Rgb(0xC8D0B0))) Rock(base, s * 0.8f, Rgb(0x5E6450), seed, true, false);
 			break;
 		case Biome::eDesert:
-			if (pick < 0.45f) Cactus(base, s, seed);
-			else if (pick < 0.8f) Rock(base, s * 0.9f, Rgb(0xC8A06A), seed, false, false);
-			else Bones(base, s);
+			if (pick < 0.45f) { if (!thing("prop_cactus", 88.f)) Cactus(base, s, seed); }
+			else if (pick < 0.8f) { if (!thing("prop_rock_sand", 48.f)) Rock(base, s * 0.9f, Rgb(0xC8A06A), seed, false, false); }
+			else if (!thing("prop_bones", 28.f)) Bones(base, s);
 			break;
 		case Biome::eWasteland:
-			if (pick < 0.5f) Rock(base, s, Rgb(0x9A4A30), seed, false, false);
-			else if (pick < 0.8f) DeadTree(base, s, Rgb(0x4A3428), seed, false);
-			else Bones(base, s);
+			if (pick < 0.5f) { if (!thing("prop_rock_rust", 52.f)) Rock(base, s, Rgb(0x9A4A30), seed, false, false); }
+			else if (pick < 0.8f) { if (!tree("prop_tree_burnt", 110.f)) DeadTree(base, s, Rgb(0x4A3428), seed, false); }
+			else if (!thing("prop_bones", 28.f)) Bones(base, s);
 			break;
 		case Biome::eGraveyard:
-			if (pick < 0.45f) Tombstone(base, s, 0);
-			else if (pick < 0.65f) Tombstone(base, s, 1);
-			else DeadTree(base, s * 1.05f, Rgb(0x3A3634), seed, false);
+			if (pick < 0.45f) { if (!thing("prop_grave_round", 54.f)) Tombstone(base, s, 0); }
+			else if (pick < 0.65f) { if (!thing("prop_grave_cross", 64.f)) Tombstone(base, s, 1); }
+			else if (!tree("prop_tree_dead", 130.f, Rgb(0xB8B8C0))) DeadTree(base, s * 1.05f, Rgb(0x3A3634), seed, false);
 			break;
 		case Biome::eBeach:
-			if (pick < 0.5f) Palm(base, s, time, seed);
-			else if (pick < 0.8f) Rock(base, s * 0.85f, Rgb(0x9AA0A6), seed, false, false);
-			else Stump(base, s * 0.8f);
+			if (pick < 0.5f) { if (!tree("prop_tree_palm", 148.f)) Palm(base, s, time, seed); }
+			else if (pick < 0.8f) { if (!thing("prop_rock_grey", 46.f)) Rock(base, s * 0.85f, Rgb(0x9AA0A6), seed, false, false); }
+			else if (!thing("prop_stump", 28.f)) Stump(base, s * 0.8f);
 			break;
 		case Biome::eAntHill:
-			if (pick < 0.55f) Mound(base, s);
-			else if (pick < 0.8f) Rock(base, s * 0.8f, Rgb(0x8A6A4A), seed, false, false);
-			else Bones(base, s);
+			if (pick < 0.55f) { if (!thing("prop_mound", 60.f)) Mound(base, s); }
+			else if (pick < 0.8f) { if (!thing("prop_rock_sand", 44.f, Rgb(0xD8C0A8))) Rock(base, s * 0.8f, Rgb(0x8A6A4A), seed, false, false); }
+			else if (!thing("prop_bones", 28.f)) Bones(base, s);
 			break;
 		case Biome::eHell:
-			if (pick < 0.35f) Spike(base, s, Rgb(0xE6D8C0), seed, false, time);
-			else if (pick < 0.7f) Spike(base, s, Rgb(0x2A1A1E), seed, true, time);
-			else LavaVent(base, s, time, seed);
+			if (pick < 0.35f) { if (!thing("prop_spike_bone", 96.f)) Spike(base, s, Rgb(0xE6D8C0), seed, false, time); }
+			else if (pick < 0.7f)
+			{
+				if (thing("prop_spike_obsidian", 100.f, Rgb(0xFFD8D0))) glow(Rgb(0xFF7020), 80.f, 0.6f * pulse);
+				else Spike(base, s, Rgb(0x2A1A1E), seed, true, time);
+			}
+			else
+			{
+				if (thing("prop_lava_vent", 42.f)) g_lights.push_back({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
+				else LavaVent(base, s, time, seed);
+			}
 			break;
 		}
 	}
@@ -718,19 +797,46 @@ namespace props
 			const Vector2 base = gfx::IsoPx(X, Y);
 			gfx::SetDepth(X + Y);
 			const int seed = static_cast<int>(util::Hash2(x, y, 9) & 0xFFFF);
-			RoundTree(base, 1.05f, Rgb(0x5AA848), Rgb(0x7A5634), std::sin(time * 1.2f + seed) * 1.5f, (seed % 3) == 0, seed);
+			const float sway = std::sin(time * 1.2f + seed) * 1.5f;
+			const bool blossom = (seed % 3) == 0;
+			if (!PropSprite(blossom ? "prop_bush_flower" : "prop_tree_oak", base, blossom ? 66.f : 132.f, sway * 2.5f, (seed & 1) != 0))
+				RoundTree(base, 1.05f, Rgb(0x5AA848), Rgb(0x7A5634), sway, blossom, seed);
 			break;
 		}
 		case 'L':
-			Lamp(X, Y);
+		{
+			const Vector2 base = gfx::IsoPx(X, Y);
+			gfx::SetDepth(X + Y);
+			if (PropSprite("prop_lamp", base, 96.f, 0.f, false))
+			{
+				const float flick = 0.85f + 0.15f * util::Noise1(static_cast<float>(GetTime()) * 6.f + X);
+				g_lights.push_back({ gfx::IsoPx(X + 0.3f, Y + 0.3f), 150.f, Rgb(0xFFC870), 1.1f * flick });
+			}
+			else
+				Lamp(X, Y);
 			break;
+		}
 		case 'S':
 			if (left != 'S' && up != 'S')
-				Stall(X, Y, x > WorldData::kTownX0 + 20 ? 1 : 0);
+			{
+				// 2x2 칸: 가운데 깊이, 그림 너비 = 칸 마름모 너비
+				const float cx = X + 0.5f, cy = Y + 0.5f;
+				gfx::SetDepth(cx + cy);
+				const bool blue = x > WorldData::kTownX0 + 20;
+				if (!PropSprite(blue ? "prop_stall_blue" : "prop_stall_red", Off(gfx::IsoPx(cx, cy), 0.f, 22.f), 0.f, 0.f, false, WHITE, 4.f * 32.f * 1.08f))
+					Stall(X, Y, blue ? 1 : 0);
+			}
 			break;
 		case 'F':
 			if (left != 'F' && up != 'F')
-				Fountain(X, Y, time);
+			{
+				const float cx = X + 1.5f, cy = Y + 1.5f;
+				gfx::SetDepth(cx + cy);
+				if (PropSprite("prop_fountain", Off(gfx::IsoPx(cx, cy), 0.f, 40.f), 0.f, 0.f, false, WHITE, 8.f * 32.f * 0.86f))
+					g_lights.push_back({ gfx::IsoPx(cx, cy), 160.f, Rgb(0x90D0FF), 0.45f });   // 물빛
+				else
+					Fountain(X, Y, time);
+			}
 			break;
 		default:
 			break;
@@ -760,13 +866,42 @@ namespace props
 		}
 		}
 
-		// 기초
-		gfx::Box(x0 - 0.05f, y0 - 0.05f, x1 + 0.05f, y1 + 0.05f, 0.f, 0.18f, Rgb(0x8A857A), Rgb(0x6E6A62), Rgb(0x5A564E));
-		// 벽
-		gfx::Box(x0, y0, x1, y1, 0.18f, h, util::Shade(wall, 1.1f), wall, util::Shade(wall, 0.78f));
+		// 그린 텍스처(있으면): 벽 = 회칠 목조 · 돌, 지붕 = 붉은 기와 · 청석판(건물마다 색을 곱한다)
+		const Texture2D* plaster = envart::Get(envart::Tex::Plaster);
+		const Texture2D* stoneTex = envart::Get(envart::Tex::Stone);
+		const Texture2D* wallTex = nullptr;
+		const Texture2D* roofTex = nullptr;
+		Color wallMul = WHITE, roofMul = WHITE;
+		switch (b.kind)
+		{
+		case BuildingKind::eStore:      wallTex = plaster; roofTex = envart::Get(envart::Tex::RoofRed); break;
+		case BuildingKind::eWeaponShop: wallTex = stoneTex; wallMul = Rgb(0xD8D4CC); roofTex = envart::Get(envart::Tex::RoofSlate); break;
+		case BuildingKind::eTemple:     wallTex = stoneTex; wallMul = Rgb(0xFFFCF4); roofTex = envart::Get(envart::Tex::RoofSlate); roofMul = Rgb(0xB0C8FF); break;
+		case BuildingKind::eInn:        wallTex = plaster; wallMul = Rgb(0xF2E4CC); roofTex = envart::Get(envart::Tex::RoofSlate); roofMul = Rgb(0xB8E0B0); break;
+		default:
+		{
+			const int v = (b.x0 * 3 + b.y0) % 3;
+			wallTex = plaster;
+			wallMul = v == 0 ? WHITE : (v == 1 ? Rgb(0xF4EEE4) : Rgb(0xE8DCC8));
+			roofTex = envart::Get(v == 1 ? envart::Tex::RoofSlate : envart::Tex::RoofRed);
+			roofMul = v == 1 ? Rgb(0xD0C4F0) : (v == 2 ? Rgb(0xF0D8B8) : WHITE);
+			break;
+		}
+		}
 
-		// 목조 뼈대(잡화점/집/여관)
-		if (b.kind == BuildingKind::eStore || b.kind == BuildingKind::eHouse || b.kind == BuildingKind::eInn)
+		// 기초
+		if (stoneTex)
+			gfx::BoxTex(*stoneTex, x0 - 0.05f, y0 - 0.05f, x1 + 0.05f, y1 + 0.05f, 0.f, 0.18f, 1.0f, Rgb(0xC8C4BC), Rgb(0x9A968E), Rgb(0x7A766E));
+		else
+			gfx::Box(x0 - 0.05f, y0 - 0.05f, x1 + 0.05f, y1 + 0.05f, 0.f, 0.18f, Rgb(0x8A857A), Rgb(0x6E6A62), Rgb(0x5A564E));
+		// 벽
+		if (wallTex)
+			gfx::BoxTex(*wallTex, x0, y0, x1, y1, 0.18f, h, 2.0f, wallMul, Shade(wallMul, 0.96f), Shade(wallMul, 0.72f));
+		else
+			gfx::Box(x0, y0, x1, y1, 0.18f, h, util::Shade(wall, 1.1f), wall, util::Shade(wall, 0.78f));
+
+		// 목조 뼈대(잡화점/집/여관) — 회칠 목조 텍스처에는 이미 그려져 있다
+		if (!wallTex && (b.kind == BuildingKind::eStore || b.kind == BuildingKind::eHouse || b.kind == BuildingKind::eInn))
 		{
 			const Color beam = trim;
 			for (float x = x0; x <= x1 + 0.01f; x += 2.f)
@@ -803,7 +938,31 @@ namespace props
 		const float o = 0.28f;
 		const float top = h + roofH;
 		const Color rs = roof, rn = util::Shade(roof, 0.75f), re = util::Shade(roof, 0.9f);
-		if ((x1 - x0) >= (y1 - y0))
+		if (roofTex)
+		{
+			// 기와 줄은 용마루와 나란히(u = 용마루 방향, v = 용마루 → 처마)
+			constexpr float kRoofUnit = 1.4f;
+			if ((x1 - x0) >= (y1 - y0))
+			{
+				const float yc = (y0 + y1) * 0.5f;
+				const float slope = std::sqrt((yc - y0 + o) * (yc - y0 + o) + roofH * roofH);
+				const float len = x1 - x0 + 2.f * o;
+				gfx::FaceTex(*roofTex, { x0 - o, y0 - o, h }, { x1 + o, y0 - o, h }, { x1 + o, yc, top }, { x0 - o, yc, top }, len / kRoofUnit, slope / kRoofUnit, Shade(roofMul, 0.7f));
+				gfx::FaceTri({ x1, y0, h }, { x1, y1, h }, { x1, yc, top }, util::Shade(wall, 0.72f));
+				gfx::FaceTex(*roofTex, { x0 - o, y1 + o, h }, { x1 + o, y1 + o, h }, { x1 + o, yc, top }, { x0 - o, yc, top }, len / kRoofUnit, slope / kRoofUnit, roofMul);
+				gfx::Face({ x1 + o, yc, top }, { x1 + o, y1 + o, h }, { x1 + o + 0.02f, y1 + o, h - 0.08f }, { x1 + o + 0.02f, yc, top - 0.08f }, Shade(roofMul, 0.45f));
+			}
+			else
+			{
+				const float xc = (x0 + x1) * 0.5f;
+				const float slope = std::sqrt((xc - x0 + o) * (xc - x0 + o) + roofH * roofH);
+				const float len = y1 - y0 + 2.f * o;
+				gfx::FaceTex(*roofTex, { x0 - o, y1 + o, h }, { x0 - o, y0 - o, h }, { xc, y0 - o, top }, { xc, y1 + o, top }, len / kRoofUnit, slope / kRoofUnit, Shade(roofMul, 0.78f));
+				gfx::FaceTri({ x0, y1, h }, { x1, y1, h }, { xc, y1, top }, util::Shade(wall, 0.95f));
+				gfx::FaceTex(*roofTex, { x1 + o, y0 - o, h }, { x1 + o, y1 + o, h }, { xc, y1 + o, top }, { xc, y0 - o, top }, len / kRoofUnit, slope / kRoofUnit, Shade(roofMul, 0.86f));
+			}
+		}
+		else if ((x1 - x0) >= (y1 - y0))
 		{
 			const float yc = (y0 + y1) * 0.5f;
 			gfx::Face({ x0 - o, y0 - o, h }, { x1 + o, y0 - o, h }, { x1 + o, yc, top }, { x0 - o, yc, top }, rn);        // 북사면
@@ -836,7 +995,10 @@ namespace props
 		if (b.kind == BuildingKind::eWeaponShop || b.kind == BuildingKind::eInn || b.kind == BuildingKind::eHouse)
 		{
 			const float cx = x0 + (x1 - x0) * 0.75f, cy = y0 + (y1 - y0) * 0.3f;
-			gfx::Box(cx - 0.25f, cy - 0.25f, cx + 0.25f, cy + 0.25f, h, top + 0.5f, Rgb(0x8A5A4A), Rgb(0x7A4A3A), Rgb(0x5A3A2E));
+			if (stoneTex)
+				gfx::BoxTex(*stoneTex, cx - 0.25f, cy - 0.25f, cx + 0.25f, cy + 0.25f, h, top + 0.5f, 0.8f, Rgb(0xC0A090), Rgb(0xA08070), Rgb(0x786052));
+			else
+				gfx::Box(cx - 0.25f, cy - 0.25f, cx + 0.25f, cy + 0.25f, h, top + 0.5f, Rgb(0x8A5A4A), Rgb(0x7A4A3A), Rgb(0x5A3A2E));
 			if (b.kind == BuildingKind::eWeaponShop)
 				g_lights.push_back({ gfx::IsoPx(x1 + 0.5f, y1 + 0.5f), 140.f, Rgb(0xFF8A30), 0.8f });
 		}

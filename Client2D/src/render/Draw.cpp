@@ -2,6 +2,7 @@
 
 #include "rlgl.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace gfx
@@ -16,6 +17,7 @@ namespace gfx
 		Color g_flashColor{ 255, 255, 255, 255 };
 		float g_alpha = 1.f;
 		bool g_modActive = false;
+		bool g_depthWrite = true;
 
 		// 보이는 X+Y 범위(카메라 기준 ±80칸 정도)를 깊이 [0.05, 0.95]로 편다.
 		constexpr float kDepthSpan = 220.f;
@@ -87,7 +89,12 @@ namespace gfx
 
 	void Flush() { rlDrawRenderBatchActive(); }
 	void DepthTest(bool on) { rlDrawRenderBatchActive(); on ? rlEnableDepthTest() : rlDisableDepthTest(); }
-	void DepthWrite(bool on) { rlDrawRenderBatchActive(); on ? rlEnableDepthMask() : rlDisableDepthMask(); }
+	void DepthWrite(bool on) { rlDrawRenderBatchActive(); on ? rlEnableDepthMask() : rlDisableDepthMask(); g_depthWrite = on; }
+	bool DepthWriteOn() { return g_depthWrite; }
+	float Alpha() { return g_alpha; }
+	Color Tint() { return g_tint; }
+	float Flash() { return g_flash; }
+	Color FlashColor() { return g_flashColor; }
 	void Additive(bool on)
 	{
 		rlDrawRenderBatchActive();
@@ -360,6 +367,56 @@ namespace gfx
 		Face({ x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, top);
 	}
 
+	void FaceTex(const Texture2D& tex, P3 bl, P3 br, P3 tr, P3 tl, float repU, float repV, Color col)
+	{
+		col = Mod(col);
+		if (col.a == 0 || tex.id == 0) return;
+		repU = std::max(0.01f, repU);
+		repV = std::max(0.01f, repV);
+		const int nu = std::max(1, static_cast<int>(std::ceil(repU - 0.001f)));
+		const int nv = std::max(1, static_cast<int>(std::ceil(repV - 0.001f)));
+		auto at = [&](float s, float t) -> P3
+		{
+			// s: 0(왼) → 1(오른), t: 0(위) → 1(아래)
+			const P3 top{ tl.x + (tr.x - tl.x) * s, tl.y + (tr.y - tl.y) * s, tl.z + (tr.z - tl.z) * s };
+			const P3 bot{ bl.x + (br.x - bl.x) * s, bl.y + (br.y - bl.y) * s, bl.z + (br.z - bl.z) * s };
+			return P3{ top.x + (bot.x - top.x) * t, top.y + (bot.y - top.y) * t, top.z + (bot.z - top.z) * t };
+		};
+		rlSetTexture(tex.id);
+		rlBegin(RL_QUADS);
+		C(col);
+		rlNormal3f(0.f, 0.f, 1.f);
+		for (int j = 0; j < nv; ++j)
+		{
+			const float v0 = static_cast<float>(j), v1 = std::min(repV, static_cast<float>(j + 1));
+			for (int i = 0; i < nu; ++i)
+			{
+				const float u0 = static_cast<float>(i), u1 = std::min(repU, static_cast<float>(i + 1));
+				const P3 p00 = at(u0 / repU, v0 / repV), p10 = at(u1 / repU, v0 / repV);
+				const P3 p11 = at(u1 / repU, v1 / repV), p01 = at(u0 / repU, v1 / repV);
+				const float tu1 = u1 - u0, tv1 = v1 - v0;
+				rlTexCoord2f(0.f, 0.f); V(Iso(p00), Zof(p00));
+				rlTexCoord2f(0.f, tv1); V(Iso(p01), Zof(p01));
+				rlTexCoord2f(tu1, tv1); V(Iso(p11), Zof(p11));
+				rlTexCoord2f(tu1, 0.f); V(Iso(p10), Zof(p10));
+			}
+		}
+		rlEnd();
+		rlTexCoord2f(0.f, 0.f);
+		rlSetTexture(0);
+	}
+
+	void BoxTex(const Texture2D& tex, float x0, float y0, float x1, float y1, float z0, float z1, float texUnit, Color top, Color south, Color east)
+	{
+		const float k = 1.f / std::max(0.05f, texUnit);
+		// 남(+Y) 면
+		FaceTex(tex, { x0, y1, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { x0, y1, z1 }, (x1 - x0) * k, (z1 - z0) * k, south);
+		// 동(+X) 면
+		FaceTex(tex, { x1, y1, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x1, y1, z1 }, (y1 - y0) * k, (z1 - z0) * k, east);
+		// 윗면
+		FaceTex(tex, { x0, y1, z1 }, { x1, y1, z1 }, { x1, y0, z1 }, { x0, y0, z1 }, (x1 - x0) * k, (y1 - y0) * k, top);
+	}
+
 	void Diamond(float X, float Y, float scale, Color col)
 	{
 		const float h = 0.5f * scale;
@@ -390,8 +447,101 @@ namespace gfx
 		rlSetTexture(0);
 	}
 
+	void TexQuadGround(const Texture2D& tex, Vector2 center, Vector2 size, float rot, float squash, Color col)
+	{
+		col = Mod(col);
+		if (col.a == 0 || tex.id == 0) return;
+		const float hw = size.x * 0.5f, hh = size.y * 0.5f;
+		const float cs = std::cos(rot), sn = std::sin(rot);
+		auto corner = [&](float x, float y) { return Vector2{ center.x + x * cs - y * sn, center.y + (x * sn + y * cs) * squash }; };
+		rlSetTexture(tex.id);
+		rlBegin(RL_QUADS);
+		C(col);
+		rlNormal3f(0.f, 0.f, 1.f);
+		rlTexCoord2f(0.f, 0.f); V(corner(-hw, -hh), g_z);
+		rlTexCoord2f(0.f, 1.f); V(corner(-hw, hh), g_z);
+		rlTexCoord2f(1.f, 1.f); V(corner(hw, hh), g_z);
+		rlTexCoord2f(1.f, 0.f); V(corner(hw, -hh), g_z);
+		rlEnd();
+		rlSetTexture(0);
+	}
+
 	void TexQuad(const Texture2D& tex, Vector2 center, Vector2 size, float rot, Color col)
 	{
 		TexQuadSrc(tex, Rectangle{ 0, 0, (float)tex.width, (float)tex.height }, center, size, rot, col);
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	namespace
+	{
+		// 흰색(피격) · 붉은(강공격 예고) · 새벽빛(실루엣) · 초록(잔상) · 얼음 · 검정 · 주황 · 보라
+		constexpr float kFlashPal[kFlashPaletteSize * 3] = {
+			1.00f, 1.00f, 1.00f,   1.00f, 0.23f, 0.10f,   1.00f, 0.88f, 0.54f,   0.42f, 1.00f, 0.54f,
+			0.66f, 0.85f, 1.00f,   0.00f, 0.00f, 0.00f,   1.00f, 0.54f, 0.23f,   0.78f, 0.63f, 1.00f,
+		};
+		int NearestFlash(Color c)
+		{
+			int best = 0;
+			float bd = 1e9f;
+			for (int i = 0; i < kFlashPaletteSize; ++i)
+			{
+				const float dr = c.r / 255.f - kFlashPal[i * 3], dg = c.g / 255.f - kFlashPal[i * 3 + 1], db = c.b / 255.f - kFlashPal[i * 3 + 2];
+				const float d = dr * dr + dg * dg + db * db;
+				if (d < bd) { bd = d; best = i; }
+			}
+			return best;
+		}
+	}
+
+	const float* FlashPalette() { return kFlashPal; }
+
+	void SpriteMesh(const Texture2D& tex, Rectangle src, Vector2 anchor, Vector2 base, float scale, const SpriteXform& xf)
+	{
+		if (tex.id == 0 || src.width <= 0.f || src.height <= 0.f) return;
+		// 정점 색 = 틴트 × 알파(번쩍임은 셰이더가 한다)
+		const Color col{ g_tint.r, g_tint.g, g_tint.b, static_cast<unsigned char>(g_tint.a * g_alpha) };
+		if (col.a == 0) return;
+		const float level = std::round(util::Clamp01(g_flash) * 16.f);
+		const float uOff = level * 2.f;
+		// v 정수부 = 번쩍임 색 번호(0~7) + 8(알파 테스트 대상). 셰이더 밖에서는 반복 감기로 같은 곳을 읽는다.
+		const int pal = level > 0.f ? NearestFlash(g_flashColor) : 0;
+		const float vOff = static_cast<float>((xf.cutout ? 8 : 0) + pal) * 2.f;
+
+		const float tw = static_cast<float>(tex.width), th = static_cast<float>(tex.height);
+		const float dir = xf.flip ? -1.f : 1.f;
+		const float cs = std::cos(xf.rot), sn = std::sin(xf.rot);
+		const float headH = std::max(1.f, anchor.y);   // 발에서 그림 꼭대기까지(px, 원본)
+		auto place = [&](float px, float py) -> Vector2
+		{
+			// 발 기준 지역 좌표(원본 px) → 비틀기 → 화면
+			float lx = (px - anchor.x) * scale * xf.stretch;
+			float ly = (py - anchor.y) * scale * xf.squash;
+			const float t = util::Clamp01((anchor.y - py) / headH);
+			lx += xf.lean * t * std::sqrt(t);
+			const float rx = lx * cs - ly * sn;
+			const float ry = lx * sn + ly * cs;
+			return Vector2{ base.x + xf.offset.x + rx * dir, base.y + xf.offset.y + ry };
+		};
+		constexpr int kRows = 6;
+		rlSetTexture(tex.id);
+		rlBegin(RL_QUADS);
+		C(col);
+		rlNormal3f(0.f, 0.f, 1.f);
+		const float u0 = src.x / tw + uOff, u1 = (src.x + src.width) / tw + uOff;
+		for (int r = 0; r < kRows; ++r)
+		{
+			const float py0 = src.height * r / kRows, py1 = src.height * (r + 1) / kRows;
+			const float v0 = (src.y + py0) / th + vOff, v1 = (src.y + py1) / th + vOff;
+			const Vector2 a = place(0.f, py0), b = place(0.f, py1), c = place(src.width, py1), d = place(src.width, py0);
+			// 뒷면 제거가 꺼져 있어(main.cpp) 뒤집어도 감기는 방향을 신경 쓰지 않는다
+			rlTexCoord2f(u0, v0); V(a, g_z);
+			rlTexCoord2f(u0, v1); V(b, g_z);
+			rlTexCoord2f(u1, v1); V(c, g_z);
+			rlTexCoord2f(u1, v0); V(d, g_z);
+		}
+		rlEnd();
+		// 다음 도형이 번쩍임 좌표를 물려받지 않게
+		rlTexCoord2f(0.f, 0.f);
+		rlSetTexture(0);
 	}
 }

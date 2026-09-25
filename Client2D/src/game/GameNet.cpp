@@ -8,6 +8,7 @@
 #include "render/Actors.h"
 #include "render/Icons.h"
 #include "audio/Sfx.h"
+#include "audio/Voice.h"
 #include "core/Util.h"
 
 #include <algorithm>
@@ -594,6 +595,7 @@ void Game::HandleSubjectAdd(const SUBJECT_ADD_NFY_PACKET& p)
 			{
 				m_bossWarnAt = m_now;
 				sfx::Play(sfx::Id::BossRoar, 0.8f);
+				if (e.row) voice::Play("boss_" + std::to_string(e.row->id) + "_spawn", 1.f, 3);
 				m_cam.AddTrauma(0.35f);
 				AddCenter("강력한 기운이 느껴집니다... " + e.name, Rgb(0xFF6A5A));
 			}
@@ -745,6 +747,7 @@ void Game::HandleSubjectDie(const SUBJECT_DIE_NFY_PACKET& p)
 			m_cam.Kick(0.08f);
 			fx::Fx().HitStop(0.18f);
 			sfx::Play(sfx::Id::Slam, 0.8f);
+			voice::Play("boss_" + std::to_string(e->row->id) + "_die", 1.f, 3);
 		}
 	}
 	if (p.id == m_selfId)
@@ -759,6 +762,7 @@ void Game::HandleSubjectDie(const SUBJECT_DIE_NFY_PACKET& p)
 		CloseNpcWindows();
 		m_enchant = EnchantFlow{};
 		sfx::Play(sfx::Id::Death);
+		voice::Play("pc_" + std::to_string(static_cast<int>(m_classId)) + "_die", 0.95f, 2);
 		m_cam.AddTrauma(0.6f);
 		fx::Fx().Flash(Rgb(0x8A0A0A), 0.5f, 0.6f);
 		fx::Fx().HitStop(0.25f);
@@ -856,6 +860,7 @@ void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 		{
 			m_cam.AddTrauma(0.3f);
 			m_cam.Kick(0.05f);
+			voice::Play("pc_" + std::to_string(static_cast<int>(m_classId)) + "_lvl", 0.9f, 2);
 			AddBanner("레벨 " + std::to_string(p.param), ui::theme::kDawn, 3.5f);
 			fx::Fx().FloatText(iso, actors::PlayerHeight() + 20.f, "LEVEL UP", Rgb(0xF2C47C), 30.f, 1.8f, ui::Face::Latin);
 		}

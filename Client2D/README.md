@@ -9,19 +9,25 @@
 - 세계관 · 이름 짓는 규칙 · 용어집: [docs/WORLD.md](../docs/WORLD.md)
 - 디자인 시스템 「새김」(색 · 글꼴 · 부품 · 일러스트 규칙): [docs/DESIGN_SYSTEM.md](../docs/DESIGN_SYSTEM.md)
 
-지형 · 캐릭터 · 아이콘 · 효과 · 효과음은 코드로 만들고, **글꼴**(SIL OFL)과 **일러스트**(대표 그림 · 장 그림 · NPC 초상화)만 파일로 싣습니다.
+**화면의 그림과 목소리는 모두 Higgsfield로 만든 에셋입니다** — 플레이어 3직업 · 몬스터 34종(보스 6) · 마을 사람 13명과 동물 3종의
+동작 그림, 바닥 텍스처 20종, 나무 · 바위 · 수정 등 소품 40종, 건물 벽 · 지붕 · 성벽 텍스처, 아이템 · 기술 · 상태 아이콘 99개,
+타격 · 마법 효과 40종, UI 장식 · 커서, 대표 그림 · 장 그림 · 초상화, 그리고 마을 사람 · 직업 · 보스의 **음성 대사 35줄**.
+그림 사이의 움직임(준비 · 휘두름 · 잔상 · 피격 · 쓰러짐)은 코드가 잇고, 효과음만 실행할 때 합성합니다(아래 「소리」).
+만드는 과정은 [tools/assetgen](../tools/assetgen/README.md), 그림 규칙은 [디자인 시스템 9장](../docs/DESIGN_SYSTEM.md#9-게임-그림--higgsfield).
 
 | 로그인 | 대화 · 초상화 |
 |---|---|
 | ![로그인](docs/login.jpg) | ![대화](docs/dialog.jpg) |
-| **장 제목 카드** | **전투 · 연속 타격** |
-| ![장](docs/chapter.jpg) | ![전투](docs/combat.jpg) |
-| **필드 보스(벨고라의 혹한 모로즈)** | **소지품 · 장비** |
-| ![보스](docs/boss.jpg) | ![장비](docs/gear.jpg) |
+| **사냥 — 밤사냥꾼 · 타격 효과** | **서약기사 · 레벨 업** |
+| ![전투](docs/combat.jpg) | ![전투2](docs/combat2.jpg) |
+| **몬스터 도감(34종 · 보스 6종) · 마을 사람** | **밤의 데니차 광장** |
+| ![도감](docs/bestiary.jpg) | ![밤](docs/night.jpg) |
+| **마을 상점** | **소지품 · 장비** |
+| ![상점](docs/town.jpg) | ![장비](docs/gear.jpg) |
 | **캐릭터** | **퀘스트 일지** |
 | ![캐릭터](docs/character.jpg) | ![퀘스트](docs/questlog.jpg) |
-| **밤 사냥** | **월드 지도** |
-| ![밤](docs/night.jpg) | ![지도](docs/worldmap.jpg) |
+| **장 제목 카드** | **월드 지도** |
+| ![장](docs/chapter.jpg) | ![지도](docs/worldmap.jpg) |
 
 ---
 
@@ -149,12 +155,22 @@ Client2D\build\Release\Client2D.exe
 
 ## Game Feel · 손맛
 
-- **타격**: 히트스톱(치명타일수록 길게), 피격 흰색 번쩍임, 공격 시 몸 앞으로 내미는 동작, 칼 궤적, 방향성 불꽃, 치명타 피해 숫자(크게 튀어오름)와 화면 흔들림(trauma 방식).
+- **그린 캐릭터의 움직임**: 한 캐릭터에 동작 그림이 13장(서기 · 걸음 둘 · 준비 · 휘두름 · 시전 · 막기 · 맞음 · 쓰러짐 · 뒷모습 넷)뿐이라
+  그 사이를 코드가 연기한다 — 준비(뒤로 젖히며 웅크림) → 휘두름(앞으로 튀어 나가며 늘어나고, 앞 동작이 잔상으로 한 장 남음) → 되돌아옴(한 번 튐).
+  맞으면 셰이더가 몸을 흰색으로 번쩍이고 뒤로 젖히며 밀려나고, 쓰러질 때는 넘어지다 바닥에 쿵 하고 튄다. 걸음은 두 그림을 발 위상에 맞춰 바꾸며
+  위아래로 흔들린다. 회전 베기는 그림 한 장을 가로로 뒤집어 돌고, 힘 모으기는 떨림과 몸빛(더하기 혼합)이 차오른다. 나무는 바람에 윗부분만 흔들린다.
+- **타격**: 맞는 순간 그린 섬광(치명타는 더 큰 폭발 + 충격 고리)이 튀어나오고 히트스톱 동안 그 한 장이 멈춰 보인다. 칼 궤적 · 짐승의 할퀸 자국 ·
+  기술마다 다른 그린 효과(불 고리 · 서리 인장 · 벼락 구슬 · 독 튀김 · 금빛 기둥 · 낙성 불덩이). 히트스톱(치명타일수록 길게), 방향성 불꽃,
+  치명타 피해 숫자(크게 튀어오름)와 화면 흔들림(trauma 방식).
 - **처치**: 몬스터 색으로 터지는 사망 파편, 보스는 화면 번쩍임 + 줌 펀치, 그로시가 튀어 오르며 떨어짐, 희귀도별 빛기둥이 서는 드롭 아이템.
 - **성장**: 레벨업 빛기둥 + 링 + 화면 번쩍임, 경험치 띠 채움 연출, 강화는 “충전 → 결과 공개” 2단 연출.
 - **이동**: 서버 응답을 기다리지 않는 예측 이동(한 칸 선행, 서버 좌표와 어긋나면 부드럽게 보정), 걸음 먼지, 가속 잔상, 카메라가 진행 방향으로 살짝 앞서감.
 - **세계**: 낮/밤 주기(24분 = 하루, 밤에는 가로등 · 횃불 · 캐릭터 주변 조명), 시야 밖 안개, 건물 · 나무 뒤에서도 보이는 내 캐릭터 실루엣, 지역별 날씨 파티클(눈 · 재 · 반딧불…), 미니맵.
 - **소리**: 효과음 60여 종을 실행 시 합성(휘두르기 · 타격 · 치명타 · 직업 기술 · 연계 · 동전 · 레벨업 · 강화 · 보스 포효 · 마을 사람과 동물 · 희귀도별 획득음 · 장 종소리 · 지역 환경음). 같은 소리도 매번 음높이/좌우 위치가 조금씩 달라집니다.
+  타격음은 네 겹(3ms 딸깍 · 낮은 몸통 쿵 · 살과 갑옷의 바삭함 · 칼날의 짧은 쇳소리), 강타는 여기에 땅울림과 금속 배음을 더합니다.
+- **목소리(Higgsfield 음성 합성)**: 마을 사람은 대화창을 열면 인사말을 실제로 말하고, 궁극기(단죄 · 낙성 · 그믐 베기) · 레벨 업 · 쓰러짐에 직업별 대사,
+  필드 보스는 나타날 때와 쓰러질 때 한마디(깊은 울림 · 낮춘 음높이). Higgsfield의 효과음 · 음악 모델은 Higgsfield 자체 게임 제작 기능 안에서만 쓸 수 있게 막혀 있어,
+  효과음은 합성으로 만듭니다.
 
 ## 구조
 
@@ -165,16 +181,23 @@ src/
   game/               Game(상태 · 입력 · 예측 이동) / GameNet(패킷 처리) / GameDraw(월드) / GameUi(HUD · 창 · 로그인)
                       GameItems(소지품 · 장비 · 툴팁) / GameQuest(퀘스트 · 대화 · 장 카드 · 엔딩) / GameNpc · GameCombat
                       Path(A*) · Texts(한국어 조사 처리 문구) · Entity
-  render/             Draw(깊이 버퍼 기반 2D 배치) · Terrain(GLSL 지형) · Props · Actors · Icons · Lighting
+  render/             Draw(깊이 버퍼 기반 2D 배치 · 스프라이트 메시) · Terrain(GLSL 지형 + 그린 바닥 아틀라스) · Props(그린 소품 · 텍스처 건물)
+                      Sprites(아틀라스 · 알파 테스트/번쩍임 월드 셰이더) · ActorSprites(그린 동작 + 절차적 연기)
+                      EnvArt(바닥 · 벽 · 지붕 텍스처) · FxArt(그린 효과) · Actors(예전 벡터 그림 — 그림이 없을 때) · Icons · Lighting
                       Art(일러스트: JPEG 지연 로딩 · cover 자르기 · 반짝임)
-  fx/                 Effects(피해 숫자 · 히트스톱 · 장판 · 빛기둥) · Particles · SkillFx
-  audio/              Sfx(절차적 효과음 합성)
-  ui/                 Font(여러 글꼴 계열 + 동적 글리프 아틀라스, stb_truetype) · Ui(즉시 모드 위젯 · 디자인 토큰)
+  fx/                 Effects(피해 숫자 · 히트스톱 · 장판 · 빛기둥 · 그린 섬광) · Particles(Shape::Tex = 그린 효과 한 장) · SkillFx
+  audio/              Sfx(절차적 효과음 합성) · Voice(음성 대사 — 한 번에 하나, 우선순위)
+  ui/                 Font(여러 글꼴 계열 + 동적 글리프 아틀라스, stb_truetype) · Ui(즉시 모드 위젯 · 디자인 토큰) · UiArt(돌결 · 모서리 장식 · 커서)
   platform/           ImeWin(Windows 한글 조합 입력)
   third_party/        stb_truetype.h · stb_image.h (공개 도메인)
 assets/
   fonts/              Pretendard · 고운바탕 · Barlow Condensed · Marcellus · 나눔스퀘어라운드(+ OFL 사용 허가서)
   art/                key_art.jpg · chapter_1~5.jpg · portrait_<NPC id>.jpg · portrait_guard.jpg
+  sprites/            actors_N.png + actors.txt(캐릭터 동작 239장) · props_0.png + props.txt(소품 40종) — 이름 · 자리 · 발 위치 · 기준 키
+  terrain/            ground_atlas.jpg(바닥 20종, 칸마다 32px 감싸기) · wall_* · roof_* · wood_planks.jpg
+  icons/              icons.png + icons.txt(item_<id> · skill_<id> · status_<id> · quest_<n> · ui_*)
+  fx/                 효과 40장(검은 바탕 → 밝기 = 알파)        ui/  panel_tex · corner · divider · cursor_*
+  voice/              대사 35줄(ogg, 모노 22kHz) + voice.txt
   icon/               harven.png(창 아이콘)
 res/                  app.rc · harven.ico(실행 파일 아이콘 · 버전 정보)
 ```
@@ -184,6 +207,9 @@ res/                  app.rc · harven.ico(실행 파일 아이콘 · 버전 정
 - **예측 이동**: 이동 요청은 한 번에 하나만 보내고(가속 시 간격 단축), 서버의 `MOVE_NFY`로 확정합니다. 1초 안에 응답이 없거나
   서버가 다른 좌표를 보내면 서버 좌표로 되돌립니다. 옛길 이동 · 지역 이동처럼 요청하지 않은 이동은 즉시 스냅합니다.
 - **그리기 순서**: 지형(셰이더) → 바닥 데칼 → 불투명 개체(깊이 쓰기) → 가려진 내 캐릭터 실루엣(깊이 GREATER) → 반투명 → 조명 → UI.
+- **그린 스프라이트**: 발(anchor)을 바닥 칸에 두고 그 칸의 깊이를 쓰는 세로 판(여섯 줄 메시 — 윗부분만 기울이기 · 눌림 · 늘림 · 회전).
+  불투명 패스는 알파 테스트(0.35)로 투명한 곳이 깊이를 차지하지 않게 하고, 번쩍임 양 · 색과 "알파 테스트 대상" 표시는
+  텍스처 좌표의 정수부에 실어 월드 셰이더가 푼다(정점 수를 늘리지 않고 한 번에 그린다). 그림이 없으면 예전 벡터 그림으로 그린다.
 - **일러스트**: 처음 쓸 때 stb_image로 풀어 밉맵 텍스처로 올립니다(raylib 기본 빌드는 JPEG를 읽지 않음). 파일이 없으면 코드로 그린 화면으로 대신합니다.
 
 ## 에셋 출처 · 사용 허가
@@ -196,4 +222,6 @@ res/                  app.rc · harven.ico(실행 파일 아이콘 · 버전 정
 | Marcellus | Astigmatic (Brian J. Bonislawsky) | SIL OFL 1.1 — `assets/fonts/OFL-Marcellus.txt` |
 | 나눔스퀘어라운드 | NAVER | SIL OFL 1.1 — `assets/fonts/OFL-NanumSquareRound.txt` |
 | 일러스트(대표 그림 · 장 그림 · 초상화) | 이 프로젝트를 위해 Higgsfield(GPT Image 2.5)로 생성 | 생성 서비스 약관에 따름 |
+| 캐릭터 · 몬스터 · NPC 동작 그림, 소품, 바닥 · 벽 · 지붕 텍스처, 아이콘, 효과, UI 장식 · 커서 | 이 프로젝트를 위해 Higgsfield(GPT Image 2.5)로 생성 — 주문서 `tools/assetgen/catalog.py` | 생성 서비스 약관에 따름 |
+| 음성 대사 35줄 | 이 프로젝트를 위해 Higgsfield Text to Speech V2(ElevenLabs 엔진)로 생성 — 대본 `tools/assetgen/voices.py` | 생성 서비스 약관에 따름 |
 | stb_truetype · stb_image | Sean Barrett | 공개 도메인(또는 MIT) |

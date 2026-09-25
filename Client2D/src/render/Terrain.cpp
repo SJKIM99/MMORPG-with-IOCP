@@ -3,6 +3,7 @@
 #include "render/Props.h"
 #include "render/Draw.h"
 #include "render/Assets.h"
+#include "render/EnvArt.h"
 #include "net/Shared.h"
 #include "core/Util.h"
 
@@ -64,6 +65,9 @@ bool Terrain::Init()
 	m_locNoise = Loc(m_shader, "uNoise");
 	m_locTownOrigin = Loc(m_shader, "uTownOrigin");
 	m_locTownSize = Loc(m_shader, "uTownSize");
+	m_locGround = Loc(m_shader, "uGround");
+	m_locGroundOn = Loc(m_shader, "uGroundOn");
+	m_locGroundSize = Loc(m_shader, "uGroundSize");
 
 	// 지역 팔레트(16개) — 한 번만 올리면 된다
 	float palA[16 * 4], palB[16 * 3], palC[16 * 3];
@@ -160,9 +164,21 @@ void Terrain::DrawGround(const Camera2D& cam, int screenW, int screenH, Vector2 
 	SetShaderValue(m_shader, m_locFogRange, fogRange, SHADER_UNIFORM_VEC2);
 	SetShaderValue(m_shader, m_locGrid, &grid, SHADER_UNIFORM_FLOAT);
 
+	// 그린 바닥(있으면): 지역 · 마을 바닥을 텍스처로, 없으면 절차적 바닥
+	const Texture2D* ground = envart::GroundAtlas();
+	const float groundOn = ground ? 1.f : 0.f;
+	SetShaderValue(m_shader, m_locGroundOn, &groundOn, SHADER_UNIFORM_FLOAT);
+	if (ground)
+	{
+		const float gs[2] = { static_cast<float>(ground->width), static_cast<float>(ground->height) };
+		SetShaderValue(m_shader, m_locGroundSize, gs, SHADER_UNIFORM_VEC2);
+	}
+
 	BeginShaderMode(m_shader);
 	SetShaderValueTexture(m_shader, m_locTown, m_town);
 	SetShaderValueTexture(m_shader, m_locNoise, assets::Get().noise);
+	if (ground)
+		SetShaderValueTexture(m_shader, m_locGround, *ground);
 	DrawRectangle(0, 0, screenW, screenH, WHITE);
 	EndShaderMode();
 }

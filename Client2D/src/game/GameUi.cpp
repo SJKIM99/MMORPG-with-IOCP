@@ -1809,7 +1809,12 @@ void Game::DrawStatusIcons(float x, float y)
 		const StatusRow& row = StatusTable::Get(id);
 		const Color col = Rgb(row.color);
 		icon(col, st.until - nowf, 0.f, st.stacks, row.debuff ? std::string(row.name) + " (해로움)" : std::string(row.name), StatusHelp(id),
-			[&](Vector2 c, float rr, Color cl) { StatusGlyph(id, c, rr, cl, nowf); });
+			[&](Vector2 c, float rr, Color cl)
+			{
+				// 그린 상태 아이콘(있으면)
+				if (!icons::DrawPainted("status_" + std::to_string(st.id), Rectangle{ c.x - rr * 1.45f, c.y - rr * 1.45f, rr * 2.9f, rr * 2.9f }))
+					StatusGlyph(id, c, rr, cl, nowf);
+			});
 	}
 	if (m_hasteUntil > m_now)
 		icon(Rgb(0x8DBF6E), static_cast<float>(m_hasteUntil - m_now), 0.f, 0, "바람걸음", "이동 속도 증가",

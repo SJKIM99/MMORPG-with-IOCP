@@ -1,4 +1,5 @@
 #include "ui/Ui.h"
+#include "ui/UiArt.h"
 #include "platform/Ime.h"
 #include "render/Icons.h"
 #include "audio/Sfx.h"
@@ -306,11 +307,31 @@ namespace ui
 		// 그림자(판 아래로 조금) → 판 → 안쪽 윗선(빛은 위에서)
 		Plate(Rectangle{ r.x + 2, r.y + 6, r.width, r.height }, util::MulA(Color{ 0, 0, 0, 110 }, alpha), BLANK, 6.f, 0.f);
 		Plate(r, util::MulA(theme::kSurface0, alpha), util::MulA(theme::kLineStrong, alpha), 5.f, 1.f);
+		// 그린 돌결(있으면): 먹빛 판 위에 아주 옅게 — 글자가 읽히는 대비는 그대로
+		if (const Texture2D* tex = uiart::Get(uiart::PanelTex))
+		{
+			const Rectangle in{ r.x + 2.f, r.y + 2.f, r.width - 4.f, r.height - 4.f };
+			const float k = 1.4f;   // 돌결 크기(텍스처 1px = 화면 1/1.4px)
+			DrawTexturePro(*tex, Rectangle{ r.x * k, r.y * k, in.width * k, in.height * k }, in, Vector2{ 0, 0 }, 0.f,
+				util::MulA(Color{ 255, 255, 255, 255 }, 0.30f * alpha));
+		}
 		Rule(r.x + 6.f, r.x + r.width - 6.f, r.y + 1.f, util::MulA(Color{ 255, 255, 255, 16 }, alpha));
 		if (fancy)
 		{
 			// 새김: 3px 안쪽의 두 번째 선 — 판에 판 홈처럼 아주 옅게
 			Plate(Rectangle{ r.x + 3, r.y + 3, r.width - 6, r.height - 6 }, BLANK, util::MulA(Color{ 255, 255, 255, 12 }, alpha), 3.f, 1.f);
+			// 청동 모서리 장식(그린 그림) — 네 모서리를 뒤집어 맞춘다
+			if (const Texture2D* c = uiart::Get(uiart::Corner); c && r.width > 120.f && r.height > 90.f)
+			{
+				const float s = 38.f;
+				const float w = static_cast<float>(c->width), h = static_cast<float>(c->height);
+				const Color tint = util::MulA(Color{ 255, 255, 255, 255 }, 0.9f * alpha);
+				const float o = 5.f;   // 판 바깥으로 살짝 걸친다(모서리를 감싸는 장식)
+				DrawTexturePro(*c, Rectangle{ 0, 0, w, h }, Rectangle{ r.x - o, r.y - o, s, s }, Vector2{ 0, 0 }, 0.f, tint);
+				DrawTexturePro(*c, Rectangle{ 0, 0, -w, h }, Rectangle{ r.x + r.width - s + o, r.y - o, s, s }, Vector2{ 0, 0 }, 0.f, tint);
+				DrawTexturePro(*c, Rectangle{ 0, 0, w, -h }, Rectangle{ r.x - o, r.y + r.height - s + o, s, s }, Vector2{ 0, 0 }, 0.f, tint);
+				DrawTexturePro(*c, Rectangle{ 0, 0, -w, -h }, Rectangle{ r.x + r.width - s + o, r.y + r.height - s + o, s, s }, Vector2{ 0, 0 }, 0.f, tint);
+			}
 		}
 		Block(r);
 	}

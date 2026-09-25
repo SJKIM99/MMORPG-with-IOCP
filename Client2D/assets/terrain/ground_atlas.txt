@@ -1,0 +1,21 @@
+# cell order (5 columns, 576px cells: 512 + 32px wrap padding) — tools/assetgen/process.py
+ground_meadow
+ground_forest
+ground_snow
+ground_canyon
+ground_volcanic
+ground_fairy
+ground_ruins
+ground_orcfort
+ground_swamp
+ground_desert
+ground_wasteland
+ground_graveyard
+ground_beach
+ground_anthill
+ground_hell
+town_cobble
+town_plaza
+town_flowerbed
+town_dirt
+town_stone

@@ -3,6 +3,9 @@
 #include "raylib.h"
 #include "net/Shared.h"
 
+#include <string>
+#include <string_view>
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 아이템 아이콘: 시작할 때 벡터로 한 번 그려 아틀라스(128px/칸, 밉맵)로 굽는다.
 // 무기 모양 그리기(DrawWeapon)는 캐릭터가 손에 든 무기에도 그대로 쓴다 —
@@ -12,6 +15,12 @@ namespace icons
 {
 	void Build();
 	void Unload();
+
+	// 그린 아이콘(Higgsfield — assets/icons/icons.png + icons.txt). 있으면 절차적 아이콘 대신 쓴다.
+	//   이름: item_<아이템 id> · quest_<수집물> · skill_<기술 id> · status_<상태 id> · ui_<이름>
+	void LoadPainted(const std::string& dir);
+	[[nodiscard]] bool HasPainted(std::string_view name);
+	bool DrawPainted(std::string_view name, Rectangle dst, Color tint = WHITE);
 
 	// 화면 공간
 	void Draw(uint16_t itemId, Rectangle dst, Color tint = WHITE);

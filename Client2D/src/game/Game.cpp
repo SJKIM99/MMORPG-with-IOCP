@@ -8,6 +8,7 @@
 #include "render/Actors.h"
 #include "render/Icons.h"
 #include "audio/Sfx.h"
+#include "audio/Voice.h"
 #include "platform/Ime.h"
 #include "core/Util.h"
 
@@ -1209,7 +1210,9 @@ void Game::OpenNpc(uint16_t npcId)
 	if (m_now - m_lastVoiceAt > 0.4)
 	{
 		m_lastVoiceAt = m_now;
-		sfx::PlayPitched(sfx::Id::Voice, 0.55f, npc->kind == WorldData::NpcKind::eChild ? 1.55f : (npc->kind == WorldData::NpcKind::eElder || npc->kind == WorldData::NpcKind::eVillager ? 0.8f : 1.05f));
+		// 목소리(Higgsfield 음성 대사)가 있으면 인사말을 실제로 말한다 — 없으면 예전 "웅얼거림" 효과음
+		if (!voice::Play("npc_" + std::to_string(npcId), 0.9f, 1))
+			sfx::PlayPitched(sfx::Id::Voice, 0.55f, npc->kind == WorldData::NpcKind::eChild ? 1.55f : (npc->kind == WorldData::NpcKind::eElder || npc->kind == WorldData::NpcKind::eVillager ? 0.8f : 1.05f));
 	}
 }
 

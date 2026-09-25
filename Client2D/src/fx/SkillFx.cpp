@@ -4,10 +4,13 @@
 #include "game/Entity.h"
 #include "render/Draw.h"
 #include "render/Assets.h"
+#include "render/Icons.h"
+#include "render/FxArt.h"
 #include "core/Util.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 namespace skillfx
@@ -65,6 +68,26 @@ namespace skillfx
 		Particle& P()
 		{
 			return fx::Particles().Emit();
+		}
+
+		// ── 그린 효과(fxart) — 없으면 nullptr, 절차적 효과는 그대로 ──
+		Particle* Tx(fxart::Id id, Vector2 iso, float z, float s0, float s1, float life, Color c0, Color c1, bool additive,
+			float rot = 0.f, float vrot = 0.f, float pop = 0.f)
+		{
+			Particle* p = fx::EmitTex(id, iso, z, s0, s1, life, c0, c1, additive);
+			if (p) { p->rot = rot; p->vrot = vrot; p->pop = pop; }
+			return p;
+		}
+		Particle* TxGround(fxart::Id id, Vector2 iso, float s0, float s1, float life, Color c0, Color c1, bool additive, float rot = 0.f, float vrot = 0.f)
+		{
+			Particle* p = Tx(id, iso, 0.f, s0, s1, life, c0, c1, additive, rot, vrot);
+			if (p)
+			{
+				p->ground = true;
+				// 위에서 본 원(각인 · 후광)만 눕힌다 — 불 고리 · 충격파는 그림이 이미 비스듬하다
+				p->squash = (id == fxart::FireRing || id == fxart::HitRing || id == fxart::Halo) ? 1.f : 0.5f;
+			}
+			return p;
 		}
 
 		void Spark(Vector2 iso, float z, float speed, float ang, Color c0, Color c1, float life, float size)
@@ -307,6 +330,8 @@ namespace skillfx
 			const float z = util::Lerp(p.za, p.zb, u) + std::sin(u * kPi) * 18.f;
 			gfx::SetDepth(pos.y / gfx::kHalfH + 0.6f);
 			const Vector2 c{ pos.x, pos.y - z };
+			if (const Texture2D* orb = fxart::Get(fxart::Orb))
+				gfx::TexQuad(*orb, c, Vector2{ 58.f, 58.f }, g_time * 7.f, util::Mix(Rgb(0xFFFFFF, 240), p.color, 0.35f));
 			gfx::TexQuad(tex.glow, c, Vector2{ 44.f, 44.f }, 0.f, util::MulA(p.color, 0.9f));
 			gfx::Star(c, 3.f, 10.f, 4, g_time * 9.f, Rgb(0xFFFFFF, 230));
 			gfx::Circle(c, 4.5f, Rgb(0xFFFFFF, 240));
@@ -336,6 +361,17 @@ namespace skillfx
 				prev = q;
 			}
 		}
+		// 떨어지는 낙성(그린 불덩이)
+		if (const Texture2D* fb = fxart::Get(fxart::Fireball))
+			for (const auto& f : g_falls)
+			{
+				const float u = util::Clamp01(f.t / f.dur);
+				const float z = (1.f - u) * 520.f;
+				const Vector2 pos{ f.iso.x - (1.f - u) * 160.f, f.iso.y };
+				gfx::SetDepth(pos.y / gfx::kHalfH + 0.6f);
+				const float sz = 70.f + 50.f * u;
+				gfx::TexQuad(*fb, Vector2{ pos.x, pos.y - z }, Vector2{ sz, sz }, g_time * 5.f, Rgb(0xFFF0D0, 240));
+			}
 		gfx::Additive(false);
 	}
 
@@ -363,6 +399,9 @@ namespace skillfx
 			fxs.Slash(c.casterIso, 28.f, dir, false, Rgb(0xFFD070, 200), 0.9f);
 			return 0.f;
 		case 3:   // 회전 베기 — 한 바퀴
+			// 그린 참격이 몸 둘레를 한 바퀴 돈다
+			Tx(fxart::SlashHeavy, c.casterIso, 30.f, 110.f, 150.f, 0.36f, Rgb(0xFFF4DC, 240), Rgb(0xFFC060, 0), true, 0.f, dir * 17.f, 0.04f);
+			TxGround(fxart::HitRing, c.casterIso, 30.f, 100.f, 0.35f, Rgb(0xFFE8B0, 200), Rgb(0xFFC060, 0), true);
 			AddDecal(Decal::Whirl, c.casterIso, 80.f, 0.35f, Rgb(0xFFE8B0));
 			AddDecal(Decal::Whirl, c.casterIso, 64.f, 0.3f, Rgb(0xFFC860));
 			for (int i = 0; i < 16; ++i)
@@ -378,16 +417,21 @@ namespace skillfx
 			for (int i = 0; i < n; ++i)
 			{
 				const Vector2 p = util::LerpV(c.casterIso, c.landIso, i / static_cast<float>(n));
+				if (i % 3 == 0)
+					Tx(id == 4 ? fxart::Dust : fxart::ShadowSmoke, p, 4.f, 26.f, 64.f, 0.6f, id == 4 ? Rgb(0xD8C8A8, 170) : Rgb(0xC8B0FF, 150), Rgb(0x8A7A60, 0), id != 4 ? true : false, RandF(0.f, 6.f), RandF(-1.f, 1.f));
 				if (id == 4) Smoke(p, 6.f, Rgb(0xB8A078, 150), 18.f, 0.6f, 12.f);
 				else { Glow(p, 30.f, 26.f, 6.f, Rgb(0xB0A0FF, 160), 0.4f); Smoke(p, 20.f, Rgb(0x6A5A9A, 110), 16.f, 0.5f, 20.f); }
 			}
 			return 0.f;
 		}
 		case 5:   // 철벽 태세
+			Tx(fxart::Dome, c.casterIso, 38.f, 60.f, 120.f, 0.55f, Rgb(0xFFE8B0, 200), Rgb(0xFFC040, 0), true, 0.f, 0.f, 0.1f);
+			TxGround(fxart::Halo, c.casterIso, 20.f, 60.f, 0.5f, Rgb(0xFFE08A, 220), Rgb(0xFFB030, 0), true);
 			fxs.Ring(c.casterIso, 10.f, 70.f, 0.45f, Rgb(0xFFD070, 230), 5.f);
 			Glow(c.casterIso, 34.f, 40.f, 110.f, Rgb(0xFFC860, 170), 0.35f);
 			return 0.f;
 		case 6:   // 단죄 — 힘을 모으는 빛
+			Tx(fxart::Orb, c.casterIso, 64.f, 16.f, 70.f, std::max(0.25f, c.castSec), Rgb(0xFFE0A0, 230), Rgb(0xFFA040, 120), true, 0.f, 4.f);
 			for (int i = 0; i < 18; ++i)
 			{
 				Particle& p = P();
@@ -412,14 +456,23 @@ namespace skillfx
 			}
 			const float dist = TileDist(gfx::IsoToTile(c.casterIso), gfx::IsoToTile(c.targetIso));
 			const float dur = std::clamp(dist / 16.f, 0.07f, 0.5f);
+			Tx(fxart::RuneGlyph, c.casterIso, 50.f, 24.f, 64.f, 0.3f, Rgb(0xD8F8FF, 240), Rgb(0x4AB8FF, 0), true, 0.f, 0.f, 0.05f);
 			g_proj.push_back(Projectile{ c.casterIso, c.targetIso, 48.f, c.targetHeight * 0.55f, 0.f, dur, col, id });
 			Glow(c.casterIso, 48.f, 16.f, 40.f, util::MulA(col, 0.9f), 0.15f);
 			return dur;
 		}
 		case 8:   // 서리 각인 — 지점에 인장
+			TxGround(fxart::RuneCircle, c.targetIso, 60.f, 160.f, 1.2f, Rgb(0xD0F4FF, 230), Rgb(0x6AC8FF, 0), true, 0.f, 1.5f);
+			Tx(fxart::Snowflake, c.targetIso, 40.f, 20.f, 70.f, 0.6f, Rgb(0xFFFFFF, 230), Rgb(0x9AE8FF, 0), true, 0.f, 2.f, 0.1f);
 			AddDecal(Decal::FrostSeal, c.targetIso, 72.f, 1.2f, Rgb(0x9AE8FF));
 			return 0.f;
 		case 9:   // 화염 고리
+			TxGround(fxart::FireRing, c.casterIso, 40.f, 130.f, 0.6f, Rgb(0xFFE0B0, 240), Rgb(0xFF5A1A, 0), true);
+			for (int i = 0; i < 6; ++i)
+			{
+				const float a = i * kPi / 3.f + RandF(-0.2f, 0.2f);
+				Tx(fxart::Flame, Vector2{ c.casterIso.x + std::cos(a) * 100.f, c.casterIso.y + std::sin(a) * 50.f }, 26.f, 30.f, 64.f, RandF(0.4f, 0.6f), Rgb(0xFFE0A0, 230), Rgb(0xFF4A10, 0), true, 0.f, 0.f, 0.08f);
+			}
 			AddDecal(Decal::FireRing, c.casterIso, 120.f, 0.55f, Rgb(0xFF7A2A));
 			for (int i = 0; i < 26; ++i)
 			{
@@ -428,7 +481,8 @@ namespace skillfx
 			}
 			return 0.f;
 		case 10:  // 옛길 도약 — 사라짐/나타남 + 떠난 자리 각인
-			AddDecal(Decal::Rune, c.casterIso, 60.f, 1.05f, Rgb(0xC0A0FF));
+			TxGround(fxart::RuneCircle, c.casterIso, 130.f, 90.f, 1.0f, Rgb(0xE0D0FF, 230), Rgb(0x9A6AFF, 0), true, 0.f, 3.f);
+			Tx(fxart::PillarTeal, c.landIso, 100.f, 200.f, 220.f, 0.5f, Rgb(0xE8E0FF, 230), Rgb(0x9A6AFF, 0), true, 0.f, 0.f, 0.06f);
 			for (int i = 0; i < 14; ++i) { Glow(c.casterIso, RandF(10.f, 60.f), 18.f, 2.f, Rgb(0xB08AFF, 200), RandF(0.2f, 0.5f)); }
 			for (int i = 0; i < 14; ++i) { Glow(c.landIso, RandF(10.f, 60.f), 2.f, 22.f, Rgb(0xD8C8FF, 220), RandF(0.2f, 0.4f)); }
 			fxs.Ring(c.landIso, 6.f, 60.f, 0.3f, Rgb(0xD8C8FF, 220), 3.f);
@@ -438,21 +492,31 @@ namespace skillfx
 			g_falls.push_back(Fall{ c.targetIso, 0.f, std::max(0.3f, c.castSec) });
 			return 0.f;
 		case 13:  // 연속 찌르기
+			for (int k = 0; k < 2; ++k)
+				if (Particle* t = Tx(fxart::Thrust, Vector2{ c.casterIso.x + dir * (26.f + k * 10.f), c.casterIso.y + k * 4.f }, 30.f - k * 8.f, 40.f, 80.f, 0.16f + k * 0.05f, Rgb(0xF4ECFF, 240), Rgb(0xA06AFF, 0), true, 0.f, 0.f, 0.03f))
+					t->flipX = dir < 0.f;
 			fxs.Slash(c.casterIso, 30.f, dir, false, Rgb(0xE8D8FF, 200), 0.7f);
 			return 0.f;
 		case 14:  // 그늘 걸음 — 연기 + 도착 지점 그림자
+			Tx(fxart::ShadowSmoke, c.casterIso, 30.f, 50.f, 120.f, 0.7f, Rgb(0xB8A0E0, 220), Rgb(0x2A1A4A, 0), false, RandF(0.f, 6.f), 0.8f);
+			Tx(fxart::ShadowSmoke, c.landIso, 30.f, 40.f, 100.f, 0.6f, Rgb(0xB8A0E0, 200), Rgb(0x2A1A4A, 0), false, RandF(0.f, 6.f), -0.8f);
 			for (int i = 0; i < 10; ++i) Smoke(c.casterIso, RandF(5.f, 40.f), Rgb(0x3A2A5A, 170), 22.f, 0.6f, 30.f);
 			AddDecal(Decal::Shadow, c.landIso, 48.f, 0.6f, Rgb(0x2A1A4A));
 			for (int i = 0; i < 8; ++i) Smoke(c.landIso, RandF(5.f, 40.f), Rgb(0x4A3A7A, 150), 18.f, 0.5f, 20.f);
 			return 0.f;
 		case 15:  // 독 칼날
+			if (Particle* v = Tx(fxart::Venom, Vector2{ c.casterIso.x + dir * 24.f, c.casterIso.y }, 30.f, 30.f, 70.f, 0.35f, Rgb(0xD8FFB0, 230), Rgb(0x4AB020, 0), true, 0.f, 0.f, 0.05f))
+				v->flipX = dir < 0.f;
 			fxs.Slash(c.casterIso, 30.f, dir, false, Rgb(0x9AF06A, 220), 1.0f);
 			return 0.f;
 		case 17:  // 후방 습격 — 붉은 보라 X
+			Tx(fxart::DaggerFlash, Vector2{ c.casterIso.x + dir * 20.f, c.casterIso.y }, 34.f, 50.f, 110.f, 0.22f, Rgb(0xFFE8FF, 245), Rgb(0xE06AFF, 0), true, 0.6f * dir, 0.f, 0.04f);
 			fxs.Slash(c.casterIso, 34.f, dir, false, Rgb(0xE06AFF, 230), 1.1f);
 			fxs.Slash(c.casterIso, 26.f, -dir, true, Rgb(0xFF5A8A, 200), 0.9f);
 			return 0.f;
 		case 18:  // 그믐 베기 — 달빛 원
+			TxGround(fxart::Halo, c.casterIso, 30.f, 90.f, 0.9f, Rgb(0xE8E0FF, 220), Rgb(0x8A6AFF, 0), true);
+			Tx(fxart::SlashHeavy, c.casterIso, 32.f, 120.f, 170.f, 0.5f, Rgb(0xE8E0FF, 230), Rgb(0x8A6AFF, 0), true, 0.f, dir * 20.f, 0.05f);
 			AddDecal(Decal::Whirl, c.casterIso, 84.f, 0.9f, Rgb(0xD8D0FF));
 			AddDecal(Decal::Shadow, c.casterIso, 90.f, 1.0f, Rgb(0x1A1030));
 			Glow(c.casterIso, 60.f, 60.f, 140.f, Rgb(0xC8C0FF, 120), 0.8f);
@@ -483,34 +547,50 @@ namespace skillfx
 			fxs.HitSpark(iso, height, Rgb(0xFFD070), crit, 1.f);
 			break;
 		case 4:
+			if (Particle* d = Tx(fxart::Dirt, iso, 6.f, 50.f, 110.f, 0.6f, Rgb(0xE0D0B8, 220), Rgb(0x8A7A60, 0), false, RandF(-0.3f, 0.3f)))
+				d->vz = 40.f;
 			fxs.Ring(iso, 8.f, 70.f, 0.35f, Rgb(0xFFB050, 220), 6.f);
 			for (int i = 0; i < 8; ++i) Smoke(iso, 6.f, Rgb(0xB8A078, 150), 20.f, 0.6f, 14.f);
 			break;
 		case 6:   // 처형: 땅이 갈라진다
+			Tx(fxart::PillarGold, iso, 120.f, 200.f, 260.f, 0.55f, Rgb(0xFFF4D0, 245), Rgb(0xFF8A3A, 0), true, 0.f, 0.f, 0.05f);
+			Tx(fxart::HitCrit, iso, z, 100.f, 200.f, 0.3f, Rgb(0xFFFFFF, 255), Rgb(0xFF8A3A, 0), true, RandF(0.f, 6.f), 0.f, 0.05f);
 			AddDecal(Decal::Crack, iso, 70.f, 1.6f, Rgb(0xFF8A3A));
 			fxs.Ring(iso, 10.f, 110.f, 0.45f, Rgb(0xFF8A3A, 240), 8.f);
 			fxs.Beam(iso, 50.f, 220.f, 0.4f, Rgb(0xFFB060, 220));
 			for (int i = 0; i < 16; ++i) Spark(iso, z, RandF(160.f, 380.f), RandF(0.f, 6.28f), Rgb(0xFFF0C0), Rgb(0xFF6A20, 0), 0.4f, 9.f);
 			break;
 		case 7:   // 각인탄
+			Tx(fxart::HitMagic, iso, z, 50.f, 110.f, 0.26f, Rgb(0xE0FAFF, 240), Rgb(0x4AB8FF, 0), true, RandF(0.f, 6.f), 2.f, 0.05f);
 			Glow(iso, z, 20.f, 60.f, Rgb(0x9AE8FF, 220), 0.18f);
 			for (int i = 0; i < 7; ++i) Spark(iso, z, RandF(90.f, 200.f), RandF(0.f, 6.28f), Rgb(0xE0F8FF), Rgb(0x4AB8FF, 0), 0.25f, 6.f);
 			break;
 		case 8:   // 빙결: 얼음 조각
+			Tx(fxart::IceBurst, iso, z, 50.f, 120.f, 0.35f, Rgb(0xF0FCFF, 240), Rgb(0x6AC8FF, 0), true, RandF(0.f, 6.f), 0.f, 0.05f);
+			Tx(fxart::IceSpikes, iso, 24.f, 50.f, 80.f, 0.9f, Rgb(0xE8F8FF, 235), Rgb(0x9AE8FF, 0), false, 0.f, 0.f, 0.08f);
 			for (int i = 0; i < 8; ++i) Shard(iso, z, Rgb(0xC8F0FF, 230), RandF(40.f, 120.f), RandF(4.f, 7.f), RandF(0.5f, 0.9f));
 			Glow(iso, z, 30.f, 70.f, Rgb(0x9AE8FF, 200), 0.3f);
 			break;
 		case 9:   // 화염
+			Tx(fxart::Flame, iso, z, 40.f, 80.f, 0.4f, Rgb(0xFFE8B0, 240), Rgb(0xFF4A10, 0), true, 0.f, 0.f, 0.05f);
+			Tx(fxart::Embers, iso, z + 10.f, 40.f, 70.f, 0.6f, Rgb(0xFFD080, 230), Rgb(0xFF3A10, 0), true);
 			for (int i = 0; i < 8; ++i) Ember(iso, z, Rgb(0xFFD060), Rgb(0xFF3A10, 0), 12.f, RandF(0.4f, 0.7f));
 			break;
 		case 10:  // 각인 폭발
+			Tx(fxart::HitMagic, iso, z, 60.f, 130.f, 0.3f, Rgb(0xF0E8FF, 240), Rgb(0x9A6AFF, 0), true, RandF(0.f, 6.f), 2.f, 0.05f);
 			Glow(iso, z, 30.f, 90.f, Rgb(0xC0A0FF, 220), 0.3f);
 			break;
 		case 11:  // 번개
+			Tx(fxart::SparkBall, iso, z, 40.f, 90.f, 0.24f, Rgb(0xFFFFFF, 250), Rgb(0x6AB8FF, 0), true, RandF(0.f, 6.f), 6.f, 0.04f);
 			Glow(iso, z, 26.f, 80.f, Rgb(0xE8F0FF, 240), 0.2f);
 			for (int i = 0; i < 9; ++i) Spark(iso, z, RandF(140.f, 320.f), RandF(0.f, 6.28f), Rgb(0xFFFFFF), Rgb(0x6AB8FF, 0), 0.3f, 7.f);
 			break;
 		case 12:  // 낙성 충돌
+			Tx(fxart::HitCrit, iso, 40.f, 140.f, 300.f, 0.4f, Rgb(0xFFF0C0, 255), Rgb(0xFF5A1A, 0), true, RandF(0.f, 6.f), 0.f, 0.06f);
+			TxGround(fxart::FireRing, iso, 40.f, 180.f, 0.7f, Rgb(0xFFD8A0, 240), Rgb(0xFF4A10, 0), true);
+			for (int i = 0; i < 3; ++i)
+				if (Particle* s = Tx(fxart::Smoke, iso, RandF(20.f, 60.f), 80.f, 200.f, RandF(1.0f, 1.5f), Rgb(0x6A5A4A, 200), Rgb(0x3A3028, 0), false, RandF(0.f, 6.f), RandF(-0.5f, 0.5f)))
+					s->vz = RandF(30.f, 70.f);
 			AddDecal(Decal::Crack, iso, 110.f, 2.0f, Rgb(0xFF5A2A));
 			fxs.Ring(iso, 20.f, 200.f, 0.55f, Rgb(0xFF7A3A, 240), 10.f);
 			fxs.Ring(iso, 10.f, 140.f, 0.4f, Rgb(0xFFF0C0, 220), 5.f);
@@ -522,13 +602,18 @@ namespace skillfx
 			for (int i = 0; i < (crit ? 10 : 5); ++i) Spark(iso, z, RandF(140.f, 280.f), RandF(-0.8f, 0.8f), Rgb(0xF0E0FF), Rgb(0xA06AFF, 0), 0.25f, 7.f);
 			break;
 		case 14:
+			Tx(fxart::ShadowSmoke, iso, z, 40.f, 90.f, 0.5f, Rgb(0xB8A0E0, 200), Rgb(0x2A1A4A, 0), false, RandF(0.f, 6.f), 1.f);
 			for (int i = 0; i < 6; ++i) Smoke(iso, z, Rgb(0x3A2A5A, 160), 18.f, 0.5f, 25.f);
 			break;
 		case 15:  // 독
+			Tx(fxart::Venom, iso, z, 40.f, 80.f, 0.35f, Rgb(0xE0FFC0, 235), Rgb(0x4AB020, 0), true, RandF(0.f, 6.f), 0.f, 0.05f);
+			if (Particle* c = Tx(fxart::PoisonCloud, iso, z * 0.7f, 40.f, 110.f, 0.9f, Rgb(0xC8FF9A, 150), Rgb(0x3A8A20, 0), false, RandF(0.f, 6.f), 0.4f))
+				c->vz = 12.f;
 			for (int i = 0; i < 6; ++i) Ember(iso, z, Rgb(0xB8FF7A), Rgb(0x2A8A20, 0), 10.f, 0.5f);
 			fxs.HitSpark(iso, height, Rgb(0x8AE85A), crit, 1.f);
 			break;
 		case 18:
+			Tx(fxart::HitMagic, iso, z, 50.f, 110.f, 0.26f, Rgb(0xF4F0FF, 240), Rgb(0x9A8AFF, 0), true, RandF(0.f, 6.f), -2.f, 0.05f);
 			for (int i = 0; i < 5; ++i) Spark(iso, z, RandF(120.f, 260.f), RandF(0.f, 6.28f), Rgb(0xFFFFFF), Rgb(0xB0A0FF, 0), 0.25f, 7.f);
 			break;
 		default:
@@ -537,11 +622,14 @@ namespace skillfx
 		}
 		if (flags2 & DAMAGE2_WALL)
 		{
+			if (Particle* d = Tx(fxart::Dirt, iso, 10.f, 50.f, 120.f, 0.6f, Rgb(0xE0D0B8, 220), Rgb(0x8A7A60, 0), false, RandF(-0.3f, 0.3f)))
+				d->vz = 30.f;
 			fxs.Ring(iso, 8.f, 80.f, 0.35f, Rgb(0xD8C8A0, 220), 7.f);
 			for (int i = 0; i < 10; ++i) Smoke(iso, 8.f, Rgb(0x9A8A70, 170), 22.f, 0.8f, 20.f);
 		}
 		if (comboId != 0)
 		{
+			Tx(fxart::HitCrit, iso, z, 110.f, 230.f, 0.34f, Rgb(0xFFF8E0, 255), Rgb(0xFFB040, 0), true, RandF(0.f, 6.f), 1.5f, 0.06f);
 			// 연계: 금빛 폭발 + 별
 			Glow(iso, z, 40.f, 140.f, Rgb(0xFFE08A, 230), 0.3f);
 			Particle& s = P();
@@ -863,6 +951,17 @@ namespace skillfx
 		// 바탕: 직업 색 그라데이션
 		DrawRectangleGradientV(static_cast<int>(c.x - h), static_cast<int>(c.y - h), static_cast<int>(s), static_cast<int>(s),
 			util::Shade(col, 0.32f), util::Shade(col, 0.12f));
+		// 그린 기술 아이콘(있으면): 바탕 위에 꽉 차게
+		{
+			char key[24];
+			std::snprintf(key, sizeof(key), "skill_%u", static_cast<unsigned>(id));
+			if (icons::DrawPainted(key, Rectangle{ c.x - h, c.y - h, s, s }))
+			{
+				if (locked)
+					DrawRectangle(static_cast<int>(c.x - h), static_cast<int>(c.y - h), static_cast<int>(s), static_cast<int>(s), Rgb(0x000000, 150));
+				return;
+			}
+		}
 		auto L = [&](float x0, float y0, float x1, float y1, float w, Color cc)
 		{
 			DrawLineEx(Vector2{ c.x + x0 * h, c.y + y0 * h }, Vector2{ c.x + x1 * h, c.y + y1 * h }, w * s / 44.f, cc);

@@ -41,6 +41,7 @@ namespace fx
 		void Beam(Vector2 iso, float width, float height, float life, Color color);
 		void Telegraph(Vector2 iso, int radiusTiles, float duration, Color color);
 		void Slash(Vector2 iso, float height, float dirSign, bool back, Color color, float scale);
+		void ClawMarks(Vector2 iso, float height, float dirSign, Color color);   // 짐승 할퀴기 자국(그린 효과)
 		void Flash(Color color, float strength, float duration);
 		void HitStop(float seconds);
 		[[nodiscard]] float TimeScale() const { return m_hitStop > 0.f ? 0.06f : 1.f; }

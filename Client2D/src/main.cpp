@@ -26,7 +26,12 @@
 #include "render/Terrain.h"
 #include "render/Lighting.h"
 #include "render/Props.h"
+#include "render/Sprites.h"
+#include "render/EnvArt.h"
+#include "render/FxArt.h"
+#include "ui/UiArt.h"
 #include "audio/Sfx.h"
+#include "audio/Voice.h"
 #include "platform/Ime.h"
 #include "ui/Font.h"
 #include "ui/Ui.h"
@@ -85,6 +90,7 @@ namespace
 			props::FrameLights().clear();
 			gfx::DepthTest(true);
 			gfx::DepthWrite(true);
+			sprites::BeginWorld(0.35f);
 			terrain.DrawProps(cam, W, H, Vector2{ cx, cy }, time, false);
 			for (size_t i = 0; i < MonsterTable::kRowCount; ++i)
 			{
@@ -103,6 +109,59 @@ namespace
 				actors::DrawShadow(p.base, actors::MonsterShadow(row), 1.f);
 				actors::DrawMonster(p, row);
 			}
+			// 직업 3종: 서기 · 걷기 · 평타 · 기술 · 맞음/쓰러짐을 차례로
+			for (int c = 0; c < 3; ++c)
+				for (int k = 0; k < 5; ++k)
+				{
+					const float X = cx - 9.f + static_cast<float>(k) * 2.f + c * 0.25f;
+					const float Y = cy + 3.5f + static_cast<float>(c) * 2.6f - k * 0.0f;
+					actors::Pose p;
+					p.base = gfx::IsoPx(X, Y);
+					p.time = time + k * 0.9f;
+					p.walk = time * 8.f;
+					p.seed = static_cast<uint32_t>(c * 7 + k);
+					p.faceRight = true;
+					const float cyc = std::fmod(time + k * 0.31f, 2.4f);
+					switch (k)
+					{
+					case 1: p.moving = 1.f; break;
+					case 2: p.attack = cyc < 0.42f ? cyc / 0.42f : -1.f; break;
+					case 3:
+					{
+						static constexpr uint16_t kSk[3] = { 3, 9, 13 };
+						p.skill = kSk[c];
+						p.skillT = cyc < 0.9f ? cyc / 0.9f : -1.f;
+						break;
+					}
+					case 4:
+						p.hurt = cyc < 0.35f ? 1.f - cyc / 0.35f : 0.f;
+						p.dead = cyc > 1.2f ? util::Clamp01((cyc - 1.2f) / 0.7f) : 0.f;
+						break;
+					default: break;
+					}
+					gfx::SetDepth(X + Y);
+					actors::DrawShadow(p.base, 15.f, 1.f);
+					actors::DrawPlayer(p, actors::LookForPlayer(0x9E3779B9u * (c + 1), 0, 0, static_cast<uint8_t>(c)));
+				}
+			// 마을 사람들
+			for (size_t i = 0; i < WorldData::kNpcCount; ++i)
+			{
+				const auto& npc = WorldData::kNpcs[i];
+				const float X = cx - 9.f + static_cast<float>(i % 10) * 1.9f;
+				const float Y = cy + 11.5f + static_cast<float>(i / 10) * 2.6f;
+				actors::Pose p;
+				p.base = gfx::IsoPx(X, Y);
+				p.time = time + i * 1.3f;
+				p.walk = time * 6.f;
+				p.moving = (static_cast<int>(time / 2.5f) + static_cast<int>(i)) % 3 == 0 ? 1.f : 0.f;
+				p.cast = (static_cast<int>(time / 2.5f) + static_cast<int>(i)) % 3 == 1 ? 0.6f : 0.f;
+				p.faceRight = (i % 2) == 0;
+				p.seed = static_cast<uint32_t>(i);
+				gfx::SetDepth(X + Y);
+				actors::DrawShadow(p.base, WorldData::IsAnimal(npc.kind) ? 10.f : 15.f, 1.f);
+				actors::DrawNpc(p, npc);
+			}
+			sprites::EndWorld();
 			gfx::Flush();
 			gfx::DepthTest(false);
 			EndMode2D();
@@ -204,10 +263,18 @@ int main(int argc, char** argv)
 
 	ui::Fonts().Init(FindAssetDir("assets/fonts", "Pretendard-Medium.ttf"));
 	art::Init(FindAssetDir("assets/art", "key_art.jpg"));
+	sprites::Init(FindAssetDir("assets/sprites", "actors.txt"));
+	envart::Init(FindAssetDir("assets/terrain", "ground_atlas.jpg"));
+	fxart::Init(FindAssetDir("assets/fx", "hit_star.png"));
+	uiart::Init(FindAssetDir("assets/ui", "panel_tex.png"));
 	assets::Load();
 	icons::Build();
+	icons::LoadPainted(FindAssetDir("assets/icons", "icons.png"));
 	if (!opts.mute)
+	{
 		sfx::Init();
+		voice::Init(FindAssetDir("assets/voice", "voice.txt"));
+	}
 	ime::Attach();
 
 	if (gallery)
@@ -225,9 +292,14 @@ int main(int argc, char** argv)
 	}
 
 	ime::Detach();
+	voice::Shutdown();
 	sfx::Shutdown();
 	icons::Unload();
 	assets::Unload();
+	sprites::Shutdown();
+	envart::Shutdown();
+	fxart::Shutdown();
+	uiart::Shutdown();
 	art::Shutdown();
 	ui::Fonts().Shutdown();
 	CloseWindow();

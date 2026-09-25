@@ -6,6 +6,7 @@
 #include "render/Draw.h"
 #include "render/Actors.h"
 #include "audio/Sfx.h"
+#include "audio/Voice.h"
 #include "core/Util.h"
 
 #include <algorithm>
@@ -526,6 +527,9 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 		target->projArriveAt = m_now + travel;
 
 	sfx::Play(CastSfx(row->id), basic ? 0.6f : 0.85f, 0.08f);
+	// 궁극기(단죄 · 낙성 · 그믐 베기): 기합 한마디
+	if (row->id == 6 || row->id == 12 || row->id == 18)
+		voice::Play("pc_" + std::to_string(static_cast<int>(m_classId)) + "_ult", 1.f, 2);
 	const skillfx::Feel feel = skillfx::CastFeel(row->id);
 	if (feel.trauma > 0.f) m_cam.AddTrauma(feel.trauma);
 	if (feel.kick > 0.f) m_cam.Kick(feel.kick);
@@ -950,6 +954,13 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 	}
 	const Color bodyColor = (v->kind == EntityKind::Monster && v->row) ? Rgb(v->row->color1) : Rgb(0xC83A3A);
 	fx::Fx().HitSpark(iso, h, bodyColor, crit, dirSign);
+	// 짐승 · 용 · 벌레 · 마물의 평타: 할퀸 자국
+	if (a && p.skillId == 0 && a->kind == EntityKind::Monster && a->row)
+	{
+		const auto arch = a->row->archetype;
+		if (arch == MonsterArchetype::eQuadruped || arch == MonsterArchetype::eDragon || arch == MonsterArchetype::eInsect || arch == MonsterArchetype::eDemon)
+			fx::Fx().ClawMarks(iso, h, dirSign, arch == MonsterArchetype::eDemon ? Rgb(0xFF6A3A) : Rgb(0xFFD0B0));
+	}
 	if (p.skillId != 0)
 		skillfx::OnHit(p.skillId, iso, h, crit, combo ? p.comboId : 0, p.flags2, false);
 	if (guard)

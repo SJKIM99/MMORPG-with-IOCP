@@ -4,6 +4,8 @@
 #include "fx/SkillFx.h"
 #include "render/Draw.h"
 #include "render/Actors.h"
+#include "render/Sprites.h"
+#include "ui/UiArt.h"
 #include "render/Icons.h"
 #include "render/Props.h"
 #include "render/Assets.h"
@@ -124,6 +126,8 @@ void Game::DrawWorld(const Camera2D& cam)
 	gfx::BeginWorld(pt.x + pt.y, cam.zoom);
 	props::FrameLights().clear();
 	const float t = m_time;
+	// 그린 스프라이트용 월드 셰이더(알파 테스트 · 번쩍임). 스프라이트가 아닌 도형에는 아무 일도 하지 않는다.
+	sprites::BeginWorld(0.35f);
 
 	// ── 1) 바닥 데칼: 깊이 테스트만(쓰기 X) ──
 	gfx::DepthTest(true);
@@ -249,6 +253,7 @@ void Game::DrawWorld(const Camera2D& cam)
 		gfx::DepthGreater(false);
 	}
 	gfx::DepthWrite(false);
+	sprites::SetAlphaTest(0.02f);   // 깊이를 안 쓰니 가장자리를 부드럽게(완전히 빈 곳만 버린다)
 
 	// ── 3) 반투명: 깊이 쓰기 X ──
 	for (auto& [id, e] : m_ents)
@@ -281,6 +286,7 @@ void Game::DrawWorld(const Camera2D& cam)
 	fx::Fx().DrawWorld();
 	skillfx::DrawWorld();
 
+	sprites::EndWorld();
 	gfx::Flush();
 	gfx::DepthTest(false);
 	gfx::DepthWrite(true);
@@ -469,6 +475,9 @@ void Game::DrawNpcs()
 		pose.moving = v.moving;
 		pose.faceRight = v.faceRight;
 		pose.faceBack = v.faceBack;
+		// 말하는 중(대화창 · 혼잣말): 손짓하는 그림으로
+		if (nid == m_dialogNpc || (v.barkT > 0.f && !v.bark.empty()))
+			pose.cast = 0.6f;
 		gfx::ResetMod();
 		gfx::SetDepth(v.pos.x + v.pos.y + 0.003f * (nid % 7));
 		if (nid == m_hoverNpc) gfx::SetFlash(0.12f);
@@ -676,6 +685,19 @@ void Game::DrawCursor()
 	else if (m_enchant.stage == 1)
 		kind = Enchant;
 
+	// 그린 커서(있으면): 끝이 왼쪽 위(마우스 위치)
+	{
+		const uiart::Id id = kind == Attack ? uiart::CursorAttack : (kind == Pickup ? uiart::CursorPick : (kind == Talk ? uiart::CursorTalk : uiart::CursorArrow));
+		if (kind != Enchant)
+			if (const Texture2D* t = uiart::Get(id))
+			{
+				const float s = 30.f;
+				const float k = s / static_cast<float>(std::max(t->width, t->height));
+				DrawTexturePro(*t, Rectangle{ 0, 0, static_cast<float>(t->width), static_cast<float>(t->height) },
+					Rectangle{ std::round(m.x - 1.f), std::round(m.y - 1.f), t->width * k, t->height * k }, Vector2{ 0, 0 }, 0.f, WHITE);
+				return;
+			}
+	}
 	auto outlineTri = [](Vector2 a, Vector2 b, Vector2 c, Color fill)
 	{
 		DrawTriangle(a, b, c, fill);
