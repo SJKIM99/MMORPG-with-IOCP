@@ -20,7 +20,10 @@
 | 2026-09-26 | 4-C 비교 | 경매장 한 채(키트 그림 = 설계도 참고 그림) | `gpt_image_2_5` · 4:3 · quality medium · 1k · background transparent · 참고 그림 `989547e8-539e-488d-98d4-ae4bb14c19ff` | 0.5 | 12.75 → 12.25 | `aca5056b-0f32-46e9-a127-8c19f323b527` | `assets/buildings/auction.png` — **게임에 넣음**(비교 캡처 → 채택, PHASE_4 4-C) |
 | 2026-09-26 | 4-C | 랜드마크 · 큰 가게 6채: 샛별 탑 · 잡화점 · 대장간 · 여관 · 결사 회관 · 예배당 | 같은 조건(비율만 2:3 · 5:4 · 4:3 · 5:4 · 3:2 · 9:8) — `generate_image_batch` 한 번 | 3.0(0.5 × 6) | 12.25 → 9.25 | `d9f386b0-d693-4a49-bd17-dfa321af81b7` · `9939af38-2aab-4fc1-9b72-db260fa2e761` · `5452c447-cdde-4df2-b5a1-27b1577a1516` · `bf3cd2fc-5b94-4c05-953f-74a794a36dd7` · `26a1f071-bb71-4a5b-9ce7-14ad1b65c79a` · `c4ed197b-35c6-48b8-91ac-364c68930d97` | `assets/buildings/*.png` — **게임에 넣음**. 실루엣 겹침(IoU) 0.93~0.98, 대장간만 0.83(헛간 기둥을 조금 더 밖에 그렸다) |
 
-합계 17.5크레딧(1-D 11.5 + 2-C 2.5 + 4-C 3.5). 잔액 **9.25**(2026-09-26). 4-C는 한 번에 3.0(잔액의 24%) — 30% 안이라 묻지 않고 진행했다. 올린 시작 그림(media): 서약기사 `d5a4b2e3-c2f7-4fd7-bf4b-96bdb82204f4`, 각인술사 `0192b00a-20da-435f-bed0-16dfe462de1c`.
+| 2026-09-26 | 4-B 보강 | 새 주민 초상화 10장(로렌초 · 즈데노 · 체도 · 네다 · 스탄코 · 밀로 · 즐라타 · 벨코 · 스네자 · 페로) — **한 장에 5×2 칸** | `gpt_image_2_5` · 16:9 · quality medium · **2k**(2688×1520 — 칸 537×760) · 참고 그림 = 기존 초상화 8 · 2(그림체만) · 칸 사이 옅은 회색 선 | 1.0 | 9.25 → 8.25 | `43b0e3f4-80ff-4899-aff8-95f1ff8eb434` | `assets/art/portrait_21~26 · 28~30 · 33.jpg` — **게임에 넣음**(대화창 녹화 확인). 한 장씩이면 5.0 — 칸 한 장이 0.1 |
+
+합계 18.5크레딧(1-D 11.5 + 2-C 2.5 + 4-C 3.5 + 4-B 초상화 1.0). 잔액 **8.25**(2026-09-26). 4-C는 한 번에 3.0(잔액의 24%), 초상화는 1.0(11%) — 30% 안이라 묻지 않고 진행했다.
+초상화는 격자 한 장이 곧 시험이자 전부다(한 번 생성 → 잘라서 게임 대화창 녹화로 확인 → 통과, 추가 생성 없음). 문구 · 참고 그림은 `catalog.py`의 `PORTRAITS_4B` · `portrait_sheet_prompt`, 자르기는 `portraits.py`. 올린 시작 그림(media): 서약기사 `d5a4b2e3-c2f7-4fd7-bf4b-96bdb82204f4`, 각인술사 `0192b00a-20da-435f-bed0-16dfe462de1c`.
 컷인 주문 문구(서약기사 원래 문구는 남지 않아 둘은 그 그림을 참고 그림으로 넘겼다): "Wide cinematic banner illustration for a game ultimate-skill cut-in, 21:9. Use the FIRST reference image only for painting style, lighting,
 brushwork and banner composition(왼쪽 3분의 1에 인물 · 오른쪽 절반은 어두운 하늘로) … Use the SECOND reference image for the character design … No text, no letters, no logo, no watermark, no purple, no neon."
 + 직업마다 자세 · 배경(각인술사: 하늘에 겹겹의 청록 각인 원을 쓰고 운석이 떨어진다 / 밤사냥꾼: 쌍단검이 달빛 초승 궤적을 남기며 파고든다 · 가는 초승달 · 먹물 연기).

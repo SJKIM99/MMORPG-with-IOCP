@@ -89,19 +89,22 @@ namespace art
 	const Texture2D* Portrait(uint16_t npcId)
 	{
 		// 이름 있는 경비병은 초상화가 따로 있고(경비대장 야로), 나머지 경비병은 한 장을 같이 쓴다
+		// Phase 4-B 교관 두샨 · 파수꾼 보그단도 경비병 그림을 빌려 입으므로 경비병 초상화를 같이 쓴다
 		switch (npcId)
 		{
-		case 5: case 14: case 15: case 16: return Load("portrait_guard.jpg");
+		case 5: case 14: case 15: case 16: case 27: case 31: return Load("portrait_guard.jpg");
 		default: break;
 		}
-		if (npcId >= 1 && npcId <= 13)
+		// 1~13: 처음 주민, 21~30 · 33: Phase 4-B 새 주민(한 장에 열 칸으로 그린 것 — tools/assetgen/portraits.py). 동물(17~20 · 32)은 없음
+		if ((npcId >= 1 && npcId <= 13) || (npcId >= 21 && npcId <= 30) || npcId == 33)
 			return Load("portrait_" + std::to_string(npcId) + ".jpg");
 		return nullptr;
 	}
 
 	bool PreloadStep()
 	{
-		static const uint16_t kIds[] = { 6, 7, 1, 2, 3, 8, 9, 4, 5, 10, 11, 12, 13 };   // 5 = 경비병 공용 초상화
+		static const uint16_t kIds[] = { 6, 7, 1, 2, 3, 8, 9, 4, 5, 10, 11, 12, 13,   // 5 = 경비병 공용 초상화
+			21, 22, 23, 24, 25, 26, 28, 29, 30, 33 };
 		static size_t next = 0;
 		if (next >= sizeof(kIds) / sizeof(kIds[0]))
 			return false;

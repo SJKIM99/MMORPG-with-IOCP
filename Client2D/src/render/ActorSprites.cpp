@@ -67,10 +67,11 @@ namespace actorspr
 			case 19: case 20: return "npc_chicken";
 			// Phase 4-B 새 주민: 그린 그림이 없어 가까운 옷차림을 빌린다 — 같은 그림은 서로 멀리 떨어진 구획에만 둔다
 			// (경매인 ↔ 길잡이: 시장 · 광장, 회관지기 ↔ 경비대장: 윗마을 · 남문, 방어구장이 ↔ 농부: 장인 거리 · 서쪽 들 …).
-			// 마구간지기 · 어부는 절차적 그림(옷 색)으로.
+			// 마구간지기 · 어부도 농부 옷차림(밀짚모자 · 멜빵바지 — 초상화도 그렇게 그렸다). 예전에는 절차적 그림이었는데
+			// 주민(eVillager)의 절차적 모습이 숄 두른 할멈이라 남자 둘이 할멈으로 보였다.
 			case 21: return "npc_mateo";
 			case 22: return "npc_yaro";
-			case 23: return "npc_danilo";
+			case 23: case 25: case 29: return "npc_danilo";
 			case 24: return "npc_lada";
 			case 26: return "npc_goran";
 			case 27: case 31: return "npc_guard";

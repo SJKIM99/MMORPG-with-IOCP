@@ -259,6 +259,38 @@ NPCS = [
 ]
 
 
+# Phase 4-B 새 주민 초상화 — 열 장을 한 장(2k · 16:9 · 5×2 칸)에. 게임 속 빌려 입은 옷차림(ActorSprites NpcKey)과 색 · 소품을 맞췄다.
+# 잘라내기: tools/assetgen/portraits.py <그림> 5 2 21 22 23 24 25 26 28 29 30 33. 참고 그림 = 기존 초상화 8(베스나) · 2(도브란) — 그림체만.
+PORTRAITS_4B = [
+    (21, "a lean, shrewd man in his fifties from the warm south: olive skin, short dark hair greying at the temples, neatly trimmed pointed beard, slate-blue high-collared robe with brass trim, a small brass hand bell on a cord at his chest, holding a leather-bound ledger"),
+    (22, "a grizzled old veteran in his sixties: weathered face with a pale scar across one cheek, thick grey mustache, open steel helmet with a faded red plume, chainmail under a worn blue tabard with a small white tower emblem, holding the pole of an old rolled-up banner"),
+    (23, "a stocky armorer in his forties: bare head with short cropped brown hair, short brown beard, broad shoulders, cream linen shirt with rolled sleeves, ochre-brown leather apron, a measuring cord around his neck, holding a polished steel gauntlet"),
+    (24, "a lively tavern keeper woman in her thirties: dark curly hair under a mustard-yellow headscarf, rosy cheeks, knowing grin, deep red dress with a cream apron, raising a pewter tankard with foam"),
+    (25, "a weathered stable keeper in his fifties: bushy brown mustache, sun-browned skin, wide straw hat, cream linen shirt and ochre overalls, a coil of rope over one shoulder, a few stalks of hay on his sleeve"),
+    (26, "an old miller in his seventies: long white beard dusted with flour, kind creased eyes, dark-green wool coat with a thick fur collar, a flour sack on his shoulder"),
+    (28, "a warm, plump herbalist woman in her forties: red headscarf, brown dress with a white apron, holding a bundle of fresh green herbs"),
+    (29, "a lean, patient fisherman in his forties: stubble, squinting eyes, wide straw hat, cream linen shirt and ochre overalls, a fishing net over one shoulder"),
+    (30, "a cheerful washerwoman in her fifties: greying hair tied back, dusky rose knitted shawl, sleeves rolled up, holding a wicker basket of white linen"),
+    (33, "a cheeky village boy of about eight: tousled dark-blond hair, freckles, gap-toothed grin, simple blue linen shirt with a patched elbow, holding a small wooden toy sword"),
+]
+PORTRAITS_4B_REFS = ["7358ce21-13c7-49b4-87e1-9fb0de14e2c5", "aaac71a2-1b8e-47a2-a477-979636e71c95"]
+
+
+def portrait_sheet_prompt(rows):
+    """rows: [(id, 설명)] 10개 → 5×2 격자 주문 문구(칸 사이 옅은 회색 선 — portraits.py가 그 선으로 자른다)."""
+    top = "\n".join("%d) %s." % (i + 1, d) for i, (_, d) in enumerate(rows[:5]))
+    bottom = "\n".join("%d) %s." % (i + 6, d) for i, (_, d) in enumerate(rows[5:10]))
+    return (
+        "Character portrait sheet for a dark-fantasy MMORPG dialogue window: TEN separate portraits of ten DIFFERENT people arranged in an exact grid of 5 columns x 2 rows. "
+        "All ten cells are exactly the same size, each a vertical 3:4 portrait frame, separated by thin straight pale grey gutter lines; nothing crosses from one cell into another. "
+        "Every cell: one person only, chest-up, three-quarter view, face in the upper half of the cell, warm lantern light from the left and a cool blue-grey rim light from the right, "
+        "plain softly textured dark slate-blue background. Use the reference portraits ONLY for the painting style, brushwork, lighting, background and framing - do not copy their faces or clothes. "
+        "Frontier folk clothing of wool, linen and leather.\nTop row, left to right:\n" + top + "\nBottom row, left to right:\n" + bottom + "\n"
+        "Painterly digital illustration, restrained palette of deep slate blue, blue-green teal and muted amber, subtle ink linework, soft volumetric light, quiet melancholic mood. "
+        "No text, no letters, no numbers, no labels, no logo, no watermark, no purple, no neon."
+    )
+
+
 def npc_prompt(desc):
     return (
         f"Full-body animation pose sheet of the exact same person as in the reference portrait (same face, hair, clothing and colors): {desc}. "
