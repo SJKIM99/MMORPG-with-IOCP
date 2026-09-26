@@ -757,6 +757,7 @@ void Game::DrawNpcs()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawWorldOverlay(const Camera2D& cam)
 {
+	if (m_tourCam.on) return;   // 카메라 투어(Phase 4): 이름표 · 말풍선 · 퀘스트 표시 없이 풍경만
 	const bool alt = kb::Down(kb::Act::ShowNames);
 	ui::TextStyle st;
 	st.outline = 1.4f;
@@ -803,7 +804,8 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		const bool hovered = nid == m_hoverNpc;
 		const QuestMark qm = NpcQuestMark(nid);
 		float y = head.y;
-		const char* role = npc.kind == WorldData::NpcKind::eMerchant ? "잡화 상점" : npc.kind == WorldData::NpcKind::eWeaponSmith ? "무기 상점"
+		const char* role = npc.role ? npc.role
+			: npc.kind == WorldData::NpcKind::eMerchant ? "잡화 상점" : npc.kind == WorldData::NpcKind::eWeaponSmith ? "무기 상점"
 			: npc.kind == WorldData::NpcKind::eTeleporter ? "옛길 이동" : npc.kind == WorldData::NpcKind::ePriest ? "치유의 기도"
 			: npc.kind == WorldData::NpcKind::eInnkeeper ? "여관 · 수프" : "";
 		if (!animal || hovered || alt || d <= 3 || qm == QuestMark::Talk)

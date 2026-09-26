@@ -113,15 +113,17 @@ namespace
 	{
 		auto session = user->GetGameSession();
 		if (!session) return;
-		NPC_LIST_NFY_PACKET packet{};
-		packet.size = sizeof(packet);
-		packet.type = static_cast<char>(PacketType::NPC_LIST_NFY);
-		for (const auto& n : g_npcs)
+		// Phase 4-B: 주민이 한 패킷(24명 · 220B)보다 많다 — 24명씩 나눠 여러 번 보낸다. 클라는 항목마다 합친다(지우지 않는다)
+		// → 패킷 모양 · 크기 변경 없음. 33명 = 두 번.
+		for (size_t at = 0; at < g_npcs.size(); at += kNpcListMax)
 		{
-			if (packet.count >= kNpcListMax) break;
-			packet.npcs[packet.count++] = EntryOf(n);
+			NPC_LIST_NFY_PACKET packet{};
+			packet.size = sizeof(packet);
+			packet.type = static_cast<char>(PacketType::NPC_LIST_NFY);
+			for (size_t i = at; i < g_npcs.size() && packet.count < kNpcListMax; ++i)
+				packet.npcs[packet.count++] = EntryOf(g_npcs[i]);
+			session->PostSend(packet);
 		}
-		session->PostSend(packet);
 	}
 
 	void BroadcastState(const TownNpc& n, uint16_t stepMs)

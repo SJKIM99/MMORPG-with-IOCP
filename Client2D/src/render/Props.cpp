@@ -1,4 +1,5 @@
 #include "render/Props.h"
+#include "render/Wind.h"
 #include "render/Draw.h"
 #include "render/Sprites.h"
 #include "render/EnvArt.h"
@@ -652,7 +653,8 @@ namespace props
 		const float pick = H01(x, y, 13);
 		const float s = 0.85f + H01(x, y, 14) * 0.35f;
 		const int seed = static_cast<int>(util::Hash2(x, y, 5) & 0xFFFF);
-		const float sway = std::sin(time * 1.2f + seed * 0.01f) * 1.6f;
+		// 바람 하나(render/Wind): 바람 쪽으로 기울고 돌풍 결이 지나가면 차례로 크게 흔들린다
+		const float sway = wind::Sway(base, 1.2f, seed * 0.01f) * 2.2f;
 		const bool flip = (seed & 1) != 0;
 
 		// 그린 소품: 나무는 바람에 윗부분이 흔들린다(절차적 흔들림의 2.5배 — 그림이 더 크다)
@@ -803,7 +805,7 @@ namespace props
 			const Vector2 base = gfx::IsoPx(X, Y);
 			gfx::SetDepth(X + Y);
 			const int seed = static_cast<int>(util::Hash2(x, y, 9) & 0xFFFF);
-			const float sway = std::sin(time * 1.2f + seed) * 1.5f;
+			const float sway = wind::Sway(base, 1.2f, static_cast<float>(seed)) * 2.1f;
 			const bool blossom = (seed % 3) == 0;
 			if (!PropSprite(blossom ? "prop_bush_flower" : "prop_tree_oak", base, blossom ? 66.f : 132.f, sway * 2.5f, (seed & 1) != 0))
 				RoundTree(base, 1.05f, Rgb(0x5AA848), Rgb(0x7A5634), sway, blossom, seed);
@@ -828,7 +830,7 @@ namespace props
 				// 2x2 칸: 가운데 깊이, 그림 너비 = 칸 마름모 너비
 				const float cx = X + 0.5f, cy = Y + 0.5f;
 				gfx::SetDepth(cx + cy);
-				const bool blue = x > WorldData::kTownX0 + 20;
+				const bool blue = (util::Hash2(x, y, 17) & 1u) != 0;   // 노점 차양 두 색을 섞는다
 				if (!PropSprite(blue ? "prop_stall_blue" : "prop_stall_red", Off(gfx::IsoPx(cx, cy), 0.f, 22.f), 0.f, 0.f, false, WHITE, 4.f * 32.f * 1.08f))
 					Stall(X, Y, blue ? 1 : 0);
 			}
@@ -864,7 +866,7 @@ namespace props
 			constexpr float kT = 0.2f, kH = 0.36f;
 			if (ex || wx) gfx::Box(wx ? X - 0.5f : X, Y - kT, ex ? X + 0.5f : X, Y + kT, 0.f, kH, Shade(leaf, 1.05f), Shade(leaf, 0.8f), Shade(leaf, 0.62f));
 			if (sy || ny) gfx::Box(X - kT, ny ? Y - 0.5f : Y, X + kT, sy ? Y + 0.5f : Y, 0.f, kH, Shade(leaf, 1.05f), Shade(leaf, 0.8f), Shade(leaf, 0.62f));
-			const float sway = std::sin(time * 1.3f + X * 0.9f + Y * 0.4f) * 1.1f;
+			const float sway = wind::Sway(gfx::IsoPx(X, Y), 1.6f, X * 0.9f + Y * 0.4f) * 1.5f;
 			auto bush = [&](float bx, float by, uint32_t salt)
 			{
 				const int seed = static_cast<int>(util::Hash2(static_cast<int>(bx * 2.f), static_cast<int>(by * 2.f), salt) & 0xFFFF);

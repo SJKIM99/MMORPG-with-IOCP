@@ -11,7 +11,7 @@
 #   town.txt       이름 · Zone · 원점 · 크기
 #   ground.txt     칸마다 바닥 · 막힘 문자(아래 LEGEND). 행 = y
 #   height.txt     칸마다 층 0~4(계단 칸은 낮은 쪽 층)
-#   buildings.txt  건물 사각형(종류 · 문 · 변형 · 간판)
+#   buildings.txt  건물 사각형(종류 · 문 · 변형 · 간판 — 간판의 빈칸은 _)
 #   props.txt      꾸밈 소품(종류 · 자리 · 값) — 막히는 소품은 ground.txt의 문자가 막는다
 #   anchors.txt    이름 있는 자리(부활 · 허수아비 · 훈련장 · 남문 밖 …)
 #   districts.txt  구획 이름 · 설명 · 투어 자리
@@ -46,6 +46,10 @@ STAIRS = {'^': (0, -1), 'v': (0, 1), '<': (-1, 0), '>': (1, 0)}
 BUILDING_KINDS = {
     # Phase 4 전부터
     'store': 'Store', 'weaponshop': 'WeaponShop', 'temple': 'Temple', 'inn': 'Inn', 'house': 'House',
+    # Phase 4-B · 4-C(열거형 끝에만 더한다 — TownTypes.h)
+    'armorer': 'Armorer', 'tavern': 'Tavern', 'tower': 'StarTower', 'auction': 'AuctionHall', 'guildhall': 'GuildHall',
+    'warehouse': 'Warehouse', 'stable': 'Stable', 'watermill': 'WaterMill', 'windmill': 'WindMill', 'guardpost': 'GuardPost',
+    'scriptorium': 'Scriptorium', 'greenhouse': 'Greenhouse', 'workshop': 'Workshop', 'lookout': 'Lookout',
 }
 PROP_KINDS = []
 AMBIENT_KINDS = ['fountain', 'market', 'smithy', 'bell', 'river', 'wind']
@@ -209,7 +213,7 @@ def main():
         if len(lv) != 1:
             errors.append('건물 %s (%d %d): 발자국이 한 층 위에 있어야 한다(%s)' % (kind, bx0, by0, sorted(lv)))
         buildings.append(dict(kind=kind, x0=bx0, y0=by0, x1=bx1, y1=by1, door=opts.get('door', 'S')[0],
-                              variant=int(opts.get('variant', '0')), sign=opts.get('sign', ''),
+                              variant=int(opts.get('variant', '0')), sign=opts.get('sign', '').replace('_', ' '),
                               level=min(lv)))
     for y in range(H):
         for x in range(W):
@@ -217,12 +221,20 @@ def main():
                 errors.append('(%d, %d): B 칸이 어느 건물에도 들지 않는다' % (x, y))
 
     # ── 이름 있는 자리 ──
-    spawns, dummies, named, yard = [], [], [], None
+    spawns, dummies, named, yard, npcs = [], [], [], None, []
     for l in read_lines(os.path.join(town_dir, 'anchors.txt')):
         parts = l.split()
         key = parts[0]
         if key == 'yard':
             yard = tuple(int(v) for v in parts[1:5])
+            continue
+        if key == 'npc':
+            nid, nx, ny = (int(v) for v in parts[1:4])
+            if not walk(nx, ny):
+                errors.append('npc %d (%d, %d): 걸을 수 있는 칸이어야 한다' % (nid, nx, ny))
+            if any(n[0] == nid for n in npcs):
+                errors.append('npc %d: 두 번 적었다' % nid)
+            npcs.append((nid, nx, ny))
             continue
         fx, fy = float(parts[1]), float(parts[2])
         ix, iy = int(round(fx)), int(round(fy))
@@ -272,6 +284,9 @@ def main():
         for x, y in dummies:
             if (x, y) not in seen:
                 errors.append('dummy (%d, %d): 부활 자리에서 걸어서 닿지 않는다' % (x, y))
+        for nid, x, y in npcs:
+            if (x, y) not in seen:
+                errors.append('npc %d (%d, %d): 부활 자리에서 걸어서 닿지 않는다' % (nid, x, y))
     if unreach:
         print('[gen_town] 경고: 걸어서 닿지 않는 걷는 칸 %d개(마을 안쪽) — 예: %s' % (len(unreach), ' '.join('(%d,%d)' % p for p in unreach[:12])))
 
@@ -332,6 +347,15 @@ def main():
     out.append('\t// 이름 있는 자리(월드 칸 — 소수는 칸 사이)')
     for key, fx, fy in named:
         out.append('\tinline constexpr PointF k%s{ %.2ff, %.2ff };' % (''.join(p.capitalize() for p in key.split('_')), x0 + fx, y0 + fy))
+    out.append('')
+    out.append('\t// 마을 NPC의 집(배회 중심, 월드 칸) — 이름 · 말은 WorldData::kNpcs, 자리는 여기(anchors.txt의 npc)')
+    out.append('\tinline constexpr NpcHome kNpcHomes[] =')
+    out.append('\t{')
+    for nid, x, y in sorted(npcs):
+        out.append('\t\t{ %d, %d, %d },' % (nid, x0 + x, y0 + y))
+    if not npcs:
+        out.append('\t\t{ 0, 0, 0 },   // (없음 — 자리 채우기)')
+    out.append('\t};')
     out.append('')
     out.append('\tinline constexpr DistrictRow kDistricts[] =')
     out.append('\t{')

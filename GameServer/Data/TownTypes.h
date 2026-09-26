@@ -10,11 +10,16 @@ namespace TownMap
 {
 	struct Point16 { int16_t x, y; };
 	struct PointF { float x, y; };
+	struct NpcHome { uint16_t id; int16_t x, y; };   // 마을 NPC 집(월드 칸) — anchors.txt의 npc
 
 	// 건물 종류 — 클라이언트 그리기(props::DrawBuilding)가 실루엣 · 재질을 고른다(서버는 쓰지 않는다)
 	enum class BuildingKind : uint8_t
 	{
 		eStore, eWeaponShop, eTemple, eInn, eHouse,   // Phase 4 전부터
+		// Phase 4-B · 4-C: 방어구점 · 선술집 · 샛별 탑 · 경매장 · 결사 회관 · 창고 · 마구간 · 물레방아간 · 풍차 · 경비 초소 ·
+		// 필경소 · 약초 온실 · 공방 · 전망대
+		eArmorer, eTavern, eStarTower, eAuctionHall, eGuildHall, eWarehouse, eStable, eWaterMill, eWindMill, eGuardPost,
+		eScriptorium, eGreenhouse, eWorkshop, eLookout,
 	};
 
 	struct BuildingRow

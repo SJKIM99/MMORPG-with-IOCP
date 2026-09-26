@@ -1581,7 +1581,7 @@ void Game::DrawWorldMap()
 			ui::Tooltip({ { reg.name, ui::theme::kTextHi, 16.f, ui::Face::Display }, { feeLine, ui::theme::kText, 13.f } });
 		if (reg.zoneId == WorldData::kTownZoneId)
 		{
-			const Vector2 tp{ c.x + (WorldData::kTownX0 + 22 - 500.f) / 500.f * cell, c.y + (WorldData::kTownY0 + 22 - 500.f) / 500.f * cell };
+			const Vector2 tp{ c.x + (TownMap::kTownCenter.x - 500.f) / 500.f * cell, c.y + (TownMap::kTownCenter.y - 500.f) / 500.f * cell };
 			DrawRectangleV(Vector2{ tp.x - 7, tp.y - 5 }, Vector2{ 14, 10 }, Rgb(0xC8B8A0));
 			DrawTriangle(Vector2{ tp.x - 8, tp.y - 5 }, Vector2{ tp.x + 8, tp.y - 5 }, Vector2{ tp.x, tp.y - 12 }, Rgb(0xB8483A));
 			ui::Text(WorldData::kTownName, Vector2{ tp.x, tp.y + 8 }, 12.f, ui::theme::kTextHi, Align::Center, true);

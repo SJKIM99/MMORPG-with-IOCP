@@ -233,32 +233,61 @@ namespace WorldData
 		uint8_t     wander = 0;    // 배회 반경(칸). 0 = 제자리(가끔 돌아본다)
 		uint16_t    stepMs = 650;  // 한 칸 걷는 시간(ms)
 		uint32_t    color = 0;     // 옷 색(클라, 0 = 종류 기본)
+		const char* role = nullptr;   // 머리 위 둘째 줄(클라, 없으면 종류 기본 — "잡화 상점" 등). Phase 4-B
 	};
+
+	// NPC 집(배회 중심) — 자리는 마을 원본(tools/mapgen/denica/anchors.txt의 npc)에서 온다(Phase 4-B).
+	// 마을을 다시 그리면 NPC 자리도 그 파일에서 옮긴다 — 이름 · 말 · 성격만 여기에 둔다.
+	[[nodiscard]] constexpr int16_t HomeX(uint16_t id) noexcept
+	{
+		for (const auto& h : TownMap::kNpcHomes) if (h.id == id) return h.x;
+		return -1;
+	}
+	[[nodiscard]] constexpr int16_t HomeY(uint16_t id) noexcept
+	{
+		for (const auto& h : TownMap::kNpcHomes) if (h.id == id) return h.y;
+		return -1;
+	}
 
 	inline constexpr NpcRow kNpcs[] =
 	{
-		// 이름 = 직함 + 변경말 이름(docs/WORLD.md 3.2). 길잡이 마테오만 남부 출신이다.
-		{ 1, NpcKind::eMerchant,    "잡화상 라다",      kTownX0 + 16, kTownY0 + 16, 1, "어서 오세요. 물약도 두루마리도 오늘 들어온 거예요.", 1, 900 },
-		{ 2, NpcKind::eWeaponSmith, "대장장이 도브란",  kTownX0 + 27, kTownY0 + 16, 0, "좋은 무기가 좋은 사냥을 만들지. 쓰던 물건도 값을 쳐 주겠네.", 1, 900 },
-		{ 3, NpcKind::eTeleporter,  "길잡이 마테오",    kTownX0 + 21, kTownY0 + 17, 1, "어디로 가시겠어요? 옛길은 멀수록 값이 오릅니다.", 1, 900 },
-		{ 4, NpcKind::eGuard,       "경비대장 야로",    kTownX0 + 18, kTownY0 + 2,  1, "성벽 안에서 칼을 뽑는 자는 내가 상대하겠소." },
-		{ 5, NpcKind::eGuard,       "경비병 브란코",    kTownX0 + 25, kTownY0 + 2,  0, "성 밖은 위험하오. 물약을 챙기시오." },
+		// 이름 = 직함 + 변경말 이름(docs/WORLD.md 3.2). 길잡이 마테오 · 경매인 로렌초만 남부 출신이다.
+		// facing: 0=남서 1=남동 2=북동 3=북서. 자리는 HomeX/HomeY(마을 원본 anchors.txt).
+		{ 1, NpcKind::eMerchant,    "잡화상 라다",      HomeX(1), HomeY(1), 0, "어서 오세요. 물약도 두루마리도 오늘 들어온 거예요.", 1, 900 },
+		{ 2, NpcKind::eWeaponSmith, "대장장이 도브란",  HomeX(2), HomeY(2), 0, "좋은 무기가 좋은 사냥을 만들지. 쓰던 물건도 값을 쳐 주겠네.", 1, 900 },
+		{ 3, NpcKind::eTeleporter,  "길잡이 마테오",    HomeX(3), HomeY(3), 1, "어디로 가시겠어요? 옛길은 멀수록 값이 오릅니다.", 1, 900 },
+		{ 4, NpcKind::eGuard,       "경비대장 야로",    HomeX(4), HomeY(4), 1, "성벽 안에서 칼을 뽑는 자는 내가 상대하겠소." },
+		{ 5, NpcKind::eGuard,       "경비병 브란코",    HomeX(5), HomeY(5), 3, "성 밖은 위험하오. 물약을 챙기시오." },
 		// ── V2: 살아 있는 마을 ──
-		{ 6,  NpcKind::eElder,     "촌장 고란",        kTownX0 + 18, kTownY0 + 19, 1, "어서 오게, 젊은이. 요즘은 새벽이 늦어도 너무 늦는다네.", 3, 1100 },
-		{ 7,  NpcKind::ePriest,    "사제 밀레나",      kTownX0 + 10, kTownY0 + 30, 1, "새벽이 함께하기를. 다친 곳이 있으면 기도를 올려 드릴게요.", 2, 900 },
-		{ 8,  NpcKind::eInnkeeper, "여관 주인 베스나", kTownX0 + 33, kTownY0 + 30, 0, "따뜻한 수프 한 그릇 어때요? 30 그로시면 속이 든든해요.", 2, 800 },
-		{ 9,  NpcKind::eBard,      "음유시인 보얀",    kTownX0 + 26, kTownY0 + 22, 0, "서약 기사단의 마지막 노래를 들어 보시겠소?", 1, 1000 },
-		{ 10, NpcKind::eChild,     "꼬마 미샤",        kTownX0 + 22, kTownY0 + 26, 1, "형도 모험가야? 나도 크면 서약기사 될 거야!", 6, 380, 0x3A7AD8 },
-		{ 11, NpcKind::eChild,     "꼬마 안카",        kTownX0 + 19, kTownY0 + 25, 0, "쉿! 지금 미샤랑 숨바꼭질하는 중이야.", 6, 400, 0xD85A7A },
-		{ 12, NpcKind::eVillager,  "마르파 할멈",      kTownX0 + 20, kTownY0 + 8,  1, "아이고, 젊은이. 이 늙은이 말 좀 들어 보겠수?", 3, 1300, 0x6A5A7A },
-		{ 13, NpcKind::eFarmer,    "농부 다닐로",      kTownX0 + 6,  kTownY0 + 21, 1, "허허, 닭 좀 봐 주시오. 자꾸 도망가서 말이오.", 4, 800, 0x7A6A3A },
-		{ 14, NpcKind::eGuard,     "경비병 페타르",    kTownX0 + 18, kTownY0 + 41, 3, "성문 밖 들녘엔 수액덩이와 그락 약탈꾼이 많소. 처음이라면 거기서 시작하시오." },
-		{ 15, NpcKind::eGuard,     "경비병 드라고",    kTownX0 + 25, kTownY0 + 41, 2, "짐승 몸이 붉게 달아오르면 강공격이오. 바닥을 보고 피하시오." },
-		{ 16, NpcKind::eGuard,     "순찰병 일리야",    kTownX0 + 21, kTownY0 + 12, 1, "순찰 중이오. 무슨 일이오?", 9, 700 },
-		{ 17, NpcKind::eDog,       "누렁이",           kTownX0 + 23, kTownY0 + 27, 1, "멍!", 10, 300 },
-		{ 18, NpcKind::eCat,       "나비",             kTownX0 + 30, kTownY0 + 31, 0, "야옹~", 2, 700 },
-		{ 19, NpcKind::eChicken,   "닭",               kTownX0 + 4,  kTownY0 + 18, 1, "꼬꼬!", 3, 450 },
-		{ 20, NpcKind::eChicken,   "닭",               kTownX0 + 6,  kTownY0 + 17, 0, "꼬꼬댁!", 3, 450 },
+		{ 6,  NpcKind::eElder,     "촌장 고란",        HomeX(6),  HomeY(6),  0, "어서 오게, 젊은이. 요즘은 새벽이 늦어도 너무 늦는다네.", 3, 1100 },
+		{ 7,  NpcKind::ePriest,    "사제 밀레나",      HomeX(7),  HomeY(7),  1, "새벽이 함께하기를. 다친 곳이 있으면 기도를 올려 드릴게요.", 2, 900 },
+		{ 8,  NpcKind::eInnkeeper, "여관 주인 베스나", HomeX(8),  HomeY(8),  1, "따뜻한 수프 한 그릇 어때요? 30 그로시면 속이 든든해요.", 2, 800 },
+		{ 9,  NpcKind::eBard,      "음유시인 보얀",    HomeX(9),  HomeY(9),  1, "서약 기사단의 마지막 노래를 들어 보시겠소?", 1, 1000 },
+		{ 10, NpcKind::eChild,     "꼬마 미샤",        HomeX(10), HomeY(10), 1, "형도 모험가야? 나도 크면 서약기사 될 거야!", 6, 380, 0x3A7AD8 },
+		{ 11, NpcKind::eChild,     "꼬마 안카",        HomeX(11), HomeY(11), 0, "쉿! 지금 미샤랑 숨바꼭질하는 중이야.", 6, 400, 0xD85A7A },
+		{ 12, NpcKind::eVillager,  "마르파 할멈",      HomeX(12), HomeY(12), 1, "아이고, 젊은이. 이 늙은이 말 좀 들어 보겠수?", 3, 1300, 0x6A5A7A },
+		{ 13, NpcKind::eFarmer,    "농부 다닐로",      HomeX(13), HomeY(13), 1, "허허, 닭 좀 봐 주시오. 자꾸 도망가서 말이오.", 4, 800, 0x7A6A3A },
+		{ 14, NpcKind::eGuard,     "경비병 페타르",    HomeX(14), HomeY(14), 3, "성문 밖 들녘엔 수액덩이와 그락 약탈꾼이 많소. 처음이라면 거기서 시작하시오." },
+		{ 15, NpcKind::eGuard,     "경비병 드라고",    HomeX(15), HomeY(15), 1, "짐승 몸이 붉게 달아오르면 강공격이오. 바닥을 보고 피하시오." },
+		{ 16, NpcKind::eGuard,     "순찰병 일리야",    HomeX(16), HomeY(16), 1, "순찰 중이오. 무슨 일이오?", 9, 700 },
+		{ 17, NpcKind::eDog,       "누렁이",           HomeX(17), HomeY(17), 1, "멍!", 10, 300 },
+		{ 18, NpcKind::eCat,       "나비",             HomeX(18), HomeY(18), 0, "야옹~", 2, 700 },
+		{ 19, NpcKind::eChicken,   "닭",               HomeX(19), HomeY(19), 1, "꼬꼬!", 3, 450 },
+		{ 20, NpcKind::eChicken,   "닭",               HomeX(20), HomeY(20), 0, "꼬꼬댁!", 3, 450 },
+		// ── Phase 4-B: 넓어진 마을의 주민(30명 넘게) — 이름은 WORLD.md 용어집에 먼저 올렸다 ──
+		{ 21, NpcKind::eVillager,   "경매인 로렌초",     HomeX(21), HomeY(21), 0, "이 회관은 교회가 남기고 간 건물이에요. 문은 곧 다시 열 거예요.", 1, 1000, 0x4A5A7A, "경매장" },
+		{ 22, NpcKind::eVillager,   "회관지기 즈데노",   HomeX(22), HomeY(22), 1, "이곳은 서약 기사단의 옛 막사였소. 결사를 세울 자를 기다리고 있지.", 2, 1100, 0x5A4A3A, "결사 회관" },
+		{ 23, NpcKind::eWeaponSmith, "방어구장이 체도",  HomeX(23), HomeY(23), 0, "치수부터 재 보세. 발이 편해야 멀리 가는 법이라네.", 1, 900, 0x6A4A2A, "방어구 상점" },
+		{ 24, NpcKind::eVillager,   "선술집 주인 네다",  HomeX(24), HomeY(24), 1, "여관은 자는 곳, 선술집은 떠드는 곳이에요. 한 잔 하실래요?", 2, 800, 0x8A3A3A },
+		{ 25, NpcKind::eVillager,   "마구간지기 스탄코", HomeX(25), HomeY(25), 1, "말들이 밤마다 숲 쪽을 보고 운다오. 뭔가 느끼는 게지.", 3, 900, 0x5A6A3A },
+		{ 26, NpcKind::eVillager,   "방앗간지기 밀로",   HomeX(26), HomeY(26), 1, "물레방아는 비스트라 물로 돈다오. 물이 줄면 빵도 준다오.", 2, 1000, 0xB8A888 },
+		{ 27, NpcKind::eGuard,      "교관 두샨",         HomeX(27), HomeY(27), 0, "허수아비는 아프다고 하지 않소. 마음껏 쳐 보시오.", 4, 800, 0, "훈련장" },
+		{ 28, NpcKind::eVillager,   "약초지기 즐라타",   HomeX(28), HomeY(28), 1, "약초 물약의 약초는 다 이 온실에서 자라요.", 2, 900, 0x4A7A4A },
+		{ 29, NpcKind::eVillager,   "어부 벨코",         HomeX(29), HomeY(29), 2, "쉿, 물고기 도망가오. 요즘은 밤에만 올라온다오.", 0, 900, 0x3A5A6A },
+		{ 30, NpcKind::eVillager,   "빨래꾼 스네자",     HomeX(30), HomeY(30), 3, "여기 빨래터 물이 제일 맑아요. 물 튀니까 조심하세요!", 1, 900, 0xA85A6A },
+		{ 31, NpcKind::eGuard,      "파수꾼 보그단",     HomeX(31), HomeY(31), 2, "여기서 보면 북쪽 숲 너머로 하르벤이 보이오.", 1, 900, 0, "북쪽 전망대" },
+		{ 32, NpcKind::eCat,        "까망이",            HomeX(32), HomeY(32), 0, "냥…", 3, 800, 0x55505C },
+		{ 33, NpcKind::eChild,      "꼬마 페로",         HomeX(33), HomeY(33), 1, "나 전망대까지 한 번에 올라갔다!", 6, 390, 0x3A8A5A },
 	};
 	inline constexpr size_t kNpcCount = sizeof(kNpcs) / sizeof(kNpcs[0]);
 
@@ -287,13 +316,21 @@ namespace WorldData
 			for (size_t i = 0; i < kNpcCount; ++i)
 			{
 				if (!IsInTown(kNpcs[i].x, kNpcs[i].y) || IsBlocked(kNpcs[i].x, kNpcs[i].y)) return false;
+				if (kNpcs[i].id == 0 || kNpcs[i].id >= 64) return false;   // 클라 그림 표(64칸) · NPC_LIST 페이지
 				for (size_t j = i + 1; j < kNpcCount; ++j)
 					if (kNpcs[i].id == kNpcs[j].id) return false;
 			}
-			return kNpcCount <= 32;
+			// 마을 원본의 NPC 집은 모두 표에 있는 NPC여야 한다(오타로 빠진 NPC가 없게)
+			for (const auto& h : TownMap::kNpcHomes)
+			{
+				bool found = false;
+				for (size_t i = 0; i < kNpcCount; ++i) found = found || kNpcs[i].id == h.id;
+				if (!found) return false;
+			}
+			return kNpcCount <= 48;
 		}
 	}
-	static_assert(Detail::ValidateNpcs(), "WorldData::kNpcs: NPC 집은 마을 안의 걸을 수 있는 칸이어야 하고 id는 겹치면 안 됩니다(최대 32).");
+	static_assert(Detail::ValidateNpcs(), "WorldData::kNpcs: NPC 집(anchors.txt npc)은 마을 안의 걸을 수 있는 칸이어야 하고 id는 1~63에서 겹치면 안 됩니다(최대 48).");
 
 	// ── 상점: NPC별 판매 목록(아이템 id). 매입은 상인(eMerchant/eWeaponSmith) 누구나 한다.
 	struct ShopRow
@@ -307,6 +344,8 @@ namespace WorldData
 		{ 1, { 1, 8, 9, 10, 11, 12, 13, 0 } },                    // 물약/두루마리
 		// 대장장이: 무기(직업별 초보자·직업 무기) + 기본 방어구(V2 장비 부위)
 		{ 2, { 2, 19, 20, 3, 15, 21, 25, 29, 32, 37, 39, 41 } },
+		// 방어구장이(Phase 4-B): 기본 방어구(대장장이 목록의 방어구와 같다 — 장인 거리 두 가게)
+		{ 23, { 29, 32, 37, 39, 41, 0 } },
 	};
 
 	[[nodiscard]] constexpr bool ShopSells(uint16_t npcId, uint16_t itemId) noexcept

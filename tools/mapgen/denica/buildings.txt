@@ -1,10 +1,47 @@
-# 건물: 종류  x0 y0 x1 y1(마을 기준, 양끝 포함)  [door=S|E|N|W]  [variant=n]  [sign=간판]
+# 건물: 종류  x0 y0 x1 y1(마을 기준, 양끝 포함)  [door=S|E|N|W]  [variant=n]  [sign=간판 — 빈칸은 _]
 # 발자국 칸은 ground.txt에서 모두 B여야 하고, B 칸은 모두 어느 건물엔가 들어가야 한다(생성기가 검사).
-store       4  5 11 11  door=S sign=잡화점
-weaponshop 32  5 39 11  door=S sign=대장간
-temple      4 32 11 38  door=S sign=예배당
-inn        32 32 39 38  door=S sign=여관
-house      15  4 18  7  door=S
-house      25  4 28  7  door=S
-house      15 36 18 39  door=S
-house      25 36 28 39  door=S
+guardpost    29 63 32 66  door=E sign=경비_초소
+store        44 63 50 67  door=W sign=잡화점
+house        25 67 28 69  door=E variant=2
+house        51 66 54 69  door=W variant=5
+tower        42 56 44 58  door=S
+scriptorium  31 53 35 57  door=E sign=필경소
+house        49 51 53 56  door=W variant=1
+house        31 41 35 44  door=E variant=3
+house        48 40 52 43  door=S variant=4
+auction      18 35 25 41  door=S sign=경매장
+watermill     8 47 11 51  door=S sign=물레방아간
+house        16 48 19 52  door=E variant=9
+warehouse    20 56 24 60  door=W
+house        21 50 25 54  door=W variant=6
+house        22 43 25 46  door=W
+house         2 36  5 39  door=E variant=7
+warehouse     2 60  5 63  door=E variant=1
+weaponshop   55 37 60 42  door=S sign=대장간
+armorer      62 37 66 41  door=S sign=방어구점
+workshop     54 50 58 54  door=E sign=공방
+house        63 50 66 54  door=W variant=2
+inn          64 64 71 70  door=N sign=여관
+tavern       73 64 78 69  door=N sign=선술집
+stable       67 52 72 57  door=S sign=마구간
+house        79 64 81 69  door=N variant=5
+house        78 34 81 37  door=S variant=8
+guildhall    33 17 46 25  door=S sign=결사_회관
+house        27 16 31 20  door=E variant=1
+house        48 16 52 20  door=W variant=3
+house        27 22 31 26  door=E variant=4
+house        49 22 53 26  door=W
+house        30  5 34  9  door=S variant=2
+house        38  5 42  9  door=S variant=6
+house        46  5 50  9  door=S variant=7
+house        57 20 61 23  door=S variant=3
+house        64 20 68 23  door=S variant=1
+greenhouse   71 20 77 23  door=S sign=약초_온실
+house        57 27 61 30  door=N variant=5
+house        64 27 68 30  door=N variant=2
+house        76 27 80 30  door=N variant=4
+temple       58  2 64  9  door=S sign=예배당
+lookout      79  2 81  4  door=W
+windmill      8  6 10  8  door=S
+house        20  8 24 12  door=S variant=7
+house         3 22  7 26  door=E variant=8

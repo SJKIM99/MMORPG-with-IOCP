@@ -14,6 +14,8 @@
 #include "render/Actors.h"
 #include "render/Icons.h"
 #include "audio/Sfx.h"
+#include "render/Wind.h"
+#include "audio/Ambience.h"
 #include "audio/Voice.h"
 #include "platform/Ime.h"
 #include "core/Util.h"
@@ -63,7 +65,7 @@ bool Game::Init(const Options& opts)
 	if (opts.classId >= 0)
 		m_newClassId = static_cast<uint8_t>(opts.classId);
 	m_terrain.Init();
-	const Vector2 town = gfx::IsoPx(WorldData::kTownX0 + 22.f, WorldData::kTownY0 + 22.f);
+	const Vector2 town = gfx::IsoPx(TownMap::kTownCenter.x, TownMap::kTownCenter.y);
 	m_cam.SnapTo(town);
 
 	ui::SetDragIconDrawer([this](const ui::DragPayload& p, Vector2 at)
@@ -228,6 +230,7 @@ void Game::Frame()
 		}
 	}
 	props::SetNight(m_light.Night());
+	wind::Update(static_cast<float>(m_now));
 
 	switch (m_scene)
 	{
@@ -294,7 +297,7 @@ void Game::UpdateLogin(float dt)
 	m_time += dt;
 	// 로그인 배경: 마을 위를 천천히 도는 카메라
 	const float a = m_time * 0.05f;
-	const Vector2 c{ WorldData::kTownX0 + 22.f + std::cos(a) * 9.f, WorldData::kTownY0 + 22.f + std::sin(a) * 9.f };
+	const Vector2 c{ TownMap::kTownCenter.x + std::cos(a) * 14.f, TownMap::kTownCenter.y + std::sin(a) * 12.f };
 	m_cam.Follow(gfx::IsoPx(c.x, c.y));
 	m_cam.Update(dt);
 	fx::Fx().Update(dt);
@@ -659,6 +662,11 @@ void Game::UpdateGame(float dt)
 	const auto* region = WorldData::FindRegion(Region());
 	const WorldData::Biome biome = region ? region->biome : WorldData::Biome::eMeadow;
 	fx::Fx().Ambient(biome, m_cam.Target(), m_screenW / m_cam.Zoom(), m_screenH / m_cam.Zoom(), dt, m_light.Night(), InTown());
+	// 소리 구역: 듣는 자리는 내 캐릭터(투어 중에는 카메라가 보는 곳)
+	{
+		const Vector2 ear = m_tourCam.on ? m_tourCam.tile : Vector2{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
+		amb::Update(dt, ear, m_light.Night(), m_light.Hour(), wind::Strength(), true);
+	}
 	if (m_now > m_ambNext)
 	{
 		m_ambNext = m_now + util::RandF(4.f, 9.f);
@@ -855,7 +863,7 @@ void Game::RunScript(float dt)
 		// 마을 밖으로 나가 가장 가까운 몬스터를 계속 사냥
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kSouthGateOut.x), static_cast<int>(TownMap::kSouthGateOut.y) });
 			m_scriptStep = 1;
 		}
 		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
@@ -969,7 +977,7 @@ void Game::RunScript(float dt)
 		// 마을 밖 빈 들판으로 나가(건물에 가리지 않게) 2.4초마다 모든 종류를 격자로
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kSouthGateOut.x), static_cast<int>(TownMap::kSouthGateOut.y) });
 			m_scriptStep = 1;
 		}
 		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
@@ -989,7 +997,7 @@ void Game::RunScript(float dt)
 		// 마을 밖으로 나가 가까운 몬스터에게 직업 기술을 돌려 가며 쓴다(연계 순서대로).
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kSouthGateOut.x), static_cast<int>(TownMap::kSouthGateOut.y) });
 			m_scriptStep = 1;
 		}
 		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
@@ -1085,7 +1093,7 @@ void Game::RunScript(float dt)
 	else if (s == "lootshow")
 	{
 		// 가방의 장비를 한 칸씩 옮겨 가며 바닥에 내려놓는다 — 희귀도별 빛기둥 확인용
-		const int bx = WorldData::kTownX0 + 16, by = WorldData::kTownY0 + 27;
+		const int bx = static_cast<int>(TownMap::kPlazaRow.x), by = static_cast<int>(TownMap::kPlazaRow.y) + 1;   // 광장 남쪽 여섯 칸(anchors.txt plaza_row)
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { SetGoal(Goal{ GoalKind::Move, ObjID{}, bx, by }); m_scriptStep = 1; }
 		else if (m_scriptStep >= 1 && m_scriptStep < 7 && m_goal.kind == GoalKind::None && m_now >= m_actionLockUntil)
 		{
@@ -1130,7 +1138,7 @@ void Game::RunScript(float dt)
 		{
 			uint32_t h = 2166136261u;
 			for (char c : m_playerName) h = (h ^ static_cast<uint8_t>(c)) * 16777619u;
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 17 + static_cast<int>(h % 6u), WorldData::kTownY0 + 25 + static_cast<int>((h / 6u) % 2u) * 2 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kPlazaRow.x) + static_cast<int>(h % 6u), static_cast<int>(TownMap::kPlazaRow.y) + static_cast<int>((h / 6u) % 2u) * 2 });
 			m_scriptStep = 1;
 		}
 	}
@@ -1139,7 +1147,7 @@ void Game::RunScript(float dt)
 		// 분수 앞에 서서 마을 사람들이 돌아다니는 것을 본다
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 21, WorldData::kTownY0 + 25 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kPlaza.x), static_cast<int>(TownMap::kPlaza.y) });
 			m_scriptStep = 1;
 		}
 	}
@@ -1201,7 +1209,7 @@ void Game::RunScript(float dt)
 		const bool attacker = s == "pkattacker";
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 21 + (attacker ? 1 : 0), WorldData::kTownY0 + 58 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kPvpField.x) + (attacker ? 1 : 0), static_cast<int>(TownMap::kPvpField.y) });
 			m_scriptStep = 1;
 		}
 		else if (m_scriptStep == 1 && attacker && m_goal.kind == GoalKind::None && m_scriptT > 3.f)
@@ -1271,7 +1279,7 @@ void Game::RunScript(float dt)
 		{
 			float secs = 30.f;
 			if (s.size() > 10) secs = static_cast<float>(std::atof(s.c_str() + 10));
-			const Vector2 c{ WorldData::kTownX0 + 21.5f, WorldData::kTownY0 + 21.5f };   // 분수 가운데
+			const Vector2 c{ TownMap::kFountain.x, TownMap::kFountain.y };   // 분수 가운데(anchors.txt fountain)
 			const float R = 5.f;
 			const float a = std::atan2(me->pos.y - c.y, me->pos.x - c.x) + 0.9f;          // 도는 쪽으로 약 50° 앞
 			const Vector2 aim{ c.x + std::cos(a) * R, c.y + std::sin(a) * R };
@@ -1299,7 +1307,7 @@ void Game::RunScript(float dt)
 		// 우클릭 기본 공격(누르고 떼기) · 기술 칸을 키로(kb::ScriptPress) · 체력이 낮으면 물약 칸
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kSouthGateOut.x), static_cast<int>(TownMap::kSouthGateOut.y) });
 			m_scriptStep = 1;
 		}
 		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
@@ -1411,7 +1419,7 @@ void Game::RunScript(float dt)
 		{
 			// 훈련장: 가운데 허수아비 두 칸 앞(위쪽) — 들판: 남쪽 문 밖
 			if (yard) SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[1].x, WorldData::kDummySpots[1].y - 2 });
-			else SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			else SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kSouthGateOut.x), static_cast<int>(TownMap::kSouthGateOut.y) });
 			m_scriptStep = 1;
 		}
 		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
@@ -1734,10 +1742,10 @@ void Game::RunScript(float dt)
 	}
 	else if (s == "behind")
 	{
-		// 잡화점 건물 바로 뒤(북쪽)에 서서 실루엣이 보이는지 확인
+		// 잡화점 건물 바로 뒤(북쪽)에 서서 실루엣이 보이는지 확인(anchors.txt behind_store)
 		if (m_scriptStep == 0 && m_scriptT > 1.0f)
 		{
-			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 7, WorldData::kTownY0 + 4 });
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kBehindStore.x), static_cast<int>(TownMap::kBehindStore.y) });
 			m_scriptStep = 1;
 		}
 	}
@@ -1771,7 +1779,7 @@ void Game::RunScript(float dt)
 			break;
 		case 5: if (m_scriptT > 3.0f) { SendQuest(QuestAction::Complete, 1); m_scriptStep = 6; m_scriptT = 0.f; } break;
 		case 6: if (m_scriptT > 3.5f && m_dialogQuest == 2) { SendQuest(QuestAction::Accept, 2); m_scriptStep = 7; m_scriptT = 0.f; } break;
-		case 7: if (m_scriptT > 2.5f) { CloseNpcWindows(); SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 21, WorldData::kTownY0 + 50 }); m_scriptStep = 8; m_scriptT = 0.f; } break;
+		case 7: if (m_scriptT > 2.5f) { CloseNpcWindows(); SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kQuestField.x), static_cast<int>(TownMap::kQuestField.y) }); m_scriptStep = 8; m_scriptT = 0.f; } break;
 		case 8:
 			if (m_goal.kind == GoalKind::None)
 			{

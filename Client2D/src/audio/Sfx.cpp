@@ -1054,6 +1054,17 @@ namespace sfx
 					Tone(b, 0.15f + i * 0.05f, 0.15f, Osc::Sine, Const(2400.f + i * 500.f), 0.2f, 0.002f, 18.f);
 				Load(Id::QuestFly, b, 0.3f);
 			}
+			{
+				// 모루: 딸깍 + 어긋난 배음 다섯(쇳덩이 울림) + 낮은 쿵 — 대장간 망치(Phase 4-B 소리 구역)
+				Buf b(1.1f);
+				Noise(b, 0, 0.006f, Const(9000), 1.0f, 0.f, 400.f, 2500.f);
+				constexpr float kRatio[] = { 1.f, 1.53f, 2.31f, 2.97f, 3.86f };
+				constexpr float kAmp[] = { 1.f, 0.6f, 0.45f, 0.3f, 0.18f };
+				for (int i = 0; i < 5; ++i)
+					Tone(b, 0, 1.05f, Osc::Sine, Const(1180.f * kRatio[i]), kAmp[i], 0.001f, 3.5f + i * 1.8f);
+				Tone(b, 0, 0.12f, Osc::Sine, ExpSweep(160, 70), 0.6f, 0.001f, 30.f);
+				Load(Id::Anvil, b, 0.5f);
+			}
 		}
 	}
 

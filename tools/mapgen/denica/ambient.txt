@@ -1,0 +1,16 @@
+# 소리 구역: 종류 x y 반경(칸) — fountain · market · smithy · bell(낮) · river · wind
+# market은 사람 소리(시장 웅성임 · 남문의 오가는 사람 · 선술집 떠들썩함)
+fountain  41.5 48.5 11
+market    20 47 13
+market    41 66 8
+market    75 64 8
+smithy    57 40 10
+bell      61 6 22
+river     13 36 10
+river     13 50 10
+river     14 64 10
+river     6 32 7
+wind      9 8 14
+wind      79 4 12
+wind      40 12 14
+wind      40 24 10

@@ -1,21 +1,59 @@
-# 이름이 있는 자리(마을 기준 칸). 스크립트 · 봇 · 서버가 숫자 대신 이 이름을 쓴다.
+# 이름 있는 자리(마을 기준 칸). 스크립트 · 봇 · 서버가 숫자 대신 이 이름을 쓴다.
 # spawn = 부활 · 귀환 · 첫 접속 자리(여러 개 — 무작위), dummy = 훈련장 허수아비, yard = 훈련장 사각형(x0 y0 x1 y1, 양끝 포함)
-spawn   17 26
-spawn   19 27
-spawn   21 26
-spawn   23 27
-spawn   25 26
-spawn   20 28
-spawn   22 28
-spawn   24 28
-spawn   18 19
-spawn   25 19
-yard    31 15 42 19
-dummy   34 18
-dummy   37 18
-dummy   40 18
-plaza         21 25     # 분수 광장 남쪽 포석(투어 · 로그인 카메라)
-fountain      21.5 21.5 # 분수 한가운데(원 그리기 시험의 중심)
-south_gate    22 42     # 남문 안쪽
-south_gate_out 22 50     # 남문 밖 들판(사냥 · 기술 시험)
-quest_field   21 49     # 마을 Zone 목표가 가리키는 들판
+# npc id x y = 마을 NPC의 집(배회 중심) — 이름 · 말은 WorldData::kNpcs
+spawn   34 66
+spawn   35 63
+spawn   41 63
+spawn   42 66
+spawn   41 69
+spawn   34 69
+spawn   38 53
+spawn   45 55
+spawn   39 43
+spawn   37 57
+yard    67 34 81 47
+dummy   70 41
+dummy   73 41
+dummy   76 41
+town_center    42 38     # 마을 한가운데(로그인 카메라 · 지도 아이콘)
+plaza          41 53     # 분수 앞 판석(투어 · 광장 시험)
+fountain       41.5 48.5     # 분수 한가운데(원 그리기 시험의 중심)
+plaza_row      45 58     # 광장 남쪽 여섯 칸 두 줄(stand · lootshow 시험)
+south_gate     37 69     # 남문 안쪽
+south_gate_out 37 78     # 남문 밖 들판(사냥 · 기술 시험)
+quest_field    36 77     # 마을 Zone 목표가 가리키는 들판
+pvp_field      37 86     # 남문 밖 먼 들판(PK 시험)
+behind_store   47 62     # 잡화점 바로 뒤(실루엣 시험)
+npc      1 43 65
+npc      2 57 43
+npc      3 36 55
+npc      4 35 68
+npc      5 80 53
+npc      6 48 53
+npc      7 61 10
+npc      8 68 63
+npc      9 38 50
+npc     10 45 53
+npc     11 38 45
+npc     12 32 21
+npc     13 6 40
+npc     14 40 68
+npc     15 33 64
+npc     16 45 42
+npc     17 44 54
+npc     18 72 63
+npc     19 8 38
+npc     20 9 39
+npc     21 21 42
+npc     22 39 27
+npc     23 64 42
+npc     24 75 63
+npc     25 69 58
+npc     26 10 52
+npc     27 74 44
+npc     28 74 24
+npc     29 11 56
+npc     30 16 58
+npc     31 78 5
+npc     32 70 12
+npc     33 62 25

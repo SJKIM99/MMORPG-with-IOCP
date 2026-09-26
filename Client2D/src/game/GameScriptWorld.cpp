@@ -1,4 +1,6 @@
 #include "game/Game.h"
+#include "audio/Ambience.h"
+#include "render/Wind.h"
 #include "ui/Ui.h"
 #include "ui/Font.h"
 #include "Data/WorldData.h"
@@ -10,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 4 시험 시나리오(--script)
@@ -33,17 +36,29 @@ namespace
 		const char* sub;       // 한 줄 설명
 	};
 
-	// 지금 마을(44×44) — Phase 4 전 기준선. 새 마을은 WorldData의 구획 표에서 만든다.
-	const TourStop kOldTown[] = {
-		{ 22.f, 22.f, 0.62f, 2.6f, "데니차", "변경의 마지막 마을" },
-		{ 22.f, 39.f, 1.15f, 1.6f, "남문", "성문 · 경비" },
-		{ 21.5f, 24.f, 1.35f, 1.8f, "분수 광장", "분수 · 노점 · 음유시인" },
-		{ 8.f, 9.f, 1.2f, 1.6f, "잡화점 · 대장간", "북서쪽 거리" },
-		{ 35.f, 35.f, 1.2f, 1.6f, "예배당 · 여관", "남동쪽 거리" },
-		{ 37.f, 17.f, 1.25f, 1.6f, "훈련장", "허수아비 셋" },
-		{ 22.f, 22.f, 0.62f, 2.2f, "", "" },
+	// 투어 자리: 마을 원본의 구획 표(districts.txt → TownMap::kDistricts, 월드 칸). 첫 줄은 마을 전경,
+	// 마지막에 전경으로 돌아온다. 전경은 오래, 구획은 짧게 머문다.
+	struct Stops
+	{
+		TourStop s[40];
+		int n = 0;
 	};
-
+	Stops BuildStops()
+	{
+		Stops st;
+		const int nd = static_cast<int>(std::size(TownMap::kDistricts));
+		for (int i = 0; i < nd && st.n < 38; ++i)
+		{
+			const auto& d = TownMap::kDistricts[i];
+			st.s[st.n++] = TourStop{ d.x - WorldData::kTownX0, d.y - WorldData::kTownY0, d.zoom, i == 0 ? 2.6f : 1.7f, d.name, d.sub };
+		}
+		if (nd > 0)
+		{
+			const auto& d = TownMap::kDistricts[0];
+			st.s[st.n++] = TourStop{ d.x - WorldData::kTownX0, d.y - WorldData::kTownY0, d.zoom, 2.2f, "", "" };
+		}
+		return st;
+	}
 	float EaseInOut(float u) { return u < 0.5f ? 4.f * u * u * u : 1.f - std::pow(-2.f * u + 2.f, 3.f) / 2.f; }
 }
 
@@ -75,9 +90,16 @@ bool Game::RunScriptWorld(float dt)
 		return RunTerrainCheck(dt);
 	if (s == "tour")
 	{
-		const TourStop* stops = kOldTown;
-		const int n = static_cast<int>(std::size(kOldTown));
-		const float travel = 2.4f;
+		static const Stops kStops = BuildStops();
+		const TourStop* stops = kStops.s;
+		const int n = kStops.n;
+		// 구간마다 거리에 맞춘 이동 시간(초당 14칸, 1.6~3.2초)
+		auto travelOf = [&](int i)
+		{
+			if (i + 1 >= n) return 0.f;
+			const float d = std::hypot(stops[i + 1].x - stops[i].x, stops[i + 1].y - stops[i].y);
+			return std::clamp(d / 14.f, 1.6f, 3.2f);
+		};
 		// 단계: 0 = 준비(1초) → 1 = 투어
 		if (m_scriptStep == 0)
 		{
@@ -109,11 +131,22 @@ bool Game::RunScriptWorld(float dt)
 					m_tourCam.sub = a.sub;
 					m_tourCam.captionAt = m_now;
 					std::printf("[tour] t=%.2f stop=%d %s\n", m_scriptT, i, a.name);
+					// 소리 구역 점검: 이 자리에서 들리는 바탕 소리(0~1) — CLIENT_AMB_DUMP=폴더면 6초 WAV도 쓴다
+					const amb::Mix mix = amb::MixAt(m_tourCam.tile, m_light.Night(), wind::Strength());
+					std::printf("[amb] stop=%d fountain=%.2f river=%.2f wind=%.2f market=%.2f forge=%.2f bell=%.2f (windStrength=%.2f)\n", i,
+						mix.gain[0], mix.gain[1], mix.gain[2], mix.gain[3], mix.gain[4], mix.bell, wind::Strength());
+					if (const char* dump = std::getenv("CLIENT_AMB_DUMP"))
+					{
+						char path[512];
+						std::snprintf(path, sizeof(path), "%s/amb_%02d.wav", dump, i);
+						amb::DumpWav(path, m_tourCam.tile, m_light.Night(), wind::Strength(), 6.f);
+					}
 				}
 				return true;
 			}
 			t -= a.hold;
 			if (i + 1 >= n) break;
+			const float travel = travelOf(i);
 			if (t < travel)
 			{
 				const TourStop& b = stops[i + 1];

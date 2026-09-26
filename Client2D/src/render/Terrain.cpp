@@ -1,4 +1,5 @@
 #include "render/Terrain.h"
+#include "render/Wind.h"
 #include "render/TerrainShader.h"
 #include "render/Props.h"
 #include "render/Draw.h"
@@ -68,6 +69,8 @@ bool Terrain::Init()
 	m_locCamOffset = Loc(m_shader, "uCamOffset");
 	m_locZoom = Loc(m_shader, "uZoom");
 	m_locRot = Loc(m_shader, "uRot");
+	m_locGates = Loc(m_shader, "uGates");
+	m_locWind = Loc(m_shader, "uWind");
 	m_locTime = Loc(m_shader, "uTime");
 	m_locPlayer = Loc(m_shader, "uPlayer");
 	m_locFog = Loc(m_shader, "uFog");
@@ -129,6 +132,26 @@ bool Terrain::Init()
 	const float size[2] = { static_cast<float>(WorldData::kTownW), static_cast<float>(WorldData::kTownH) };
 	SetShaderValue(m_shader, m_locTownOrigin, origin, SHADER_UNIFORM_VEC2);
 	SetShaderValue(m_shader, m_locTownSize, size, SHADER_UNIFORM_VEC2);
+
+	// 성문(바깥 테두리의 'G')마다 그 가운데 줄로 들길이 뻗는다 — 남 · 북은 열, 서 · 동은 행(월드 칸, 없으면 −1)
+	float gates[4] = { -1.f, -1.f, -1.f, -1.f };
+	auto centerOf = [](auto cellAt, int n)
+	{
+		int a = -1, b = -1;
+		for (int i = 0; i < n; ++i)
+			if (cellAt(i) == 'G') { if (a < 0) a = i; b = i; }
+		return a < 0 ? -1.f : (a + b) * 0.5f;
+	};
+	const int W = WorldData::kTownW, H = WorldData::kTownH;
+	const float s0 = centerOf([&](int i) { return TownMap::kGround[H - 1][i]; }, W);
+	const float n0 = centerOf([&](int i) { return TownMap::kGround[0][i]; }, W);
+	const float w0 = centerOf([&](int i) { return TownMap::kGround[i][0]; }, H);
+	const float e0 = centerOf([&](int i) { return TownMap::kGround[i][W - 1]; }, H);
+	if (s0 >= 0.f) gates[0] = WorldData::kTownX0 + s0;
+	if (n0 >= 0.f) gates[1] = WorldData::kTownX0 + n0;
+	if (w0 >= 0.f) gates[2] = WorldData::kTownY0 + w0;
+	if (e0 >= 0.f) gates[3] = WorldData::kTownY0 + e0;
+	SetShaderValue(m_shader, m_locGates, gates, SHADER_UNIFORM_VEC4);
 	return true;
 }
 
@@ -181,6 +204,9 @@ void Terrain::DrawGround(const Camera2D& cam, int screenW, int screenH, Vector2 
 	const float fogRange[2] = { s_fogStart, s_fogEnd };
 	SetShaderValue(m_shader, m_locFogRange, fogRange, SHADER_UNIFORM_VEC2);
 	SetShaderValue(m_shader, m_locGrid, &grid, SHADER_UNIFORM_FLOAT);
+	const Vector4 wp = wind::ShaderParams();
+	const float windv[4] = { wp.x, wp.y, wp.z, wp.w };
+	SetShaderValue(m_shader, m_locWind, windv, SHADER_UNIFORM_VEC4);
 
 	// 그린 바닥(있으면): 지역 · 마을 바닥을 텍스처로, 없으면 절차적 바닥
 	const Texture2D* ground = envart::GroundAtlas();

@@ -1,4 +1,5 @@
 #include "fx/Effects.h"
+#include "render/Wind.h"
 #include "fx/FxScale.h"
 #include "fx/Particles.h"
 #include "render/Draw.h"
@@ -738,7 +739,10 @@ namespace fx
 			{
 				Particle& p = Particles().Emit();
 				p.pos = randPos(150.f); p.z = RandF(120.f, 300.f);
-				p.vel = { RandF(10.f, 30.f), 0.f }; p.vz = RandF(-35.f, -20.f);
+				// 꽃잎 · 잎은 바람(render/Wind)을 타고 날린다 — 셀수록 멀리
+				const Vector2 wd = wind::Dir();
+				const float ws = RandF(12.f, 22.f) + 48.f * wind::At(p.pos);
+				p.vel = { wd.x * ws, wd.y * ws * 0.6f }; p.vz = RandF(-35.f, -20.f);
 				p.life = p.maxLife = RandF(5.f, 8.f);
 				p.size0 = p.size1 = RandF(6.f, 9.f);
 				p.c0 = p.c1 = inTown ? Rgb(0xFFC8DA, 230) : (RandF() < 0.5f ? Rgb(0x8AB84A, 230) : Rgb(0xC8A040, 230));

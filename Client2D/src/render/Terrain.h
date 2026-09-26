@@ -36,6 +36,7 @@ private:
 	int m_locTown = -1, m_locNoise = -1, m_locTownOrigin = -1, m_locTownSize = -1;
 	int m_locGround = -1, m_locGroundOn = -1, m_locGroundSize = -1;
 	int m_locMesh = -1;
+	int m_locGates = -1, m_locWind = -1;
 
 	// 화면에 걸친 칸 범위(키 큰 것 여유 포함)
 	void VisibleTiles(const Camera2D& cam, int screenW, int screenH, int& x0, int& y0, int& x1, int& y1) const;

@@ -277,7 +277,7 @@ namespace
 		Pipe pipe{ sim };
 		struct Pkt { double at; bool step; int x, y; float dur; };
 		std::deque<Pkt> q;
-		const Vector2 c{ WorldData::kTownX0 + 21.5f, WorldData::kTownY0 + 21.5f };
+		const Vector2 c{ TownMap::kFountain.x, TownMap::kFountain.y };
 		int x = static_cast<int>(c.x + 5.f), y = static_cast<int>(c.y);
 		double t = 10.0, nextBg = 10.0;
 		const double end = 10.0 + secs + 1.0;
@@ -366,7 +366,7 @@ int main(int argc, char** argv)
 	{
 		Aim aim;
 		aim.circle = true;
-		aim.c = Vector2{ WorldData::kTownX0 + 21.5f, WorldData::kTownY0 + 21.5f };
+		aim.c = Vector2{ TownMap::kFountain.x, TownMap::kFountain.y };
 		const int sx = atX >= 0 ? WorldData::kTownX0 + atX : static_cast<int>(aim.c.x + 5.f);
 		const int sy = atY >= 0 ? WorldData::kTownY0 + atY : static_cast<int>(aim.c.y);
 		return RunLocal(aim, pos.size() > 1 ? std::atof(pos[1].c_str()) : 30.0, up, down, out, sx, sy);

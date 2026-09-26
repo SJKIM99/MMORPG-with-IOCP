@@ -42,7 +42,7 @@ namespace actorspr
 
 		PcSet g_pc[3];
 		std::array<MonSet, 64> g_mon{};
-		std::array<NpcSet, 32> g_npc{};
+		std::array<NpcSet, 64> g_npc{};   // NPC id 1~63(WorldData ValidateNpcs)
 		bool g_loaded = false;
 
 		const char* NpcKey(uint16_t id)
@@ -65,6 +65,19 @@ namespace actorspr
 			case 17: return "npc_dog";
 			case 18: return "npc_cat";
 			case 19: case 20: return "npc_chicken";
+			// Phase 4-B 새 주민: 그린 그림이 없어 가까운 옷차림을 빌린다 — 같은 그림은 서로 멀리 떨어진 구획에만 둔다
+			// (경매인 ↔ 길잡이: 시장 · 광장, 회관지기 ↔ 경비대장: 윗마을 · 남문, 방어구장이 ↔ 농부: 장인 거리 · 서쪽 들 …).
+			// 마구간지기 · 어부는 절차적 그림(옷 색)으로.
+			case 21: return "npc_mateo";
+			case 22: return "npc_yaro";
+			case 23: return "npc_danilo";
+			case 24: return "npc_lada";
+			case 26: return "npc_goran";
+			case 27: case 31: return "npc_guard";
+			case 28: return "npc_vesna";
+			case 30: return "npc_marfa";
+			case 32: return "npc_cat";
+			case 33: return "npc_misha";
 			default: return nullptr;
 			}
 		}
@@ -671,7 +684,17 @@ namespace actorspr
 		const float worldH = actors::NpcHeight(npc) * kNpcScale * p.scale;
 		Anim a = AnimateNpc(p, g_npc[npc.id], WorldData::IsAnimal(npc.kind));
 		ApplyBody(a, p);
+		// 같은 그림을 빌린 동물은 털빛(color)을 곱한다 — 까망이(검은 고양이)
+		const Color t0 = gfx::Tint();
+		const bool tint = WorldData::IsAnimal(npc.kind) && npc.color != 0;
+		if (tint)
+		{
+			const Color c = Rgb(npc.color);
+			gfx::SetTint(Color{ static_cast<unsigned char>(t0.r * c.r / 255), static_cast<unsigned char>(t0.g * c.g / 255),
+				static_cast<unsigned char>(t0.b * c.b / 255), t0.a });
+		}
 		DrawAnim(a, p.base, worldH, actors::TurnScale(p) < 0.f);
+		if (tint) gfx::SetTint(t0);
 		return true;
 	}
 

@@ -40,6 +40,7 @@
 #include "render/FlashLight.h"
 #include "ui/UiArt.h"
 #include "audio/Sfx.h"
+#include "audio/Ambience.h"
 #include "audio/Voice.h"
 #include "platform/Ime.h"
 #include "ui/Font.h"
@@ -80,7 +81,7 @@ namespace
 		Lighting light;
 		light.UpdateClock(hour);
 		props::SetNight(light.Night());
-		const float cx = WorldData::kTownX0 + 22.f, cy = WorldData::kTownY0 + 58.f;
+		const float cx = TownMap::kPvpField.x, cy = TownMap::kPvpField.y;   // 남문 밖 먼 들판(anchors.txt pvp_field)
 		constexpr float ages[6] = { 0.05f, 0.14f, 0.28f, 0.45f, 0.65f, 0.85f };
 		constexpr float kLife = 1.f, kT = 0.9f;
 		const int kinds = static_cast<int>(vfx::Kind::Count);
@@ -222,7 +223,7 @@ namespace
 		Terrain terrain;
 		terrain.Init();
 		Lighting light;
-		const float cx = WorldData::kTownX0 + 22.f, cy = WorldData::kTownY0 + 30.f;
+		const float cx = TownMap::kTownCenter.x, cy = TownMap::kTownCenter.y;
 		float zoom = 1.25f;
 		float time = 0.f;
 		float run = 0.f;
@@ -497,9 +498,11 @@ int main(int argc, char** argv)
 	if (!opts.mute)
 	{
 		sfx::Init();
+		amb::Init();   // 마을 소리 구역(분수 · 강 · 바람 · 시장 · 대장간) — 소리 장치가 있을 때만
 		voice::Init(FindAssetDir("assets/voice", "voice.txt"));
 	}
 	ime::Attach();
+	if (const char* beds = std::getenv("CLIENT_AMB_BEDS")) amb::DumpBeds(beds);   // 개발용: 소리 구역 고리 소리 점검
 
 	if (!vfxSheet.empty())
 		RunVfxSheet(vfxSheet, opts.hour);
@@ -519,6 +522,7 @@ int main(int argc, char** argv)
 
 	ime::Detach();
 	voice::Shutdown();
+	amb::Shutdown();
 	sfx::Shutdown();
 	icons::Unload();
 	assets::Unload();

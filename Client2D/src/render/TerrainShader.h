@@ -39,6 +39,8 @@ uniform sampler2D uGround;     // painted ground atlas (5x4 cells of 512 + 32 wr
 uniform float uGroundOn;
 uniform vec2  uGroundSize;
 uniform float uMesh;          // Phase 4-A: 1 = raised town tiles drawn as quads (uv = fragTexCoord = tile coords)
+uniform vec4  uGates;         // Phase 4-B: town gate centerlines (south x, north x, west y, east y; < 0 = none)
+uniform vec4  uWind;          // Phase 4-B: xy = wind dir (tile coords), z = strength, w = time
 vec2 gDx;                      // screen derivatives of the tile uv (set once in main, uniform control flow)
 vec2 gDy;
 
@@ -275,6 +277,11 @@ int townCodeAt(ivec2 t)
     return int(texelFetch(uTown, t, 0).r * 255.0 + 0.5);
 }
 bool wetCode(int c) { return c == 16 || c == 17; }
+int townLevelAt(ivec2 t)
+{
+    if (t.x < 0 || t.y < 0 || t.x >= int(uTownSize.x) || t.y >= int(uTownSize.y)) return 0;
+    return int(texelFetch(uTown, t, 0).g * 255.0 + 0.5);
+}
 // river: sits a little below the banks - the far banks (north / west, facing the camera) show a short earth face,
 // dark water under the banks, drifting sky reflection, sparkles and a broken foam line at the waterline
 vec3 townWater(vec2 uv, vec2 cell, vec2 loc)
@@ -443,17 +450,19 @@ void main()
         if (other != rid) col = mix(regionColor(other, uv, cell, loc), col, 0.5 + 0.5 * smoothstep(0.0, 2.0, by));
     }
 
-    // roads leading out of town gates
-    vec2 tc = uTownOrigin + uTownSize * 0.5;
-    float roadN = nz(uv * 0.21) - 0.5;
-    float hx = abs(uv.y - (tc.y - 0.5)) + roadN * 1.2;
-    float vx = abs(uv.x - (tc.x - 0.5)) + roadN * 1.2;
-    float distOut = max(abs(uv.x - tc.x) - uTownSize.x * 0.5, abs(uv.y - tc.y) - uTownSize.y * 0.5);
+    // roads leading out of the town gates (each gate's own centerline)
+    vec2 t0 = uTownOrigin - 0.5;
+    vec2 t1 = uTownOrigin + uTownSize - 0.5;
+    float roadN = (nz(uv * 0.21) - 0.5) * 1.2;
+    float distOut = max(max(t0.x - uv.x, uv.x - t1.x), max(t0.y - uv.y, uv.y - t1.y));
     if (distOut > -0.5 && distOut < 140.0)
     {
         float fade = 1.0 - smoothstep(60.0, 140.0, distOut);
-        float road = max((1.0 - smoothstep(1.6, 2.4, hx)) * step(abs(uv.y - tc.y), abs(uv.x - tc.x)),
-                         (1.0 - smoothstep(1.6, 2.4, vx)) * step(abs(uv.x - tc.x), abs(uv.y - tc.y)));
+        float road = 0.0;
+        if (uGates.x >= 0.0 && uv.y > t1.y - 0.5) road = max(road, 1.0 - smoothstep(1.6, 2.4, abs(uv.x - uGates.x) + roadN));
+        if (uGates.y >= 0.0 && uv.y < t0.y + 0.5) road = max(road, 1.0 - smoothstep(1.6, 2.4, abs(uv.x - uGates.y) + roadN));
+        if (uGates.z >= 0.0 && uv.x < t0.x + 0.5) road = max(road, 1.0 - smoothstep(1.2, 2.0, abs(uv.y - uGates.z) + roadN));
+        if (uGates.w >= 0.0 && uv.x > t1.x - 0.5) road = max(road, 1.0 - smoothstep(1.2, 2.0, abs(uv.y - uGates.w) + roadN));
         vec3 dirt = uGroundOn > 0.5 ? groundTex(18, uv) : vec3(0.55, 0.45, 0.33) * (0.9 + nz(uv * 1.3) * 0.2);
         col = mix(col, dirt, road * fade * 0.9);
     }
@@ -464,12 +473,36 @@ void main()
     {
         int code = int(texelFetch(uTown, ivec2(tl), 0).r * 255.0 + 0.5);
         col = townGround(code, uv, cell, loc, col);
+        // terrace shading: a higher cell to the west casts a short shadow (light from the upper left of the screen),
+        // a higher cell to the north leaves contact shade at the foot of its retaining wall
+        if (code != 16 && code != 17 && code != 19)
+        {
+            ivec2 ti = ivec2(tl);
+            int me = int(texelFetch(uTown, ti, 0).g * 255.0 + 0.5);
+            int lw = townLevelAt(ti + ivec2(-1, 0));
+            int ln = townLevelAt(ti + ivec2(0, -1));
+            int lnw = townLevelAt(ti + ivec2(-1, -1));
+            float sh = 0.0;
+            if (lw > me) sh = max(sh, (1.0 - smoothstep(0.0, 0.6, loc.x + 0.5)) * min(1.0, float(lw - me) * 0.7));
+            if (ln > me) sh = max(sh, (1.0 - smoothstep(0.0, 0.35, loc.y + 0.5)) * min(1.0, float(ln - me) * 0.55));
+            if (lnw > me) sh = max(sh, (1.0 - smoothstep(0.0, 0.5, length(loc + vec2(0.5)))) * 0.45);
+            col *= (1.0 - 0.38 * sh) * (1.0 + 0.03 * float(me));   // higher ground a touch brighter (like the minimap)
+        }
     }
     else if (legacyBlocked(cell))
     {
         // contact shadow under field obstacles
         float r = length(loc * vec2(1.0, 1.0));
         col *= 0.62 + 0.38 * smoothstep(0.12, 0.5, r);
+    }
+
+    // wind over grass: bright bands drift downwind (render/Wind - the same gusts that bend the trees)
+    float grassy = clamp((col.g - max(col.r, col.b)) * 7.0, 0.0, 1.0);
+    if (grassy > 0.0 && uWind.z > 0.0)
+    {
+        float along = dot(uv, uWind.xy);
+        float band = 0.5 + 0.5 * sin(along * 0.55 - uWind.w * 1.9 + (nz(uv * 0.12) - 0.5) * 5.0);
+        col *= 1.0 + grassy * uWind.z * pow(band, 5.0) * vec3(0.10, 0.09, 0.03);
     }
 
     // faint tile grid near the player

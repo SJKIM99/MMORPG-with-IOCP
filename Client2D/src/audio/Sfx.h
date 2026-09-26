@@ -52,6 +52,8 @@ namespace sfx
 		BladeHum,     // 칼날 여럿이 도는 빠른 쉭쉭
 		Cutin,        // 각성기 컷인: 휙 + 쿵
 		Drone,        // 암전 저음(각성기 예고)
+		// Phase 4-B: 마을 소리 구역(audio/Ambience)
+		Anvil,        // 모루를 두드리는 쨍(대장간 망치)
 		Count
 	};
 
