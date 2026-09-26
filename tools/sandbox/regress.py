@@ -31,6 +31,8 @@ CASES = [
     ('chatcfg', 8, 0, 'rg_chatcfg'), ('chatcfg2', 30, 0, 'rg_chatcfg'),
     # 기술 칸 손맛: 재사용 대기 중 누름(눌림 · 붉은 반짝 · 안내 1초에 한 번) · 자원 부족(레벨 30 — 모든 칸이 열린 캐릭터)
     ('hotfeel', 20, 0, 'lv30_rg_hotfeel'),
+    # Phase 4-A 높낮이: 경계 칸 전수 검사(서버와 같은 TownRules::Check) · 보이지 않는 벽 · 계단 우회 탐침 — [terraincheck] done PASS
+    ('terraincheck', 90, 0),
 ]
 
 
@@ -52,7 +54,7 @@ def main():
         try:
             r = subprocess.run(cmd, cwd=client, env=env, capture_output=True, text=True, timeout=after * 5 + 120)   # 소프트웨어 렌더링(5fps 안팎)에서도 넉넉히
             code = r.returncode
-            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]') or l.startswith('[growcheck] done') or l.startswith('[bench]') or l.startswith('[wmcheck] done') or l.startswith('[hudcheck] screen')]
+            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]') or l.startswith('[growcheck] done') or l.startswith('[bench]') or l.startswith('[wmcheck] done') or l.startswith('[hudcheck] screen') or l.startswith('[terraincheck] done')]
         except subprocess.TimeoutExpired:
             code, lines = 'TIMEOUT', []
         src = os.path.join(client, shot)

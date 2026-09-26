@@ -15,7 +15,7 @@ namespace path
 	// (sx,sy) → (gx,gy). stopWithin > 0이면 목표까지 체비셰프 거리가 그 이하인
 	// 칸에 도착하면 끝(몬스터/NPC처럼 목표 칸 자체가 막혀 있거나 점유된 경우).
 	// 찾으면 출발 칸을 뺀 경로를 돌려준다. 못 찾으면 가장 가까이 갈 수 있는 곳까지.
-	std::vector<Step> Find(int sx, int sy, int gx, int gy, int stopWithin = 0, int maxRadius = 48);
+	std::vector<Step> Find(int sx, int sy, int gx, int gy, int stopWithin = 0, int maxRadius = 96);   // 96: 새 마을(84×72)을 가로지르는 계단 우회까지
 
 	// 서버 방향 코드(0:UP 1:DOWN 2:LEFT 3:RIGHT 4:UL 5:UR 6:DL 7:DR). 인접하지 않으면 -1
 	int DirectionOf(int dx, int dy);

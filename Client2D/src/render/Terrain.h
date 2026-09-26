@@ -15,6 +15,8 @@ public:
 	void DrawGround(const Camera2D& cam, int screenW, int screenH, Vector2 playerTile, float time, bool fog, float grid);
 	// 월드 공간(BeginMode2D 안, 깊이 테스트 켠 상태)에서 호출
 	void DrawProps(const Camera2D& cam, int screenW, int screenH, Vector2 playerTile, float time, bool fog);
+	// Phase 4-A 높낮이: 1층 이상 마을 칸의 윗면(바닥 셰이더 면 모드) · 옹벽 면 · 계단 — 깊이 쓰기 켠 상태에서, 데칼보다 먼저
+	void DrawRelief(const Camera2D& cam, int screenW, int screenH, Vector2 playerTile, float time, bool fog);
 
 	// 시야 밖 어둡게(셰이더와 같은 식) — 캐릭터/소품 색에 곱할 값
 	static Color FogTint(float tileX, float tileY, Vector2 playerTile, bool fog);
@@ -33,4 +35,8 @@ private:
 	int m_locPalA = -1, m_locPalB = -1, m_locPalC = -1;
 	int m_locTown = -1, m_locNoise = -1, m_locTownOrigin = -1, m_locTownSize = -1;
 	int m_locGround = -1, m_locGroundOn = -1, m_locGroundSize = -1;
+	int m_locMesh = -1;
+
+	// 화면에 걸친 칸 범위(키 큰 것 여유 포함)
+	void VisibleTiles(const Camera2D& cam, int screenW, int screenH, int& x0, int& y0, int& x1, int& y1) const;
 };

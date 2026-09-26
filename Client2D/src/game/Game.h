@@ -429,7 +429,8 @@ private:
 	void AddBanner(const std::string& text, Color color, float life = 4.5f);
 	void AddToast(uint16_t itemId, const std::string& text, Color color);
 	void PlayAt(int sfxId, Vector2 tile, float volume = 1.f, float pitchVar = 0.05f);
-	[[nodiscard]] Vector2 TileToIso(Vector2 tile, float z = 0.f) const;
+	[[nodiscard]] Vector2 TileToIso(Vector2 tile, float z = 0.f) const;     // 바닥 평면(z = 0) 아이소 — 월드 그리기 · 효과 위치(지형 높이는 gfx가 정점에서 올린다)
+	[[nodiscard]] Vector2 SurfaceIso(Vector2 tile, float z = 0.f) const;    // 보이는 자리(지형 높이 포함) — 화면 글 · 카메라 · 마우스 판정
 	[[nodiscard]] Color NameColor(const Entity& e) const;
 	void LoadQuickSlots();
 	void SaveQuickSlots();
@@ -794,7 +795,20 @@ private:
 	// Phase 4: 카메라 투어(--script tour) — 캐릭터 대신 정해진 길을 따라가며 구획 이름을 띄운다(HUD 숨김 · 안개 끔)
 	struct TourCam { bool on = false; Vector2 tile{}; float zoom = 1.f; std::string caption; std::string sub; double captionAt = -10.0; };
 	TourCam          m_tourCam;
+	// --script terraincheck 탐침: 가장자리(R)를 사이에 둔 낮은 칸 A · 높은 칸 B — A에서 B로 걸어가며 화면 위치의 지면 끊김을 잰다
+	struct TerrainProbe
+	{
+		int ax = 0, ay = 0, bx = 0, by = 0;
+		int pathLen = 0, stairs = 0;
+		float maxUp = 0.f, maxDown = 0.f;
+		Vector2 last{};
+		bool haveLast = false;
+		bool staticOk = false;
+		double startAt = 0.0;
+	};
+	TerrainProbe     m_probe;
 	bool RunScriptWorld(float dt);                      // Phase 4 시험(투어 · 지형 검사) — game/GameScriptWorld.cpp
+	bool RunTerrainCheck(float dt);
 	void DrawTourCaption();
 
 	// 테스트 자동화

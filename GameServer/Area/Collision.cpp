@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Collision.h"
 #include "Data/WorldData.h"
+#include "Data/TownRules.h"
 #include "Zone/ZoneLayout.h"
 
 array<array<bool, W_HEIGHT>, W_WIDTH> GCollision;
@@ -28,6 +29,13 @@ bool isCollision(short x_pos, short y_pos)
     return GCollision[y_pos][x_pos];
 }
 
+bool CollisionAt(int x, int y)
+{
+    if (x < 0 || y < 0 || x >= W_WIDTH || y >= W_HEIGHT)
+        return true;
+    return GCollision[y][x];
+}
+
 void InitCollisionTile()
 {
     // isCollision이 GCollision[y][x]로 읽으므로 같은 순서로 채운다.
@@ -40,4 +48,40 @@ void InitCollisionTile()
     }
 
     cout << "Init Collision Tile" << endl;
+    CheckTownRules();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4-A 마을 높낮이 — 층 규칙 검사(Data/TownRules.h, 클라 --script terraincheck와 같은 함수)
+// ─────────────────────────────────────────────────────────────────────────────
+namespace
+{
+    std::atomic<int> g_townViolations{ 0 };
+}
+
+void CheckTownRules()
+{
+    const TownRules::Report r = TownRules::Check();
+    cout << "[Town] level rules: walkable=" << r.walkable << " (L0 " << r.levelCells[0] << ", L1 " << r.levelCells[1]
+         << ", L2 " << r.levelCells[2] << ", L3 " << r.levelCells[3] << ", L4 " << r.levelCells[4] << ")"
+         << " steps=" << r.steps << " forced=" << r.forced
+         << " cliffCross=" << r.cliff << " airWalk=" << r.air << (r.Ok() ? " OK" : " FAIL") << endl;
+    if (!r.Ok())
+        cout << "[Town]   first: (" << r.firstX << ", " << r.firstY << ") dir " << r.firstDir
+             << (r.firstForced ? " forced" : " step") << endl;
+}
+
+void GuardTownMove(const char* who, int fromX, int fromY, int toX, int toY)
+{
+    if (TownRules::PathOk(fromX, fromY, toX, toY))
+        return;
+    const int n = ++g_townViolations;
+    if (n <= 20)
+        cout << "[Town] level-rule violation #" << n << " " << (who ? who : "?") << " (" << fromX << ", " << fromY
+             << ") -> (" << toX << ", " << toY << ")" << endl;
+}
+
+int TownRuleViolations()
+{
+    return g_townViolations.load();
 }

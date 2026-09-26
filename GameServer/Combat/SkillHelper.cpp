@@ -275,6 +275,12 @@ namespace SkillDetail
 		return ZoneLayout::IsValidWorldPosition(static_cast<short>(x), static_cast<short>(y)) && !isCollision(static_cast<short>(x), static_cast<short>(y));
 	}
 
+	bool StepOk(int x, int y, int dx, int dy)
+	{
+		// Phase 4-A: 도착 칸만 보던 것을 모서리 규칙으로 — 막힌 두 칸 사이 · 절벽 가장자리 모서리를 대각으로 빠져나가지 않는다
+		return MoveRule::CleanStep(x, y, dx, dy, [](int bx, int by) { return !Walkable(bx, by); });
+	}
+
 	shared_ptr<Monster> MonsterAt(const shared_ptr<User>& u, int x, int y)
 	{
 		for (auto& m : MonstersAround(u, x, y, 0))
@@ -406,7 +412,7 @@ namespace SkillDetail
 			for (int i = 0; i < row.dash; ++i)
 			{
 				const int nx = x + dx, ny = y + dy;
-				if (!Walkable(nx, ny) || (row.id == 4 && WorldData::IsSafeZone(nx, ny) && !WorldData::IsTrainingYard(nx, ny)))
+				if (!StepOk(x, y, dx, dy) || (row.id == 4 && WorldData::IsSafeZone(nx, ny) && !WorldData::IsTrainingYard(nx, ny)))
 					break;
 				if (row.id == 4)
 				{
@@ -507,7 +513,9 @@ namespace SkillDetail
 			int dx = Sign(target->GetX() - ux), dy = Sign(target->GetY() - uy);
 			if (dx == 0 && dy == 0) dx = 1;
 			int bx = target->GetX() + dx, by = target->GetY() + dy;
-			auto landable = [](int x, int y) { return Walkable(x, y) && (!WorldData::IsSafeZone(x, y) || WorldData::IsTrainingYard(x, y)); };   // 훈련장은 예외(Phase 2-E)
+			// 대상 칸에서 한 걸음(모서리 규칙) — 대상과 다른 층(절벽 아래 · 위)으로 내려앉지 않는다(Phase 4-A)
+			const int ox0 = target->GetX(), oy0 = target->GetY();
+			auto landable = [ox0, oy0](int x, int y) { return StepOk(ox0, oy0, x - ox0, y - oy0) && (!WorldData::IsSafeZone(x, y) || WorldData::IsTrainingYard(x, y)); };   // 훈련장은 예외(Phase 2-E)
 			if (!landable(bx, by))
 			{
 				bool found = false;
@@ -567,7 +575,7 @@ namespace SkillDetail
 			const int nx = bx + dx * (std::abs(tx - bx) > 0 ? 1 : 0);
 			const int ny = by + dy * (std::abs(ty - by) > 0 ? 1 : 0);
 			if (nx == bx && ny == by) break;
-			if (!Walkable(nx, ny)) break;
+			if (!StepOk(bx, by, nx - bx, ny - by)) break;
 			bx = nx; by = ny;
 		}
 		if (bx == ux && by == uy) return false;

@@ -104,6 +104,9 @@ def main():
     def walk(x, y):
         return inside(x, y) and LEGEND[ground[y][x]][0]
 
+    # 가장자리로 바꾸기 전의 바닥 재질(가장자리 윗면도 원래 재질로 그린다 — kSurface)
+    surface = [row[:] for row in ground]
+
     # ── 가장자리 자동 막기(되풀이 — 새로 막힌 칸이 다른 칸의 판단을 바꾸지 않을 때까지) ──
     rims = 0
     errors = []
@@ -245,6 +248,33 @@ def main():
             die('ambient.txt: 모르는 소리 %r' % parts[0])
         ambient.append((parts[0], float(parts[1]), float(parts[2]), float(parts[3])))
 
+    # ── 이어짐: 첫 부활 자리에서 걸어서 닿지 못하는 걷는 칸(서버 대각 규칙 — 두 옆이 다 막히면 못 간다) ──
+    from collections import deque
+    unreach = []
+    if spawns:
+        seen = {spawns[0]}
+        q = deque([spawns[0]])
+        while q:
+            cx, cy = q.popleft()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+                nx, ny = cx + dx, cy + dy
+                if (nx, ny) in seen or not walk(nx, ny):
+                    continue
+                if dx and dy and not walk(cx + dx, cy) and not walk(cx, cy + dy):
+                    continue
+                seen.add((nx, ny))
+                q.append((nx, ny))
+        unreach = [(x, y) for y in range(H) for x in range(W) if walk(x, y) and (x, y) not in seen and 0 < x < W - 1 and 0 < y < H - 1]
+        for key, fx, fy in named:
+            ix, iy = int(round(fx)), int(round(fy))
+            if walk(ix, iy) and (ix, iy) not in seen and 0 < ix < W - 1 and 0 < iy < H - 1:
+                errors.append('%s (%d, %d): 부활 자리에서 걸어서 닿지 않는다' % (key, ix, iy))
+        for x, y in dummies:
+            if (x, y) not in seen:
+                errors.append('dummy (%d, %d): 부활 자리에서 걸어서 닿지 않는다' % (x, y))
+    if unreach:
+        print('[gen_town] 경고: 걸어서 닿지 않는 걷는 칸 %d개(마을 안쪽) — 예: %s' % (len(unreach), ' '.join('(%d,%d)' % p for p in unreach[:12])))
+
     if errors:
         for e in errors[:60]:
             print('[gen_town] ' + e)
@@ -271,6 +301,12 @@ def main():
     out.append('\tinline constexpr const char* kGround[kH] =')
     out.append('\t{')
     for r in ground:
+        out.append('\t\t%s,' % lit(''.join(r)))
+    out.append('\t};')
+    out.append('\t// 바닥 재질 문자(가장자리 R로 바꾸기 전 — 가장자리 윗면도 이 재질로 그린다)')
+    out.append('\tinline constexpr const char* kSurface[kH] =')
+    out.append('\t{')
+    for r in surface:
         out.append('\t\t%s,' % lit(''.join(r)))
     out.append('\t};')
     out.append('\t// 층 0~4(계단 칸은 낮은 쪽 층)')

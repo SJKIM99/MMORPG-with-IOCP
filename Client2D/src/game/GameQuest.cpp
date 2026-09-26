@@ -1373,7 +1373,7 @@ void Game::DrawQuestCompass(const Camera2D& cam)
 {
 	if (!m_questDestValid || m_dead) return;
 	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Vector2 sp = GetWorldToScreen2D(TileToIso(m_questDest.tile), cam);
+	const Vector2 sp = GetWorldToScreen2D(SurfaceIso(m_questDest.tile), cam);
 	const Rectangle inner{ 90.f, 90.f, W - 180.f, H - 250.f };
 	const int dist = Cheb(m_predX, m_predY, static_cast<int>(m_questDest.tile.x), static_cast<int>(m_questDest.tile.y));
 	const float t = static_cast<float>(m_now);
@@ -1426,14 +1426,14 @@ void Game::DrawQuestOverlay(const Camera2D& cam)
 {
 	Entity* me = Self();
 	if (!me) return;
-	const Vector2 to = GetWorldToScreen2D(util::Add(TileToIso(me->pos), Vector2{ 0.f, -actors::PlayerHeight() * 0.6f }), cam);
+	const Vector2 to = GetWorldToScreen2D(util::Add(SurfaceIso(me->pos), Vector2{ 0.f, -actors::PlayerHeight() * 0.6f }), cam);
 	for (const auto& f : m_questFlies)
 	{
 		const float u = static_cast<float>((m_now - f.at) / 0.65);
 		if (u < 0.f || u > 1.f) continue;
 		const QuestRow* q = QuestData::Find(f.quest);
 		if (!q) continue;
-		const Vector2 from = GetWorldToScreen2D(util::Add(TileToIso(f.from), Vector2{ 0.f, -24.f }), cam);
+		const Vector2 from = GetWorldToScreen2D(util::Add(SurfaceIso(f.from), Vector2{ 0.f, -24.f }), cam);
 		const float e = util::EaseInOutCubic(u);
 		Vector2 pos = util::LerpV(from, to, e);
 		pos.y -= std::sin(util::kPi * u) * 90.f * cam.zoom;

@@ -8,6 +8,7 @@
 //   · 시야 밖(서버 VIEW_RANGE=5, 체비셰프 거리)은 어둡게 — 서버가 실제로 보내 주는
 //     범위가 곧 "보이는 범위"라는 걸 화면으로 드러낸다.
 // 주의: GLSL 소스는 ASCII만 쓴다(일부 드라이버가 비ASCII 주석에서 컴파일 실패).
+// MSVC 문자열 리터럴 한도(16,380B): 원시 문자열 두 조각으로 나눠 이어 붙인다(townGround 앞에서) — 조각마다 한도 안.
 // ─────────────────────────────────────────────────────────────────────────────
 namespace shaders
 {
@@ -37,6 +38,7 @@ uniform vec2  uTownSize;
 uniform sampler2D uGround;     // painted ground atlas (5x4 cells of 512 + 32 wrap padding)
 uniform float uGroundOn;
 uniform vec2  uGroundSize;
+uniform float uMesh;          // Phase 4-A: 1 = raised town tiles drawn as quads (uv = fragTexCoord = tile coords)
 vec2 gDx;                      // screen derivatives of the tile uv (set once in main, uniform control flow)
 vec2 gDy;
 
@@ -265,17 +267,92 @@ int regionAt(vec2 p)
     return int(r.y) * 4 + int(r.x);
 }
 
+)GLSL" R"GLSL(
+// ---- Phase 4 town surfaces (procedural in both modes) ----
+int townCodeAt(ivec2 t)
+{
+    if (t.x < 0 || t.y < 0 || t.x >= int(uTownSize.x) || t.y >= int(uTownSize.y)) return 0;
+    return int(texelFetch(uTown, t, 0).r * 255.0 + 0.5);
+}
+bool wetCode(int c) { return c == 16 || c == 17; }
+// river: sits a little below the banks - the far banks (north / west, facing the camera) show a short earth face,
+// dark water under the banks, drifting sky reflection, sparkles and a broken foam line at the waterline
+vec3 townWater(vec2 uv, vec2 cell, vec2 loc)
+{
+    ivec2 t = ivec2(cell - uTownOrigin);
+    float dE = !wetCode(townCodeAt(t + ivec2(1, 0)))  ? 0.5 - loc.x : 1.0;
+    float dS = !wetCode(townCodeAt(t + ivec2(0, 1)))  ? 0.5 - loc.y : 1.0;
+    float dW = !wetCode(townCodeAt(t + ivec2(-1, 0))) ? 0.5 + loc.x : 1.0;
+    float dN = !wetCode(townCodeAt(t + ivec2(0, -1))) ? 0.5 + loc.y : 1.0;
+    const float BANK = 0.17;
+    float far = min(dW, dN);
+    float d = min(min(dE, dS), far - BANK);
+    float tm = uTime;
+    float n1 = nz(uv * 0.23 + vec2(tm * 0.021, tm * 0.007));
+    float n2 = nz(uv * 0.61 + vec2(-tm * 0.013, tm * 0.017) + 0.37);
+    vec3 col = mix(vec3(0.06, 0.17, 0.22), vec3(0.14, 0.31, 0.35), n1 * 0.6 + n2 * 0.4);
+    col += vec3(0.22, 0.28, 0.30) * smoothstep(0.45, 0.85, nz(uv * 0.07 + vec2(tm * 0.004, 0.0))) * 0.35;
+    float spark = smoothstep(0.78, 0.95, n1 * 0.5 + nz(uv * 1.9 + vec2(tm * 0.09, -tm * 0.05)) * 0.5);
+    col += vec3(0.6, 0.72, 0.72) * spark * 0.35;
+    col *= 0.78 + 0.22 * smoothstep(0.0, 0.3, d);
+    float wob = 0.02 * sin(tm * 1.7 + (uv.x + uv.y) * 4.0);
+    float foam = (1.0 - smoothstep(0.015, 0.075, d + wob)) * (0.55 + 0.45 * nz(uv * 2.3 + vec2(tm * 0.06, 0.0)));
+    col = mix(col, vec3(0.80, 0.87, 0.86), foam * 0.7);
+    if (far < BANK)
+        col = mix(vec3(0.33, 0.27, 0.19), vec3(0.20, 0.16, 0.11), far / BANK) * (0.85 + 0.3 * nz(uv * 4.0));
+    return col;
+}
+// bridge deck: planks across the direction of travel, dark beams at the edges
+vec3 townBridge(vec2 uv, vec2 cell, vec2 loc)
+{
+    ivec2 t = ivec2(cell - uTownOrigin);
+    bool alongY = townCodeAt(t + ivec2(1, 0)) == 16 || townCodeAt(t + ivec2(-1, 0)) == 16;
+    float a = alongY ? uv.y : uv.x;
+    float b = alongY ? loc.x : loc.y;
+    float p = fract(a * 3.0);
+    float seam = smoothstep(0.0, 0.07, p) * smoothstep(1.0, 0.93, p);
+    float id = floor(a * 3.0);
+    vec3 wood = mix(vec3(0.40, 0.28, 0.17), vec3(0.55, 0.39, 0.24), hashCell(vec2(id, cell.x + cell.y)));
+    wood *= 0.88 + 0.2 * nz(vec2(b * 5.0, a * 0.7) + id * 0.31);
+    wood *= 0.55 + 0.45 * seam;
+    return mix(wood, vec3(0.28, 0.20, 0.13), smoothstep(0.38, 0.47, abs(b)) * 0.85);
+}
+// crop field: furrows with sprouts on the ridges
+vec3 townCrops(vec2 uv)
+{
+    float r = fract(uv.y * 3.0);
+    float ridge = smoothstep(0.08, 0.5, r) * smoothstep(0.92, 0.5, r);
+    vec3 col = mix(vec3(0.27, 0.19, 0.12), vec3(0.45, 0.33, 0.21), ridge);
+    float row = floor(uv.y * 3.0);
+    float sp = smoothstep(0.52, 0.62, nz(vec2(uv.x * 1.9, row * 0.73))) * ridge;
+    return mix(col, mix(vec3(0.30, 0.52, 0.20), vec3(0.62, 0.66, 0.26), hashCell(vec2(row, 7.0))), sp);
+}
+
 vec3 townGround(int code, vec2 uv, vec2 cell, vec2 loc, vec3 grass)
 {
+    if (code == 16) return townWater(uv, cell, loc);
+    if (code == 17) return townBridge(uv, cell, loc);
+    if (code == 22) return townCrops(uv);
     if (uGroundOn > 0.5)
     {
         if (code == 1 || code == 3) return groundTex(15, uv) * (code == 3 ? 0.86 : 1.0);
         if (code == 2 || code == 8 || code == 10 || code == 12 || code == 13) return groundTex(16, uv);
         if (code == 11) return groundTex(17, uv);
         if (code == 4 || code == 5 || code == 6 || code == 7) return groundTex(19, uv) * 0.92;
+        if (code == 14) return groundTex(18, uv);                                            // dirt lane
+        if (code == 15) { vec3 sd = mix(groundTex(9, uv), groundTex(18, uv), 0.5); return mix(sd, vec3(dot(sd, vec3(0.333))), 0.3) * vec3(1.06, 1.02, 0.94); }   // yard sand
+        if (code == 18) return mix(grass, groundTex(11, uv), 0.55);                          // graveyard grass
+        if (code == 19 || code == 24) return groundTex(19, uv) * 0.94;                       // stairs / low wall base
+        if (code == 20) return mix(grass, groundTex(18, uv), 0.45);                          // under rocks
+        if (code == 21) return grass * 0.8;                                                  // under hedges
         return grass * vec3(1.03, 1.05, 1.0);
     }
     float fine = nz(uv * 2.3);
+    if (code == 14 || code == 20) return mix(code == 20 ? grass : vec3(0.52, 0.42, 0.30), vec3(0.50, 0.40, 0.29), code == 20 ? 0.5 : 1.0) * (0.88 + fine * 0.22);
+    if (code == 15) return vec3(0.78, 0.68, 0.50) * (0.9 + fine * 0.14) * (0.97 + 0.03 * sin(uv.x * 9.0 + nz(uv * 0.5) * 3.0));
+    if (code == 18) return grass * vec3(0.80, 0.88, 0.80) * (0.9 + fine * 0.2);
+    if (code == 19 || code == 24) return vec3(0.55, 0.52, 0.48) * (0.9 + fine * 0.15);
+    if (code == 21) return grass * 0.78;
     if (code == 1 || code == 3)       // road / gate: cobbles
     {
         vec2 p = uv * 3.0;
@@ -318,15 +395,22 @@ vec3 townGround(int code, vec2 uv, vec2 cell, vec2 loc, vec3 grass)
 
 void main()
 {
-    vec2 screen = vec2(gl_FragCoord.x, uScreen.y - gl_FragCoord.y);
-    vec2 d = (screen - uCamOffset) / uZoom;
-    float cr = cos(-uRot);
-    float sr = sin(-uRot);
-    vec2 iso = vec2(d.x * cr - d.y * sr, d.x * sr + d.y * cr) + uCamTarget;
-
-    float a = iso.x / 32.0;
-    float b = iso.y / 16.0;
-    vec2 uv = vec2((a + b) * 0.5, (b - a) * 0.5);   // continuous tile coords (centers at integers)
+    vec2 uv;
+    if (uMesh > 0.5)
+    {
+        uv = fragTexCoord;                          // raised tile quad: tile coords come from the vertex
+    }
+    else
+    {
+        vec2 screen = vec2(gl_FragCoord.x, uScreen.y - gl_FragCoord.y);
+        vec2 d = (screen - uCamOffset) / uZoom;
+        float cr = cos(-uRot);
+        float sr = sin(-uRot);
+        vec2 iso = vec2(d.x * cr - d.y * sr, d.x * sr + d.y * cr) + uCamTarget;
+        float a = iso.x / 32.0;
+        float b = iso.y / 16.0;
+        uv = vec2((a + b) * 0.5, (b - a) * 0.5);    // continuous tile coords (centers at integers)
+    }
     vec2 cell = floor(uv + 0.5);
     vec2 loc = uv - cell;                           // [-0.5, 0.5]
     gDx = dFdx(uv);
@@ -407,6 +491,7 @@ void main()
         col = mix(col, dim, f);
     }
 
+    if (uMesh > 0.5) col *= fragColor.rgb;          // face shading / tint from the vertex
     finalColor = vec4(col, 1.0);
 }
 )GLSL";

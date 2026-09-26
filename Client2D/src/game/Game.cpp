@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "render/Height.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "fx/Particles.h"
@@ -345,7 +346,15 @@ int Game::GroundAt(Vector2 tile) const
 {
 	const int x = static_cast<int>(std::floor(tile.x + 0.5f)), y = static_cast<int>(std::floor(tile.y + 0.5f));
 	if (const char c = WorldData::TownCell(x, y); c != '\0')
-		return (c == '=' || c == ',' || c == 'G' || c == 'N') ? 1 : 0;
+	{
+		switch (c)
+		{
+		case '=': case ',': case 'G': case 'N': case '^': case 'v': case '<': case '>': return 1;   // 돌 · 계단
+		case 'b': return 2;   // 다리(나무)
+		case 's': case ':': return 4;   // 모래 · 흙길
+		default: return 0;
+		}
+	}
 	const auto* r = WorldData::FindRegion(WorldData::RegionIdAt(x, y));
 	if (!r) return 0;
 	using WorldData::Biome;
@@ -360,6 +369,7 @@ int Game::GroundAt(Vector2 tile) const
 int Game::Region() const { return WorldData::RegionIdAt(m_predX, m_predY); }
 
 Vector2 Game::TileToIso(Vector2 tile, float z) const { return gfx::IsoPx(tile.x, tile.y, z); }
+Vector2 Game::SurfaceIso(Vector2 tile, float z) const { return gfx::IsoPx(tile.x, tile.y, z + hgt::BodyZ(tile)); }
 
 void Game::AddChat(const std::string& text, Color color)
 {
@@ -600,14 +610,14 @@ void Game::UpdateGame(float dt)
 	// ── 카메라 ──
 	if (m_tourCam.on)
 	{
-		m_cam.Follow(TileToIso(m_tourCam.tile, 0.f));
+		m_cam.Follow(SurfaceIso(m_tourCam.tile, 0.f));
 		m_cam.SetLead(Vector2{ 0, 0 });
 		m_cam.SetCursorBias(Vector2{ 0, 0 });
 		m_cam.SetZoomFree(m_tourCam.zoom);
 	}
 	else if (Entity* me = Self())
 	{
-		m_cam.Follow(TileToIso(me->pos, 0.6f));
+		m_cam.Follow(SurfaceIso(me->pos, 0.6f));
 		// 진행 방향으로 앞서기: 스프링이 늦는 만큼(2τ·속도) + 달릴 때 약 1칸 더 — 가는 쪽이 더 보인다
 		const Vector2 v = m_mover.Velocity();
 		const Vector2 isoV{ (v.x - v.y) * gfx::kHalfW, (v.x + v.y) * gfx::kHalfH };
@@ -628,7 +638,7 @@ void Game::UpdateGame(float dt)
 		m_cam.SetCursorBias(bias);
 		if (m_mover.Snapped())
 		{
-			m_cam.SnapTo(TileToIso(me->pos, 0.6f));
+			m_cam.SnapTo(SurfaceIso(me->pos, 0.6f));
 			m_lineValid = false;
 		}
 	}
@@ -1231,7 +1241,7 @@ void Game::RunScript(float dt)
 		//   follow:이름                 그 플레이어 위에 커서를 두고 누른 채 따라간다
 		Entity* me = Self();
 		if (!me) return;
-		const Vector2 meScr = GetWorldToScreen2D(TileToIso(me->pos, 0.f), m_cam2d);
+		const Vector2 meScr = GetWorldToScreen2D(SurfaceIso(me->pos, 0.f), m_cam2d);
 		float dx = 1.f, dy = 0.f, secs = 6.f, sx = -1.f, sy = -1.f;
 		if (s.rfind("runline:", 0) == 0) std::sscanf(s.c_str() + 8, "%f,%f,%f,%f,%f", &dx, &dy, &secs, &sx, &sy);
 		float start = 1.5f;
@@ -1265,7 +1275,7 @@ void Game::RunScript(float dt)
 			const float R = 5.f;
 			const float a = std::atan2(me->pos.y - c.y, me->pos.x - c.x) + 0.9f;          // 도는 쪽으로 약 50° 앞
 			const Vector2 aim{ c.x + std::cos(a) * R, c.y + std::sin(a) * R };
-			const Vector2 scr = GetWorldToScreen2D(TileToIso(aim, 0.f), m_cam2d);
+			const Vector2 scr = GetWorldToScreen2D(SurfaceIso(aim, 0.f), m_cam2d);
 			in::SetScriptMouse(scr, m_scriptT < start + secs);
 		}
 		else
@@ -1276,7 +1286,7 @@ void Game::RunScript(float dt)
 				if (e.kind == EntityKind::Player && id != m_selfId && e.name == who) { t = &e; break; }
 			if (t)
 			{
-				const Vector2 scr = GetWorldToScreen2D(TileToIso(t->pos, 0.f), m_cam2d);
+				const Vector2 scr = GetWorldToScreen2D(SurfaceIso(t->pos, 0.f), m_cam2d);
 				in::SetScriptMouse(Vector2{ scr.x, scr.y - 24.f }, true);
 			}
 			else
@@ -1311,7 +1321,7 @@ void Game::RunScript(float dt)
 					SetGoal(Goal{ GoalKind::Move, ObjID{}, m_predX + util::RandI(-6, 6), m_predY + util::RandI(3, 8) });
 				return;
 			}
-			const Vector2 scr = GetWorldToScreen2D(util::Add(TileToIso(best->pos, 0.f), Vector2{ 0.f, -(best->row ? actors::MonsterHeight(*best->row) : 40.f) * 0.45f }), m_cam2d);
+			const Vector2 scr = GetWorldToScreen2D(util::Add(SurfaceIso(best->pos, 0.f), Vector2{ 0.f, -(best->row ? actors::MonsterHeight(*best->row) : 40.f) * 0.45f }), m_cam2d);
 			const bool rmb = std::fmod(m_scriptT, 1.4f) < 0.5f;   // 우클릭을 눌렀다 뗐다
 			in::SetScriptMouse(scr, false, rmb);
 			// 누르고 있는 기술(차지 · 홀딩): 정한 시간이 되면 뗀다
@@ -1438,7 +1448,7 @@ void Game::RunScript(float dt)
 				if (!best || bestD > 6 || !m_scriptHolding) return;
 			}
 			if (m_goal.kind == GoalKind::Move) ClearGoal();
-			const Vector2 scr = GetWorldToScreen2D(util::Add(TileToIso(best->pos, 0.f), Vector2{ 0.f, -(best->row ? actors::MonsterHeight(*best->row) : 40.f) * 0.45f }), m_cam2d);
+			const Vector2 scr = GetWorldToScreen2D(util::Add(SurfaceIso(best->pos, 0.f), Vector2{ 0.f, -(best->row ? actors::MonsterHeight(*best->row) : 40.f) * 0.45f }), m_cam2d);
 			in::SetScriptMouse(scr, false, false);
 			if (!m_scriptHolding && m_now >= m_scriptNextCast && m_now >= m_actionLockUntil && !m_scriptSeq.empty())
 			{
@@ -1478,7 +1488,7 @@ void Game::RunScript(float dt)
 		Entity* me = Self();
 		if (!me) return;
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { kb::ScriptPress(kb::Act::BigMap); m_scriptStep = 1; }
-		const Vector2 meScr = GetWorldToScreen2D(TileToIso(me->pos, 0.f), m_cam2d);
+		const Vector2 meScr = GetWorldToScreen2D(SurfaceIso(me->pos, 0.f), m_cam2d);
 		in::SetScriptMouse(Vector2{ meScr.x + 200.f, meScr.y + 60.f }, m_scriptT > 1.5f && m_scriptT < 5.5f);
 	}
 	else if (s == "keysui" || s == "keysconflict")
@@ -1493,7 +1503,7 @@ void Game::RunScript(float dt)
 		Entity* me = Self();
 		if (!me) return;
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { kb::Opt().castMode = kb::CastMode::ShowThenCast; m_scriptStep = 1; }
-		const Vector2 meScr = GetWorldToScreen2D(TileToIso(me->pos, 0.f), m_cam2d);
+		const Vector2 meScr = GetWorldToScreen2D(SurfaceIso(me->pos, 0.f), m_cam2d);
 		in::SetScriptMouse(Vector2{ meScr.x + 150.f, meScr.y + 70.f }, false);
 		kb::ScriptHold(kb::Act::Skill1, m_scriptT > 1.5f && m_scriptT < 4.5f);
 	}

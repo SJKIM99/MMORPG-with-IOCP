@@ -227,8 +227,9 @@ namespace fx
 				c.a = static_cast<unsigned char>(c.a * fade * p.alphaK);
 				if (c.a == 0)
 					continue;
-				if (p.ground) gfx::SetDepthRaw(-0.965f);
-				else gfx::SetDepth(p.pos.y / gfx::kHalfH + 0.35f);
+				// 지형 높이(Phase 4-A): 바닥 문양은 정점마다 드리우고, 떠 있는 입자는 자기 바닥 자리 높이만큼 올린다
+				if (p.ground) { gfx::SetDrape(true); gfx::SetDepthRaw(-0.965f); }
+				else { gfx::SetDrape(false); gfx::SetLift(gfx::LiftAt(p.pos)); gfx::SetDepth(p.pos.y / gfx::kHalfH + 0.35f); }
 				const Vector2 s{ p.pos.x, p.pos.y - p.z };
 				switch (p.shape)
 				{
@@ -286,5 +287,7 @@ namespace fx
 			}
 		}
 		gfx::Additive(false);
+		gfx::SetDrape(false);
+		gfx::SetLift(0.f);
 	}
 }

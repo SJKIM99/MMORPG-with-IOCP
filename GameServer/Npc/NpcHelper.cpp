@@ -11,6 +11,7 @@
 #include "Quest/QuestHelper.h"
 #include "Data/WorldData.h"
 #include "Data/NpcTalk.h"
+#include "Collision.h"
 
 #include <array>
 #include <queue>
@@ -338,6 +339,7 @@ namespace
 				return;
 			}
 			n.path.erase(n.path.begin());
+			GuardTownMove("npc", n.x, n.y, nx, ny);
 			const int dx = nx - n.x, dy = ny - n.y;
 			n.faceX = static_cast<int8_t>(Sign(dx));
 			n.faceY = static_cast<int8_t>(Sign(dy));

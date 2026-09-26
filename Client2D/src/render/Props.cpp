@@ -194,7 +194,7 @@ namespace props
 				gfx::Tri(shoulder, util::Add(shoulder, util::Mul(nrm, w)), tip, Shade(c, 0.95f));
 			}
 			const float pulse = 0.7f + 0.3f * std::sin(t * 2.f + seed);
-			g_lights.push_back({ base, 70.f * s, c, 0.55f * pulse });
+			PushLight({ base, 70.f * s, c, 0.55f * pulse });
 		}
 
 		void Mushroom(Vector2 base, float s, Color cap, int seed, float t)
@@ -216,7 +216,7 @@ namespace props
 				const float a = util::kPi * (1.15f + i * 0.17f);
 				gfx::Circle(Off(c, std::cos(a) * 12.f * s, std::sin(a) * 9.f * s - 2 * s), (2.2f + (i % 2)) * s, Rgb(0xFFF4E0));
 			}
-			g_lights.push_back({ c, 60.f * s, cap, 0.35f + 0.1f * std::sin(t * 1.7f + seed) });
+			PushLight({ c, 60.f * s, cap, 0.35f + 0.1f * std::sin(t * 1.7f + seed) });
 		}
 
 		void Pillar(Vector2 base, float s, int seed)
@@ -352,7 +352,7 @@ namespace props
 			{
 				const float pulse = 0.75f + 0.25f * std::sin(t * 3.f + seed);
 				gfx::EllipseGrad(Off(base, 0, 1), 16 * s, 6 * s, Rgb(0xFFB040, static_cast<uint8_t>(220 * pulse)), Rgb(0xFF4010, 0));
-				g_lights.push_back({ base, 80.f * s, Rgb(0xFF7020), 0.6f * pulse });
+				PushLight({ base, 80.f * s, Rgb(0xFF7020), 0.6f * pulse });
 			}
 		}
 
@@ -364,7 +364,7 @@ namespace props
 			const float pulse = 0.7f + 0.3f * std::sin(t * 4.f + seed);
 			gfx::Ellipse(Off(base, 0, -17 * s), 6 * s, 2.5f * s, Rgb(0xFFD060, static_cast<uint8_t>(255 * pulse)));
 			gfx::Line(Off(base, -3 * s, -15 * s), Off(base, -9 * s, -2 * s), 2.f * s, Rgb(0xFF6A20, static_cast<uint8_t>(200 * pulse)));
-			g_lights.push_back({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
+			PushLight({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
 		}
 
 		void Bush(Vector2 base, float s, Color c, bool berries, int seed)
@@ -451,7 +451,7 @@ namespace props
 				// 횃불
 				const Vector2 torch = gfx::IsoPx(X + 0.5f, Y + 0.5f, 1.6f);
 				gfx::Circle(torch, 3.f, Rgb(0xFFC050));
-				g_lights.push_back({ gfx::IsoPx(X + 0.6f, Y + 0.6f, 0.f), 120.f, Rgb(0xFF9A40), 0.9f });
+				PushLight({ gfx::IsoPx(X + 0.6f, Y + 0.6f, 0.f), 120.f, Rgb(0xFF9A40), 0.9f });
 			}
 		}
 
@@ -518,7 +518,7 @@ namespace props
 			gfx::Quad(Off(l, -3.5f, -7), Off(l, 3.5f, -7), Off(l, 3, 1), Off(l, -3, 1),
 				util::Mix(Rgb(0xE8D8A0), Rgb(0xFFE070), g_night * flick));
 			gfx::Tri(Off(l, -6, -9), Off(l, 6, -9), Off(l, 0, -15), iron);
-			g_lights.push_back({ gfx::IsoPx(X + 0.3f, Y + 0.3f), 150.f, Rgb(0xFFC870), 1.1f * flick });
+			PushLight({ gfx::IsoPx(X + 0.3f, Y + 0.3f), 150.f, Rgb(0xFFC870), 1.1f * flick });
 		}
 
 		void Stall(float X0, float Y0, int variant)   // 2x2
@@ -594,7 +594,7 @@ namespace props
 			gfx::SetDepth(cx + cy + 0.2f);
 			gfx::LineGrad(gfx::IsoPx(cx, cy, 1.6f), top, 6.f, 3.f, Rgb(0xBFE8FF, 220), Rgb(0xFFFFFF, 240));
 			gfx::Circle(top, 4.f + std::sin(t * 7.f), Rgb(0xE8F8FF, 230));
-			g_lights.push_back({ gfx::IsoPx(cx, cy), 160.f, Rgb(0x90D0FF), 0.45f });
+			PushLight({ gfx::IsoPx(cx, cy), 160.f, Rgb(0x90D0FF), 0.45f });
 		}
 
 		// 창문(밤에 불이 켜진다)
@@ -608,14 +608,14 @@ namespace props
 				gfx::Face({ a.x + e, a.y - 0.04f, z0 - 0.04f }, { a.x + e, b.y + 0.04f, z0 - 0.04f }, { a.x + e, b.y + 0.04f, z1 + 0.04f }, { a.x + e, a.y - 0.04f, z1 + 0.04f }, frame);
 				gfx::Face({ a.x + 2 * e, a.y, z0 }, { a.x + 2 * e, b.y, z0 }, { a.x + 2 * e, b.y, z1 }, { a.x + 2 * e, a.y, z1 }, glass);
 				gfx::Face({ a.x + 3 * e, (a.y + b.y) * 0.5f - 0.02f, z0 }, { a.x + 3 * e, (a.y + b.y) * 0.5f + 0.02f, z0 }, { a.x + 3 * e, (a.y + b.y) * 0.5f + 0.02f, z1 }, { a.x + 3 * e, (a.y + b.y) * 0.5f - 0.02f, z1 }, frame);
-				if (g_night > 0.05f) g_lights.push_back({ gfx::IsoPx(a.x + 0.4f, (a.y + b.y) * 0.5f), 70.f, Rgb(0xFFC870), 0.7f * g_night });
+				if (g_night > 0.05f) PushLight({ gfx::IsoPx(a.x + 0.4f, (a.y + b.y) * 0.5f), 70.f, Rgb(0xFFC870), 0.7f * g_night });
 			}
 			else
 			{
 				gfx::Face({ a.x - 0.04f, a.y + e, z0 - 0.04f }, { b.x + 0.04f, a.y + e, z0 - 0.04f }, { b.x + 0.04f, a.y + e, z1 + 0.04f }, { a.x - 0.04f, a.y + e, z1 + 0.04f }, frame);
 				gfx::Face({ a.x, a.y + 2 * e, z0 }, { b.x, a.y + 2 * e, z0 }, { b.x, a.y + 2 * e, z1 }, { a.x, a.y + 2 * e, z1 }, glass);
 				gfx::Face({ (a.x + b.x) * 0.5f - 0.02f, a.y + 3 * e, z0 }, { (a.x + b.x) * 0.5f + 0.02f, a.y + 3 * e, z0 }, { (a.x + b.x) * 0.5f + 0.02f, a.y + 3 * e, z1 }, { (a.x + b.x) * 0.5f - 0.02f, a.y + 3 * e, z1 }, frame);
-				if (g_night > 0.05f) g_lights.push_back({ gfx::IsoPx((a.x + b.x) * 0.5f, a.y + 0.4f), 70.f, Rgb(0xFFC870), 0.7f * g_night });
+				if (g_night > 0.05f) PushLight({ gfx::IsoPx((a.x + b.x) * 0.5f, a.y + 0.4f), 70.f, Rgb(0xFFC870), 0.7f * g_night });
 			}
 		}
 
@@ -635,6 +635,12 @@ namespace props
 	}
 
 	std::vector<Light>& FrameLights() { return g_lights; }
+	void PushLight(Light l)
+	{
+		// 지형 높이(Phase 4-A): 지금 그리는 것이 올라간 만큼 빛도 올린다(위치는 바닥 평면 아이소 px)
+		l.iso.y -= gfx::Lift();
+		g_lights.push_back(l);
+	}
 
 	void DrawFieldObstacle(int x, int y, WorldData::Biome biome, float time)
 	{
@@ -652,7 +658,7 @@ namespace props
 		// 그린 소품: 나무는 바람에 윗부분이 흔들린다(절차적 흔들림의 2.5배 — 그림이 더 크다)
 		auto tree = [&](const char* name, float h, Color mul = WHITE) { return PropSprite(name, base, h * s, sway * 2.5f, flip, mul); };
 		auto thing = [&](const char* name, float h, Color mul = WHITE) { return PropSprite(name, base, h * s, 0.f, flip, mul); };
-		auto glow = [&](Color c, float r, float k) { g_lights.push_back({ Off(base, 0, -10 * s), r * s, c, k }); };
+		auto glow = [&](Color c, float r, float k) { PushLight({ Off(base, 0, -10 * s), r * s, c, k }); };
 		const float pulse = 0.7f + 0.3f * std::sin(time * 2.f + seed);
 
 		switch (biome)
@@ -688,7 +694,7 @@ namespace props
 			}
 			else if (pick < 0.7f)
 			{
-				if (thing("prop_lava_vent", 42.f)) g_lights.push_back({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
+				if (thing("prop_lava_vent", 42.f)) PushLight({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
 				else LavaVent(base, s, time, seed);
 			}
 			else if (!tree("prop_tree_burnt", 110.f)) DeadTree(base, s, Rgb(0x2A2222), seed, false);
@@ -758,7 +764,7 @@ namespace props
 			}
 			else
 			{
-				if (thing("prop_lava_vent", 42.f)) g_lights.push_back({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
+				if (thing("prop_lava_vent", 42.f)) PushLight({ Off(base, 0, -16 * s), 110.f * s, Rgb(0xFF6A20), 0.9f * pulse });
 				else LavaVent(base, s, time, seed);
 			}
 			break;
@@ -810,7 +816,7 @@ namespace props
 			if (PropSprite("prop_lamp", base, 96.f, 0.f, false))
 			{
 				const float flick = 0.85f + 0.15f * util::Noise1(static_cast<float>(GetTime()) * 6.f + X);
-				g_lights.push_back({ gfx::IsoPx(X + 0.3f, Y + 0.3f), 150.f, Rgb(0xFFC870), 1.1f * flick });
+				PushLight({ gfx::IsoPx(X + 0.3f, Y + 0.3f), 150.f, Rgb(0xFFC870), 1.1f * flick });
 			}
 			else
 				Lamp(X, Y);
@@ -833,13 +839,122 @@ namespace props
 				const float cx = X + 1.5f, cy = Y + 1.5f;
 				gfx::SetDepth(cx + cy);
 				if (PropSprite("prop_fountain", Off(gfx::IsoPx(cx, cy), 0.f, 40.f), 0.f, 0.f, false, WHITE, 8.f * 32.f * 0.86f))
-					g_lights.push_back({ gfx::IsoPx(cx, cy), 160.f, Rgb(0x90D0FF), 0.45f });   // 물빛
+					PushLight({ gfx::IsoPx(cx, cy), 160.f, Rgb(0x90D0FF), 0.45f });   // 물빛
 				else
 					Fountain(X, Y, time);
 			}
 			break;
+		// ── Phase 4 ──
+		case 'X':   // 바위
+		{
+			const Vector2 base = gfx::IsoPx(X + (H01(x, y, 31) - 0.5f) * 0.16f, Y + (H01(x, y, 32) - 0.5f) * 0.16f);
+			gfx::SetDepth(X + Y);
+			const int seed = static_cast<int>(util::Hash2(x, y, 21) & 0xFFFF);
+			const bool moss = (seed % 3) == 0;
+			if (!PropSprite(moss ? "prop_rock_moss" : "prop_rock_grey", base, 50.f * (0.9f + H01(x, y, 33) * 0.25f), 0.f, (seed & 1) != 0))
+				Rock(base, 0.9f, Rgb(0x9A968A), seed, moss, false);
+			break;
+		}
+		case 'h':   // 산울타리: 덤불을 반 칸 간격으로 이어 심는다(칸 가운데 + 동 · 남 이웃 쪽 반 칸) — 밑에는 짙은 잎 상자로 틈을 메운다
+		{
+			const bool ex = WorldData::TownCell(x + 1, y) == 'h', wx = left == 'h';
+			const bool sy = WorldData::TownCell(x, y + 1) == 'h', ny = up == 'h';
+			const Color leaf = Shade(Rgb(0x2E5E28), 0.92f + H01(x, y, 41) * 0.12f);
+			// 이어지는 쪽에만 낮은 잎 줄기(덤불 사이 틈 메우기) — 외딴 한 칸은 덤불 하나
+			constexpr float kT = 0.2f, kH = 0.36f;
+			if (ex || wx) gfx::Box(wx ? X - 0.5f : X, Y - kT, ex ? X + 0.5f : X, Y + kT, 0.f, kH, Shade(leaf, 1.05f), Shade(leaf, 0.8f), Shade(leaf, 0.62f));
+			if (sy || ny) gfx::Box(X - kT, ny ? Y - 0.5f : Y, X + kT, sy ? Y + 0.5f : Y, 0.f, kH, Shade(leaf, 1.05f), Shade(leaf, 0.8f), Shade(leaf, 0.62f));
+			const float sway = std::sin(time * 1.3f + X * 0.9f + Y * 0.4f) * 1.1f;
+			auto bush = [&](float bx, float by, uint32_t salt)
+			{
+				const int seed = static_cast<int>(util::Hash2(static_cast<int>(bx * 2.f), static_cast<int>(by * 2.f), salt) & 0xFFFF);
+				const Vector2 base = gfx::IsoPx(bx, by);
+				gfx::SetDepth(bx + by + 0.2f);
+				const float hgt = 44.f + H01(static_cast<int>(bx * 2.f), static_cast<int>(by * 2.f), salt + 1) * 8.f;
+				if (!PropSprite((seed % 7) == 0 ? "prop_bush_flower" : "prop_bush", base, hgt, sway, (seed & 1) != 0, Rgb(0xC8DCB8)))
+					Bush(base, 0.9f, leaf, false, seed);
+			};
+			bush(X, Y, 43);
+			if (ex) bush(X + 0.5f, Y, 44);
+			if (sy) bush(X, Y + 0.5f, 45);
+			break;
+		}
+		case 'W':   // 낮은 돌담: 이웃 담 쪽으로 이어진다(외따로면 기둥)
+		{
+			const bool ex = WorldData::TownCell(x + 1, y) == 'W', wx = left == 'W';
+			const bool sy = WorldData::TownCell(x, y + 1) == 'W', ny = up == 'W';
+			const Color st = StoneVar(x, y, Rgb(0x9C958A));
+			constexpr float kT = 0.2f, kH = 0.55f;
+			const bool runX = ex || wx, runY = sy || ny;
+			if (runX) StoneBox(wx ? X - 0.5f : X - kT, Y - kT, ex ? X + 0.5f : X + kT, Y + kT, 0.f, kH, st, 0.8f);
+			if (runY) StoneBox(X - kT, ny ? Y - 0.5f : Y - kT, X + kT, sy ? Y + 0.5f : Y + kT, 0.f, kH, st, 0.8f);
+			if (!runX && !runY) StoneBox(X - 0.28f, Y - 0.28f, X + 0.28f, Y + 0.28f, 0.f, kH + 0.15f, st, 0.8f);
+			break;
+		}
+		case 'c':   // 밭: 이랑 위 작물(셰이더가 흙 · 싹) — 칸마다 줄기 몇 개로 부피를 준다
+		{
+			const float sway = std::sin(time * 1.6f + X * 0.7f + Y * 0.3f) * 1.5f;
+			const Color stem = Shade(Rgb(0x5E8A2E), 0.9f + H01(x, y, 51) * 0.2f);
+			for (int r = 0; r < 3; ++r)
+				for (int k = 0; k < 3; ++k)
+				{
+					const float u = X - 0.33f + k * 0.33f + (H01(x * 3 + k, y * 3 + r, 52) - 0.5f) * 0.12f;
+					const float v = Y - 0.33f + r * 0.33f;
+					const Vector2 b0 = gfx::IsoPx(u, v);
+					gfx::SetDepth(u + v);
+					const float h = 9.f + H01(x * 3 + k, y * 3 + r, 53) * 6.f;
+					gfx::Line(b0, Off(b0, sway, -h), 2.f, stem);
+					gfx::Circle(Off(b0, sway, -h), 2.4f, Shade(stem, 1.25f));
+				}
+			break;
+		}
+		case 'P':   // 막히는 소품 자리(props.txt가 채운다) — 그림이 없으면 나무 상자
+		{
+			const Texture2D* wood = envart::Get(envart::Tex::Wood);
+			if (wood) gfx::BoxTex(*wood, X - 0.32f, Y - 0.32f, X + 0.32f, Y + 0.32f, 0.f, 0.6f, 0.6f, WHITE, Rgb(0xC8C0B4), Rgb(0x968E84));
+			else gfx::Box(X - 0.32f, Y - 0.32f, X + 0.32f, Y + 0.32f, 0.f, 0.6f, Rgb(0xA07A50), Rgb(0x7A5A3A), Rgb(0x5E4630));
+			break;
+		}
+		case 'b':   // 다리(걷는 칸): 물 쪽 가장자리에 난간 기둥 · 가로대
+		{
+			const Texture2D* wood = envart::Get(envart::Tex::Wood);
+			auto rail = [&](float ax, float ay, float bx, float by, bool postA)
+			{
+				const Color c = Rgb(0x8A6440);
+				if (postA)
+				{
+					if (wood) gfx::BoxTex(*wood, ax - 0.07f, ay - 0.07f, ax + 0.07f, ay + 0.07f, 0.f, 0.7f, 0.5f, WHITE, Rgb(0xC0B4A4), Rgb(0x8E8274));
+					else gfx::Box(ax - 0.07f, ay - 0.07f, ax + 0.07f, ay + 0.07f, 0.f, 0.7f, Shade(c, 1.1f), Shade(c, 0.85f), Shade(c, 0.65f));
+				}
+				const float lx0 = std::min(ax, bx) - 0.04f, lx1 = std::max(ax, bx) + 0.04f, ly0 = std::min(ay, by) - 0.04f, ly1 = std::max(ay, by) + 0.04f;
+				gfx::Box(lx0, ly0, lx1, ly1, 0.52f, 0.62f, Shade(c, 1.15f), Shade(c, 0.85f), Shade(c, 0.7f));
+			};
+			auto water = [](char c) { return c == '~'; };
+			// 난간은 물과 맞닿은 변에 — 기둥은 변의 한쪽 끝(이웃 다리 칸과 겹치지 않게)
+			if (water(WorldData::TownCell(x - 1, y))) rail(X - 0.42f, Y - 0.5f, X - 0.42f, Y + 0.5f, true);
+			if (water(WorldData::TownCell(x + 1, y))) rail(X + 0.42f, Y - 0.5f, X + 0.42f, Y + 0.5f, true);
+			if (water(up)) rail(X - 0.5f, Y - 0.42f, X + 0.5f, Y - 0.42f, true);
+			if (water(WorldData::TownCell(x, y + 1))) rail(X - 0.5f, Y + 0.42f, X + 0.5f, Y + 0.42f, true);
+			break;
+		}
 		default:
 			break;
+		}
+	}
+
+	bool TownCellVisible(char cell)
+	{
+		// 막힌 칸마다 무엇이 그려지는가 — "막힌 칸에는 반드시 무언가 보인다"(Props.h). terraincheck가 전수 검사한다.
+		switch (cell)
+		{
+		case '#': case 'O': case 'T': case 'L': case 'S': case 'F':   // DrawTownCell
+		case 'X': case 'h': case 'W': case 'c': case 'P':             // DrawTownCell(Phase 4)
+		case 'B':                                                     // DrawBuilding
+		case 'R':                                                     // Terrain::DrawRelief — 가장자리 난간
+		case '*': case '~':                                           // 바닥 셰이더 — 꽃밭 · 물
+			return true;
+		default:
+			return !WorldData::IsTownCellBlocked(cell);   // 걷는 칸은 막힘이 아니니 따질 것 없다
 		}
 	}
 
@@ -1000,7 +1115,7 @@ namespace props
 			else
 				gfx::Box(cx - 0.25f, cy - 0.25f, cx + 0.25f, cy + 0.25f, h, top + 0.5f, Rgb(0x8A5A4A), Rgb(0x7A4A3A), Rgb(0x5A3A2E));
 			if (b.kind == BuildingKind::eWeaponShop)
-				g_lights.push_back({ gfx::IsoPx(x1 + 0.5f, y1 + 0.5f), 140.f, Rgb(0xFF8A30), 0.8f });
+				PushLight({ gfx::IsoPx(x1 + 0.5f, y1 + 0.5f), 140.f, Rgb(0xFF8A30), 0.8f });
 		}
 		// 예배당 종탑
 		if (b.kind == BuildingKind::eTemple)
@@ -1017,7 +1132,7 @@ namespace props
 			gfx::SetDepth(cx + cy + 1.f);
 			gfx::Line(sym, Off(sym, 0, -16), 2.5f, Rgb(0xF2D060));
 			gfx::Line(Off(sym, -6, -10), Off(sym, 6, -10), 2.5f, Rgb(0xF2D060));
-			g_lights.push_back({ gfx::IsoPx(midX, y1 + 0.8f), 180.f, Rgb(0xFFF0C0), 0.7f });
+			PushLight({ gfx::IsoPx(midX, y1 + 0.8f), 180.f, Rgb(0xFFF0C0), 0.7f });
 		}
 		(void)time;
 	}

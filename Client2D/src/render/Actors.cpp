@@ -1126,7 +1126,7 @@ namespace actors
 			if (hell)
 			{
 				Glow(g, hx + 3.5f, hy - 1.5f, 6.f, Rgb(0xFF8A20, 200));
-				props::FrameLights().push_back({ g.P(0, 0), 90.f * g.s, Rgb(0xFF6A20), 0.7f });
+				props::PushLight({ g.P(0, 0), 90.f * g.s, Rgb(0xFF6A20), 0.7f });
 			}
 		}
 
@@ -1352,7 +1352,7 @@ namespace actors
 				Seg(g, -4, -42 + stomp, 4, -38 + stomp, 2.f, hot);
 				Seg(g, 4, -38 + stomp, 9, -48 + stomp, 2.f, hot);
 				Seg(g, 8, -28 + stomp, 12, -36 + stomp, 1.6f, hot);
-				props::FrameLights().push_back({ g.P(0, 0), 120.f * g.s, Rgb(0xFF7020), 0.9f * pulse });
+				props::PushLight({ g.P(0, 0), 120.f * g.s, Rgb(0xFF7020), 0.9f * pulse });
 			}
 			if (row.id == 19)
 				Ell(g, -6, -50 + stomp, 6.f, 2.5f, Rgb(0x6E8A3A));
@@ -1397,7 +1397,7 @@ namespace actors
 				if (!wraith) Ell(g, 5, y0 + 1, 2.5f, 1.5f, WithA(eye, 0.8f));
 			}
 			Glow(g, 0, y0, 26.f, WithA(c1, 0.25f));
-			props::FrameLights().push_back({ g.P(0, 0), 80.f * g.s, c1, 0.6f });
+			props::PushLight({ g.P(0, 0), 80.f * g.s, c1, 0.6f });
 		}
 
 		void Dragon(const Rig& g0, const Pose& p, const MonsterTableRow& row, Color c1, Color c2)
@@ -1446,7 +1446,7 @@ namespace actors
 			Seg(g, -14, by - 38 - flap * 10.f, 4, by - 34 - flap * 8.f, 1.5f, Shade(c1, 0.8f));
 			if (boss)
 			{
-				props::FrameLights().push_back({ g.P(0, 0), 170.f * g.s, Rgb(0xFF7A2A), 0.8f });
+				props::PushLight({ g.P(0, 0), 170.f * g.s, Rgb(0xFF7A2A), 0.8f });
 				Glow(g, 2, by + 4, 14.f, Rgb(0xFFB040, 90));
 			}
 		}
@@ -1511,7 +1511,7 @@ namespace actors
 			Limb(g, 8, -44 + w.bob, sw.hx, sw.hy + w.bob, 3.4f, c1);
 			Weapon(g, baphomet ? 17 : 5, sw.hx, sw.hy + w.bob, sw.angle, baphomet ? 1.05f : 0.8f, p.time, baphomet ? 12 : 0);
 			if (baphomet)
-				props::FrameLights().push_back({ g.P(0, -30), 200.f * g.s, Rgb(0xFF3A3A), 0.7f });
+				props::PushLight({ g.P(0, -30), 200.f * g.s, Rgb(0xFF3A3A), 0.7f });
 		}
 
 		void Crab(const Rig& g0, const Pose& p, Color c1, Color c2)
@@ -1710,7 +1710,7 @@ namespace actors
 				Limb(g, 7, -42 + w.bob, (7 + sw.hx) * 0.5f, (-42 + sw.hy) * 0.5f + w.bob, 3.2f, armor);
 			Weapon(g, dk ? 17 : (armored ? 4 : 3), sw.hx, sw.hy + w.bob, sw.angle, dk ? 1.0f : 0.78f, p.time, dk ? 10 : 0);
 			if (dk)
-				props::FrameLights().push_back({ g.P(0, -20), 150.f * g.s, Rgb(0xFF5A1A), 0.7f });
+				props::PushLight({ g.P(0, -20), 150.f * g.s, Rgb(0xFF5A1A), 0.7f });
 		}
 	}
 
@@ -1868,7 +1868,7 @@ namespace actors
 			Glow(g, 13, -68, 12.f * pulse, Rgb(0x6FB5AC, 190));
 			Quad(g, 10.5f, -71, 15.5f, -71, 15, -65, 11, -65, Rgb(0x8A9A98));
 			Seg(g, 12.2f, -70, 13.8f, -66, 1.f, Rgb(0xC8F0E8));
-			props::FrameLights().push_back({ g.P(0, 0), 140.f, Rgb(0x6FB5AC), 0.75f * pulse });
+			props::PushLight({ g.P(0, 0), 140.f, Rgb(0x6FB5AC), 0.75f * pulse });
 			Ball(g, 1, -53 + b, 7.5f, skin);
 			// 두건(머리를 감싸고 어깨로 흘러내린다)
 			Ell(g, 0, -56 + b, 10.5f, 10.f, Shade(robe, 0.9f));
@@ -1934,7 +1934,7 @@ namespace actors
 			gfx::Additive(true);
 			Glow(g, 0, -36 + b, 30.f * pulse, Rgb(0xFFF0C0, 60));
 			gfx::Additive(false);
-			props::FrameLights().push_back({ g.P(0, 0), 120.f, Rgb(0xFFE8B0), 0.55f * pulse });
+			props::PushLight({ g.P(0, 0), 120.f, Rgb(0xFFE8B0), 0.55f * pulse });
 			Ell(g, -3 - w.sw * 4.f, -1.5f - w.lift1, 4.f, 2.2f, Rgb(0x6A5A4A));
 			Ell(g, 4 + w.sw * 4.f, -1.5f - w.lift0, 4.2f, 2.3f, Rgb(0x7A6A5A));
 			Quad4(g, -9, -45 + b, 9, -45 + b, 13, -2, -13, -2, Shade(robe, 1.05f), Shade(robe, 0.88f), Shade(robe, 0.7f), Shade(robe, 0.85f));

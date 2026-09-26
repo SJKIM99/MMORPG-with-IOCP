@@ -860,7 +860,7 @@ namespace fx
 			const float rise = util::EaseOutCubic(u) * 50.f;
 			const float pop = u < 0.15f ? util::EaseOutBack(u / 0.15f) : 1.f;
 			const float a = u > 0.7f ? 1.f - (u - 0.7f) / 0.3f : 1.f;
-			const Vector2 s = GetWorldToScreen2D(Vector2{ f.iso.x, f.iso.y - f.h - rise }, cam);
+			const Vector2 s = GetWorldToScreen2D(Vector2{ f.iso.x, f.iso.y - f.h - rise - gfx::LiftAt(f.iso) }, cam);
 			DrawNumber(f.text, s, f.size * pop, f.color, Color{ 12, 10, 8, 255 }, a, f.face);
 		}
 		for (const auto& d : m_damage)
@@ -895,7 +895,7 @@ namespace fx
 			const float x = d.iso.x + d.vx * util::EaseOutCubic(u);
 			// 쌓인 줄: 한 줄 = 글자 크기의 0.9배(화면 px → 월드 px)
 			const float lineH = size * 0.9f / std::max(0.3f, cam.zoom);
-			const Vector2 s = GetWorldToScreen2D(Vector2{ x, d.iso.y - d.h - rise - d.stackShown * lineH }, cam);
+			const Vector2 s = GetWorldToScreen2D(Vector2{ x, d.iso.y - d.h - rise - d.stackShown * lineH - gfx::LiftAt(d.iso) }, cam);
 			if (total)
 			{
 				DrawNumber("총 피해", Vector2{ s.x, s.y - size * 0.95f }, 17.f * pop, Rgb(0xF6DCA8), line, a, ui::Face::Strong);

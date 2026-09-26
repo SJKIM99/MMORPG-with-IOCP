@@ -995,7 +995,7 @@ void Game::DrawCinematic()
 		if (const SkillDef* d = MyDef(m_heldSkill); d && d->kind == SkillKind::Charge)
 			if (Entity* me = Self())
 			{
-				const Vector2 head = GetWorldToScreen2D(Vector2{ TileToIso(me->pos).x, TileToIso(me->pos).y - actors::PlayerHeight() - 30.f }, m_cam2d);
+				const Vector2 head = GetWorldToScreen2D(Vector2{ SurfaceIso(me->pos).x, SurfaceIso(me->pos).y - actors::PlayerHeight() - 30.f }, m_cam2d);
 				const float w = 96.f, h = 9.f;
 				const Rectangle r{ head.x - w * 0.5f, head.y, w, h };
 				const float full = static_cast<float>(d->stageMs * d->stages + d->perfectMs);

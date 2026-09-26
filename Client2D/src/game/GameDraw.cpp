@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "render/Height.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "fx/SkillFx.h"
@@ -180,13 +181,20 @@ void Game::DrawWorld(const Camera2D& cam)
 	gfx::BeginWorld(pt.x + pt.y, cam.zoom);
 	props::FrameLights().clear();
 	const float t = m_time;
+
+	// ── 0) 높낮이(Phase 4-A): 1층 이상 지형의 윗면 · 옹벽 · 계단 — 깊이를 써서 언덕 뒤를 가린다 ──
+	gfx::DepthTest(true);
+	gfx::DepthWrite(true);
+	m_terrain.DrawRelief(cam, m_screenW, m_screenH, pt, t, !m_tourCam.on);
+
 	// 그린 스프라이트용 월드 셰이더(알파 테스트 · 번쩍임). 스프라이트가 아닌 도형에는 아무 일도 하지 않는다.
 	sprites::BeginWorld(0.35f);
 
-	// ── 1) 바닥 데칼: 깊이 테스트만(쓰기 X) ──
+	// ── 1) 바닥 데칼: 깊이 테스트만(쓰기 X). 정점마다 그 자리 지면 높이로 드리운다(언덕 위 · 뒤) ──
 	gfx::DepthTest(true);
 	gfx::DepthWrite(false);
 	gfx::SetDepthRaw(-0.97f);
+	gfx::SetDrape(true);
 
 	// 마우스가 가리키는 칸(바닥 격자를 켰을 때만 — 설정 창)
 	if (kb::Opt().showGrid && m_hoverX >= 0 && m_hover == ObjID{} && m_hoverNpc == 0 && !ui::MouseOverUi() && !m_dead)
@@ -294,6 +302,7 @@ void Game::DrawWorld(const Camera2D& cam)
 		if (e.tele.active && !e.dead)
 			skillfx::DrawTelegraph(e, static_cast<float>(m_now));
 	DrawSkillPreview();
+	gfx::SetDrape(false);
 
 	// ── 2) 불투명: 깊이 쓰기 ──
 	gfx::DepthWrite(true);
@@ -359,8 +368,10 @@ void Game::DrawWorld(const Camera2D& cam)
 		Vector2 base = TileToIso(e.pos);
 		if (e.hopT >= 0.f) base.y -= std::sin(util::kPi * e.hopT) * e.hopH;
 		gfx::ResetMod();
+		gfx::SetLift(hgt::BodyZ(e.pos, e.tx, e.ty) * gfx::kUnitZ);
 		skillfx::DrawStatus(e, base, EntityHeight(e), static_cast<float>(m_now));
 	}
+	gfx::SetLift(0.f);
 	gfx::ResetMod();
 	DrawQuestWorld(false);
 	fx::Fx().DrawWorld();
@@ -435,7 +446,11 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	gfx::ResetMod();
 	// 같은 칸의 여러 개체가 깜빡이지 않도록 id로 아주 작은 깊이 차이를 준다
 	const float jitter = static_cast<float>((e.id.GetSerial() * 2654435761u + static_cast<uint32_t>(e.id.GetDatabaseID()) * 40503u) % 97) * 0.0006f;
-	gfx::SetDepth(e.pos.x + e.pos.y + jitter);
+	// 지형 높이(Phase 4-A): 발밑 지면만큼 올린다(몸 높이 — 모서리를 스쳐도 걷는 칸의 윗면). 높은 칸 위에서는
+	// 발끝이 자기 칸 윗면에 먹히지 않게 깊이를 조금 앞으로
+	const float groundZ = hgt::BodyZ(e.pos, e.tx, e.ty);
+	gfx::SetLift(groundZ * gfx::kUnitZ);
+	gfx::SetDepth(e.pos.x + e.pos.y + jitter + (groundZ > 0.f ? 0.3f : 0.f));
 	gfx::SetAlpha(alpha);
 	const float nowf = static_cast<float>(m_now);
 	if (e.flashT > 0.f) gfx::SetFlash(e.flashT * 0.85f);
@@ -492,7 +507,7 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	case EntityKind::Player:
 		actors::DrawPlayer(pose, LookOf(e));
 		if (e.id == m_selfId && m_light.Night() > 0.05f && !m_silhouetteDraw && !m_ghostDraw)
-			props::FrameLights().push_back({ pose.base, 170.f, Rgb(0xFFD8A0), 0.75f });
+			props::PushLight({ pose.base, 170.f, Rgb(0xFFD8A0), 0.75f });
 		break;
 	case EntityKind::Monster:
 		if (e.row) actors::DrawMonster(pose, *e.row);
@@ -727,10 +742,13 @@ void Game::DrawNpcs()
 		if (nid == m_dialogNpc || (v.barkT > 0.f && !v.bark.empty()))
 			pose.cast = 0.6f;
 		gfx::ResetMod();
-		gfx::SetDepth(v.pos.x + v.pos.y + 0.003f * (nid % 7));
+		const float groundZ = hgt::BodyZ(v.pos, v.tx, v.ty);
+		gfx::SetLift(groundZ * gfx::kUnitZ);
+		gfx::SetDepth(v.pos.x + v.pos.y + 0.003f * (nid % 7) + (groundZ > 0.f ? 0.3f : 0.f));
 		if (nid == m_hoverNpc) gfx::SetFlash(0.12f);
 		actors::DrawNpc(pose, *v.row);
 	}
+	gfx::SetLift(0.f);
 	gfx::ResetMod();
 }
 
@@ -779,7 +797,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		const auto& npc = *v.row;
 		const bool animal = WorldData::IsAnimal(npc.kind);
 		const float lift = v.hopT >= 0.f ? std::sin(util::kPi * v.hopT) * 8.f : 0.f;
-		const Vector2 head = GetWorldToScreen2D(util::Add(TileToIso(v.pos), Vector2{ 0, -actors::NpcHeight(npc) - 8.f - lift }), cam);
+		const Vector2 head = GetWorldToScreen2D(util::Add(SurfaceIso(v.pos), Vector2{ 0, -actors::NpcHeight(npc) - 8.f - lift }), cam);
 		if (head.x < -120 || head.y < -80 || head.x > m_screenW + 120 || head.y > m_screenH + 60) continue;
 		const int d = Cheb(m_predX, m_predY, v.tx, v.ty);
 		const bool hovered = nid == m_hoverNpc;
@@ -848,7 +866,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 	{
 		if (e.flyT >= 0.f || (e.removing && e.removeT > 0.5f)) continue;
 		const float h = EntityHeight(e) * ((e.kind == EntityKind::Monster && e.row) ? 1.f : 1.f);
-		Vector2 head = GetWorldToScreen2D(util::Add(TileToIso(e.pos), Vector2{ 0, -h - 10.f }), cam);
+		Vector2 head = GetWorldToScreen2D(util::Add(SurfaceIso(e.pos), Vector2{ 0, -h - 10.f }), cam);
 		if (head.x < -100 || head.y < -60 || head.x > m_screenW + 100 || head.y > m_screenH + 80) continue;
 		const bool hovered = id == m_hover, targeted = id == m_target;
 		const bool recentHit = (m_time - e.lastHitAt) < 4.f;
@@ -935,7 +953,7 @@ void Game::DrawDummyMeters(const Camera2D& cam)
 	for (auto& [id, e] : m_ents)
 	{
 		if (e.kind != EntityKind::Monster || !e.row || !e.row->dummy || e.dead) continue;
-		const Vector2 foot = GetWorldToScreen2D(TileToIso(e.pos), cam);
+		const Vector2 foot = GetWorldToScreen2D(SurfaceIso(e.pos), cam);
 		if (foot.x < -120 || foot.y < -80 || foot.x > m_screenW + 120 || foot.y > m_screenH + 80) continue;
 		ui::TextStyle hs; hs.size = ui::type::kMicro; hs.color = util::WithA(ui::theme::kTextDim, 0.9f); hs.outline = 1.2f; hs.outlineColor = Color{ 0, 0, 0, 170 };
 		ui::Fonts().DrawCentered("때려서 초당 피해 재기", Vector2{ foot.x, foot.y + 16.f }, hs);

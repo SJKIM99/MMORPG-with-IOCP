@@ -88,5 +88,24 @@ namespace MoveRule
 		Apply(x, y, dir, [](int bx, int by) { return WorldData::IsBlocked(bx, by); });
 	}
 
+	// 모서리를 스치지 않는 한 걸음(Phase 4-A): 도착 칸이 열려 있고, 대각이면 **두 옆이 다 열려 있어야** 한다.
+	//   · 서버 강제 이동(돌진 · 구르기 · 도약 · 넉백 · 끌어당김 · 몬스터 돌진)은 도착 칸만 보던 것을 이것으로 바꿨다 —
+	//     막힌 두 칸(성벽 모서리 · 절벽 가장자리) 사이나 한쪽 모서리를 대각으로 빠져나가지 않는다.
+	//   · 클라 길찾기 · 걸음 계획(path::CanStep)도 같은 규칙이다.
+	//   · 일반 걸음(Apply)은 축마다 따로 보므로 층을 건너뛰지 못한다: 층이 다른 대각 이웃은 두 옆이 모두
+	//     가장자리(R — 막힘)라서 어느 축도 움직이지 않는다(TownMap 생성기가 보장, TownRules::Check가 전수 검사).
+	template <class BlockedFn>
+	[[nodiscard]] constexpr bool CleanStep(int x, int y, int dx, int dy, BlockedFn&& blocked) noexcept
+	{
+		if (blocked(x + dx, y + dy))
+			return false;
+		return dx == 0 || dy == 0 || (!blocked(x + dx, y) && !blocked(x, y + dy));
+	}
+
+	[[nodiscard]] constexpr bool CleanStep(int x, int y, int dx, int dy) noexcept
+	{
+		return CleanStep(x, y, dx, dy, [](int bx, int by) { return WorldData::IsBlocked(bx, by); });
+	}
+
 	static_assert(StepMs(0, 100) == 280 && StepMs(4, 100) == 395);
 }

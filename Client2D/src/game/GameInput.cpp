@@ -1,4 +1,7 @@
 #include "game/Game.h"
+#include <cstdlib>
+#include <cstdio>
+#include "render/Height.h"
 #include "game/Input.h"
 #include "game/KeyBinds.h"
 #include "ui/Wm.h"
@@ -140,7 +143,7 @@ void Game::UpdateAim()
 	if (!m_aimScripted)
 	{
 		const Vector2 mouseIso = GetScreenToWorld2D(in::MousePos(), m_cam2d);
-		m_aim.world = gfx::IsoToTile(mouseIso);
+		m_aim.world = hgt::Pick(mouseIso);   // 높은 지형이 앞을 가리면 그 면의 칸(Phase 4-A)
 		m_aim.tx = static_cast<int>(std::floor(m_aim.world.x + 0.5f));
 		m_aim.ty = static_cast<int>(std::floor(m_aim.world.y + 0.5f));
 		m_aim.valid = true;
@@ -302,7 +305,7 @@ void Game::PickUnderMouse()
 	if (ui::MouseOverUi())
 		return;
 	const Vector2 mouseIso = GetScreenToWorld2D(in::MousePos(), m_cam2d);
-	const Vector2 t = gfx::IsoToTile(mouseIso);
+	const Vector2 t = hgt::Pick(mouseIso);
 	m_hoverX = static_cast<int>(std::floor(t.x + 0.5f));
 	m_hoverY = static_cast<int>(std::floor(t.y + 0.5f));
 
@@ -312,7 +315,7 @@ void Game::PickUnderMouse()
 	{
 		if (id == m_selfId || e.removing || (e.dead && e.kind != EntityKind::Item) || e.flyT >= 0.f)
 			continue;
-		const Vector2 base = TileToIso(e.pos);
+		const Vector2 base = SurfaceIso(e.pos);
 		float h = 60.f, w = 26.f;
 		if (e.kind == EntityKind::Monster && e.row) { h = actors::MonsterHeight(*e.row); w = std::max(22.f, actors::MonsterShadow(*e.row) * 1.4f); }
 		if (e.kind == EntityKind::Item) { h = 26.f; w = 20.f; }
@@ -329,7 +332,7 @@ void Game::PickUnderMouse()
 		for (const auto& [nid, v] : m_npcView)
 		{
 			if (!v.row) continue;
-			const Vector2 base = TileToIso(v.pos);
+			const Vector2 base = SurfaceIso(v.pos);
 			const float h = actors::NpcHeight(*v.row);
 			const float w = WorldData::IsAnimal(v.row->kind) ? 20.f : 22.f;
 			const Rectangle r{ base.x - w, base.y - h, w * 2.f, h + 8 };
@@ -674,6 +677,10 @@ int Game::PickMoveDir(int dx, int dy) const
 		int x = m_predX, y = m_predY;
 		MoveRule::Apply(x, y, want);
 		const int straight = MoveRule::DirOf(x - m_predX, y - m_predY);
+		// 두 축 다 움직이지만 한 옆이 막혔다 — 서버는 열린 옆 칸(Y 먼저)을 거쳐 가도 화면은 대각으로 그어 모서리
+		// (절벽 가장자리 난간 · 담 끝)를 스친다. 서버와 같은 Y 걸음을 먼저 보내고 다음 걸음에서 X로 돈다(Phase 4-A).
+		if (straight == want && dx != 0 && dy != 0 && !path::CanStep(m_predX, m_predY, dx, dy))
+			return MoveRule::DirOf(0, dy);
 		return straight >= 0 ? straight : want;
 	}
 	// 막혔다 — 원하는 방향과 가장 가까운(45° 안쪽) 열린 방향으로 미끄러진다.
@@ -909,6 +916,32 @@ bool Game::StepToward(int gx, int gy, int stopWithin)
 		m_path.clear();
 		m_repathAt = 0.0;
 		return false;
+	}
+	// 경로를 따라가는 중이면 계획한 걸음이 막다른 칸으로 가지 않는지 본다: 새 칸이 경로 위에 있거나 새 칸에서 경유점까지
+	// 곧게 갈 수 있어야 한다. 아니면 경로의 다음 칸으로. 곧은 선의 원점은 화면 위치라 논리 칸과 어긋나면 선이 막다른 쪽으로
+	// 기울 수 있다 — 계단으로 돌아가는 길(산울타리 · 가로등 옆)에서 두 칸을 오가며 멈춰 섰다(Phase 4-A terraincheck에서 찾음).
+	if (!m_path.empty())
+	{
+		int nx = m_predX, ny = m_predY;
+		MoveRule::Apply(nx, ny, dir);
+		bool onPath = false;
+		for (const auto& st : m_path)
+			if (st.x == nx && st.y == ny) { onPath = true; break; }
+		if (!onPath && !LineClear(nx, ny, wx, wy, 0))
+		{
+			const path::Step n0 = m_path.front();
+			const int ddx = n0.x - m_predX, ddy = n0.y - m_predY;
+			if (Cheb(m_predX, m_predY, n0.x, n0.y) == 1 && path::CanStep(m_predX, m_predY, ddx, ddy))
+				dir = MoveRule::DirOf(ddx, ddy);
+			else
+				m_repathAt = 0.0;   // 경로에서 벗어났다 — 다음 걸음에서 지금 칸부터 다시 찾는다
+		}
+	}
+	if (static const bool trace = std::getenv("HARVEN_STEP_TRACE") != nullptr; trace)
+	{
+		const Vector2 P = m_mover.Visual();
+		std::printf("[step] pred %d,%d vis %.2f,%.2f goal %d,%d way %d,%d dir %d path %d\n", m_predX - WorldData::kTownX0, m_predY - WorldData::kTownY0,
+			P.x - WorldData::kTownX0, P.y - WorldData::kTownY0, gx - WorldData::kTownX0, gy - WorldData::kTownY0, wx - WorldData::kTownX0, wy - WorldData::kTownY0, dir, static_cast<int>(m_path.size()));
 	}
 	return SendStep(dir);
 }

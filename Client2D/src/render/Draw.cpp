@@ -20,11 +20,24 @@ namespace gfx
 		bool g_depthWrite = true;
 		bool g_additive = false;
 		bool g_emissiveOnly = false;
+		// Phase 4-A 지형 높이
+		GroundLiftFn g_liftFn = nullptr;
+		float g_lift = 0.f;
+		bool g_drape = false;
+		constexpr float kDrapeBias = 0.08f;   // 데칼 깊이를 카메라 쪽으로 조금(같은 면의 지형과 겨루지 않게)
 
 		// 보이는 X+Y 범위(카메라 기준 ±80칸 정도)를 깊이 [0.05, 0.95]로 편다.
 		constexpr float kDepthSpan = 220.f;
 
-		inline void V(Vector2 p, float z) { rlVertex3f(p.x, p.y, z); }
+		inline void V(Vector2 p, float z)
+		{
+			if (g_drape && g_liftFn)
+			{
+				rlVertex3f(p.x, p.y - g_liftFn(p), DepthOf(p.y / kHalfH + kDrapeBias));
+				return;
+			}
+			rlVertex3f(p.x, p.y - g_lift, z);
+		}
 		inline void C(Color c) { rlColor4ub(c.r, c.g, c.b, c.a); }
 
 		int Segments(float radius)
@@ -42,6 +55,8 @@ namespace gfx
 	{
 		g_camXY = cameraDepthXY;
 		g_zoom = zoom;
+		g_lift = 0.f;
+		g_drape = false;
 		ResetMod();
 	}
 
@@ -53,6 +68,13 @@ namespace gfx
 	}
 
 	float Zoom() { return g_zoom; }
+
+	void SetGroundLiftFn(GroundLiftFn fn) { g_liftFn = fn; }
+	float LiftAt(Vector2 groundIso) { return g_liftFn ? g_liftFn(groundIso) : 0.f; }
+	void SetLift(float px) { g_lift = px; }
+	float Lift() { return g_lift; }
+	void SetDrape(bool on) { g_drape = on; }
+	bool DrapeOn() { return g_drape; }
 
 	void SetDepth(float xPlusY) { g_z = DepthOf(xPlusY); }
 	void SetDepthRaw(float z) { g_z = z; }

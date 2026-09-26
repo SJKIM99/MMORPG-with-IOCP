@@ -1,5 +1,6 @@
 #include "game/Path.h"
 #include "net/Shared.h"
+#include "Data/MoveRule.h"
 
 #include <algorithm>
 #include <cmath>
@@ -32,11 +33,8 @@ namespace path
 
 	bool CanStep(int x, int y, int dx, int dy)
 	{
-		if (WorldData::IsBlocked(x + dx, y + dy))
-			return false;
-		if (dx != 0 && dy != 0)
-			return !WorldData::IsBlocked(x + dx, y) && !WorldData::IsBlocked(x, y + dy);
-		return true;
+		// 서버 강제 이동과 같은 모서리 규칙(Data/MoveRule.h CleanStep) — 대각은 두 옆이 다 열려야 한다
+		return MoveRule::CleanStep(x, y, dx, dy);
 	}
 
 	std::vector<Step> Find(int sx, int sy, int gx, int gy, int stopWithin, int maxRadius)

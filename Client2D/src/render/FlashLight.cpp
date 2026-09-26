@@ -1,4 +1,5 @@
 #include "render/FlashLight.h"
+#include "render/Draw.h"
 #include "fx/FxScale.h"
 #include "render/Assets.h"
 #include "core/Util.h"
@@ -59,6 +60,7 @@ namespace flashlight
 		intensity *= fxscale::Alpha();
 		if (intensity <= 0.02f) return;
 		if (g_lights.size() >= 48) g_lights.erase(g_lights.begin());
+		iso.y -= gfx::LiftAt(iso);   // 지형 높이(Phase 4-A): 효과가 난 자리의 지면만큼 올린다
 		g_lights.push_back(L{ iso, radius, color, intensity, 0.f, std::max(0.05f, life), std::clamp(attack, 0.005f, life * 0.5f) });
 	}
 

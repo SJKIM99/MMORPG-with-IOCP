@@ -284,6 +284,7 @@
     <ClInclude Include="Data\MonsterTable.h" />
     <ClInclude Include="Data\WorldData.h" />
     <ClInclude Include="Data\TownMap.h" />
+    <ClInclude Include="Data\TownRules.h" />
     <ClInclude Include="Data\TownTypes.h" />
     <ClInclude Include="Item\ItemTableData.h" />
   </ItemGroup>

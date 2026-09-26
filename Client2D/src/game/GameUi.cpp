@@ -714,10 +714,29 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 				const char cell = WorldData::TownCell(x, y);
 				if (cell != '\0')
 				{
-					if (cell == '=' || cell == ',' || cell == 'G' || cell == 'N' || cell == 'S' || cell == 'L') col = Color{ 190, 180, 160, 255 };
-					if (cell == '#' || cell == 'O') col = Color{ 110, 104, 96, 255 };
-					if (cell == 'B' || cell == 'H') col = Color{ 170, 90, 70, 255 };
-					if (cell == 'F') col = Color{ 90, 160, 220, 255 };
+					// 가장자리(R)는 원래 재질로 칠한 뒤 어둡게 — 층 경계가 선으로 보인다
+					const char surf = cell == 'R' ? TownMap::kSurface[y - WorldData::kTownY0][x - WorldData::kTownX0] : cell;
+					switch (surf)
+					{
+					case '=': case ',': case 'G': case 'N': case 'S': case 'L': col = Color{ 190, 180, 160, 255 }; break;
+					case '^': case 'v': case '<': case '>': col = Color{ 206, 198, 180, 255 }; break;
+					case '#': case 'O': col = Color{ 110, 104, 96, 255 }; break;
+					case 'B': case 'H': col = Color{ 170, 90, 70, 255 }; break;
+					case 'F': col = Color{ 90, 160, 220, 255 }; break;
+					case '~': col = Color{ 62, 112, 150, 255 }; break;
+					case 'b': col = Color{ 146, 108, 70, 255 }; break;
+					case ':': col = Color{ 150, 122, 88, 255 }; break;
+					case 's': col = Color{ 198, 178, 132, 255 }; break;
+					case 'c': col = Color{ 150, 140, 76, 255 }; break;
+					case 'h': col = util::Shade(col, 0.62f); break;
+					case 'X': case 'W': col = Color{ 128, 122, 112, 255 }; break;
+					case 'g': col = util::Shade(col, 0.85f); break;
+					default: break;
+					}
+					// 높이(Phase 4-A): 한 층마다 조금 밝게, 가장자리는 어둡게
+					const int lv = WorldData::TownLevel(x, y);
+					if (lv > 0) col = util::Shade(col, 1.f + 0.07f * static_cast<float>(lv));
+					if (cell == 'R') col = util::Shade(col, 0.55f);
 				}
 				else if (WorldData::LegacyPatternBlocked(x, y))
 					col = util::Shade(col, 0.45f);

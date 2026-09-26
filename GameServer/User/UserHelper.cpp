@@ -1814,6 +1814,7 @@ namespace UserHelper
 		short x = player->GetX();
 		short y = player->GetY();
 		SubjectHelper::MovePositionByDirection(x, y, static_cast<char>(dir));
+		GuardTownMove("step", player->GetX(), player->GetY(), x, y);   // Phase 4-A 층 규칙 덫(마을 밖이면 바로 통과)
 		if (dir == 2 || dir == 4 || dir == 6) player->SetFacingLeft(true);
 		else if (dir == 3 || dir == 5 || dir == 7) player->SetFacingLeft(false);
 

@@ -19,6 +19,7 @@
 #include "Npc/NpcHelper.h"
 #include "Quest/QuestHelper.h"
 #include "Data/LevelTable.h"
+#include "Collision.h"
 
 namespace Route
 {
@@ -84,6 +85,7 @@ namespace Route
 				short x = client->GetX();
 				short y = client->GetY();
 				SubjectHelper::MovePositionByDirection(x, y, p->direction);
+				GuardTownMove("step", client->GetX(), client->GetY(), x, y);   // Phase 4-A 층 규칙 덫(마을 밖이면 바로 통과)
 
 				// Update horizontal facing: left-component dirs=2,4,6 → left; right=3,5,7 → right
 				const int dir = p->direction;

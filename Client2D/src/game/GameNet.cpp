@@ -583,7 +583,7 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 	m_ents[p.id] = me;
 
 	m_scene = Scene::Game;
-	m_cam.SnapTo(TileToIso(me.pos, 0.6f));
+	m_cam.SnapTo(SurfaceIso(me.pos, 0.6f));
 	LoadControls();
 	fx::Fx().TeleportIn(TileToIso(me.pos));
 	sfx::Play(sfx::Id::Teleport, 0.6f);
@@ -715,7 +715,7 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 			SyncMover();
 			if (Entity* me = Self())
 				motion::RemoteSnap(*me, m_mover.Visual());
-			m_cam.SnapTo(TileToIso(m_mover.Visual(), 0.6f));
+			m_cam.SnapTo(SurfaceIso(m_mover.Visual(), 0.6f));
 			ClearGoal();
 			m_moveHeld = false;
 		}
@@ -866,7 +866,7 @@ void Game::HandleSubjectRespawn(const SUBJECT_RESPAWN_NFY_PACKET& p)
 		SyncMover();
 		m_path.clear();
 		m_goal = Goal{};
-		m_cam.SnapTo(TileToIso(keep.pos, 0.6f));
+		m_cam.SnapTo(SurfaceIso(keep.pos, 0.6f));
 		fx::Fx().Restart(TileToIso(keep.pos));
 		sfx::Play(sfx::Id::Heal);
 		AddCenter("다시 일어섰습니다.", Rgb(0xFFF2C8));

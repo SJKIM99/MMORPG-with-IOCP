@@ -21,6 +21,8 @@ namespace props
 		float intensity;
 	};
 	std::vector<Light>& FrameLights();
+	// 빛 하나 더하기 — 지금 그리는 것의 높이(gfx::Lift)만큼 올려 담는다(Phase 4-A). 직접 push_back하지 말 것.
+	void PushLight(Light l);
 	// 0 = 낮, 1 = 한밤(창문 불빛 등)
 	void SetNight(float night);
 
@@ -30,6 +32,8 @@ namespace props
 	// 마을 칸(여러 칸짜리 구조물은 좌상단 칸에서 한 번만 그린다)
 	void DrawTownCell(int x, int y, char cell, float time);
 	void DrawBuilding(const WorldData::BuildingRow& b, float time);
+	// 막힌 마을 칸 문자가 화면에 무언가로 그려지는가(보이지 않는 벽 검사 — --script terraincheck)
+	[[nodiscard]] bool TownCellVisible(char cell);
 
 	// 지역 → 바이옴 팔레트(셰이더 uniform용). rgb 0~1, style = Biome 값
 	struct Palette { float a[3], b[3], c[3]; };

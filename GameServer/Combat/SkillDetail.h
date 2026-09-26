@@ -39,6 +39,8 @@ namespace SkillDetail
 	[[nodiscard]] std::shared_ptr<Subject> ResolveEnemy(const std::shared_ptr<User>& u, const ObjID& targetId);
 	[[nodiscard]] bool IsMonster(const std::shared_ptr<Subject>& s);
 	[[nodiscard]] bool Walkable(int x, int y);
+	// 강제 이동 한 걸음(돌진 · 구르기 · 도약 · 달 가르기): 도착 칸이 열리고, 대각이면 두 옆도 열려야 한다(MoveRule::CleanStep)
+	[[nodiscard]] bool StepOk(int x, int y, int dx, int dy);
 	[[nodiscard]] std::shared_ptr<Monster> MonsterAt(const std::shared_ptr<User>& u, int x, int y);
 	// 돌려주는 값 = 실제로 준 피해(0이면 헛침 · 사망)
 	uint32_t DealHit(const std::shared_ptr<User>& u, const SkillRow& row, const std::shared_ptr<Subject>& target, HitSpec spec);

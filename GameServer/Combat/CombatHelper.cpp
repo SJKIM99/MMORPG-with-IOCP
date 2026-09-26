@@ -14,6 +14,7 @@
 #include "Content/ContentHelper.h"
 #include "Zone/ZoneLayout.h"
 #include "Data/WorldData.h"
+#include "Data/MoveRule.h"
 #include "Data/MonsterTable.h"
 
 namespace
@@ -417,8 +418,9 @@ namespace CombatHelper
 		{
 			const short nx = static_cast<short>(target->GetX() + dx);
 			const short ny = static_cast<short>(target->GetY() + dy);
-			if (!ZoneLayout::IsValidWorldPosition(nx, ny) || isCollision(nx, ny) || WorldData::IsSafeZone(nx, ny)
-				|| ZoneLayout::GetZoneIdByWorld(nx, ny) != target->GetZoneId())
+			// 대각이면 두 옆도 열려야 한다(Phase 4-A 모서리 규칙) — 막힌 두 칸 사이로 빠지지 않고 벽에 부딪힌다
+			if (!ZoneLayout::IsValidWorldPosition(nx, ny) || !MoveRule::CleanStep(target->GetX(), target->GetY(), dx, dy, &CollisionAt)
+				|| WorldData::IsSafeZone(nx, ny) || ZoneLayout::GetZoneIdByWorld(nx, ny) != target->GetZoneId())
 			{
 				outWall = true;
 				break;
@@ -444,8 +446,8 @@ namespace CombatHelper
 			const short nx = static_cast<short>(target->GetX() + dx);
 			const short ny = static_cast<short>(target->GetY() + dy);
 			if (nx == toX && ny == toY) break;   // 시전자 칸 바로 앞에서 멈춘다
-			if (!ZoneLayout::IsValidWorldPosition(nx, ny) || isCollision(nx, ny) || WorldData::IsSafeZone(nx, ny)
-				|| ZoneLayout::GetZoneIdByWorld(nx, ny) != target->GetZoneId())
+			if (!ZoneLayout::IsValidWorldPosition(nx, ny) || !MoveRule::CleanStep(target->GetX(), target->GetY(), dx, dy, &CollisionAt)
+				|| WorldData::IsSafeZone(nx, ny) || ZoneLayout::GetZoneIdByWorld(nx, ny) != target->GetZoneId())
 				break;
 			ObjID id = target->GetObjID();
 			target->SetLastStepMs(90);
@@ -462,6 +464,8 @@ namespace CombatHelper
 			return false;
 		if (!ZoneLayout::IsValidWorldPosition(x, y) || isCollision(x, y))
 			return false;
+		if (stepMs > 0)   // 미끄러지는 이동(돌진 · 구르기)만 — 순간이동(stepMs 0)은 선을 긋지 않는다
+			GuardTownMove("dash", player->GetX(), player->GetY(), x, y);
 		player->SetLastStepMs(stepMs);
 		player->m_moveClock = GetNowTime();   // 돌진 뒤 이동 예산을 새로 시작
 		SectorHelper::HandlePlayerMove(player, x, y, false);

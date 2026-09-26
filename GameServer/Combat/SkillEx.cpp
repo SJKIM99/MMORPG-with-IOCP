@@ -387,7 +387,7 @@ namespace
 			for (int i = 0; i < row.dash; ++i)
 			{
 				const int nx = x + sdx, ny = y + sdy;
-				if (!Walkable(nx, ny) || (WorldData::IsSafeZone(nx, ny) && !WorldData::IsTrainingYard(nx, ny))) break;
+				if (!StepOk(x, y, sdx, sdy) || (WorldData::IsSafeZone(nx, ny) && !WorldData::IsTrainingYard(nx, ny))) break;
 				x = nx; y = ny;
 			}
 			if (x != ux || y != uy)
@@ -436,7 +436,7 @@ namespace
 			for (int i = 0; i < row.dash; ++i)
 			{
 				const int nx = x + dx, ny = y + dy;
-				if (!Walkable(nx, ny)) break;
+				if (!StepOk(x, y, dx, dy)) break;
 				x = nx; y = ny;
 			}
 			if (x != ux || y != uy)

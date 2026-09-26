@@ -55,6 +55,18 @@ namespace gfx
 	[[nodiscard]] float Flash();        // 현재 번쩍임 양
 	[[nodiscard]] Color FlashColor();
 
+	// ── 지형 높이(Phase 4-A, render/Height) ──
+	// 위치는 모두 바닥 평면(z = 0) 아이소 px — 지형 높이는 정점을 낼 때 올린다.
+	using GroundLiftFn = float (*)(Vector2 groundIso);
+	void SetGroundLiftFn(GroundLiftFn fn);
+	[[nodiscard]] float LiftAt(Vector2 groundIso);   // 그 자리 지면 높이(px) — 함수가 없으면 0
+	void SetLift(float px);                           // 세운 것(캐릭터 · 소품 · 입자): 이후 모든 정점을 px만큼 올린다
+	[[nodiscard]] float Lift();
+	// 바닥 데칼: 정점마다 그 자리 지면 높이만큼 올리고 깊이도 그 자리(X+Y)로 — 지형 윗면과 같은 깊이라 겹쳐 보이고,
+	// 언덕 뒤에서는 가려진다(깊이 시험)
+	void SetDrape(bool on);
+	[[nodiscard]] bool DrapeOn();
+
 	// ── 렌더 상태(배치를 비우고 바꾼다) ──
 	void Flush();
 	void DepthTest(bool on);

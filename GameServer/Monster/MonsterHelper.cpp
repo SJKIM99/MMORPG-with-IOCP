@@ -14,6 +14,7 @@
 #include "Transform.h"
 #include "CoreTLS.h"
 #include "Data/WorldData.h"
+#include "Data/MoveRule.h"
 #include "Data/LevelTable.h"
 #include "Content/ContentHelper.h"
 
@@ -274,7 +275,7 @@ namespace
 			for (int i = 0; i < 4; ++i)
 			{
 				const int nx = ex + st.dx, ny = ey + st.dy;
-				if (!ZoneLayout::IsValidWorldPosition(static_cast<short>(nx), static_cast<short>(ny)) || isCollision(static_cast<short>(nx), static_cast<short>(ny))
+				if (!ZoneLayout::IsValidWorldPosition(static_cast<short>(nx), static_cast<short>(ny)) || !MoveRule::CleanStep(ex, ey, st.dx, st.dy, &CollisionAt)
 					|| WorldData::IsSafeZone(nx, ny) || ZoneLayout::GetZoneIdByWorld(static_cast<short>(nx), static_cast<short>(ny)) != monster->GetZoneId())
 					break;
 				ex = nx; ey = ny;
