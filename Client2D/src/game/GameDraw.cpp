@@ -147,6 +147,7 @@ void Game::DrawGame()
 	DrawComboCounter();
 	DrawBanners();
 	DrawToasts();
+	DrawMenuBar();
 	if (m_uiEdit && wm::EditOverlay())
 	{
 		m_uiEdit = false;

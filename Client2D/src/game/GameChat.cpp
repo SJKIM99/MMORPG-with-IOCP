@@ -192,8 +192,6 @@ namespace
 		g_hc.h[m.serial] = h;
 		return h;
 	}
-
-	bool Contains(Rectangle r, Vector2 p) { return p.x >= r.x && p.y >= r.y && p.x < r.x + r.width && p.y < r.y + r.height; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -423,7 +421,8 @@ void Game::DrawChat()
 
 	// ── 탭 줄 ──
 	const Rectangle strip{ r.x + 1.f, r.y + 1.f, r.width - 2.f, 24.f };
-	DrawRectangleRec(Rectangle{ strip.x, strip.y, strip.width, strip.height }, util::WithA(Color{ 8, 10, 12, 255 }, 0.55f * m_chatBgA));
+	// 탭 줄은 평소에도 짙게(≥0.7) — 뒤로 비치는 이름표 · 불빛 위에서도 탭 이름이 읽혀야 한다
+	DrawRectangleRec(Rectangle{ strip.x, strip.y, strip.width, strip.height }, util::WithA(Color{ 8, 10, 12, 255 }, 0.62f + 0.3f * m_chatBgA));
 	ui::Rule(r.x + 4.f, r.x + r.width - 4.f, strip.y + strip.height, util::WithA(ui::theme::kLine, 0.5f + 0.5f * m_chatBgA));
 	wm::DragHandle(strip);
 	float tx = strip.x + 6.f;

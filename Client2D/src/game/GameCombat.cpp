@@ -424,7 +424,15 @@ bool Game::TryCastSkill(uint16_t skillId, bool quiet, const ObjID& forced)
 					m_bufferAt = m_now;
 					return false;
 				}
-				say(Fmt("%s 재사용 대기 중 (%.1f초)", row->name, remain), Rgb(0xC8C8C8));
+				// 칸은 누를 때마다 붉게 반짝, 글 안내는 1초에 한 번(Phase 3-C)
+				if (!quiet) m_cdDeniedAt[k] = m_now;
+				if (m_now - m_cdSayAt >= 1.0)
+				{
+					say(Fmt("%s 재사용 대기 중 (%.1f초)", row->name, remain), Rgb(0xC8C8C8));
+					if (!quiet) m_cdSayAt = m_now;
+				}
+				else if (!quiet)
+					sfx::Play(sfx::Id::Error, 0.18f);
 			}
 			return false;
 		}
@@ -432,7 +440,8 @@ bool Game::TryCastSkill(uint16_t skillId, bool quiet, const ObjID& forced)
 		{
 			if (!quiet)
 			{
-				AddCenter("마나가 부족합니다.", Rgb(0x8AB8FF));
+				m_cdDeniedAt[k] = m_now;
+				if (m_now - m_cdSayAt >= 1.0) { AddCenter("마나가 부족합니다.", Rgb(0x8AB8FF)); m_cdSayAt = m_now; }
 				sfx::Play(sfx::Id::NoMana, 0.7f);
 			}
 			m_mpFlashAt = m_now;
@@ -1381,7 +1390,8 @@ void Game::TickCombat(float dt)
 		if (readyNow && m_readyPrev[s] > 0.5 && m_skillCdTotal[s] >= 2.5)
 		{
 			m_skillFlash[s] = m_now;
-			sfx::Play(sfx::Id::SkillReady, 0.3f, 0.02f);
+			if (m_skillCdTotal[s] >= 15.0)   // 긴 재사용 대기(15초 이상)만 작은 알림음(Phase 3-C)
+				sfx::Play(sfx::Id::SkillReady, 0.3f, 0.02f);
 		}
 		m_readyPrev[s] = readyNow ? 0.0 : 1.0;
 	}

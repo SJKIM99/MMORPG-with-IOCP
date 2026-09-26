@@ -26,7 +26,7 @@ CASES = [
     # 기술 성장 서버 규칙(레벨 3 캐릭터 — 점수 4): 15단계 기대값 비교, 로그의 [growcheck] done pass=15 fail=0
     ('growcheck', 55, 0, 'lv3_rg_gc'), ('awaken3', 16, 0, 'lv50_rg_aw'),
     # Phase 3-A · 3-C: 창 관리자(끌기 · 크기 · 자석 · 겹침 순서 · Esc · 저장) · UI 편집(옮기기 · 배율) · HUD 겹침 검사
-    ('wm', 16, 0), ('uiedit', 14, 0), ('hudres', 8, 0),
+    ('wm', 16, 0), ('uiedit', 14, 0), ('hudres', 24, 0),
 ]
 
 

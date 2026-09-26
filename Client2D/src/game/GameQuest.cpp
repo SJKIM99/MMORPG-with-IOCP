@@ -884,7 +884,7 @@ void Game::DrawQuestTracker()
 	const float x = W - 14.f - w;
 	float y = 256.f;
 	m_trackerBottom = y;
-	wm::HudScope hs("hud.quest", "퀘스트 추적", Rectangle{ x, y, w, 300.f });
+	wm::HudScope hs("hud.quest", "퀘스트 추적", Rectangle{ x, y, w, 220.f });
 	if (!m_questsKnown || m_invOpen || m_questLogOpen)
 		return;
 

@@ -110,6 +110,7 @@ bool DBConnection::IsUserRegistered(const string& name)
 		row.y = WorldData::kTownSpawnPoints[pick].y;
 		row.level = static_cast<uint8_t>(lv);
 		row.exp = 0;
+		row.adena = 50000;   // 시험 캐릭터: 옛길 이동 · 상점을 바로 쓸 수 있게(Phase 3-C 보스전 녹화)
 		db.players.emplace(name, row);
 		db.nameOf[row.playerId] = name;
 		return true;

@@ -390,7 +390,10 @@ private:
 	void DrawBigMap();                                  // Tab: 화면 가운데 큰 반투명 지도
 	void DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap);
 	void DrawSkillTooltip(const SkillRow& row);
-	void DrawStatusIcons(float x, float y);
+	// Phase 3-C: 전투 판 위 버프(왼쪽 → 오른쪽) · 약화(오른쪽 → 왼쪽) 줄 — 아이콘 + 남은 초
+	void DrawStatusRow(float x, float y, bool debuffs);
+	void DrawMenuBar();                                 // Phase 3-C: 오른쪽 아래 메뉴 막대(아이콘 + 단축키 + 알림 점)
+	void DrawBossBars(Rectangle bar, const Entity& t);  // Phase 3-C: 보스 여러 줄 체력바(×N · 줄마다 색 · 깎인 몫이 남았다 따라옴)
 	void DrawComboCounter();
 	void DrawCharacter();
 	void DrawClassSelect(Rectangle area);
@@ -429,7 +432,7 @@ private:
 	void LoadQuickSlots();
 	void SaveQuickSlots();
 	void RunScript(float dt);
-	bool RunScriptUi(float dt);                          // Phase 3 시험 시나리오(wm · chat3:<a|b|c> · uiedit · hudres)
+	bool RunScriptUi(float dt);                          // Phase 3 시험 시나리오(wm · chat3:<a|b|c> · hudres · boss3)
 
 	// ── 상태 ──
 	Options          m_opts;
@@ -482,6 +485,9 @@ private:
 	std::array<double, kSkillKeys> m_skillReady{};  // 다시 쓸 수 있는 시각(로컬)
 	std::array<double, kSkillKeys> m_skillCdTotal{};// 쿨다운 길이(스윕 표시)
 	std::array<double, kSkillKeys> m_skillFlash{};  // 쿨다운이 끝난 순간(반짝임)
+	std::array<double, kSkillKeys> m_cdDeniedAt{};  // Phase 3-C: 대기 · 자원 부족인데 눌렀다(칸이 붉게 반짝)
+	std::array<double, kHotSlots> m_hotPressAt{};   // Phase 3-C: 칸 키를 누른 시각(늘 눌림 반응)
+	double           m_cdSayAt = -10.0;             // 재사용 대기 안내(1초에 한 번)
 	uint16_t         m_castSeq = 0;
 	int              m_queuedSkill = -1;            // 사거리 밖에서 누른 기술 id — 다가가서 쓴다
 	double           m_queuedAt = 0.0;

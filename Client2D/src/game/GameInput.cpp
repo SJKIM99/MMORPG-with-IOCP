@@ -523,6 +523,7 @@ void Game::BasicAttackAtAim(bool hold)
 
 void Game::CastHot(int hot)
 {
+	if (hot >= 0 && hot < kHotSlots) m_hotPressAt[static_cast<size_t>(hot)] = m_now;   // 늘 눌림 반응(Phase 3-C)
 	const SkillRow* row = HotSkill(hot);
 	if (!row)
 	{

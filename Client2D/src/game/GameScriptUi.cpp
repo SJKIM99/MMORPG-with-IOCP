@@ -2,6 +2,8 @@
 #include "game/Input.h"
 #include "ui/Wm.h"
 #include "core/Json.h"
+#include "Data/WorldData.h"
+#include "Item/ItemTableData.h"
 
 #include <algorithm>
 #include <cmath>
@@ -360,40 +362,119 @@ bool Game::RunScriptUi(float dt)
 		return true;
 	}
 
+	if (s == "boss3")
+	{
+		// Phase 3-C 보스전: 길잡이 → 벨고라 설원 → 모로즈(체력 12,000 = 12줄)에게 기술을 돌려 쓴다(무력화 게이지를 비운다).
+		// 레벨 50 캐릭터로(lv50_ 이름). 무력화 · 줄이 바뀔 때 [boss3]을 찍는다.
+		switch (m_scriptStep)
+		{
+		case 0:
+			if (m_scriptT > 1.0f) { SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, 3 }); next(1); }
+			break;
+		case 1:
+			if (m_dialogNpc == 3) { m_shopMode = ShopMode::Teleport; m_teleportSel = 0; next(2); }
+			break;
+		case 2:
+			if (elapsed() > 0.8f) { m_lastShopSeq = m_net.SendNpcTeleport(3, 0); next(3); }
+			break;
+		case 3:
+			if (Region() == 0) { CloseNpcWindows(); next(4); std::printf("[boss3] t=%.2f arrived\n", m_scriptT); }
+			break;
+		default:
+		{
+			if (m_scriptStep != 4) break;
+			Entity* boss = nullptr;
+			for (auto& [id, e] : m_ents)
+				if (e.IsBoss() && !e.dead) { boss = &e; break; }
+			if (!boss)
+			{
+				if (m_goal.kind == GoalKind::None) SetGoal(Goal{ GoalKind::Move, ObjID{}, 263, 265 });
+				break;
+			}
+			m_target = boss->id;
+			static int lastLine = -1;
+			static double lastBroken = 0.0;
+			const int line = static_cast<int>(std::ceil(boss->hp / 1000.0));
+			if (line != lastLine) { std::printf("[boss3] t=%.2f hp=%d/%d line=%d stagger=%u\n", m_scriptT, boss->hp, boss->maxhp, line, boss->stagger); lastLine = line; }
+			if (boss->brokenUntil > m_now && boss->brokenUntil != lastBroken) { std::printf("[boss3] t=%.2f BROKEN hp=%d\n", m_scriptT, boss->hp); lastBroken = boss->brokenUntil; }
+			const int d = std::max(std::abs(boss->tx - m_predX), std::abs(boss->ty - m_predY));
+			if (d > 3) { if (m_goal.kind != GoalKind::Attack) SetGoal(Goal{ GoalKind::Attack, boss->id }); break; }
+			if (m_hp * 2 < m_maxhp) UseItemSlot(kPotionSlot);
+			// 0.3초마다 쓸 수 있는 기술 하나(각성기 V · Q W E R · A S D F 순)
+			if (m_scriptT - m_scriptMark < 0.3f) break;
+			static const int kOrder[] = { kHotAwaken, 1, 2, 3, 4, 5, 6, 7, 8 };
+			for (int hot : kOrder)
+			{
+				const SkillRow* row = HotSkill(hot);
+				if (!row || m_level < row->unlockLevel) continue;
+				const int k = CdIndex(row->id);
+				if (m_now < m_skillReady[static_cast<size_t>(k)] || m_mp < static_cast<int>(row->mp)) continue;
+				SetScriptAim(boss->tx, boss->ty, boss->id);
+				CastHot(hot);
+				m_scriptMark = m_scriptT;
+				break;
+			}
+			break;
+		}
+		}
+		return true;
+	}
+
 	if (s == "hudres")
 	{
-		// HUD 덩어리 · 채팅창이 서로 겹치는지 · 화면 밖인지(논리 좌표). 대상 창은 가까운 허수아비를 골라 띄운다
-		if (m_scriptStep == 0 && m_scriptT > 1.5f)
+		// HUD 덩어리 · 채팅창이 서로 겹치는지 · 화면 밖인지(논리 좌표). 화면을 채워 두고 찍는다(해상도마다 --size):
+		// 훈련장 허수아비를 대상으로 · 바람걸음 물약(버프 줄) · 획득 알림 하나(시험용 — AddToast) · 채팅 입력칸 열기
+		switch (m_scriptStep)
 		{
-			float best = 1e9f;
-			for (auto& [id, e] : m_ents)
-				if (e.kind == EntityKind::Monster && !e.dead)
+		case 0:
+			if (m_scriptT > 1.2f)
+			{
+				SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[1].x, WorldData::kDummySpots[1].y - 3 });
+				next(1);
+			}
+			break;
+		case 1:
+			if (m_goal.kind == GoalKind::None || elapsed() > 12.f)
+			{
+				float best = 1e9f;
+				for (auto& [id, e] : m_ents)
+					if (e.kind == EntityKind::Monster && !e.dead)
+					{
+						const float d = std::fabs(e.pos.x - static_cast<float>(m_predX)) + std::fabs(e.pos.y - static_cast<float>(m_predY));
+						if (d < best) { best = d; m_target = id; }
+					}
+				for (int i = 0; i < kItemSlots; ++i)   // 바람걸음 물약(버프 줄에 아이콘)
+					if (const ItemTableRow* row = ItemTableData::Find(m_quick[static_cast<size_t>(i)].itemId); row && row->effect == ItemEffect::eHaste) { UseItemSlot(i); break; }
+				AddToast(m_quick[0].itemId ? m_quick[0].itemId : 1, "획득 알림 자리 — 시험", ui::theme::kGood);
+				OpenChatInput("/전 해상도 시험 중입니다");
+				next(2);
+			}
+			break;
+		case 2:
+			if (elapsed() > 2.0f)
+			{
+				const char* ids[] = { "hud.me", "hud.target", "hud.minimap", "hud.quest", "hud.combat", "hud.menu", "hud.toast", "chat" };
+				std::vector<std::pair<const char*, Rectangle>> rs;
+				for (const char* id : ids)
 				{
-					const float d = std::fabs(e.pos.x - static_cast<float>(m_predX)) + std::fabs(e.pos.y - static_cast<float>(m_predY));
-					if (d < best) { best = d; m_target = id; }
+					const Rectangle r = wm::LastRect(id);
+					if (r.width > 0.f) rs.emplace_back(id, r);
 				}
-			next(1);
-		}
-		else if (m_scriptStep == 1 && elapsed() > 2.5f)
-		{
-			const char* ids[] = { "hud.me", "hud.buffs", "hud.target", "hud.minimap", "hud.quest", "hud.combat", "hud.menu", "hud.toast", "chat" };
-			std::vector<std::pair<const char*, Rectangle>> rs;
-			for (const char* id : ids)
-			{
-				const Rectangle r = wm::LastRect(id);
-				if (r.width > 0.f) rs.emplace_back(id, r);
+				int overlaps = 0, outside = 0;
+				for (size_t a2 = 0; a2 < rs.size(); ++a2)
+				{
+					const Rectangle r = rs[a2].second;
+					PrintRect("hud", rs[a2].first, r);
+					if (r.x < 0.f || r.y < 0.f || r.x + r.width > m_uiW + 0.5f || r.y + r.height > m_uiH + 0.5f) { ++outside; std::printf("[hudcheck] OUTSIDE %s\n", rs[a2].first); }
+					for (size_t b2 = a2 + 1; b2 < rs.size(); ++b2)
+						if (Overlap(r, rs[b2].second)) { ++overlaps; std::printf("[hudcheck] OVERLAP %s × %s\n", rs[a2].first, rs[b2].second.width > 0 ? rs[b2].first : "?"); }
+				}
+				std::printf("[hudcheck] screen=%dx%d ui=%.0fx%.0f scale=%.2f chunks=%d overlaps=%d outside=%d\n", m_screenW, m_screenH, m_uiW, m_uiH, S, static_cast<int>(rs.size()), overlaps, outside);
+				next(99);
 			}
-			int overlaps = 0, outside = 0;
-			for (size_t a = 0; a < rs.size(); ++a)
-			{
-				const Rectangle r = rs[a].second;
-				PrintRect("hud", rs[a].first, r);
-				if (r.x < 0.f || r.y < 0.f || r.x + r.width > m_uiW + 0.5f || r.y + r.height > m_uiH + 0.5f) { ++outside; std::printf("[hudcheck] OUTSIDE %s\n", rs[a].first); }
-				for (size_t b = a + 1; b < rs.size(); ++b)
-					if (Overlap(r, rs[b].second)) { ++overlaps; std::printf("[hudcheck] OVERLAP %s × %s\n", rs[a].first, rs[b].first); }
-			}
-			std::printf("[hudcheck] screen=%dx%d ui=%.0fx%.0f scale=%.2f chunks=%d overlaps=%d outside=%d\n", m_screenW, m_screenH, m_uiW, m_uiH, S, static_cast<int>(rs.size()), overlaps, outside);
-			next(99);
+			break;
+		default:
+			break;
 		}
 		return true;
 	}

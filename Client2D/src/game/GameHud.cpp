@@ -41,6 +41,7 @@ namespace
 	{
 		Rectangle panel{};
 		Rectangle hp{}, mp{}, stats{};
+		Rectangle buffs{};              // Phase 3-C: HP 막대 위 버프(왼쪽) · 약화(오른쪽) 줄
 		Rectangle skill[8]{};           // Q W E R / A S D F
 		Rectangle awaken{}, mobility{}, identity{};
 		Rectangle item[9]{};            // 전투 1~4 · 물약 · 보조 5~8
@@ -87,16 +88,27 @@ namespace
 		L.hp = Rectangle{ px, barY, right - 12.f - px, kHpH };
 		L.mp = Rectangle{ px, barY + kHpH + kBarGap, right - 12.f - px, kMpH };
 		L.stats = Rectangle{ bx, barY, bw, barsH };
+		// 버프 줄: 판 위 — 고유 기술 게이지(판 위 15px) 위에 아이콘 26px + 남은 초 한 줄
+		L.buffs = Rectangle{ L.hp.x, L.panel.y - 18.f - 42.f, L.hp.width, 40.f };
 		return L;
 	}
 
-	// 칸 왼쪽 위 단축키 표시(글자 길이에 맞춰 넓어진다: "Spc" "Alt+U")
-	void KeyTag(Rectangle slot, const std::string& key, bool active, float scale = 1.f)
+	// 칸 왼쪽 위 단축키 표시(글자 길이에 맞춰 넓어진다: "Spc" "Alt+U"). far = 사거리 밖(키 글자 붉게, Phase 3-C)
+	void KeyTag(Rectangle slot, const std::string& key, bool active, float scale = 1.f, bool far = false)
 	{
 		const float kh = std::round(13.f * scale);
 		const float fs = std::min(ui::type::kMicro, kh - 3.f);
 		const float kw = std::max(kh + 1.f, std::round(ui::Fonts().Measure(key, fs, 0.f, ui::Face::Strong).x + 8.f));
-		ui::Keycap(Rectangle{ std::round(slot.x - 4.f), std::round(slot.y - 6.f), kw, kh }, key, active);
+		const Rectangle r{ std::round(slot.x - 4.f), std::round(slot.y - 6.f), kw, kh };
+		if (!far)
+		{
+			ui::Keycap(r, key, active);
+			return;
+		}
+		ui::Plate(r, Color{ 46, 16, 14, 235 }, ui::theme::kBad, 2.f, 1.f);
+		ui::TextStyle st; st.size = fs; st.color = Color{ 255, 150, 132, 255 }; st.face = ui::Face::Strong;
+		const Vector2 m = ui::Fonts().Measure(key, st.size, 0.f, ui::Face::Strong);
+		ui::Fonts().Draw(key, Vector2{ std::round(r.x + (r.width - m.x) * 0.5f), std::round(r.y + (r.height - m.y) * 0.5f) }, st);
 	}
 
 	void CooldownSweep(Rectangle r, float frac, unsigned char alpha)
@@ -109,8 +121,8 @@ namespace
 
 namespace
 {
-	// 전투 판 덩어리(Phase 3-A): 판 + 위쪽 고유 기술 게이지 · 단축키 표시 자리(18px)
-	Rectangle CombatNatural(const Hud& L) { return Rectangle{ L.panel.x, L.panel.y - 18.f, L.panel.width, L.panel.height + 18.f }; }
+	// 전투 판 덩어리(Phase 3-A · 3-C): 판 + 위쪽 고유 기술 게이지(18px) + 버프 · 약화 줄(42px)
+	Rectangle CombatNatural(const Hud& L) { return Rectangle{ L.panel.x, L.buffs.y - 2.f, L.panel.width, L.panel.y + L.panel.height - (L.buffs.y - 2.f) }; }
 }
 
 // 옮기고 배율을 건 전투 판의 위 · 왼쪽(대화창 · 채팅이 피한다)
@@ -148,6 +160,10 @@ void Game::DrawCombatPanel()
 	stat(magic ? "마공" : "공격", std::to_string(magic ? m_stats.magicAttack : m_stats.attack));
 	stat("방어", std::to_string(m_stats.defense));
 	stat("치명", Fmt("%.0f%%", m_stats.critChance / 10.f));
+
+	// HP 막대 위: 버프(왼쪽에서) · 약화(오른쪽에서) — Phase 3-C
+	DrawStatusRow(L.buffs.x, L.buffs.y, false);
+	DrawStatusRow(L.buffs.x + L.buffs.width, L.buffs.y, true);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,9 +211,13 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	const SkillDef* def = SkillDefTable::Find(row->id);
 	const bool basic = def && def->kind == SkillKind::Basic;
 	const float S = base.width;
-	// 누른 순간 살짝 눌렸다가 튀어나온다
-	const float press = static_cast<float>(std::max(0.0, 0.14 - (m_now - m_castSentAt[static_cast<size_t>(slot)])) / 0.14);
-	const float sc = 1.f - 0.1f * press;
+	// 누른 순간 살짝 눌렸다가 튀어나온다 — 시전을 보냈든 막혔든 누르면 늘(Phase 3-C)
+	const double pressAt = std::max(m_castSentAt[static_cast<size_t>(slot)], m_hotPressAt[static_cast<size_t>(hot)]);
+	const float press = static_cast<float>(std::max(0.0, 0.14 - (m_now - pressAt)) / 0.14);
+	float sc = 1.f - 0.1f * press;
+	// 재사용 대기가 끝난 순간 1.08배로 한 번 튄다
+	if (const double fl = m_now - m_skillFlash[static_cast<size_t>(slot)]; fl >= 0.0 && fl < 0.22)
+		sc *= 1.f + 0.08f * std::sin(util::kPi * static_cast<float>(fl / 0.22));
 	const Rectangle r{ base.x + S * (1.f - sc) * 0.5f, base.y + S * (1.f - sc) * 0.5f, S * sc, S * sc };
 	const bool locked = m_level < row->unlockLevel;
 	const bool noMana = !locked && m_mp < static_cast<int>(row->mp);
@@ -211,14 +231,21 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	if (cooling)
 	{
 		CooldownSweep(r, static_cast<float>(remain / std::max(0.05, m_skillCdTotal[static_cast<size_t>(slot)])), 165);
-		if (!basic && remain > 0.5)
+		// 1초 이상 남았을 때만 숫자(올림 정수) — 1초 아래는 부채꼴만(Phase 3-C)
+		if (!basic && remain >= 1.0)
 		{
 			ui::TextStyle cs; cs.size = std::round(S * 0.4f); cs.color = ui::theme::kTextHi; cs.outline = 1.5f; cs.outlineColor = Color{ 0, 0, 0, 210 }; cs.face = ui::Face::Number;
-			ui::Fonts().DrawCentered(remain >= 10.0 ? Fmt("%.0f", remain) : Fmt("%.1f", remain), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, cs);
+			ui::Fonts().DrawCentered(Fmt("%.0f", std::ceil(remain)), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, cs);
 		}
 	}
 	if (noMana)
-		ui::Plate(r, Color{ 20, 36, 90, 130 }, BLANK, 2.f, 0.f);
+		ui::Plate(r, Color{ 44, 56, 74, 165 }, BLANK, 2.f, 0.f);   // 자원 부족 = 푸른 회색
+	// 대기 · 자원 부족인데 눌렀다: 붉게 한 번 반짝
+	if (const double dn = m_now - m_cdDeniedAt[static_cast<size_t>(slot)]; dn >= 0.0 && dn < 0.35)
+	{
+		const float u = static_cast<float>(dn / 0.35);
+		ui::Plate(r, util::WithA(ui::theme::kBad, 0.42f * (1.f - u)), util::WithA(ui::theme::kBad, 1.f - u), 2.f, 2.f);
+	}
 	// 방금 재사용 대기가 끝났다: 반짝 + 퍼지는 테
 	const double flash = m_now - m_skillFlash[static_cast<size_t>(slot)];
 	if (flash < 0.4)
@@ -269,7 +296,15 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	}
 	if (dropTarget && hover) border = ui::theme::kDawn;
 	ui::Plate(r, BLANK, border, 2.f, queued || hot == kHotAwaken ? 2.f : 1.f);
-	KeyTag(r, key, queued, keySize);
+	// 사거리 밖: 커서 쪽 적이 기술 사거리 밖이면 키 글자가 붉다(대상형 기술)
+	bool far = false;
+	if (!locked && !basic && row->target == SkillTarget::Enemy)
+		if (Entity* t = Find(m_aim.enemy); t && IsEnemy(*t) && !t->dead)
+		{
+			const int range = def && def->range > 0 ? def->range : row->range;
+			far = std::max(std::abs(t->tx - m_predX), std::abs(t->ty - m_predY)) > range;
+		}
+	KeyTag(r, key, queued, keySize, far);
 	if (row->mp > 0 && !locked)
 	{
 		ui::TextStyle ms; ms.size = 12.f; ms.color = noMana ? Rgb(0xE08A80) : Rgb(0x9DB8E8); ms.outline = 1.2f; ms.face = ui::Face::Number;
@@ -405,6 +440,167 @@ void Game::DrawQuickBar()
 	}
 	if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressKind == 2)
 		m_pressKind = 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 메뉴 막대(Phase 3-C) — 오른쪽 아래: 캐릭터 · 소지품 · 기술 · 퀘스트 · 지도 · 결사 · 경매장 · 설정
+// 아이콘은 선으로 그린다(「새김」 — 금테 · 광택 없음). 칸 왼쪽 위 = 지금 키, 새벽빛 점 = 볼 것이 있다
+// (능력치 포인트 · 기술 점수 · 보고할 퀘스트 · 정산함(Phase 5)).
+// ─────────────────────────────────────────────────────────────────────────────
+namespace
+{
+	enum class MenuIcon { Character, Bag, Skill, Quest, Map, Guild, Auction, Settings };
+
+	void DrawMenuIcon(MenuIcon ic, Vector2 c, float k, Color col)
+	{
+		const float t = 1.6f;
+		switch (ic)
+		{
+		case MenuIcon::Character:   // 머리 + 어깨
+			DrawCircleV(Vector2{ c.x, c.y - 4.f * k }, 3.6f * k, col);
+			DrawRing(Vector2{ c.x, c.y + 7.5f * k }, 5.2f * k, 5.2f * k + t, 180.f, 360.f, 16, col);
+			DrawLineEx(Vector2{ c.x - 6.8f * k, c.y + 7.5f * k }, Vector2{ c.x + 6.8f * k, c.y + 7.5f * k }, t, col);
+			break;
+		case MenuIcon::Bag:         // 주머니 + 끈
+			DrawRectangleLinesEx(Rectangle{ c.x - 6.f * k, c.y - 3.f * k, 12.f * k, 10.f * k }, t, col);
+			DrawRing(Vector2{ c.x, c.y - 3.f * k }, 3.f * k, 3.f * k + t, 180.f, 360.f, 12, col);
+			DrawLineEx(Vector2{ c.x - 6.f * k, c.y + 1.f * k }, Vector2{ c.x + 6.f * k, c.y + 1.f * k }, 1.f, col);
+			break;
+		case MenuIcon::Skill:       // 네 갈래 별
+		{
+			const float r1 = 7.5f * k, r2 = 2.2f * k;
+			for (int i = 0; i < 4; ++i)
+			{
+				const float a = util::kPi * 0.5f * i;
+				const Vector2 tip{ c.x + std::cos(a) * r1, c.y + std::sin(a) * r1 };
+				const Vector2 l{ c.x + std::cos(a + util::kPi * 0.25f) * r2, c.y + std::sin(a + util::kPi * 0.25f) * r2 };
+				const Vector2 rr{ c.x + std::cos(a - util::kPi * 0.25f) * r2, c.y + std::sin(a - util::kPi * 0.25f) * r2 };
+				DrawTriangle(tip, rr, l, col);
+				DrawTriangle(tip, l, rr, col);
+			}
+			break;
+		}
+		case MenuIcon::Quest:       // 두루마리(책장) + 줄
+			DrawRectangleLinesEx(Rectangle{ c.x - 5.5f * k, c.y - 7.f * k, 11.f * k, 14.f * k }, t, col);
+			for (int i = 0; i < 3; ++i)
+				DrawLineEx(Vector2{ c.x - 3.f * k, c.y + (-3.f + 3.2f * i) * k }, Vector2{ c.x + 3.f * k, c.y + (-3.f + 3.2f * i) * k }, 1.f, col);
+			break;
+		case MenuIcon::Map:         // 접힌 지도(세 쪽)
+		{
+			const Vector2 p[4] = { { c.x - 7.f * k, c.y - 5.f * k }, { c.x - 2.3f * k, c.y - 7.f * k }, { c.x + 2.3f * k, c.y - 5.f * k }, { c.x + 7.f * k, c.y - 7.f * k } };
+			for (int i = 0; i < 4; ++i)
+				DrawLineEx(p[i], Vector2{ p[i].x, p[i].y + 12.f * k }, t, col);
+			for (int i = 0; i < 3; ++i)
+			{
+				DrawLineEx(p[i], p[i + 1], t, col);
+				DrawLineEx(Vector2{ p[i].x, p[i].y + 12.f * k }, Vector2{ p[i + 1].x, p[i + 1].y + 12.f * k }, t, col);
+			}
+			break;
+		}
+		case MenuIcon::Guild:       // 깃대 + 갈라진 깃발
+			DrawLineEx(Vector2{ c.x - 5.f * k, c.y - 8.f * k }, Vector2{ c.x - 5.f * k, c.y + 8.f * k }, t, col);
+			DrawTriangle(Vector2{ c.x - 5.f * k, c.y - 7.f * k }, Vector2{ c.x - 5.f * k, c.y + 1.f * k }, Vector2{ c.x + 7.f * k, c.y - 7.f * k }, col);
+			DrawTriangle(Vector2{ c.x - 5.f * k, c.y + 1.f * k }, Vector2{ c.x + 7.f * k, c.y + 1.f * k }, Vector2{ c.x + 1.f * k, c.y - 3.f * k }, col);
+			break;
+		case MenuIcon::Auction:     // 저울
+			DrawLineEx(Vector2{ c.x, c.y - 7.f * k }, Vector2{ c.x, c.y + 6.f * k }, t, col);
+			DrawLineEx(Vector2{ c.x - 7.f * k, c.y - 4.f * k }, Vector2{ c.x + 7.f * k, c.y - 4.f * k }, t, col);
+			DrawLineEx(Vector2{ c.x - 4.f * k, c.y + 7.f * k }, Vector2{ c.x + 4.f * k, c.y + 7.f * k }, t, col);
+			DrawRing(Vector2{ c.x - 7.f * k, c.y + 1.f * k }, 2.4f * k, 2.4f * k + 1.2f, 0.f, 180.f, 10, col);
+			DrawRing(Vector2{ c.x + 7.f * k, c.y + 1.f * k }, 2.4f * k, 2.4f * k + 1.2f, 0.f, 180.f, 10, col);
+			break;
+		case MenuIcon::Settings:    // 톱니
+			for (int i = 0; i < 8; ++i)
+			{
+				const float a = i * util::kPi / 4.f;
+				DrawLineEx(Vector2{ c.x + std::cos(a) * 4.f * k, c.y + std::sin(a) * 4.f * k }, Vector2{ c.x + std::cos(a) * 7.8f * k, c.y + std::sin(a) * 7.8f * k }, 2.6f, col);
+			}
+			DrawCircleV(c, 5.4f * k, col);
+			DrawCircleV(c, 2.4f * k, Color{ 14, 16, 20, 255 });
+			break;
+		}
+	}
+}
+
+void Game::DrawMenuBar()
+{
+	const float W = m_uiW, H = m_uiH;
+	struct Item { MenuIcon icon; const char* name; kb::Act act; bool dot; const char* dotText; };
+	bool questReady = false;
+	for (const auto& v : m_quests) if (v.readyAt > 0.0) { questReady = true; break; }
+	const Item items[] = {
+		{ MenuIcon::Character, "캐릭터", kb::Act::Character, m_freePoints > 0, "올릴 능력치 포인트가 있다" },
+		{ MenuIcon::Bag, "소지품", kb::Act::Inventory, false, "" },
+		{ MenuIcon::Skill, "기술", kb::Act::SkillWindow, m_skillPoints > 0, "쓸 기술 점수가 있다" },
+		{ MenuIcon::Quest, "퀘스트 일지", kb::Act::QuestLog, questReady, "보고할 퀘스트가 있다" },
+		{ MenuIcon::Map, "월드 지도", kb::Act::WorldMap, false, "" },
+		{ MenuIcon::Guild, "결사", kb::Act::Guild, false, "" },
+		{ MenuIcon::Auction, "경매장", kb::Act::Auction, false, "" },   // 정산함 점은 Phase 5
+		{ MenuIcon::Settings, "설정", kb::Act::Count, false, "" },
+	};
+	const float S = 34.f, gap = 4.f, pad = 7.f;
+	const int n = static_cast<int>(std::size(items));
+	const float w = n * S + (n - 1) * gap + pad * 2.f, h = S + pad * 2.f;
+	const Rectangle natural{ std::round(W - 14.f - w), std::round(H - 12.f - h), w, h };
+	wm::HudScope hs("hud.menu", "메뉴 막대", natural);
+	ui::Panel(natural, 0.9f, false);
+	for (int i = 0; i < n; ++i)
+	{
+		const Item& it = items[i];
+		const Rectangle b{ natural.x + pad + i * (S + gap), natural.y + pad, S, S };
+		const bool hover = ui::Hovered(b);
+		bool open = false;
+		switch (it.icon)
+		{
+		case MenuIcon::Character: open = m_charOpen; break;
+		case MenuIcon::Bag: open = m_invOpen; break;
+		case MenuIcon::Skill: open = m_skillWinOpen; break;
+		case MenuIcon::Quest: open = m_questLogOpen; break;
+		case MenuIcon::Map: open = m_mapOpen; break;
+		case MenuIcon::Settings: open = m_menuOpen; break;
+		default: break;
+		}
+		const bool down = hover && ui::BtnDown(MOUSE_BUTTON_LEFT);
+		ui::Plate(b, down ? ui::theme::kSurface3 : (hover ? ui::theme::kSurface2 : Color{ 14, 17, 21, 235 }), open ? ui::theme::kDawn : (hover ? ui::theme::kTextDim : ui::theme::kLine), 3.f, open ? 1.5f : 1.f);
+		const Color ic = open ? ui::theme::kDawnHi : (hover ? ui::theme::kTextHi : ui::theme::kText);
+		DrawMenuIcon(it.icon, Vector2{ b.x + S * 0.5f, b.y + S * 0.5f + (down ? 1.f : 0.f) }, 1.f, ic);
+		const std::string key = it.act == kb::Act::Count ? std::string("Esc") : kb::Label(it.act);
+		if (!key.empty())
+		{
+			ui::TextStyle ks; ks.size = ui::type::kMicro - 1.f; ks.color = ui::theme::kTextDim; ks.face = ui::Face::Strong; ks.outline = 1.f; ks.outlineColor = Color{ 0, 0, 0, 200 };
+			ui::Fonts().Draw(key, Vector2{ b.x + 3.f, b.y + 1.f }, ks);
+		}
+		if (it.dot)
+		{
+			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 4.f);
+			DrawCircleV(Vector2{ b.x + S - 5.f, b.y + 5.f }, 3.4f + pulse * 0.8f, ui::theme::kDawn);
+			DrawCircleV(Vector2{ b.x + S - 5.f, b.y + 5.f }, 1.6f, ui::theme::kDawnHi);
+		}
+		ui::Block(b);
+		if (hover)
+		{
+			std::vector<ui::TooltipLine> tip{ { std::string(it.name) + (key.empty() ? "" : "  [" + key + "]"), ui::theme::kTextHi, 14.f, ui::Face::Strong } };
+			if (it.dot) tip.push_back({ it.dotText, ui::theme::kDawnHi, 12.5f });
+			if (it.icon == MenuIcon::Guild || it.icon == MenuIcon::Auction) tip.push_back({ "아직 문을 열지 않았다(Phase 5).", ui::theme::kTextDim, 12.5f });
+			ui::Tooltip(std::move(tip));
+		}
+		if (ui::Clicked(b))
+		{
+			ui::ConsumeMouse();
+			auto toggle = [&](bool& flag) { flag = !flag; sfx::Play(flag ? sfx::Id::Open : sfx::Id::Close, 0.6f); };
+			switch (it.icon)
+			{
+			case MenuIcon::Character: toggle(m_charOpen); break;
+			case MenuIcon::Bag: toggle(m_invOpen); break;
+			case MenuIcon::Skill: toggle(m_skillWinOpen); break;
+			case MenuIcon::Quest: toggle(m_questLogOpen); m_abandonArm = 0; break;
+			case MenuIcon::Map: toggle(m_mapOpen); break;
+			case MenuIcon::Guild: AddCenter("결사는 아직 문을 열지 않았습니다.", ui::theme::kTextDim); break;
+			case MenuIcon::Auction: AddCenter("경매장은 아직 문을 열지 않았습니다.", ui::theme::kTextDim); break;
+			case MenuIcon::Settings: m_menuOpen = true; sfx::Play(sfx::Id::Open, 0.5f); break;
+			}
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

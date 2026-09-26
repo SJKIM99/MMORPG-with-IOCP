@@ -485,10 +485,7 @@ void Game::DrawHud()
 			if (ui::Clicked(b)) { m_charOpen = true; sfx::Play(sfx::Id::Open, 0.6f); }
 		}
 	}
-	{
-		wm::HudScope hs("hud.buffs", "버프 · 약화", Rectangle{ 12.f, 100.f, 300.f, 30.f });
-		DrawStatusIcons(12.f, 100.f);
-	}
+	// 버프 · 약화는 전투 판 위(Phase 3-C, DrawCombatPanel → DrawStatusRow)
 
 	// 가운데 알림(위쪽 알림 띠가 길어지면 그 아래로)
 	float y = std::max(H * 0.27f, m_bannersBottom + 18.f);
@@ -514,7 +511,17 @@ void Game::DrawTargetFrame()
 {
 	Entity* t = Find(m_target);
 	if (!t || t->kind == EntityKind::Item || t->removing)
+	{
+		// UI 편집 모드: 대상이 없어도 자리를 보여 준다(옮길 수 있게)
+		if (m_uiEdit)
+		{
+			const Rectangle r{ std::round(m_uiW * 0.5f - 180.f), 12.f, 360.f, 78.f };
+			wm::HudScope hs("hud.target", "대상", r);
+			ui::Panel(r, 0.6f, false);
+			ui::Text("대상 · 보스 체력(여러 줄)", Vector2{ r.x + r.width * 0.5f, r.y + 30.f }, ui::type::kBodyS, ui::theme::kTextDim, Align::Center);
+		}
 		return;
+	}
 	const float W = m_uiW;
 	const bool boss = t->IsBoss();
 	const Rectangle r{ std::round(W * 0.5f - 180.f), 12.f, 360.f, boss ? 78.f : 56.f };
@@ -552,7 +559,10 @@ void Game::DrawTargetFrame()
 	}
 	const Rectangle bar{ r.x + 14, r.y + (boss ? 38.f : 33.f), r.width - 28, boss ? 14.f : 12.f };
 	const Color fill = t->kind == EntityKind::Player ? ui::theme::kGood : (boss ? ui::theme::kEmber : ui::theme::kHp);
-	ui::Bar(bar, t->hpShown, t->hpLag, fill, Color{ 30, 13, 13, 255 }, t->dead ? "쓰러짐" : Fmt("%d / %d", std::max(0, t->hp), t->maxhp), boss ? 13.f : 12.f);
+	if (boss)
+		DrawBossBars(Rectangle{ bar.x, bar.y, bar.width - 46.f, bar.height }, *t);   // Phase 3-C: 여러 줄 체력바 + ×N
+	else
+		ui::Bar(bar, t->hpShown, t->hpLag, fill, Color{ 30, 13, 13, 255 }, t->dead ? "쓰러짐" : Fmt("%d / %d", std::max(0, t->hp), t->maxhp), 12.f);
 
 	// 보스 무력화 게이지(Phase 2-B, MONSTER_GAUGE_NFY): 깎인 몫이 잠깐 남았다 따라온다. 비면 3초 무력화
 	if (boss && !t->dead)
@@ -576,6 +586,57 @@ void Game::DrawTargetFrame()
 			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * (t->stagger / 1000.f), sb.height }, util::Mix(ui::theme::kDawn, Rgb(0xC89A50), 0.3f));
 		}
 		DrawRectangleLinesEx(Rectangle{ sb.x - 1, sb.y - 1, sb.width + 2, sb.height + 2 }, 1.f, ui::theme::kLine);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 보스 여러 줄 체력바(Phase 3-C) — 줄 하나 = 체력 1,000(보스 10,000~35,000 → 10~35줄).
+// 줄마다 색이 바뀌고(다섯 색 순환 — 불씨 · 호박 · 올리브 · 청록 · 강철 청), 지금 줄 뒤에 다음 줄 색이 비친다:
+// 한 줄이 다 깎이면 다음 색이 드러난다. 깎인 몫은 종이빛으로 잠깐 남았다 따라온다(hpLag). 오른쪽 ×N = 남은 줄.
+// ─────────────────────────────────────────────────────────────────────────────
+void Game::DrawBossBars(Rectangle bar, const Entity& t)
+{
+	constexpr float kPerLine = 1000.f;
+	static const Color kLine[] = { Rgb(0xB04632), Rgb(0xC47F2E), Rgb(0x7E8B3A), Rgb(0x3F8A82), Rgb(0x4A6FA5) };
+	auto colorOf = [](int line) { return kLine[static_cast<size_t>((std::max(1, line) - 1) % 5)]; };
+	bar = ui::SnapRect(bar);
+	const float maxhp = static_cast<float>(std::max(1, t.maxhp));
+	const float hpv = std::clamp(t.hpShown * maxhp, 0.f, maxhp);
+	const float lagv = std::clamp(t.hpLag * maxhp, 0.f, maxhp);
+	const float cur = hpv / kPerLine;
+	const int curLine = t.dead ? 0 : std::max(0, static_cast<int>(std::ceil(cur - 1e-4f)));
+	const float frac = curLine > 0 ? std::clamp(cur - static_cast<float>(curLine - 1), 0.f, 1.f) : 0.f;
+	DrawRectangleRec(bar, Color{ 24, 12, 12, 255 });
+	DrawRectangleRec(Rectangle{ bar.x, bar.y, bar.width, 1.f }, Color{ 0, 0, 0, 90 });
+	if (curLine >= 2)
+		DrawRectangleRec(bar, util::Shade(colorOf(curLine - 1), 0.62f));   // 다음 줄(아래 줄) 색이 비친다
+	// 깎인 몫: 지난 줄들까지 깎였으면 이 줄 끝까지
+	const float lagLine = lagv / kPerLine;
+	const float lagFrac = curLine > 0 ? std::clamp(lagLine - static_cast<float>(curLine - 1), 0.f, 1.f) : 0.f;
+	if (lagFrac > frac)
+		DrawRectangleRec(Rectangle{ bar.x + std::round(bar.width * frac), bar.y, std::round(bar.width * (lagFrac - frac)), bar.height }, Color{ 236, 222, 200, 175 });
+	if (curLine >= 1 && frac * bar.width >= 1.f)
+	{
+		const Color fill = colorOf(curLine);
+		const Rectangle f{ bar.x, bar.y, std::round(bar.width * frac), bar.height };
+		DrawRectangleRec(f, fill);
+		DrawRectangleRec(Rectangle{ f.x, f.y, f.width, 1.f }, util::WithA(util::Shade(fill, 1.45f), 0.85f));
+		DrawRectangleRec(Rectangle{ f.x, f.y + f.height - 1.f, f.width, 1.f }, util::WithA(util::Shade(fill, 0.62f), 0.9f));
+		if (frac < 0.999f)
+			DrawRectangleRec(Rectangle{ f.x + f.width - 1.f, f.y, 1.f, f.height }, util::WithA(util::Shade(fill, 1.7f), 0.95f));
+	}
+	DrawRectangleLinesEx(Rectangle{ bar.x - 1, bar.y - 1, bar.width + 2, bar.height + 2 }, 1.f, Color{ 0, 0, 0, 170 });
+	{
+		ui::TextStyle st; st.size = 12.f; st.color = Color{ 244, 240, 232, 255 }; st.outline = 1.2f; st.outlineColor = Color{ 0, 0, 0, 200 }; st.face = ui::Face::Number;
+		ui::Fonts().DrawCentered(t.dead ? std::string("쓰러짐") : texts::Number(std::max(0, t.hp)) + " / " + texts::Number(t.maxhp), Vector2{ bar.x + bar.width * 0.5f, bar.y + bar.height * 0.5f }, st);
+	}
+	// ×N: 남은 줄 — 지금 줄 색. 줄이 바뀐 순간 살짝 커졌다 돌아온다
+	if (curLine >= 1)
+	{
+		const std::string xs = "×" + std::to_string(curLine);
+		ui::TextStyle xs2; xs2.size = 17.f; xs2.face = ui::Face::NumberBold; xs2.color = util::Mix(colorOf(curLine), WHITE, 0.25f);
+		xs2.outline = 1.4f; xs2.outlineColor = Color{ 0, 0, 0, 210 };
+		ui::Fonts().Draw(xs, Vector2{ bar.x + bar.width + 8.f, bar.y + bar.height * 0.5f - 10.f }, xs2);
 	}
 }
 
@@ -1426,11 +1487,17 @@ void Game::DrawBanners()
 
 void Game::DrawToasts()
 {
-	const float W = m_uiW;
-	float y = std::max(262.f, m_trackerBottom + 6.f);   // 퀘스트 추적 표시 아래
-	const float x1 = m_invOpen ? m_invRect.x - 12.f : W - 14.f;
+	// Phase 3-C: 오른쪽 가운데 — 퀘스트 추적 아래에서 메뉴 막대 위까지(화면 가운데를 가리지 않게), 옮길 수 있는 덩어리
+	const float W = m_uiW, H = m_uiH;
+	const float top = std::max(486.f, std::round(H * 0.5f));
+	const float bottom = H - 12.f - 48.f - 8.f;
+	const Rectangle natural{ std::round(W - 14.f - 300.f), top, 300.f, std::max(84.f, bottom - top) };
+	wm::HudScope hs("hud.toast", "획득 알림", natural);
+	float y = natural.y;
+	const float x1 = natural.x + natural.width;
 	for (const auto& t : m_toasts)
 	{
+		if (y + 38.f > natural.y + natural.height) break;
 		const float age = static_cast<float>(m_now - t.start);
 		const float in = util::EaseOutCubic(util::Clamp01(age / 0.25f));
 		const float a = age > 3.f ? 1.f - (age - 3.f) / 0.5f : 1.f;
@@ -1463,9 +1530,9 @@ void Game::DrawHelp()
 		{ L(Act::ForceAttack) + " + 공격 · 기술", "다른 모험가 공격(PK) — 마을 밖에서만, 성향 벌칙 주의" },
 		{ L(Act::Inventory) + " " + L(Act::Character) + " " + L(Act::SkillWindow) + " " + L(Act::QuestLog) + " " + L(Act::WorldMap) + " " + L(Act::BigMap),
 		  "소지품 · 캐릭터 · 기술 · 퀘스트 일지 · 월드 지도 · 확장 미니맵" },
-		{ L(Act::Chat) + " · " + L(Act::Command), "채팅 · 명령어 (&로 시작하면 전체 채팅)" },
+		{ L(Act::Chat) + " · " + L(Act::Command), "채팅 — /귓 이름 내용 · /r 답 · /전(전체) · /거래 · /길(결사) · /일반. 이름을 누르면 귓속말 · 차단, Shift+클릭한 물건은 [고리]로" },
 		{ L(Act::ShowNames) + " · 휠", "이름 모두 보기 · 확대/축소" },
-		{ "Esc", "창 닫기 → 메뉴(조작 설정에서 모든 키를 바꿀 수 있다)" },
+		{ "Esc", "맨 위 창부터 닫기 → 메뉴(조작 설정 · UI 편집 — 창과 HUD는 끌어서 옮긴다)" },
 	};
 	float y = r.y + 52;
 	for (const auto& [k, v] : rows)
@@ -1635,12 +1702,14 @@ void Game::DrawSkillTooltip(const SkillRow& row)
 // ─────────────────────────────────────────────────────────────────────────────
 // 상태 아이콘(왼쪽 위 캐릭터 정보 아래)
 // ─────────────────────────────────────────────────────────────────────────────
-void Game::DrawStatusIcons(float x, float y)
+// Phase 3-C: 전투 판 위 한 줄 — 버프는 x에서 오른쪽으로, 약화는 x에서 왼쪽으로(가운데는 고유 기술 게이지)
+void Game::DrawStatusRow(float x, float y, bool debuffs)
 {
 	Entity* me = Self();
 	if (!me) return;
 	const float nowf = static_cast<float>(m_now);
-	const float S = 28.f;
+	const float S = 26.f, gap = 5.f;
+	if (debuffs) x -= S;
 	auto icon = [&](Color col, float remain, float total, int stacks, const std::string& title, const char* help, auto&& glyph)
 	{
 		const Rectangle b{ x, y, S, S };
@@ -1670,13 +1739,14 @@ void Game::DrawStatusIcons(float x, float y)
 		}
 		if (ui::Hovered(b))
 			ui::Tooltip({ { title, util::Mix(col, ui::theme::kTextHi, 0.3f), 15.f, ui::Face::Strong }, { help, ui::theme::kText, 13.f } });
-		x += S + 6.f;
+		x += debuffs ? -(S + gap) : (S + gap);
 	};
 	for (const auto& st : me->statuses)
 	{
 		if (st.stacks == 0 || nowf >= st.until) continue;
 		const auto id = static_cast<StatusId>(st.id);
 		const StatusRow& row = StatusTable::Get(id);
+		if (row.debuff != debuffs) continue;
 		const Color col = Rgb(row.color);
 		icon(col, st.until - nowf, 0.f, st.stacks, row.debuff ? std::string(row.name) + " (해로움)" : std::string(row.name), StatusHelp(id),
 			[&](Vector2 c, float rr, Color cl)
@@ -1686,14 +1756,14 @@ void Game::DrawStatusIcons(float x, float y)
 					StatusGlyph(id, c, rr, cl, nowf);
 			});
 	}
-	if (m_hasteUntil > m_now)
+	if (!debuffs && m_hasteUntil > m_now)
 		icon(Rgb(0x8DBF6E), static_cast<float>(m_hasteUntil - m_now), 0.f, 0, "바람걸음", "이동 속도 증가",
 			[&](Vector2 c, float rr, Color cl)
 			{
 				DrawTriangle(Vector2{ c.x - rr, c.y - rr }, Vector2{ c.x - rr, c.y + rr }, Vector2{ c.x, c.y }, cl);
 				DrawTriangle(Vector2{ c.x, c.y - rr }, Vector2{ c.x, c.y + rr }, Vector2{ c.x + rr, c.y }, cl);
 			});
-	if (m_flags & SUBJECT_EX_PURPLE)
+	if (debuffs && (m_flags & SUBJECT_EX_PURPLE))
 		icon(ui::theme::kEmber, 0.f, 0.f, 0, "적대", "먼저 공격한 상태입니다. 상대가 반격해도 벌칙이 없습니다.",
 			[&](Vector2 c, float rr, Color cl) { ui::Text("!", Vector2{ c.x, c.y - rr * 1.1f }, rr * 2.2f, cl, Align::Center); });
 }
