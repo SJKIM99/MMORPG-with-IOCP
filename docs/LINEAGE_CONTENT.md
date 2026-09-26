@@ -80,6 +80,28 @@
 
 확장 패킷도 `STRESS_TEST`의 수신 버퍼(255바이트)를 넘지 않도록 `static_assert`로 크기를 묶었습니다.
 
+### Phase 2 — 기술 시스템(`docs/upgrade/PHASE_2.md`) · 확장 세션 전용, 끝에만 추가
+
+| 방향 | 패킷 | 크기 | 내용 |
+|---|---|---|---|
+| C→S | `SKILL_EX_REQ` | 30B | 기술 누름 · 뗌 · 취소(차지 · 홀딩) — 기술 id · 강제 공격 · 대상 · 조준 칸 · 방향 · seq |
+| S→C 주변 | `SKILL_EX_NFY` | 55B | 시전 단계(시작 · 차지 시작/놓음 · 홀딩 시작/끝 · 체인 단 · 토글 · 취소 · 고유 기술) · 단/완벽 · **갈래 비트(flags 1~4)** · 시작/조준 칸 · 대상 · 서버 시각 |
+| S→C 주변 | `SUBJECT_FORCED_MOVE_NFY` | 30B | 돌진 · 순간이동 · 넉백 · 끌어당김 · 구르기 · 띄우기(서버가 벽에서 멈춤) |
+| S→C 본인 | `COMBAT_GAUGE_INF` | 10B | 고유 기술 게이지(0~1000, 5% 단위로만) |
+| S→C 주변 | `MONSTER_GAUGE_NFY` | 24B | 보스 무력화 게이지 ‰ · 무력화 중 · 남은 시간 |
+| S→C 본인 | `SKILL_TREE_INF` | 32B | 자라는 기술 여덟 개의 레벨 · 갈래(한 바이트씩) · 남은 점수 · 전체 점수 — 로그인 · 레벨 업 · 초기화 때 |
+| C→S | `SKILL_GROW_REQ` | 10B | 레벨 올림 · 내림 · 갈래 고르기(끄기 포함) · 모두 초기화 + seq(같은 seq는 다시 처리하지 않고 결과만) |
+| S→C 본인 | `SKILL_GROW_ACK` | 14B | 결과(Ok · Locked · MaxLevel · MinLevel · NoPoints · TierLocked · InCombat · Busy) · 바뀐 기술 · 남은 점수 |
+
+- **`PacketType` 88개(0~87)** — 헤더 `type`은 1바이트, 127까지 39개 남음(`static_assert`). 기존 `SKILL_CAST_REQ` · `SKILL_CAST_NFY` · `SUBJECT_DAMAGE_NFY`는 한 바이트도 바꾸지 않았다
+  (`SUBJECT_DAMAGE_NFY.hitIndex`의 최상위 비트 0x80 = "표의 타격 번호" — 예전 기술은 0~7 그대로).
+- **기술 성장 권위(Phase 2-D)**: 레벨 · 갈래 · 점수는 서버가 정한다(`Combat/SkillGrow`). 점수 = (캐릭터 레벨 − 1) × 2, 레벨 n → n+1 비용 1 · 1 · 1 · 2 · 2 · 2 · 3 · 3 · 3점.
+  싸우는 중(마지막 공격 · 피격 5초 안, 모으기 · 돌기 · 켜 둔 기술)에는 바꿀 수 없다. 레벨을 내려 갈래 레벨 밑으로 가면 그 갈래는 꺼진다.
+  갈래는 공유 헤더(`Data/SkillGrowth.h`)의 `ApplyDef` · `ApplyRow`가 기술 표 복사본을 바꾸는 방식 — 서버 판정과 클라 예측 · 연출이 같은 복사본을 쓴다.
+  단일 작성자: 요청은 그 플레이어의 소유 Zone 스레드에서만 처리하고, 저장은 DBThread 샤드로 보낸다(절대값 저장이라 재전송 · 순서 뒤집힘에도 결과가 같다).
+- **훈련장(Phase 2-E)**: 마을(안전지대) 동쪽 12×5칸(`WorldData::kYardX0~X1 · kYardY0~Y1`)은 기술을 쓸 수 있는 예외 구역 — 맞는 것은 허수아비(`MonsterTable` 35)뿐이다.
+  허수아비는 AI · 이동 · 반격이 없고 피해를 받으면 바로 가득 찬다(죽지 않음 · 경험치 · 떨굼 없음). 넉백 · 끌어당김을 받지 않는다. 다른 플레이어는 여기서도 맞지 않는다(PK 규칙 그대로).
+
 ## DB 마이그레이션
 
 `Database/setup.sql`을 다시 실행하면 됩니다(`IF NOT EXISTS` — 기존 데이터 보존).
@@ -88,6 +110,9 @@
 - 프로시저: `ExtractPlayerInfo`·`GetInventory` 반환 컬럼 추가, `SaveInventorySlot`·`SaveTwoInventorySlots`에 강화 수치 파라미터(기본값 0, **끝에 추가**),
   `SavePlayerAdena`, `SavePlayerAlignment`, `ShopTransaction`(그로시+슬롯을 한 트랜잭션으로 — “돈만 나가고 물건 없음”/복사 방지) 신규.
   그로시/성향은 인벤토리와 같은 playerId 샤드로 저장되어 순서가 보장됩니다.
+- **Phase 2-D**: 새 테이블 `PlayerSkills(playerId, skillId, level, pick1, pick2, updatedAt)` — 레벨 1 · 갈래 없음은 행이 없다(기본값). 남은 점수는 저장하지 않고
+  캐릭터 레벨과 기술 레벨들에서 다시 계산한다(점수 표가 바뀌어도 어긋나지 않는다 — 불러올 때 예산을 넘으면 서버가 초기화하고 점수를 돌려준다).
+  프로시저 `LoadPlayerSkills` · `SavePlayerSkill`(절대값 — 같은 값이 두 번 와도 결과가 같다, 한 트랜잭션) · `ResetPlayerSkills`(한 문장). 기존 테이블 · 프로시저는 건드리지 않았다.
 
 ## 그 밖의 변경
 

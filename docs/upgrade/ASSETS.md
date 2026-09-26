@@ -11,7 +11,18 @@
 | 2026-09-26 | 1-D 시험 ② | 각인술사 ↘ 달리기 한 주기(값싼 모델 시험) | `seedance_2_0_mini` · 480p(640px) · 4초 · 1:1 · 소리 없음 · 시작 = 끝 그림 | 2 | 19.25 → 17.25 | `35b3196e-8dea-4642-bd3e-efd72d823aeb` | 주기 16장(0.67초) · 16장 사용 — **게임에 넣음**(발이 조금 미끄러진다, 아래) |
 | 2026-09-26 | 1-D 시험 ③ | 각인술사 ↘ 다시 — "러닝머신 · 디딘 발이 뒤로" 문구 | ② 조건 그대로 | 2 | 17.25 → 15.25 | `e090cf29-b93c-465b-882a-3b78c7fc4dfb` | 여전히 제자리 걸음 + 발밑 그림자를 그려 넣음 — **쓰지 않음** |
 
-합계 11.5크레딧. 올린 시작 그림(media): 서약기사 `d5a4b2e3-c2f7-4fd7-bf4b-96bdb82204f4`, 각인술사 `0192b00a-20da-435f-bed0-16dfe462de1c`.
+| 2026-09-26 | 2-C 시험 | 서약기사 각성기 컷인 일러스트(가로 띠 구도) | `gpt_image_2_5` · 16:9 · DESIGN_SYSTEM 6장 일러스트 문구 | 0.5 | 15.25 → 14.75 | `d0452f70…`(앞 8자리만 남음) | `Client2D/assets/art/cutin_0.jpg` — **게임에 넣음**(단죄 컷인). 게임 안 녹화 확인 → 2-C 각성기 GIF |
+| 2026-09-26 | 2-C | 새 기술 18종 아이콘 ① 서약기사 · 각인술사 9칸 | `gpt_image_2_5` · 3×3 한 장(`icons_skills_d`) | 0.5 | 14.75 → 14.25 | `bf5e9dd5-96df-41d1-8c46-f13d4bcf3515` | `icons.png` skill_19~27 — **게임에 넣음** |
+| 2026-09-26 | 2-C | 새 기술 18종 아이콘 ② 각인술사 · 밤사냥꾼 9칸 | 같은 조건(`icons_skills_e`) | 0.5 | 14.25 → 13.75 | `a9c55e92-d97c-4df6-b1c2-a4a8bb5c8a1d` | `icons.png` skill_28~36 — **게임에 넣음** |
+
+| 2026-09-26 | 2-C | 각인술사 · 밤사냥꾼 각성기 컷인 | `gpt_image_2_5` · 21:9 · quality medium · 참고 그림 둘(서약기사 컷인 = 그림체 · 구도, 게임 속 직업 그림 = 옷 · 무기) | 1.0(0.5 × 2) | 13.75 → 12.75 | `a8862c58-bae7-4725-8736-cc2575024046` · `0e7268f5-67c6-4a92-9a20-2c674a5a8837` | `cutin_1.jpg` · `cutin_2.jpg` — **게임에 넣음**(서약기사 컷인을 게임 녹화로 확인한 뒤 생성) |
+
+합계 14.0크레딧(1-D 11.5 + 2-C 2.5). 잔액 **12.75**(2026-09-26). 올린 시작 그림(media): 서약기사 `d5a4b2e3-c2f7-4fd7-bf4b-96bdb82204f4`, 각인술사 `0192b00a-20da-435f-bed0-16dfe462de1c`.
+컷인 주문 문구(서약기사 원래 문구는 남지 않아 둘은 그 그림을 참고 그림으로 넘겼다): "Wide cinematic banner illustration for a game ultimate-skill cut-in, 21:9. Use the FIRST reference image only for painting style, lighting,
+brushwork and banner composition(왼쪽 3분의 1에 인물 · 오른쪽 절반은 어두운 하늘로) … Use the SECOND reference image for the character design … No text, no letters, no logo, no watermark, no purple, no neon."
++ 직업마다 자세 · 배경(각인술사: 하늘에 겹겹의 청록 각인 원을 쓰고 운석이 떨어진다 / 밤사냥꾼: 쌍단검이 달빛 초승 궤적을 남기며 파고든다 · 가는 초승달 · 먹물 연기).
+참고 그림 media: 서약기사 컷인 `09d0fe9b-c47d-4fdc-9184-e5273a682a4d` · 각인술사 `28c83cfd-f954-4124-b5e6-dc9b026d3aa8` · 밤사냥꾼 `5d554dbc-1bfe-48ad-91f9-a7c561e2443b`.
+아이콘은 한 장(3×3)에 아홉 칸을 한 번에 그려 칸당 0.056크레딧 — `tools/assetgen/catalog.py`의 `icons_skills_d/e` 주문서, `process.py`가 기존 아이콘 칸은 그대로 두고 새 칸만 잘라 붙인다(`existing_icon_tiles` keep).
 주문 조건 · 문구 · URL은 `tools/assetgen/motion_jobs.json`에 그대로 있다(다시 뽑을 때 같은 조건으로).
 
 ## 1-D 파이프라인 — 동작 영상 → 프레임
