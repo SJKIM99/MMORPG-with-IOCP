@@ -487,5 +487,25 @@
  "wood_planks": {
   "job": "7d09f9e7-a434-4020-a0ff-dce4b24909e7",
   "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260925_104421_7d09f9e7-a434-4020-a0ff-dce4b24909e7.png"
+ },
+ "icons_skills_d": {
+  "job": "bf5e9dd5-96df-41d1-8c46-f13d4bcf3515",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260926_022448_bf5e9dd5-96df-41d1-8c46-f13d4bcf3515.png"
+ },
+ "icons_skills_e": {
+  "job": "a9c55e92-d97c-4df6-b1c2-a4a8bb5c8a1d",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260926_022729_a9c55e92-d97c-4df6-b1c2-a4a8bb5c8a1d.png"
+ },
+ "cutin_0": {
+  "job": "d0452f70 (앞 8자리만 남음 — 원래 주문 문구는 남지 않았다)",
+  "url": ""
+ },
+ "cutin_1": {
+  "job": "a8862c58-bae7-4725-8736-cc2575024046",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260926_041930_a8862c58-bae7-4725-8736-cc2575024046.png"
+ },
+ "cutin_2": {
+  "job": "0e7268f5-67c6-4a92-9a20-2c674a5a8837",
+  "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3JiqAptKVW5gPKLrC1hsgEC1PCq/hf_20260926_041930_0e7268f5-67c6-4a92-9a20-2c674a5a8837.png"
  }
 }
