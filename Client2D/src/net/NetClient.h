@@ -79,6 +79,8 @@ namespace net
 		uint32_t SendNpcTeleport(uint16_t npcId, uint16_t destZone);
 		void SendRestart();
 		void SendChat(const std::string& utf8);
+		// Phase 3-B 채널 채팅(CS_CHAT_EX): channel = ChatChannel(Normal · World · Trade · Guild · WhisperOut)
+		void SendChatEx(uint8_t channel, const std::string& target, const std::string& utf8);
 
 	private:
 		template<typename Packet>

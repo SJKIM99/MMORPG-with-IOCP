@@ -11,10 +11,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 3 시험 시나리오(--script) — 사람과 같은 입력 경로(in::SetScriptMouse → ui 단추 대체)로 누르고 끈다.
 //
-//   wm        소지품 · 캐릭터를 열고 → 캐릭터 창 끌기 → 퀘스트 일지를 열어 왼쪽 가장자리로(자석 0px) →
-//             캐릭터 창 눌러 맨 위로 → Esc(맨 위 창부터) → 배치 저장 확인
+//   wm        소지품 · 캐릭터 · 퀘스트 일지를 열고 → 캐릭터 창 끌기 → 퀘스트 일지를 왼쪽 가장자리로(자석 0px) →
+//             캐릭터 창 눌러 맨 위로 → 채팅창 오른쪽 가장자리로 넓히기 → Esc(맨 위 창부터) → 배치 저장 확인
 //   wm2       같은 이름으로 다시 들어와 창을 열고 자리를 찍는다(저장 → 복원 확인)
-//   uiedit    UI 편집: 미니맵 끌기 · 전투 판 휠 110% · 저장
+//   chat3:a|b|c  세 클라이언트: a가 일반 · 전체 · 거래 · 귓속말 · 아이템 고리 · 도배(토큰 버킷) · 되풀이를, b가 /r 답 · 일반을,
+//             c가 일반을 보낸다. 받은 줄을 [chat]으로 찍는다(tools/sandbox/chat3.sh가 모아 판정)
 //   hudres    HUD 덩어리 · 채팅창 사각형이 서로 겹치는지 · 화면 밖인지 찍는다([hudcheck]) — 해상도마다 --size로
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ bool Game::RunScriptUi(float dt)
 					next(1);
 					break;
 				}
-				// 지난 시험의 배치는 지우고 기본에서
+				// 1) 아무 창도 없을 때: 채팅창을 오른쪽 가장자리로 120px 넓힌다(지난 시험의 배치는 지우고 기본에서)
 				wm::ResetWindows();
 				next(9);
 			}
@@ -78,11 +79,38 @@ bool Game::RunScriptUi(float dt)
 		case 9:
 			if (elapsed() > 0.5f)
 			{
-				// 1) 소지품 · 캐릭터를 연다(같은 프레임 — 목록 순서상 캐릭터가 위)
+				const Rectangle ch = wm::LastRect("chat");
+				m_scriptFrom = Vector2{ ch.x + ch.width - 2.f, ch.y + ch.height * 0.5f };
+				m_scriptTo = Vector2{ m_scriptFrom.x + 120.f, m_scriptFrom.y };
+				g_before = ch;
+				next(10);
+			}
+			break;
+		case 1:   // wm2: 저장된 자리로 열렸나
+			if (elapsed() > 1.0f)
+			{
+				PrintRect("wm", "inv", wm::LastRect("inv"));
+				PrintRect("wm", "char", wm::LastRect("char"));
+				PrintRect("wm", "quest", wm::LastRect("quest"));
+				PrintRect("wm", "chat", wm::LastRect("chat"));
+				std::printf("[wm2] done\n");
+				next(99);
+			}
+			break;
+		case 10:
+		{
+			if (drag(m_scriptFrom, m_scriptTo, 0.5f))
+			{
+				const Rectangle ch = wm::LastRect("chat");
+				PrintRect("wm", "chat-resized", ch);
+				check(std::fabs(ch.width - g_before.width - 120.f) < 10.f, "채팅창 오른쪽 가장자리로 120px 넓힘");
+				in::ClearScriptMouse();
+				// 2) 소지품 · 캐릭터를 연다(같은 프레임 — 목록 순서상 캐릭터가 위)
 				m_invOpen = m_charOpen = true;
 				next(11);
 			}
 			break;
+		}
 		case 11:
 			if (elapsed() > 0.8f)
 			{
@@ -161,12 +189,12 @@ bool Game::RunScriptUi(float dt)
 			if (elapsed() > 2.8f)
 			{
 				json::Value root;
-				const bool ok = json::LoadFile(UiLayoutPath(), root) && root.Get("win") && root.Get("win")->Get("char");
-				check(ok, "config/ui_<이름>.json에 창 배치가 저장됨(캐릭터)");
+				const bool ok = json::LoadFile(UiLayoutPath(), root) && root.Get("win") && root.Get("win")->Get("char") && root.Get("win")->Get("chat");
+				check(ok, "config/ui_<이름>.json에 창 배치가 저장됨(캐릭터 · 채팅)");
 				if (ok)
 				{
 					const json::Value& c = *root.Get("win")->Get("char");
-					std::printf("[wm] saved char dx=%.0f dy=%.0f\n", c.NumOr("dx", 0), c.NumOr("dy", 0));
+					std::printf("[wm] saved char dx=%.0f dy=%.0f · chat w=%.0f\n", c.NumOr("dx", 0), c.NumOr("dy", 0), root.Get("win")->Get("chat")->NumOr("w", 0));
 				}
 				PrintRect("wm", "final-inv", wm::LastRect("inv"));
 				PrintRect("wm", "final-quest", wm::LastRect("quest"));
@@ -177,6 +205,89 @@ bool Game::RunScriptUi(float dt)
 			break;
 		default:
 			break;
+		}
+		return true;
+	}
+
+	if (s.rfind("chat3:", 0) == 0)
+	{
+		const char role = s.size() > 6 ? s[6] : 'a';
+		// 한 줄을 사람처럼 친다: 입력칸 열기 → 0.5초 동안 글자가 들어간다 → Enter
+		struct Line { float at; const char* text; bool link; };
+		static const Line kA[] = {
+			{ 4.0f, "안녕하세요, 일반 대화 시험입니다", false },
+			{ 5.0f, "/전 전체 대화 시험", false },
+			{ 7.5f, "/거래 체력 물약 삽니다", false },
+			{ 8.5f, "/귓 c3b 귓속말 시험", false },
+			{ 10.0f, "/일반 이거 어때요?", true },
+			{ 16.0f, "같은 말 되풀이 시험", false },
+			{ 17.2f, "같은 말 되풀이 시험", false },
+			{ 18.4f, "같은 말 되풀이 시험", false },
+		};
+		static const Line kB[] = {
+			{ 11.0f, "/r 받았어요 — 답장 시험", false },
+			{ 12.5f, "/일반 b도 일반으로 말합니다", false },
+		};
+		static const Line kC[] = {
+			{ 13.5f, "c입니다 — 같은 지역에서 봅니다", false },
+		};
+		const Line* lines = role == 'a' ? kA : (role == 'b' ? kB : kC);
+		const int n = role == 'a' ? static_cast<int>(std::size(kA)) : (role == 'b' ? static_cast<int>(std::size(kB)) : static_cast<int>(std::size(kC)));
+		const int i = m_scriptStep;
+		// b의 답(/r)은 귓속말을 받은 뒤에(클라마다 시작 시각이 조금 다르다)
+		const bool waitWhisper = role == 'b' && i == 0 && m_lastWhisperFrom.empty();
+		if (i < n && !waitWhisper)
+		{
+			const Line& L = lines[i];
+			if (m_scriptT >= L.at - 0.6f && !m_chatOpen)
+			{
+				OpenChatInput();
+				m_chatField.text.clear();
+				m_chatLinks.clear();
+				if (L.link)
+				{
+					// 소지품의 첫 장비를 고리로(Shift+클릭과 같은 함수)
+					for (const auto& sl : m_inv.slots)
+						if (!sl.Empty()) { ChatInsertItemLink(sl.itemId, sl.enchant, static_cast<uint8_t>(SlotRarity(sl))); break; }
+				}
+			}
+			if (m_chatOpen && m_scriptT < L.at)
+			{
+				// 글자가 하나씩(명령 부분은 한 번에)
+				std::vector<int> cps;
+				ui::DecodeUtf8(L.text, cps);
+				const float u = std::clamp((m_scriptT - (L.at - 0.5f)) / 0.45f, 0.f, 1.f);
+				std::string shown;
+				for (size_t k = 0; k < static_cast<size_t>(u * static_cast<float>(cps.size())); ++k) ui::AppendUtf8(shown, cps[k]);
+				std::string link;
+				for (const auto& l : m_chatLinks) link += l.shown + " ";
+				m_chatField.text = L.link ? shown + " " + link : shown;
+			}
+			if (m_scriptT >= L.at)
+			{
+				std::string link;
+				for (const auto& l : m_chatLinks) link += l.shown + " ";
+				m_chatField.text = L.link ? std::string(L.text) + " " + link : std::string(L.text);
+				SubmitChat();
+				ui::Focus(nullptr);
+				m_chatOpen = false;
+				// 전체 재사용 대기(10초): 같은 프레임에 한 줄 더 — 소프트웨어 렌더링으로 프레임이 느려도 확실히 10초 안
+				if (role == 'a' && i == 1)
+					SendChatLine(chat::Target{ chat::Ch::World, "" }, "10초 안에 다시 전체(막혀야 한다)");
+				++m_scriptStep;
+			}
+		}
+		// a: 도배 시험 — 12초에 일곱 줄을 한 번에(토큰 버킷 5줄 → 뒤의 두 줄은 막힌다). 입력칸 없이 바로
+		if (role == 'a' && m_scriptT > 12.f && m_scriptMark < 1.f)
+		{
+			for (int k = 1; k <= 7; ++k)
+				SendChatLine(chat::Target{ chat::Ch::Normal, "" }, "도배 시험 " + std::to_string(k));
+			m_scriptMark = 1.f;
+		}
+		if (m_scriptT > 24.f && m_scriptStep < 1000)
+		{
+			std::printf("[chat3] done role=%c\n", role);
+			m_scriptStep = 1000;
 		}
 		return true;
 	}

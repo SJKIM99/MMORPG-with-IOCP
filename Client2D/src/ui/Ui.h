@@ -59,6 +59,14 @@ namespace ui
 		inline constexpr Color kTitle{ 233, 223, 201, 255 };     // 창 안의 소제목 · 이름(따뜻한 흰색)
 		inline constexpr Color kGold{ 222, 184, 110, 255 };      // 값 강조(돈 · 보상) — 새벽빛보다 조금 밝게
 		inline constexpr Color kSlot{ 15, 18, 22, 235 };
+		// ── 채팅 채널(Phase 3-B, DESIGN_SYSTEM 3.4) — 글자 색. 이름은 한 단계 밝게 ──
+		inline constexpr Color kChatNormal{ 226, 221, 210, 255 };   // 일반(같은 지역) — 본문 색에 가깝게
+		inline constexpr Color kChatWorld{ 232, 170, 104, 255 };    // 전체 — 새벽빛 쪽 주황
+		inline constexpr Color kChatTrade{ 202, 180, 112, 255 };    // 거래 — 누런 금빛(돈)
+		inline constexpr Color kChatGuild{ 141, 196, 126, 255 };    // 결사 — 풀빛
+		inline constexpr Color kChatWhisper{ 214, 150, 178, 255 };  // 귓속말 — 흐린 분홍(보라 · 네온 금지)
+		inline constexpr Color kChatSystem{ 150, 176, 196, 255 };   // 시스템 — 푸른 회색
+		inline constexpr Color kChatNotice{ 217, 165, 91, 255 };    // 공지 — 새벽빛
 	}
 
 	// 글자 크기(px, 1280×720 기준) — docs/DESIGN_SYSTEM.md 2장. 새 화면은 이 값만 쓴다.

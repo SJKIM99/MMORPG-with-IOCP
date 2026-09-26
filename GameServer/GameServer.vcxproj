@@ -208,6 +208,7 @@
     <ClCompile Include="Zone\Zone.cpp" />
     <ClCompile Include="Zone\ZoneManager.cpp" />
     <ClCompile Include="Content\ContentHelper.cpp" />
+    <ClCompile Include="Content\ChatHelper.cpp" />
     <ClCompile Include="Combat\CombatHelper.cpp" />
     <ClCompile Include="Combat\SkillHelper.cpp" />
     <ClCompile Include="Combat\SkillEx.cpp" />
@@ -263,6 +264,7 @@
     <ClInclude Include="Zone\ZoneManager.h" />
     <ClInclude Include="Zone\ZoneTypes.h" />
     <ClInclude Include="Content\ContentHelper.h" />
+    <ClInclude Include="Content\ChatHelper.h" />
     <ClInclude Include="Combat\CombatHelper.h" />
     <ClInclude Include="Combat\SkillHelper.h" />
     <ClInclude Include="Combat\SkillEx.h" />

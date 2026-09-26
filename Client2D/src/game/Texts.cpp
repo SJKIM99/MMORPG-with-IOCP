@@ -1,4 +1,6 @@
 #include "game/Texts.h"
+#include <cmath>
+#include <algorithm>
 #include "ui/Font.h"
 #include "core/Util.h"
 
@@ -142,6 +144,22 @@ namespace texts
 		case SystemMessageCode::AlignmentRecovered:
 			important = true;
 			return "성향이 회복되었습니다. (성향 " + Number(p1) + ")";
+		// ── Phase 3-B 채팅 ──
+		case SystemMessageCode::ChatTooFast:
+		{
+			const float sec = std::max(0.1f, p2 / 1000.f);
+			if (p1 == static_cast<int32_t>(ChatChannel::World)) return Fmt("전체 대화는 %.0f초 뒤에 다시 할 수 있습니다.", std::ceil(sec));
+			if (p1 == static_cast<int32_t>(ChatChannel::Trade)) return Fmt("거래 대화는 %.0f초 뒤에 다시 할 수 있습니다.", std::ceil(sec));
+			return Fmt("말이 너무 빠릅니다. %.1f초 뒤에 다시 하세요.", sec);
+		}
+		case SystemMessageCode::ChatRepeated:
+			return "같은 말을 잇달아 되풀이할 수 없습니다.";
+		case SystemMessageCode::ChatBadText:
+			return "보낼 수 없는 글자가 들어 있습니다.";
+		case SystemMessageCode::ChatNoTarget:
+			return "상대가 지금 접속해 있지 않습니다.";
+		case SystemMessageCode::ChatNoGuild:
+			return "결사에 들어 있지 않습니다. (결사는 아직 문을 열지 않았습니다)";
 		}
 		return "알 수 없는 알림";
 	}

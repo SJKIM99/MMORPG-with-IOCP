@@ -323,6 +323,9 @@
     <ClCompile Include="Content\ContentHelper.cpp">
       <Filter>Content</Filter>
     </ClCompile>
+    <ClCompile Include="Content\ChatHelper.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
     <ClCompile Include="Combat\CombatHelper.cpp">
       <Filter>Combat</Filter>
     </ClCompile>
@@ -344,6 +347,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Content\ContentHelper.h">
+      <Filter>Content</Filter>
+    </ClInclude>
+    <ClInclude Include="Content\ChatHelper.h">
       <Filter>Content</Filter>
     </ClInclude>
     <ClInclude Include="Data\LevelTable.h">

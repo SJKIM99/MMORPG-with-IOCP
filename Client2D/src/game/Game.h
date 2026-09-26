@@ -13,6 +13,7 @@
 #include "Data/QuestData.h"
 #include "Data/SkillGrowth.h"
 #include "fx/SkillFx.h"
+#include "game/Chat.h"
 
 #include <array>
 #include <cstdio>
@@ -175,7 +176,8 @@ private:
 	void TickCombat(float dt);
 	[[nodiscard]] bool HasDelayedHitFor(const ObjID& victim) const;
 	void OnTelegraphImpact(Entity& m);                  // 몬스터 강공격 예고가 끝난 순간(연출)
-	void HandleChat(const ObjID& sender, const std::string& senderName, const std::string& text, ChatChannel channel);
+	// channel: SC_CHAT_EX 값 그대로(가장 높은 비트 = 접속 직후 최근 대화)
+	void HandleChat(const ObjID& sender, const std::string& senderName, const std::string& text, uint8_t channel);
 
 	// ── 행동(GameInput.cpp) ──
 	void SetGoal(const Goal& g);
@@ -344,6 +346,14 @@ private:
 	void CloseNpcWindows();
 	void StartEnchant(int scrollSlot);
 	void SubmitChat();
+	// ── 상시 채팅창(Phase 3-B, game/GameChat.cpp) ──
+	void AddChatMsg(chat::Ch ch, const std::string& sender, uint64_t senderKey, const std::string& text, Color color = Color{ 0, 0, 0, 0 }, bool history = false);
+	void SendChatLine(const chat::Target& t, const std::string& body);   // 클라 검사 → CS_CHAT_EX
+	void OpenChatInput(const std::string& prefill = std::string());
+	void ChatInsertItemLink(uint16_t itemId, uint8_t enchant, uint8_t rarity);   // 소지품 Shift+클릭
+	void DrawChatMenu();                                // 이름 메뉴 · 탭 설정(맨 위 작은 창)
+	[[nodiscard]] bool ChatBlocked(const std::string& name) const;
+	[[nodiscard]] std::string ChatDisplayText(const std::string& text) const;   // 아이템 고리 → [이름] (말풍선)
 
 	// ── 입력 ──
 	void HandleWorldInput();
@@ -419,7 +429,7 @@ private:
 	void LoadQuickSlots();
 	void SaveQuickSlots();
 	void RunScript(float dt);
-	bool RunScriptUi(float dt);                          // Phase 3 시험 시나리오(wm · uiedit · hudres)
+	bool RunScriptUi(float dt);                          // Phase 3 시험 시나리오(wm · chat3:<a|b|c> · uiedit · hudres)
 
 	// ── 상태 ──
 	Options          m_opts;
@@ -630,7 +640,26 @@ private:
 	ClientInventory  m_inv;
 
 	// UI 상태
-	std::deque<ChatLine> m_chat;
+	std::deque<ChatLine> m_chat;                // (예전 채팅 기록 — 호환용, 그리지 않는다)
+	// 상시 채팅창(Phase 3-B)
+	std::vector<chat::Tab> m_chatTabs;
+	int              m_chatTab = 0;
+	chat::Settings   m_chatSet;
+	chat::Target     m_chatTarget;                  // 입력칸 머리(보낼 곳)
+	std::string      m_lastWhisperFrom;             // /r
+	std::string      m_lastWhisperTo;               // 귓속말 실패 알림
+	std::vector<std::string> m_chatHistory;         // ↑↓(보낸 줄)
+	int              m_chatHistIdx = -1;
+	uint32_t         m_chatSerial = 0;
+	struct ChatLinkRef { std::string shown, token; };
+	std::vector<ChatLinkRef> m_chatLinks;           // 입력칸의 [아이템 이름] ↔ 표식
+	int              m_chatMenu = 0;                // 0 없음 · 1 이름 메뉴 · 2 탭 설정
+	std::string      m_chatMenuName;
+	Vector2          m_chatMenuPos{};
+	int              m_chatMenuTab = -1;
+	double           m_chatNoteAt = -10.0;          // 클라 안내(너무 김 등) 1초에 한 번
+	float            m_chatBgA = 0.35f;             // 배경 투명도(부드럽게 따라간다)
+	uint32_t         m_chatSeen = 0;                // 보고 있는 탭이 마지막으로 반영한 줄 번호(올려 보기 고정)
 	ui::TextField    m_chatField;
 	bool             m_chatOpen = false;
 	std::deque<Banner>   m_banners;

@@ -376,6 +376,19 @@ namespace net
 		Queue(p, PacketType::USER_RESTART_REQ);
 	}
 
+	void NetClient::SendChatEx(uint8_t channel, const std::string& target, const std::string& utf8)
+	{
+		CS_CHAT_EX_PACKET p{};
+		p.channel = channel;
+		std::memcpy(p.targetName, target.data(), std::min(target.size(), static_cast<size_t>(NAME_SIZE - 1)));
+		// UTF-8 글자 중간에서 자르지 않는다(널 1바이트 확보)
+		size_t len = std::min(utf8.size(), static_cast<size_t>(CHAT_SIZE - 1));
+		while (len > 0 && len < utf8.size() && (static_cast<unsigned char>(utf8[len]) & 0xC0) == 0x80)
+			--len;
+		std::memcpy(p.mess, utf8.data(), len);
+		Queue(p, PacketType::CS_CHAT_EX);
+	}
+
 	void NetClient::SendChat(const std::string& utf8)
 	{
 		CS_CHAT_PACKET p{};

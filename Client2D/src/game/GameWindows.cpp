@@ -41,8 +41,15 @@ void Game::LoadUiLayout()
 {
 	if (m_playerName.empty()) return;
 	json::Value root;
+	chat::DefaultTabs(m_chatTabs);
+	m_chatTab = 0;
+	m_chatSet = chat::Settings{};
 	if (json::LoadFile(UiLayoutPath(), root) && root.IsObject())
+	{
 		wm::FromJson(root);
+		if (const json::Value* c = root.Get("chat")) chat::FromJson(*c, m_chatTabs, m_chatTab, m_chatSet);
+	}
+	m_chatBgA = m_chatSet.idleAlpha;
 	wm::ClearDirty();
 }
 
@@ -52,6 +59,7 @@ void Game::SaveUiLayout()
 	json::Value root = json::Value::Obj();
 	root.Set("v", json::Value::Num(1));
 	wm::ToJson(root);
+	root.Set("chat", chat::ToJson(m_chatTabs, m_chatTab, m_chatSet));
 	if (json::SaveFile(UiLayoutPath(), root))
 		wm::ClearDirty();
 }
@@ -86,6 +94,7 @@ void Game::DrawWindows()
 		e.push_back({ "tele", m_shopMode == ShopMode::Teleport, [this] { DrawTeleport(); }, false });
 	}
 	e.push_back({ "chat", true, [this] { DrawChat(); }, false });
+	e.push_back({ "chatmenu", m_chatMenu != 0, [this] { DrawChatMenu(); }, false });   // 채팅 이름 메뉴 · 탭 설정(맨 위)
 	wm::DrawWindows(e);
 }
 

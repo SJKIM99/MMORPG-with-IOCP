@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Content/ChatHelper.h"
 #include "Route.h"
 #include "GameSession.h"
 #include "User.h"
@@ -509,6 +510,17 @@ namespace Route
 			char mess[CHAT_SIZE + 1]{};
 			::strncpy_s(mess, p->mess, CHAT_SIZE);
 			UserHelper::BroadcastChat(client, mess);
+			break;
+		}
+		case PacketType::CS_CHAT_EX:
+		{
+			// Phase 3-B 채널 채팅 — 확장 세션만. 검사 · 범위는 Content/ChatHelper
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr) break;
+			auto* p = reinterpret_cast<const CS_CHAT_EX_PACKET*>(packet);
+			ChatHelper::HandleChatEx(client, p->channel, p->targetName, p->mess);
 			break;
 		}
 		}

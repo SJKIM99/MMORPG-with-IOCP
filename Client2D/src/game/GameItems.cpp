@@ -658,6 +658,12 @@ void Game::DrawEquipPanel(Rectangle area)
 			return;
 		}
 		if (!s) return;
+		if ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && ui::Pressed(r))
+		{
+			ChatInsertItemLink(s->itemId, s->enchant, static_cast<uint8_t>(SlotRarity(*s)));
+			ui::ConsumeMouse();
+			return;
+		}
 		if (ui::DoubleClicked(r) || ui::Pressed(r, MOUSE_BUTTON_RIGHT))
 		{
 			m_net.SendUnequip(static_cast<uint16_t>(inv));
@@ -870,6 +876,14 @@ void Game::DrawInventory()
 				if (row && row->sellPrice > 0 && !it.equipped) { m_sellSlot = i; m_sellCount = it.count; sfx::Play(sfx::Id::Click, 0.6f); }
 				else { AddCenter(it.equipped ? "착용 중인 장비는 팔 수 없습니다." : "그 물건은 팔 수 없습니다.", Rgb(0xFF8A7A)); sfx::Play(sfx::Id::Error, 0.5f); }
 			}
+			continue;
+		}
+		// Shift+클릭: 채팅에 아이템 고리(Phase 3-B) — [이름 +n]이 들어가고 받는 쪽은 툴팁으로 본다
+		if ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && ui::Pressed(s))
+		{
+			ChatInsertItemLink(it.itemId, it.enchant, static_cast<uint8_t>(SlotRarity(it)));
+			ui::ConsumeMouse();
+			m_pressKind = 0;
 			continue;
 		}
 		if (ui::DoubleClicked(s) || ui::Pressed(s, MOUSE_BUTTON_RIGHT))

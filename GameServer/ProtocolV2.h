@@ -525,11 +525,27 @@ struct SKILL_GROW_ACK_PACKET
 	uint16_t       points;       // 남은 점수
 };
 
+// ── Phase 3-B: 채널 채팅(확장 세션 전용) ──────────────────────────────────────
+// 받는 쪽은 기존 SC_CHAT_EX(168B) 그대로 — channel에 Trade · Guild · WhisperIn · WhisperOut 값만 끝에 추가했다.
+// 서버: 소유 Zone 스레드에서 검사(토큰 버킷 5줄/5초 · 같은 말 되풀이 · UTF-8 · 채널별 재사용 대기) →
+//   일반 = 같은 Zone(지역) 전체 확장 세션 + 시야 안 레거시 세션(SC_CHAT) / 전체 · 거래 = 서버 전체 확장 세션 /
+//   귓속말 = 이름 색인(GameSessionManager) / 결사 = Phase 5.
+struct CS_CHAT_EX_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        channel;                 // ChatChannel(Normal · World · Trade · Guild · WhisperOut=귓속말 보내기)
+	char           targetName[NAME_SIZE];   // 귓속말 받는 사람(그 밖에는 비움)
+	char           mess[CHAT_SIZE];         // UTF-8, 널 종료(128바이트 ≈ 한글 42자)
+};
+
 static_assert(sizeof(SKILL_TREE_INF_PACKET) <= 255, "모든 패킷 255바이트 이하");
 static_assert(sizeof(SKILL_GROW_REQ_PACKET) <= 255, "모든 패킷 255바이트 이하");
 static_assert(sizeof(SKILL_GROW_ACK_PACKET) <= 255, "모든 패킷 255바이트 이하");
 static_assert(static_cast<int>(PacketType::SKILL_GROW_ACK) == 87, "Phase 2-D 뒤 PacketType은 88개(0~87)");
 static_assert(static_cast<int>(PacketType::SKILL_GROW_ACK) < 127, "패킷 헤더 type은 char — 127 안에서");
+static_assert(sizeof(CS_CHAT_EX_PACKET) == 152 && sizeof(CS_CHAT_EX_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(static_cast<int>(PacketType::CS_CHAT_EX) == 88, "Phase 3-B 뒤 PacketType은 89개(0~88) — 127까지 38개 남음");
 
 static_assert(sizeof(SKILL_EX_REQ_PACKET) <= 255, "모든 패킷 255바이트 이하");
 static_assert(sizeof(SKILL_EX_NFY_PACKET) <= 255, "모든 패킷 255바이트 이하");
@@ -559,5 +575,6 @@ namespace ClientPacketSizeDetailV2
 	constexpr size_t v09 = ProtocolConstMaxSize(v08, sizeof(QUEST_ABANDON_REQ_PACKET));
 	constexpr size_t v10 = ProtocolConstMaxSize(v09, sizeof(SKILL_EX_REQ_PACKET));
 	constexpr size_t v11 = ProtocolConstMaxSize(v10, sizeof(SKILL_GROW_REQ_PACKET));
+	constexpr size_t v12 = ProtocolConstMaxSize(v11, sizeof(CS_CHAT_EX_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v11;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v12;

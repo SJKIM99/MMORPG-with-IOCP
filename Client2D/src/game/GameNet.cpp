@@ -167,7 +167,7 @@ void Game::OnPacket(const char* data, uint16_t size)
 		if (p.sender_id == m_selfId) name = m_playerName;
 		else if (Entity* e = Find(p.sender_id)) name = e->name;
 		else name = "???";
-		HandleChat(p.sender_id, name, FixedStr(p.mess, CHAT_SIZE), ChatChannel::Normal);
+		HandleChat(p.sender_id, name, FixedStr(p.mess, CHAT_SIZE), static_cast<uint8_t>(ChatChannel::Normal));
 		break;
 	}
 
@@ -515,14 +515,14 @@ void Game::OnPacket(const char* data, uint16_t size)
 			break;
 		}
 		AddBanner(text, c);
-		AddChat("[공지] " + text, c);
+		AddChatMsg(chat::Ch::Notice, "", 0, text, c);
 		break;
 	}
 	case PacketType::SC_CHAT_EX:
 	{
 		SC_CHAT_EX_PACKET p{};
 		if (!As(data, size, p)) break;
-		HandleChat(p.senderId, FixedStr(p.senderName, NAME_SIZE), FixedStr(p.mess, CHAT_SIZE), static_cast<ChatChannel>(p.channel));
+		HandleChat(p.senderId, FixedStr(p.senderName, NAME_SIZE), FixedStr(p.mess, CHAT_SIZE), p.channel);
 		break;
 	}
 	default:
@@ -1142,7 +1142,9 @@ void Game::HandleSystemMessage(const SYSTEM_MESSAGE_INF_PACKET& p)
 {
 	const auto code = static_cast<SystemMessageCode>(p.code);
 	bool important = false;
-	const std::string text = texts::SystemMessage(code, p.param1, p.param2, important);
+	std::string text = texts::SystemMessage(code, p.param1, p.param2, important);
+	if (code == SystemMessageCode::ChatNoTarget && !m_lastWhisperTo.empty())
+		text = texts::Josa(m_lastWhisperTo, "은", "는") + " 지금 접속해 있지 않습니다.";
 	Color c = Rgb(0xE8D8A8);
 	switch (code)
 	{
@@ -1236,19 +1238,4 @@ void Game::HandleSubjectInfoEx(const SUBJECT_INFO_EX_NFY_PACKET& p)
 	}
 }
 
-void Game::HandleChat(const ObjID& sender, const std::string& senderName, const std::string& text, ChatChannel channel)
-{
-	if (channel == ChatChannel::World)
-	{
-		AddChat("[전체] " + senderName + ": " + text, Rgb(0xFFB060));
-		sfx::Play(sfx::Id::Chat, 0.5f);
-		return;
-	}
-	AddChat(senderName + ": " + text, sender == m_selfId ? Rgb(0xFFFFFF) : Rgb(0xE8E4DA));
-	if (Entity* e = Find(sender))
-	{
-		e->chat = text;
-		e->chatT = 5.f;
-	}
-	sfx::Play(sfx::Id::Chat, 0.4f);
-}
+// HandleChat(채팅 받기)은 game/GameChat.cpp(Phase 3-B)

@@ -363,9 +363,8 @@ Vector2 Game::TileToIso(Vector2 tile, float z) const { return gfx::IsoPx(tile.x,
 
 void Game::AddChat(const std::string& text, Color color)
 {
-	m_chat.push_back({ text, color, m_now });
-	while (m_chat.size() > 80)
-		m_chat.pop_front();
+	// 게임 안내 · 시스템 줄 → 상시 채팅창의 시스템 채널(Phase 3-B)
+	AddChatMsg(chat::Ch::System, "", 0, text, color);
 }
 
 void Game::AddCenter(const std::string& text, Color color)
@@ -751,19 +750,7 @@ void Game::CloseNpcWindows()
 	m_shopMode = ShopMode::None;
 }
 
-void Game::SubmitChat()
-{
-	std::string text = m_chatField.text;
-	m_chatField.text.clear();
-	// 앞뒤 공백 제거
-	while (!text.empty() && text.back() == ' ') text.pop_back();
-	size_t start = 0;
-	while (start < text.size() && text[start] == ' ') ++start;
-	text = text.substr(start);
-	if (text.empty())
-		return;
-	m_net.SendChat(text);
-}
+// SubmitChat(채팅 보내기)은 game/GameChat.cpp(Phase 3-B)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 연출 설정 → 후처리 · 연출 세기 · 카메라(매 프레임 — 값 몇 개라 싸다)

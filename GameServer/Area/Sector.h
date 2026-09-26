@@ -77,6 +77,22 @@ public:
 			callback(id);
 	}
 
+	// 이 Zone(지역) 전체의 플레이어(Phase 3-B 일반 채팅 — "같은 지역 전체"). Zone 스레드에서만 부른다.
+	// 50×50 섹터를 한 번 훑는다(빈 칸은 크기 비교뿐) — 채팅 한 줄마다 수 µs. ID를 먼저 모은 뒤 부른다(콜백 안에서 섹터가 바뀌어도 안전).
+	template<typename Callback>
+	requires std::invocable<Callback&, const ObjID&>
+	void ForEachUserInZone(Callback&& callback) const
+	{
+		std::vector<ObjID> users;
+		for (const auto& row : _sectors)
+			for (const auto& cell : row)
+				for (const ObjID& id : cell)
+					if (id.GetCategory<EnumCategory>() == EnumCategory::eUser)
+						users.push_back(id);
+		for (const ObjID& id : users)
+			callback(id);
+	}
+
 private:
 	using SectorGrid = std::array<std::array<SectorObjects, kLocalWidth>, kLocalHeight>;
 

@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Content/ChatHelper.h"
 #include "Combat/CombatHelper.h"
 #include "Data/MoveRule.h"
 #include "UserHelper.h"
@@ -1332,6 +1333,7 @@ namespace UserHelper
 			CombatHelper::SendResource(player);
 			QuestHelper::SendList(player);
 			SkillGrow::SendTree(player);
+			ChatHelper::OnEnterWorld(player);   // Phase 3-B: 이름 색인(귓속말) · 최근 대화
 		}
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
@@ -1392,6 +1394,7 @@ namespace UserHelper
 			CombatHelper::SendResource(player);
 			QuestHelper::SendList(player);
 			SkillGrow::SendTree(player);
+			ChatHelper::OnEnterWorld(player);   // Phase 3-B: 이름 색인(귓속말) · 최근 대화
 		}
 
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);

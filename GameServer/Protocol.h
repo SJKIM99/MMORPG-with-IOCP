@@ -89,6 +89,12 @@ enum class SystemMessageCode : uint16_t
 	ItemCooldown,        // param1=남은 ms
 	CannotUseHere,       // 여기서는 사용할 수 없음(예: 마을에서 옛길 두루마리)
 	AlignmentRecovered,  // 성향치가 다시 0 이상이 됨. param1=현재 성향치
+	// ── Phase 3-B 채팅(CS_CHAT_EX) ──
+	ChatTooFast,         // 너무 빨리 말함. param1=채널(ChatChannel), param2=기다릴 ms
+	ChatRepeated,        // 같은 말을 되풀이함
+	ChatBadText,         // 비었거나 깨진 글자(UTF-8) · 보낼 수 없는 채널
+	ChatNoTarget,        // 귓속말 상대가 접속해 있지 않음(또는 자기 자신)
+	ChatNoGuild,         // 결사에 들어 있지 않음(Phase 5 전에는 늘)
 };
 
 // 확장 프로토콜 버전. 새 클라이언트는 USER_LOGIN_EX_REQ에 이 값을 실어 보낸다.
@@ -265,6 +271,8 @@ enum class PacketType : uint16_t
 	SKILL_TREE_INF,           // S→C 내 기술 레벨 · 갈래 · 남은 점수(로그인 · 레벨 업 · 초기화 때)
 	SKILL_GROW_REQ,           // C→S 기술 레벨 올림 · 내림 · 갈래 고르기 · 모두 초기화
 	SKILL_GROW_ACK,           // S→C 요청 결과(요청마다 하나) + 바뀐 기술 하나
+	// ── Phase 3-B: 채널 채팅 — 확장 세션 전용. 받는 쪽은 기존 SC_CHAT_EX(채널 값만 끝에 추가) ──
+	CS_CHAT_EX,               // C→S 채널 · 받는 사람(귓속말) · 글 — 일반(지역) · 전체 · 거래 · 결사 · 귓속말
 };
 
 #pragma pack (push, 1)
@@ -917,7 +925,11 @@ struct WORLD_NOTICE_INF_PACKET
 	char     name[NAME_SIZE];
 };
 
-enum class ChatChannel : uint8_t { Normal, World, System };
+// Phase 3-B: 끝에만 추가한다 — 기존 값(Normal 0 · World 1 · System 2)은 그대로.
+// Normal은 확장 세션에게 "같은 지역(Zone) 전체" 일반 대화로 쓴다(레거시 SC_CHAT의 시야 대화와 같은 말).
+enum class ChatChannel : uint8_t { Normal, World, System, Trade, Guild, WhisperIn, WhisperOut };
+// SC_CHAT_EX.channel의 가장 높은 비트: 접속 직후 보내는 "최근 대화"(지금 막 한 말이 아니다 — 말풍선 · 알림음 없음)
+inline constexpr uint8_t kChatHistoryBit = 0x80;
 
 // '&'로 시작하는 채팅은 전체 채팅이 된다. 받는 쪽이 보낸 사람을 시야에서 모를 수
 // 있으므로 이름을 함께 싣는다(기존 SC_CHAT은 sender_id만 있다).

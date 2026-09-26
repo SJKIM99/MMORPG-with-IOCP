@@ -788,51 +788,7 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 // ─────────────────────────────────────────────────────────────────────────────
 // 채팅
 // ─────────────────────────────────────────────────────────────────────────────
-void Game::DrawChat()
-{
-	const float H = m_uiH;
-	const float w = std::max(220.f, std::min(440.f, HudLeft() - 36.f));   // 전투 HUD 판 왼쪽까지
-	const Rectangle log{ 12.f, H - 292.f, w, 206.f };
-	const bool hover = ui::Hovered(log);
-	const bool open = m_chatOpen && ui::Focused() == &m_chatField;
-	if (open || hover)
-		ui::Plate(log, Color{ 12, 15, 18, 170 }, util::WithA(ui::theme::kLine, 0.9f), 4.f, 1.f);
-	// 최신 줄이 아래
-	const float size = 14.f;
-	float y = log.y + log.height - 6.f;
-	ui::BeginClip(Rectangle{ log.x, log.y, log.width, log.height });
-	for (auto it = m_chat.rbegin(); it != m_chat.rend() && y > log.y; ++it)
-	{
-		const float age = static_cast<float>(m_now - it->time);
-		float a = 1.f;
-		if (!open && !hover) a = age > 14.f ? util::Clamp01(1.f - (age - 14.f) / 2.f) : 1.f;
-		if (a <= 0.f) break;
-		const auto lines = WrapLines(it->text, size, log.width - 16.f);
-		for (auto ln = lines.rbegin(); ln != lines.rend(); ++ln)
-		{
-			y -= size + 4.f;
-			ui::Text(*ln, Vector2{ log.x + 8.f, y }, size, util::MulA(it->color, a), Align::Left, true);
-		}
-	}
-	ui::EndClip();
-
-	if (open)
-	{
-		const Rectangle in{ 12.f, H - 82.f, w, 32.f };
-		const bool submitted = ui::InputText(in, m_chatField, "메시지 (&로 시작하면 전체 채팅)");
-		if (submitted && m_now - m_chatOpenedAt > 0.05)
-		{
-			SubmitChat();
-			ui::Focus(nullptr);
-			m_chatOpen = false;
-		}
-	}
-	else
-	{
-		m_chatOpen = false;
-		if (ui::Focused() == &m_chatField) ui::Focus(nullptr);
-	}
-}
+// DrawChat(상시 채팅창)은 game/GameChat.cpp(Phase 3-B)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 소지품

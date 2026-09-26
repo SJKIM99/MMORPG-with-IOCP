@@ -30,6 +30,13 @@ public:
 	uint32_t m_hasteUntil        = 0;   // GetNowTime() 기준. 이 시각 전까지 가속
 	uint32_t m_deathSeq          = 0;   // 사망할 때마다 증가 — 늦게 도착한 부활 타이머를 걸러낸다
 	uint32_t m_lastWorldChatTime = 0;   // 전체 채팅 도배 방지
+	// Phase 3-B 채팅(Content/ChatHelper) — 소유 Zone 스레드만
+	uint32_t m_lastTradeChatTime = 0;   // 거래 채팅 재사용 대기
+	uint32_t m_chatRefillAt      = 0;   // 토큰 버킷: 마지막으로 채운 시각
+	uint32_t m_chatLastHash      = 0;   // 되풀이: 마지막 문장의 해시 · 시각 · 연속 횟수
+	uint32_t m_chatLastAt        = 0;
+	uint8_t  m_chatTokens        = 5;
+	uint8_t  m_chatRepeat        = 0;
 	// 마지막으로 DB에 저장한 성향치. 사냥할 때마다 1~20씩 오르므로 매번 저장하지 않고
 	// 일정 폭 이상 변했을 때/PK/로그아웃 때만 저장한다(ContentHelper::SaveAlignment).
 	int16_t  m_savedAlignment    = 0;
