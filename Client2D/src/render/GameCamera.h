@@ -37,6 +37,8 @@ public:
 	void Kick(float zoomPunch) { m_kick = std::max(m_kick, zoomPunch); }
 	void AdjustZoom(float delta) { m_zoomGoal = std::clamp(m_zoomGoal + delta, kMinZoom, kMaxZoom); }
 	void SetZoom(float z) { m_zoomGoal = std::clamp(z, kMinZoom, kMaxZoom); m_zoom = m_zoomGoal; }
+	// 카메라 투어(Phase 4 --script tour): 평소 범위(0.9~2.2)를 벗어난 전경 줌도 허용 — 부드럽게 따라간다
+	void SetZoomFree(float z) { m_zoomGoal = std::clamp(z, 0.3f, 3.f); }
 
 	void Update(float dt)
 	{

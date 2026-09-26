@@ -65,7 +65,7 @@ void Game::DrawGame()
 	Entity* me = Self();
 	const Vector2 playerTile = me ? me->pos : Vector2{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
 
-	m_terrain.DrawGround(cam, m_screenW, m_screenH, playerTile, m_time, true, kb::Opt().showGrid ? 0.07f : 0.f);
+	m_terrain.DrawGround(cam, m_screenW, m_screenH, playerTile, m_time, !m_tourCam.on, kb::Opt().showGrid ? 0.07f : 0.f);
 	BeginMode2D(cam);
 	DrawWorld(cam);
 	EndMode2D();
@@ -131,6 +131,12 @@ void Game::DrawGame()
 
 	if (m_scene != Scene::Game)
 		return;
+	if (m_tourCam.on)
+	{
+		// 카메라 투어: HUD 없이 구획 이름만
+		DrawTourCaption();
+		return;
+	}
 	DrawQuestCompass(cam);
 
 	// ── 여기부터 UI(Phase 3-A): UI 배율 변환 위에 논리 좌표(m_uiW × m_uiH)로 그린다 ──
@@ -291,7 +297,7 @@ void Game::DrawWorld(const Camera2D& cam)
 
 	// ── 2) 불투명: 깊이 쓰기 ──
 	gfx::DepthWrite(true);
-	m_terrain.DrawProps(cam, m_screenW, m_screenH, pt, t, true);
+	m_terrain.DrawProps(cam, m_screenW, m_screenH, pt, t, !m_tourCam.on);
 	DrawNpcs();
 	for (auto& [id, e] : m_ents)
 		if (!IsTranslucent(e, static_cast<float>(m_now)))

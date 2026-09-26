@@ -598,7 +598,14 @@ void Game::UpdateGame(float dt)
 	m_expShown = (expRatio < m_expShown - 0.3f) ? expRatio : util::Damp(m_expShown, expRatio, 6.f, dt);
 
 	// ── 카메라 ──
-	if (Entity* me = Self())
+	if (m_tourCam.on)
+	{
+		m_cam.Follow(TileToIso(m_tourCam.tile, 0.f));
+		m_cam.SetLead(Vector2{ 0, 0 });
+		m_cam.SetCursorBias(Vector2{ 0, 0 });
+		m_cam.SetZoomFree(m_tourCam.zoom);
+	}
+	else if (Entity* me = Self())
 	{
 		m_cam.Follow(TileToIso(me->pos, 0.6f));
 		// 진행 방향으로 앞서기: 스프링이 늦는 만큼(2τ·속도) + 달릴 때 약 1칸 더 — 가는 쪽이 더 보인다
@@ -628,7 +635,7 @@ void Game::UpdateGame(float dt)
 	if (!ui::TextFocused() && !ui::MouseOverUi())
 	{
 		const float wheel = GetMouseWheelMove();
-		if (wheel != 0.f) m_cam.AdjustZoom(wheel * 0.12f);
+		if (wheel != 0.f && !m_tourCam.on) m_cam.AdjustZoom(wheel * 0.12f);
 	}
 	m_cam.Update(dt);
 
@@ -1794,6 +1801,6 @@ void Game::RunScript(float dt)
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_endingAt = m_now; m_endingStage = 0; m_scriptStep = 1; }
 	}
-	else
-		RunScriptUi(dt);   // Phase 3 시험(창 · 채팅 · HUD) — game/GameScriptUi.cpp
+	else if (!RunScriptUi(dt))   // Phase 3 시험(창 · 채팅 · HUD) — game/GameScriptUi.cpp
+		RunScriptWorld(dt);      // Phase 4 시험(투어 · 지형) — game/GameScriptWorld.cpp
 }

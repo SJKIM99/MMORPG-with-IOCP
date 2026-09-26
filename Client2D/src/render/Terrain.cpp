@@ -87,20 +87,21 @@ bool Terrain::Init()
 	SetShaderValueV(m_shader, m_locPalB, palB, SHADER_UNIFORM_VEC3, 16);
 	SetShaderValueV(m_shader, m_locPalC, palC, SHADER_UNIFORM_VEC3, 16);
 
-	// 마을 레이아웃 텍스처(R = 칸 종류) — 서버와 같은 WorldData::kTownLayout
+	// 마을 레이아웃 텍스처(R = 칸 종류, G = 층) — 서버와 같은 TownMap(생성물)
 	Image img{};
-	img.width = WorldData::kTownSize;
-	img.height = WorldData::kTownSize;
+	img.width = WorldData::kTownW;
+	img.height = WorldData::kTownH;
 	img.mipmaps = 1;
 	img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
 	img.data = MemAlloc(static_cast<unsigned int>(img.width * img.height * 4));
 	auto* px = static_cast<unsigned char*>(img.data);
-	for (int y = 0; y < WorldData::kTownSize; ++y)
-		for (int x = 0; x < WorldData::kTownSize; ++x)
+	for (int y = 0; y < WorldData::kTownH; ++y)
+		for (int x = 0; x < WorldData::kTownW; ++x)
 		{
 			unsigned char* p = px + (y * img.width + x) * 4;
-			p[0] = static_cast<unsigned char>(TownCode(WorldData::kTownLayout[y][x]));
-			p[1] = p[2] = 0;
+			p[0] = static_cast<unsigned char>(TownCode(TownMap::kGround[y][x]));
+			p[1] = static_cast<unsigned char>(TownMap::kLevel[y][x] - '0');
+			p[2] = 0;
 			p[3] = 255;
 		}
 	m_town = LoadTextureFromImage(img);
@@ -108,9 +109,9 @@ bool Terrain::Init()
 	SetTextureFilter(m_town, TEXTURE_FILTER_POINT);
 
 	const float origin[2] = { static_cast<float>(WorldData::kTownX0), static_cast<float>(WorldData::kTownY0) };
-	const float size = static_cast<float>(WorldData::kTownSize);
+	const float size[2] = { static_cast<float>(WorldData::kTownW), static_cast<float>(WorldData::kTownH) };
 	SetShaderValue(m_shader, m_locTownOrigin, origin, SHADER_UNIFORM_VEC2);
-	SetShaderValue(m_shader, m_locTownSize, &size, SHADER_UNIFORM_FLOAT);
+	SetShaderValue(m_shader, m_locTownSize, size, SHADER_UNIFORM_VEC2);
 	return true;
 }
 

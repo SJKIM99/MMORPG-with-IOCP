@@ -791,6 +791,12 @@ private:
 	double           m_netRateAt = 0.0;
 	float            m_netInKBs = 0.f, m_netOutKBs = 0.f, m_netPps = 0.f;
 
+	// Phase 4: 카메라 투어(--script tour) — 캐릭터 대신 정해진 길을 따라가며 구획 이름을 띄운다(HUD 숨김 · 안개 끔)
+	struct TourCam { bool on = false; Vector2 tile{}; float zoom = 1.f; std::string caption; std::string sub; double captionAt = -10.0; };
+	TourCam          m_tourCam;
+	bool RunScriptWorld(float dt);                      // Phase 4 시험(투어 · 지형 검사) — game/GameScriptWorld.cpp
+	void DrawTourCaption();
+
 	// 테스트 자동화
 	float            m_runTime = 0.f;
 	bool             m_shotTaken = false;

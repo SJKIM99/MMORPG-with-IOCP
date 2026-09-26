@@ -402,7 +402,7 @@ bool Game::QuestDestination(QuestDest& out) const
 					{
 						// 그 지역의 사냥터로(데니차 들녘은 남문 밖)
 						if (o.zone == WorldData::kTownZoneId)
-							dest = Vector2{ static_cast<float>(WorldData::kTownX0 + 21), static_cast<float>(WorldData::kTownY0 + WorldData::kTownSize + 5) };
+							dest = Vector2{ TownMap::kQuestField.x, TownMap::kQuestField.y };   // 마을 밖 들판(anchors.txt quest_field)
 						else if (const auto* reg = WorldData::FindRegion(o.zone))
 							dest = Vector2{ static_cast<float>(reg->landX), static_cast<float>(reg->landY) };
 						name = texts::RegionName(o.zone);

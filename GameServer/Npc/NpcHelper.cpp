@@ -74,8 +74,8 @@ namespace
 		const int margin = 10;
 		const short sx0 = static_cast<short>((WorldData::kTownX0 - margin) / SECTOR_RANGE);
 		const short sy0 = static_cast<short>((WorldData::kTownY0 - margin) / SECTOR_RANGE);
-		const short sx1 = static_cast<short>((WorldData::kTownX0 + WorldData::kTownSize + margin) / SECTOR_RANGE);
-		const short sy1 = static_cast<short>((WorldData::kTownY0 + WorldData::kTownSize + margin) / SECTOR_RANGE);
+		const short sx1 = static_cast<short>((WorldData::kTownX0 + WorldData::kTownW + margin) / SECTOR_RANGE);
+		const short sy1 = static_cast<short>((WorldData::kTownY0 + WorldData::kTownH + margin) / SECTOR_RANGE);
 		const Sector& sector = *GSector;
 		for (short sy = sy0; sy <= sy1; ++sy)
 			for (short sx = sx0; sx <= sx1; ++sx)

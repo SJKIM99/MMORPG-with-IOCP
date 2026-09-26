@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "TownMap.h"   // 마을 칸 · 층 · 건물 · 이름 있는 자리(생성물 — tools/mapgen/gen_town.py)
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 월드 데이터 — 지역(=Zone) 테마/난이도, 마을 레이아웃, NPC, 상점, 텔레포트, 충돌.
 //
@@ -90,84 +92,55 @@ namespace WorldData
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
-	// 마을(안전지대) — 데니차(변경말로 '샛별'). Zone 5 한가운데 44x44칸.
+	// 마을(안전지대) — 데니차(변경말로 '샛별'). 칸 · 층 · 건물은 TownMap.h(생성물 —
+	// 원본 tools/mapgen/denica/*.txt, 생성기 tools/mapgen/gen_town.py). Phase 4-A.
 	// ─────────────────────────────────────────────────────────────────────────
-	inline constexpr int kTownZoneId = 5;
-	inline constexpr int kTownX0 = 728;
-	inline constexpr int kTownY0 = 728;
-	inline constexpr int kTownSize = 44;
-	inline constexpr const char* kTownName = "데니차";
-
-	// 행 = y, 열 = x. 막힌 칸: # 성벽, O 망루, B 큰 건물, H 집, F 분수, T 나무,
-	// L 가로등, * 꽃밭, S 가판대. 나머지(. = , G, N = NPC의 원래 자리)는 걸을 수 있다.
-	// (. 풀밭, = 길, , 광장 포석, G 성문 — 차이는 클라이언트 표시용)
-	inline constexpr const char* kTownLayout[kTownSize] =
-	{
-		"OO##################GGGG##################OO",
-		"OO..................====..................OO",
-		"#.................N.====.N.................#",
-		"#.T.........T.......====.......T.........T.#",
-		"#..............HHHH.====.HHHH..............#",
-		"#...BBBBBBBB...HHHH.====.HHHH...BBBBBBBB...#",
-		"#...BBBBBBBB...HHHH.====.HHHH...BBBBBBBB...#",
-		"#...BBBBBBBB...HHHH.====.HHHH...BBBBBBBB...#",
-		"#...BBBBBBBB........====........BBBBBBBB...#",
-		"#...BBBBBBBB........====........BBBBBBBB...#",
-		"#...BBBBBBBB.....**.====.**.....BBBBBBBB...#",
-		"#...BBBBBBBB.....**.====.**.....BBBBBBBB...#",
-		"#......==...........====...........==......#",
-		"#......==...........====...........==......#",
-		"#.............L,,,,,,,,,,,,,,L.............#",
-		"#..T..........,,,,,,,,,,,,,,,,..........T..#",
-		"#.....T...T...,,N,,,,,,,,,,N,,...T.........#",
-		"#.............,,,,,,,N,,,,,,,,.......T.....#",
-		"#.............,,,,,,,,,,,,,,,,.............#",
-		"#.............,,,,,,,,,,,,,,,,.............#",
-		"G=============,,,,,,FFFF,,,,,,=============G",
-		"G=============,,,,,,FFFF,,,,,,=============G",
-		"G=============,,,,,,FFFF,,,,,,=============G",
-		"G=============,,,,,,FFFF,,,,,,=============G",
-		"#.............,SS,,,,,,,,,,SS,.............#",
-		"#.............,SS,,,,,,,,,,SS,.............#",
-		"#.............,,,,,,,,,,,,,,,,.......T.....#",
-		"#..T......T...,,,,,,,,,,,,,,,,...T......T..#",
-		"#.....T.......,,,,,,,,,,,,,,,,.............#",
-		"#.............L,,,,,,,,,,,,,,L.............#",
-		"#......==...........====...........==......#",
-		"#......==...........====...........==......#",
-		"#...BBBBBBBB.....**.====.**.....BBBBBBBB...#",
-		"#...BBBBBBBB.....**.====.**.....BBBBBBBB...#",
-		"#...BBBBBBBB........====........BBBBBBBB...#",
-		"#...BBBBBBBB........====........BBBBBBBB...#",
-		"#...BBBBBBBB...HHHH.====.HHHH...BBBBBBBB...#",
-		"#...BBBBBBBB...HHHH.====.HHHH...BBBBBBBB...#",
-		"#...BBBBBBBB...HHHH.====.HHHH...BBBBBBBB...#",
-		"#..............HHHH.====.HHHH..............#",
-		"#.T.........T.......====.......T.........T.#",
-		"#...................====...................#",
-		"OO..................====..................OO",
-		"OO##################GGGG##################OO",
-	};
+	inline constexpr int kTownZoneId = TownMap::kZoneId;
+	inline constexpr int kTownX0 = TownMap::kX0;
+	inline constexpr int kTownY0 = TownMap::kY0;
+	inline constexpr int kTownW = TownMap::kW;
+	inline constexpr int kTownH = TownMap::kH;
+	inline constexpr const char* kTownName = TownMap::kName;
 
 	[[nodiscard]] constexpr bool IsInTown(int x, int y) noexcept
 	{
-		return x >= kTownX0 && x < kTownX0 + kTownSize && y >= kTownY0 && y < kTownY0 + kTownSize;
+		return x >= kTownX0 && x < kTownX0 + kTownW && y >= kTownY0 && y < kTownY0 + kTownH;
 	}
 
-	// 마을 칸 문자(마을 밖이면 '\0')
+	// 마을 칸 문자(마을 밖이면 '\0') — 글자 뜻은 tools/mapgen/gen_town.py의 LEGEND
 	[[nodiscard]] constexpr char TownCell(int x, int y) noexcept
 	{
-		return IsInTown(x, y) ? kTownLayout[y - kTownY0][x - kTownX0] : '\0';
+		return IsInTown(x, y) ? TownMap::kGround[y - kTownY0][x - kTownX0] : '\0';
+	}
+
+	// 마을 칸의 층(0~4, 계단은 낮은 쪽 층). 마을 밖은 0(들판)
+	[[nodiscard]] constexpr int TownLevel(int x, int y) noexcept
+	{
+		return IsInTown(x, y) ? TownMap::kLevel[y - kTownY0][x - kTownX0] - '0' : 0;
+	}
+
+	// 계단 문자 → 오르는 방향(없으면 false)
+	[[nodiscard]] constexpr bool StairsDir(char c, int& dx, int& dy) noexcept
+	{
+		switch (c)
+		{
+		case '^': dx = 0; dy = -1; return true;
+		case 'v': dx = 0; dy = 1; return true;
+		case '<': dx = -1; dy = 0; return true;
+		case '>': dx = 1; dy = 0; return true;
+		default: return false;
+		}
 	}
 
 	[[nodiscard]] constexpr bool IsTownCellBlocked(char c) noexcept
 	{
 		switch (c)
 		{
-		case '#': case 'O': case 'B': case 'H': case 'F': case 'T': case 'L': case '*': case 'S':
-			return true;   // 'N'(NPC 자리)은 V2부터 걸을 수 있다 — NPC가 배회하고, 사람을 막지 않는다
+		case '.': case '=': case ',': case ':': case 's': case 'G': case 'b': case 'g': case 'N':
+		case '^': case 'v': case '<': case '>':
+			return false;   // 풀밭 · 길 · 광장 · 흙길 · 모래 · 성문 · 다리 · 묘지 풀 · 계단
 		default:
-			return false;
+			return true;    // 성벽 · 망루 · 건물 · 분수 · 나무 · 가로등 · 꽃밭 · 가판대 · 가장자리(R) · 물 · 바위 …
 		}
 	}
 
@@ -179,13 +152,13 @@ namespace WorldData
 
 	// ── Phase 2-E 훈련장(마을 동쪽 풀밭) — 안전지대 안이지만 여기서는 기술을 쓸 수 있다(맞는 것은 허수아비뿐:
 	//    몬스터는 마을에 들어오지 못하고, 안전지대의 사람은 강제 공격으로도 맞지 않는다). Phase 4에서 훈련장 건물로 옮긴다.
-	inline constexpr int kYardX0 = kTownX0 + 31, kYardY0 = kTownY0 + 15, kYardX1 = kTownX0 + 42, kYardY1 = kTownY0 + 19;   // 포함
+	inline constexpr int kYardX0 = TownMap::kYardX0, kYardY0 = TownMap::kYardY0, kYardX1 = TownMap::kYardX1, kYardY1 = TownMap::kYardY1;   // 포함
 	[[nodiscard]] constexpr bool IsTrainingYard(int x, int y) noexcept
 	{
 		return x >= kYardX0 && x <= kYardX1 && y >= kYardY0 && y <= kYardY1;
 	}
-	struct DummySpot { short x, y; };
-	inline constexpr DummySpot kDummySpots[] = { { kTownX0 + 34, kTownY0 + 18 }, { kTownX0 + 37, kTownY0 + 18 }, { kTownX0 + 40, kTownY0 + 18 } };
+	using DummySpot = TownMap::Point16;
+	inline constexpr auto& kDummySpots = TownMap::kDummies;
 	inline constexpr int kDummyCount = static_cast<int>(sizeof(kDummySpots) / sizeof(kDummySpots[0]));
 
 	// 기존 서버의 장애물 패턴(Collision.cpp의 checkCollision과 동일한 식).
@@ -218,27 +191,10 @@ namespace WorldData
 	}
 	static_assert(Detail::ValidateYard(), "허수아비 자리는 훈련장 안의 걸을 수 있는 칸이어야 합니다.");
 
-	// ── 마을 건물(클라이언트가 입체로 그리기 위한 사각형. 충돌은 레이아웃이 담당) ──
-	enum class BuildingKind : uint8_t { eStore, eWeaponShop, eTemple, eInn, eHouse };
-
-	struct BuildingRow
-	{
-		BuildingKind kind;
-		int16_t x0, y0, x1, y1;   // 월드 좌표, 양끝 포함
-		const char* sign;         // 간판
-	};
-
-	inline constexpr BuildingRow kBuildings[] =
-	{
-		{ BuildingKind::eStore,      kTownX0 + 4,  kTownY0 + 5,  kTownX0 + 11, kTownY0 + 11, "잡화점" },
-		{ BuildingKind::eWeaponShop, kTownX0 + 32, kTownY0 + 5,  kTownX0 + 39, kTownY0 + 11, "대장간" },
-		{ BuildingKind::eTemple,     kTownX0 + 4,  kTownY0 + 32, kTownX0 + 11, kTownY0 + 38, "예배당" },
-		{ BuildingKind::eInn,        kTownX0 + 32, kTownY0 + 32, kTownX0 + 39, kTownY0 + 38, "여관" },
-		{ BuildingKind::eHouse,      kTownX0 + 15, kTownY0 + 4,  kTownX0 + 18, kTownY0 + 7,  "" },
-		{ BuildingKind::eHouse,      kTownX0 + 25, kTownY0 + 4,  kTownX0 + 28, kTownY0 + 7,  "" },
-		{ BuildingKind::eHouse,      kTownX0 + 15, kTownY0 + 36, kTownX0 + 18, kTownY0 + 39, "" },
-		{ BuildingKind::eHouse,      kTownX0 + 25, kTownY0 + 36, kTownX0 + 28, kTownY0 + 39, "" },
-	};
+	// ── 마을 건물(클라이언트가 입체로 그리기 위한 사각형. 충돌은 칸 문자 'B'가 담당) ──
+	using BuildingKind = TownMap::BuildingKind;
+	using BuildingRow = TownMap::BuildingRow;
+	inline constexpr auto& kBuildings = TownMap::kBuildings;
 
 	// ── NPC ─────────────────────────────────────────────────────────────────
 	// V2: 마을 NPC는 서버가 배회시킨다(Npc/NpcHelper — 마을 Zone 스레드, 확장 세션에만
@@ -373,16 +329,10 @@ namespace WorldData
 		return npc.kind == NpcKind::eMerchant || npc.kind == NpcKind::eWeaponSmith;
 	}
 
-	// ── 마을 부활/귀환 지점(광장 남쪽 포석) — 여러 곳 중 무작위로 고른다.
-	struct Point16 { int16_t x, y; };
-	inline constexpr Point16 kTownSpawnPoints[] =
-	{
-		{ kTownX0 + 17, kTownY0 + 26 }, { kTownX0 + 19, kTownY0 + 27 }, { kTownX0 + 21, kTownY0 + 26 },
-		{ kTownX0 + 23, kTownY0 + 27 }, { kTownX0 + 25, kTownY0 + 26 }, { kTownX0 + 20, kTownY0 + 28 },
-		{ kTownX0 + 22, kTownY0 + 28 }, { kTownX0 + 24, kTownY0 + 28 }, { kTownX0 + 18, kTownY0 + 19 },
-		{ kTownX0 + 25, kTownY0 + 19 },
-	};
-	inline constexpr size_t kTownSpawnPointCount = sizeof(kTownSpawnPoints) / sizeof(kTownSpawnPoints[0]);
+	// ── 마을 부활/귀환 지점 — 여러 곳 중 무작위로 고른다(TownMap anchors.txt의 spawn).
+	using Point16 = TownMap::Point16;
+	inline constexpr auto& kTownSpawnPoints = TownMap::kSpawns;
+	inline constexpr size_t kTownSpawnPointCount = sizeof(TownMap::kSpawns) / sizeof(TownMap::kSpawns[0]);
 
 	// 필드 보스 재등장 시간
 	inline constexpr uint32_t kBossRespawnSeconds = 300;
@@ -392,21 +342,24 @@ namespace WorldData
 	{
 		constexpr bool ValidateTown() noexcept
 		{
-			for (int y = 0; y < kTownSize; ++y)
+			// 칸 · 층 격자의 줄 길이(생성기가 이미 검사한다 — 손으로 고친 TownMap.h를 막는다)
+			for (int y = 0; y < kTownH; ++y)
 			{
-				int len = 0;
-				while (kTownLayout[y][len] != '\0') ++len;
-				if (len != kTownSize) return false;
+				int a = 0, b = 0;
+				while (TownMap::kGround[y][a] != '\0') ++a;
+				while (TownMap::kLevel[y][b] != '\0') ++b;
+				if (a != kTownW || b != kTownW) return false;
 			}
+			// 건물 발자국은 모두 막힌 'B' 칸
 			for (const auto& b : kBuildings)
+			{
+				if (!IsInTown(b.x0, b.y0) || !IsInTown(b.x1, b.y1)) return false;
 				for (int y = b.y0; y <= b.y1; ++y)
 					for (int x = b.x0; x <= b.x1; ++x)
-					{
-						const char c = TownCell(x, y);
-						if (c != 'B' && c != 'H') return false;
-					}
-			// NPC 집 칸은 ValidateNpcs(걸을 수 있는 마을 칸)가 따로 검사한다 — 'N'은 원래
-			// 서 있던 상인들의 자리 표시일 뿐이다.
+						if (TownCell(x, y) != 'B') return false;
+			}
+			// NPC 집 칸은 ValidateNpcs(걸을 수 있는 마을 칸)가 따로 검사한다.
+			// 칸 사이 층 규칙(절벽 · 계단)은 생성기가 모든 칸을 검사하고, 서버가 켤 때 한 번 더 센다(Collision.cpp).
 			for (const auto& p : kTownSpawnPoints)
 				if (IsBlocked(p.x, p.y) || !IsInTown(p.x, p.y)) return false;
 			return true;

@@ -1,0 +1,21 @@
+# 이름이 있는 자리(마을 기준 칸). 스크립트 · 봇 · 서버가 숫자 대신 이 이름을 쓴다.
+# spawn = 부활 · 귀환 · 첫 접속 자리(여러 개 — 무작위), dummy = 훈련장 허수아비, yard = 훈련장 사각형(x0 y0 x1 y1, 양끝 포함)
+spawn   17 26
+spawn   19 27
+spawn   21 26
+spawn   23 27
+spawn   25 26
+spawn   20 28
+spawn   22 28
+spawn   24 28
+spawn   18 19
+spawn   25 19
+yard    31 15 42 19
+dummy   34 18
+dummy   37 18
+dummy   40 18
+plaza         21 25     # 분수 광장 남쪽 포석(투어 · 로그인 카메라)
+fountain      21.5 21.5 # 분수 한가운데(원 그리기 시험의 중심)
+south_gate    22 42     # 남문 안쪽
+south_gate_out 22 50     # 남문 밖 들판(사냥 · 기술 시험)
+quest_field   21 49     # 마을 Zone 목표가 가리키는 들판

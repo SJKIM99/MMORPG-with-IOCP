@@ -4,7 +4,7 @@
 // 바닥 셰이더(GLSL 330). 화면 전체를 덮는 사각형 하나를 그리면서, 픽셀마다
 // 화면 좌표 → 아이소 좌표 → 타일 좌표로 되돌려 그 자리의 지형 색을 계산한다.
 //   · 지역(=서버 Zone)마다 팔레트/스타일이 다르다(설원/화산/사막...).
-//   · 마을은 44x44 레이아웃 텍스처(서버와 같은 WorldData::kTownLayout)로 길/광장을 깐다.
+//   · 마을은 레이아웃 텍스처(서버와 같은 TownMap 생성물 — R = 칸 종류, G = 층)로 길/광장을 깐다.
 //   · 시야 밖(서버 VIEW_RANGE=5, 체비셰프 거리)은 어둡게 — 서버가 실제로 보내 주는
 //     범위가 곧 "보이는 범위"라는 걸 화면으로 드러낸다.
 // 주의: GLSL 소스는 ASCII만 쓴다(일부 드라이버가 비ASCII 주석에서 컴파일 실패).
@@ -33,7 +33,7 @@ uniform vec3  uPalC[16];
 uniform sampler2D uTown;
 uniform sampler2D uNoise;
 uniform vec2  uTownOrigin;
-uniform float uTownSize;
+uniform vec2  uTownSize;
 uniform sampler2D uGround;     // painted ground atlas (5x4 cells of 512 + 32 wrap padding)
 uniform float uGroundOn;
 uniform vec2  uGroundSize;
@@ -364,7 +364,7 @@ void main()
     float roadN = nz(uv * 0.21) - 0.5;
     float hx = abs(uv.y - (tc.y - 0.5)) + roadN * 1.2;
     float vx = abs(uv.x - (tc.x - 0.5)) + roadN * 1.2;
-    float distOut = max(abs(uv.x - tc.x), abs(uv.y - tc.y)) - uTownSize * 0.5;
+    float distOut = max(abs(uv.x - tc.x) - uTownSize.x * 0.5, abs(uv.y - tc.y) - uTownSize.y * 0.5);
     if (distOut > -0.5 && distOut < 140.0)
     {
         float fade = 1.0 - smoothstep(60.0, 140.0, distOut);
@@ -376,7 +376,7 @@ void main()
 
     // town
     vec2 tl = cell - uTownOrigin;
-    if (tl.x >= 0.0 && tl.y >= 0.0 && tl.x < uTownSize && tl.y < uTownSize)
+    if (tl.x >= 0.0 && tl.y >= 0.0 && tl.x < uTownSize.x && tl.y < uTownSize.y)
     {
         int code = int(texelFetch(uTown, ivec2(tl), 0).r * 255.0 + 0.5);
         col = townGround(code, uv, cell, loc, col);

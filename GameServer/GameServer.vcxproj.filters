@@ -406,6 +406,12 @@
     <ClInclude Include="Data\WorldData.h">
       <Filter>Data</Filter>
     </ClInclude>
+    <ClInclude Include="Data\TownMap.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\TownTypes.h">
+      <Filter>Data</Filter>
+    </ClInclude>
     <ClInclude Include="Item\ItemTableData.h">
       <Filter>Item</Filter>
     </ClInclude>
