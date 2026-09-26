@@ -25,6 +25,11 @@ namespace gfx
 		float g_lift = 0.f;
 		bool g_drape = false;
 		constexpr float kDrapeBias = 0.08f;   // 데칼 깊이를 카메라 쪽으로 조금(같은 면의 지형과 겨루지 않게)
+		// 발자국 깊이(천막꼴) — SetDepthTent
+		bool g_tent = false;
+		float g_tentX1 = 0.f, g_tentY1 = 0.f;
+		// +0.3: 높은 층에 선 NPC와 같은 몫 — 발자국 앞 변 바로 앞의 윗면(같은 X+Y 근처)과 겨루지 않고, 그림이 발자국보다 조금 넓게 그려진 곳도 덮는다
+		inline float TentXY(float px) { return std::min(px / kHalfW + 2.f * g_tentY1, 2.f * g_tentX1 - px / kHalfW) + 0.3f; }
 
 		// 보이는 X+Y 범위(카메라 기준 ±80칸 정도)를 깊이 [0.05, 0.95]로 편다.
 		constexpr float kDepthSpan = 220.f;
@@ -34,6 +39,11 @@ namespace gfx
 			if (g_drape && g_liftFn)
 			{
 				rlVertex3f(p.x, p.y - g_liftFn(p), DepthOf(p.y / kHalfH + kDrapeBias));
+				return;
+			}
+			if (g_tent)
+			{
+				rlVertex3f(p.x, p.y - g_lift, DepthOf(TentXY(p.x)));
 				return;
 			}
 			rlVertex3f(p.x, p.y - g_lift, z);
@@ -77,6 +87,14 @@ namespace gfx
 	bool DrapeOn() { return g_drape; }
 
 	void SetDepth(float xPlusY) { g_z = DepthOf(xPlusY); }
+	void SetDepthTent(float x0, float y0, float x1, float y1)
+	{
+		(void)x0; (void)y0;   // 앞 변만 쓴다(뒤 변은 앞 변에 가려진다)
+		g_tent = true;
+		g_tentX1 = x1;
+		g_tentY1 = y1;
+	}
+	void ClearDepthTent() { g_tent = false; }
 	void SetDepthRaw(float z) { g_z = z; }
 	float CurrentZ() { return g_z; }
 
@@ -570,6 +588,27 @@ namespace gfx
 			const float py0 = src.height * r / kRows, py1 = src.height * (r + 1) / kRows;
 			const float v0 = (src.y + py0) / th + vOff, v1 = (src.y + py1) / th + vOff;
 			const Vector2 a = place(0.f, py0), b = place(0.f, py1), c = place(src.width, py1), d = place(src.width, py0);
+			// 발자국 깊이: 앞 모서리 열(천막의 꼭대기)이 줄을 가로지르면 둘로 나눈다 — 한 사각형이면 두 끝의 깊이로만 보간돼 가운데가 뒤로 빠진다
+			if (g_tent)
+			{
+				const float xc = (g_tentX1 - g_tentY1) * kHalfW;
+				const bool crossTop = (a.x - xc) * (d.x - xc) < 0.f, crossBot = (b.x - xc) * (c.x - xc) < 0.f;
+				if (crossTop && crossBot)
+				{
+					const float tt = (xc - a.x) / (d.x - a.x), tb = (xc - b.x) / (c.x - b.x);
+					const Vector2 mt{ xc, a.y + (d.y - a.y) * tt }, mb{ xc, b.y + (c.y - b.y) * tb };
+					const float ut = u0 + (u1 - u0) * tt, ub = u0 + (u1 - u0) * tb;
+					rlTexCoord2f(u0, v0); V(a, g_z);
+					rlTexCoord2f(u0, v1); V(b, g_z);
+					rlTexCoord2f(ub, v1); V(mb, g_z);
+					rlTexCoord2f(ut, v0); V(mt, g_z);
+					rlTexCoord2f(ut, v0); V(mt, g_z);
+					rlTexCoord2f(ub, v1); V(mb, g_z);
+					rlTexCoord2f(u1, v1); V(c, g_z);
+					rlTexCoord2f(u1, v0); V(d, g_z);
+					continue;
+				}
+			}
 			// 뒷면 제거가 꺼져 있어(main.cpp) 뒤집어도 감기는 방향을 신경 쓰지 않는다
 			rlTexCoord2f(u0, v0); V(a, g_z);
 			rlTexCoord2f(u0, v1); V(b, g_z);

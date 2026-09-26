@@ -187,6 +187,18 @@ namespace props
 				gfx::Face({ x0, y1, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { x0, y1, z1 }, Shade(c, 0.96f));
 				gfx::Face({ x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { x1, y0, z1 }, Shade(c, 0.72f));
 			}
+			// 흙때 · 처마 그늘(자기 검토 — 텍스처 반복만으로는 벽이 평평해 보였다): 벽 아래 0.45z는 어둡게 스며 오르고,
+			// 벽 위 0.35z는 지붕 처마 그늘. 반투명 띠를 벽면에 살짝 띄워 얹는다.
+			const float h = z1 - z0;
+			if (h > 0.5f)
+			{
+				const float b = std::min(0.45f, h * 0.4f), e = std::min(0.35f, h * 0.3f), d = 0.006f;
+				const Color g0{ 24, 20, 16, 92 }, g1{ 24, 20, 16, 0 }, s0{ 16, 14, 12, 0 }, s1{ 16, 14, 12, 84 };
+				gfx::Face4({ x0, y1 + d, z0 }, { x1 + d, y1 + d, z0 }, { x1 + d, y1 + d, z0 + b }, { x0, y1 + d, z0 + b }, g0, g0, g1, g1);
+				gfx::Face4({ x1 + d, y1 + d, z0 }, { x1 + d, y0, z0 }, { x1 + d, y0, z0 + b }, { x1 + d, y1 + d, z0 + b }, g0, g0, g1, g1);
+				gfx::Face4({ x0, y1 + d, z1 - e }, { x1 + d, y1 + d, z1 - e }, { x1 + d, y1 + d, z1 }, { x0, y1 + d, z1 }, s0, s0, s1, s1);
+				gfx::Face4({ x1 + d, y1 + d, z1 - e }, { x1 + d, y0, z1 - e }, { x1 + d, y0, z1 }, { x1 + d, y1 + d, z1 }, s0, s0, s1, s1);
+			}
 		}
 		// 뚜껑(평지붕 · 탑 윗면)
 		void Lid(float x0, float y0, float x1, float y1, float z, Color c)
@@ -2126,6 +2138,38 @@ namespace props
 				NightWindows(f, L, 1.0f, 1.6f);
 				break;
 			}
+		}
+	}
+
+	// 건물 그림자(자기 검토): 빛은 화면 왼쪽 위(서쪽)에서 — 동쪽 땅에 건물 키만큼 드리운 부드러운 그늘 + 남쪽 벽 밑 접촉 그늘.
+	// 바닥 데칼 단계(깊이 시험 · 드리우기)에서 그린다 — 건물이 자기 밑은 덮는다.
+	void DrawBuildingShadows()
+	{
+		for (const auto& b : TownMap::kBuildings)
+		{
+			const float X0 = b.x0 - 0.5f, Y0 = b.y0 - 0.5f, X1 = b.x1 + 0.5f, Y1 = b.y1 + 0.5f;
+			float H = 3.6f;   // 대략의 키(z) — 종류마다
+			switch (b.kind)
+			{
+			case BuildingKind::eStarTower: H = 7.f; break;
+			case BuildingKind::eTemple: H = 5.f; break;
+			case BuildingKind::eWindMill: H = 5.f; break;
+			case BuildingKind::eLookout: H = 4.6f; break;
+			case BuildingKind::eGuildHall: case BuildingKind::eInn: case BuildingKind::eAuctionHall: H = 4.2f; break;
+			case BuildingKind::eGreenhouse: H = 2.4f; break;
+			case BuildingKind::eHouse: H = (b.variant % 10 == 4) ? 2.6f : ((b.variant % 10 == 1 || b.variant % 10 == 3 || b.variant % 10 == 6) ? 4.2f : 3.1f); break;
+			default: break;
+			}
+			const float Lx = std::clamp(0.3f * H, 0.6f, 2.1f), Ly = Lx * 0.3f;
+			const Color c0{ 12, 14, 22, 112 }, c1{ 12, 14, 22, 0 };
+			gfx::SetLift(static_cast<float>(b.level) * 0.75f * gfx::kUnitZ);
+			// 동쪽 땅
+			const Vector2 a = gfx::IsoPx(X1, Y0), bb = gfx::IsoPx(X1, Y1), cc = gfx::IsoPx(X1 + Lx, Y1 + Ly), d = gfx::IsoPx(X1 + Lx, Y0 + Ly);
+			gfx::Quad4(a, bb, cc, d, c0, c0, c1, c1);
+			// 남쪽 벽 밑(접촉 그늘) — 동쪽 그늘과 이어진다
+			const Vector2 e = gfx::IsoPx(X0, Y1), f = gfx::IsoPx(X0 + 0.2f, Y1 + 0.4f), g = gfx::IsoPx(X1 + Lx * 0.35f, Y1 + 0.4f + Ly * 0.3f);
+			gfx::Quad4(e, bb, g, f, Color{ 12, 14, 22, 92 }, Color{ 12, 14, 22, 104 }, c1, c1);
+			gfx::SetLift(0.f);
 		}
 	}
 

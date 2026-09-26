@@ -54,6 +54,9 @@ namespace sfx
 		Drone,        // 암전 저음(각성기 예고)
 		// Phase 4-B: 마을 소리 구역(audio/Ambience)
 		Anvil,        // 모루를 두드리는 쨍(대장간 망치)
+		// Phase 4 자기 검토: 마을의 작은 생명(render/Critters)
+		Flutter,      // 비둘기 떼가 한꺼번에 날아오르는 푸드덕(날개 치는 소리 열두어 번)
+		FishSplash,   // 물고기가 튀어 올랐다 떨어지는 퐁당(작게)
 		Count
 	};
 

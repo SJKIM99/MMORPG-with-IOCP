@@ -33,6 +33,8 @@ CASES = [
     ('hotfeel', 20, 0, 'lv30_rg_hotfeel'),
     # Phase 4-A 높낮이: 경계 칸 전수 검사(서버와 같은 TownRules::Check) · 보이지 않는 벽 · 계단 우회 탐침 — [terraincheck] done PASS
     ('terraincheck', 90, 0),
+    # Phase 4 자기 검토: 남문 도착 연출([arrive] done) · 비둘기 떼 날려 보내고 다시 내려앉기([birds] done PASS)
+    ('arrive', 45, 0), ('birds', 60, 0),
 ]
 
 
@@ -54,7 +56,7 @@ def main():
         try:
             r = subprocess.run(cmd, cwd=client, env=env, capture_output=True, text=True, timeout=after * 5 + 120)   # 소프트웨어 렌더링(5fps 안팎)에서도 넉넉히
             code = r.returncode
-            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]') or l.startswith('[growcheck] done') or l.startswith('[bench]') or l.startswith('[wmcheck] done') or l.startswith('[hudcheck] screen') or l.startswith('[terraincheck] done')]
+            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]') or l.startswith('[growcheck] done') or l.startswith('[bench]') or l.startswith('[wmcheck] done') or l.startswith('[hudcheck] screen') or l.startswith('[terraincheck] done') or l.startswith('[birds] done') or l.startswith('[arrive] done')]
         except subprocess.TimeoutExpired:
             code, lines = 'TIMEOUT', []
         src = os.path.join(client, shot)

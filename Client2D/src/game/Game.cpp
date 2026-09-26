@@ -16,6 +16,7 @@
 #include "audio/Sfx.h"
 #include "render/Wind.h"
 #include "audio/Ambience.h"
+#include "render/Critters.h"
 #include "audio/Voice.h"
 #include "platform/Ime.h"
 #include "core/Util.h"
@@ -695,6 +696,18 @@ void Game::UpdateGame(float dt)
 	{
 		const Vector2 ear = m_tourCam.on ? m_tourCam.tile : Vector2{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
 		amb::Update(dt, ear, m_light.Night(), m_light.Hour(), wind::Strength(), true);
+		// 마을의 작은 생명(비둘기 떼 · 물고기 — Phase 4 자기 검토): 움직이는 사람 · 짐승이 다가가면 비둘기가 날아오른다
+		static std::vector<critters::Mover> movers;
+		movers.clear();
+		const Vector2 view = gfx::IsoToTile(m_cam.Target());
+		for (const auto& [id, e] : m_ents)
+			if (e.kind != EntityKind::Item && !e.dead && std::fabs(e.pos.x - view.x) + std::fabs(e.pos.y - view.y) < 60.f)
+				movers.push_back(critters::Mover{ e.pos, e.moving * 2.f, critters::MoverKind::Player });   // 달리기 한 칸 0.5초
+		for (const auto& [nid, v] : m_npcView)
+			if (v.row)
+				movers.push_back(critters::Mover{ v.pos, v.moving * 1000.f / std::max<float>(1.f, v.row->stepMs),
+					WorldData::IsAnimal(v.row->kind) ? critters::MoverKind::Animal : critters::MoverKind::Person });
+		critters::Update(dt, movers, ear, view, m_light.Night());
 	}
 	if (m_now > m_ambNext)
 	{

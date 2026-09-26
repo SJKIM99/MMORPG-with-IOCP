@@ -8,6 +8,7 @@
 #include "render/Props.h"
 #include "render/Draw.h"
 #include "render/Terrain.h"
+#include "render/Critters.h"
 #include "Data/TownRules.h"
 
 #include <algorithm>
@@ -25,6 +26,7 @@
 //                 탐침: 가장자리를 사이에 둔 낮은 칸 → 높은 칸을 걸어가게 해 계단으로 돌아가는지, 화면 지면이 끊기지 않는지.
 //                 끝에 [terraincheck] done PASS|FAIL. 서버 쪽 덫(이동마다 같은 검사)은 서버 로그의 "[Town] level-rule violation".
 //   goto:x,y      마을 기준 칸으로 걸어간다(길찾기 · 계단 확인용). 도착하면 [goto] 한 줄
+//   birds         가장 가까운 비둘기 떼로 걸어가 날려 보내고 물러나 다시 내려앉는지 본다(render/Critters). [birds] done PASS|FAIL
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace
@@ -90,6 +92,62 @@ bool Game::RunScriptWorld(float dt)
 	}
 	if (s == "terraincheck")
 		return RunTerrainCheck(dt);
+	// birds — 가장 가까운 비둘기 떼로 걸어 들어가 날려 보내고, 몇 칸 물러나 다시 내려앉는 것을 본다(Phase 4 자기 검토 —
+	// 마을의 작은 생명). [birds] 줄: start · startle(날아오른 수) · landed · done(물고기 뛴 수)
+	if (s == "birds")
+	{
+		static Vector2 from{};
+		static int flockIdx = -1, startles0 = 0, landings0 = 0;
+		const critters::Stats st = critters::GetStats();
+		const critters::FlockInfo fi = critters::Flock(flockIdx);
+		auto elapsed = [this] { return m_scriptT - m_scriptMark; };
+		auto next = [this](int step) { m_scriptStep = step; m_scriptMark = m_scriptT; };
+		if (m_scriptStep == 0 && m_scriptT > 3.0f && Self())
+		{
+			from = Self()->pos;
+			flockIdx = critters::NearestFlock(from);
+			const critters::FlockInfo f0 = critters::Flock(flockIdx);
+			startles0 = f0.startles;
+			landings0 = f0.landings;
+			std::printf("[birds] start t=%.2f flocks=%d birds=%d from=%.0f,%.0f flock=%d at %.1f,%.1f\n", m_scriptT, st.flocks, st.birds,
+				from.x - WorldData::kTownX0, from.y - WorldData::kTownY0, flockIdx, f0.center.x - WorldData::kTownX0, f0.center.y - WorldData::kTownY0);
+			if (flockIdx < 0) { std::printf("[birds] done FAIL no flock\n"); m_scriptStep = 9; return true; }
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(std::lround(f0.center.x)), static_cast<int>(std::lround(f0.center.y)) });
+			next(1);
+		}
+		else if (m_scriptStep == 1 && fi.startles > startles0)
+		{
+			std::printf("[birds] startle t=%.2f flying=%d\n", m_scriptT, fi.flying);
+			next(2);
+		}
+		else if (m_scriptStep == 1 && elapsed() > 70.f)
+		{
+			std::printf("[birds] done FAIL no startle\n");
+			m_scriptStep = 9;
+		}
+		else if (m_scriptStep == 2 && elapsed() > 1.6f)
+		{
+			std::printf("[birds] flying t=%.2f flying=%d\n", m_scriptT, fi.flying);
+			// 온 쪽으로 5칸 물러난다 — 떼가 제자리로 돌아와 내려앉는다(아직 있으면 다른 자리로 간다)
+			const Vector2 d{ from.x - fi.center.x, from.y - fi.center.y };
+			const float l = std::max(0.001f, std::hypot(d.x, d.y));
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(std::lround(fi.center.x + d.x / l * 5.f)), static_cast<int>(std::lround(fi.center.y + d.y / l * 5.f)) });
+			next(3);
+		}
+		else if (m_scriptStep == 3 && (fi.landings > landings0 || elapsed() > 30.f))
+		{
+			std::printf("[birds] landed t=%.2f ok=%d at %.1f,%.1f\n", m_scriptT, fi.landings > landings0 ? 1 : 0,
+				fi.center.x - WorldData::kTownX0, fi.center.y - WorldData::kTownY0);
+			next(4);
+		}
+		else if (m_scriptStep == 4 && elapsed() > 2.5f)
+		{
+			std::printf("[birds] done %s fishJumps=%d birds=%d\n", fi.landings > landings0 ? "PASS" : "FAIL", st.fishJumps, st.birds);
+			std::fflush(stdout);
+			m_scriptStep = 9;
+		}
+		return true;
+	}
 	// arrive — 남문 밖 들판으로 걸어 나갔다가 다시 남문으로 들어온다(도착 연출 · 첫인상 녹화). [arrive] 줄
 	if (s == "arrive")
 	{

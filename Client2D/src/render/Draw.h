@@ -44,6 +44,19 @@ namespace gfx
 	void SetDepth(float xPlusY);
 	void SetDepthRaw(float z);
 	float CurrentZ();
+	// 발자국 깊이(천막꼴, Phase 4 자기 검토): 여러 칸을 차지하는 세운 그림(노점 2x2 · 분수 4x4 · 바위)을 가운데 한 점의 깊이로
+	// 그리면 높은 층의 윗면(깊이를 쓴다)이 그림의 앞쪽 아래를 잘랐다. 켜 두는 동안 정점의 깊이 = 그 화면 열에서 발자국 앞 변
+	// (남 · 동 변)의 X+Y — 그린 건물(Buildings.cpp)과 같은 규칙. 그림 사각형은 앞 모서리 열에서 둘로 나눠 그린다.
+	// x0,y0 ~ x1,y1 = 발자국의 칸 가장자리 좌표(칸 중심 ± 0.5). 드리우기(데칼)에는 쓰지 않는다.
+	void SetDepthTent(float x0, float y0, float x1, float y1);
+	void ClearDepthTent();
+	struct DepthTentScope
+	{
+		DepthTentScope(float x0, float y0, float x1, float y1) { SetDepthTent(x0, y0, x1, y1); }
+		~DepthTentScope() { ClearDepthTent(); }
+		DepthTentScope(const DepthTentScope&) = delete;
+		DepthTentScope& operator=(const DepthTentScope&) = delete;
+	};
 	void SetTint(Color tint);           // 곱하기
 	void SetFlash(float amount);        // 흰색 쪽으로 섞기(피격 번쩍임)
 	void SetFlashColor(Color c);

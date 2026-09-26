@@ -6,6 +6,7 @@
 #include "core/Util.h"
 
 #include <cmath>
+#include <optional>
 
 namespace props
 {
@@ -742,6 +743,10 @@ namespace props
 	{
 		const float X = static_cast<float>(x), Y = static_cast<float>(y);
 		const char left = WorldData::TownCell(x - 1, y), up = WorldData::TownCell(x, y - 1);
+		// 높은 층(1층 이상)의 한 칸짜리 세운 그림은 발자국 깊이로(자기 검토 — 윗면이 그림의 앞쪽 아래를 잘랐다). 0층은 윗면이 깊이를 쓰지 않아 예전 그대로
+		std::optional<gfx::DepthTentScope> tent;
+		if (WorldData::TownLevel(x, y) > 0 && (cell == 'T' || cell == 'L' || cell == 'X' || cell == 'P' || cell == 'h'))
+			tent.emplace(X - 0.5f, Y - 0.5f, X + 0.5f, Y + 0.5f);
 		switch (cell)
 		{
 		case '#':
@@ -792,9 +797,10 @@ namespace props
 		case 'S':
 			if (left != 'S' && up != 'S')
 			{
-				// 2x2 칸: 가운데 깊이, 그림 너비 = 칸 마름모 너비
+				// 2x2 칸: 발자국 깊이(앞 모서리가 가장 가깝다), 그림 너비 = 칸 마름모 너비
 				const float cx = X + 0.5f, cy = Y + 0.5f;
 				gfx::SetDepth(cx + cy);
+				const gfx::DepthTentScope foot(X - 0.5f, Y - 0.5f, X + 1.5f, Y + 1.5f);
 				const bool blue = (util::Hash2(x, y, 17) & 1u) != 0;   // 노점 차양 두 색을 섞는다
 				if (!PropSprite(blue ? "prop_stall_blue" : "prop_stall_red", Off(gfx::IsoPx(cx, cy), 0.f, 22.f), 0.f, 0.f, false, WHITE, 4.f * 32.f * 1.08f))
 					Stall(X, Y, blue ? 1 : 0);
@@ -805,6 +811,7 @@ namespace props
 			{
 				const float cx = X + 1.5f, cy = Y + 1.5f;
 				gfx::SetDepth(cx + cy);
+				const gfx::DepthTentScope foot(X - 0.5f, Y - 0.5f, X + 3.5f, Y + 3.5f);   // 4x4 발자국
 				if (PropSprite("prop_fountain", Off(gfx::IsoPx(cx, cy), 0.f, 40.f), 0.f, 0.f, false, WHITE, 8.f * 32.f * 0.86f))
 					PushLight({ gfx::IsoPx(cx, cy), 160.f, Rgb(0x90D0FF), 0.45f });   // 물빛
 				else

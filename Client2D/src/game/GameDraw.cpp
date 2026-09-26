@@ -13,6 +13,7 @@
 #include "ui/UiArt.h"
 #include "render/Icons.h"
 #include "render/Props.h"
+#include "render/Critters.h"
 #include "render/Assets.h"
 #include "ui/Font.h"
 #include "core/Util.h"
@@ -195,6 +196,11 @@ void Game::DrawWorld(const Camera2D& cam)
 	gfx::DepthWrite(false);
 	gfx::SetDepthRaw(-0.97f);
 	gfx::SetDrape(true);
+	if (Terrain::Solo() < 0)
+	{
+		props::DrawBuildingShadows();   // 건물 그늘(자기 검토 — 건물이 땅에서 떠 보였다)
+		critters::DrawGround();         // 나는 비둘기 그림자 · 물고기 물 고리
+	}
 
 	// 마우스가 가리키는 칸(바닥 격자를 켰을 때만 — 설정 창)
 	if (kb::Opt().showGrid && m_hoverX >= 0 && m_hover == ObjID{} && m_hoverNpc == 0 && !ui::MouseOverUi() && !m_dead)
@@ -310,6 +316,7 @@ void Game::DrawWorld(const Camera2D& cam)
 	if (Terrain::Solo() < 0)
 	{
 		DrawNpcs();
+		critters::DrawWorld();
 		for (auto& [id, e] : m_ents)
 			if (!IsTranslucent(e, static_cast<float>(m_now)))
 				DrawEntity(e, false);
@@ -879,7 +886,11 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		bool showName = false, showBar = false;
 		switch (e.kind)
 		{
-		case EntityKind::Player: showName = true; showBar = id != m_selfId && (e.hp < e.maxhp || targeted) && !e.dead; break;
+		case EntityKind::Player:
+			// 대화 중에는 내 이름을 감춘다 — 바로 옆 NPC 이름표와 겹쳐 "경매인 로렌초"가 읽히지 않았다(자기 검토)
+			showName = !(id == m_selfId && m_dialogNpc != 0);
+			showBar = id != m_selfId && (e.hp < e.maxhp || targeted) && !e.dead;
+			break;
 		case EntityKind::Monster:
 			showName = e.IsBoss() || hovered || targeted || recentHit || alt || (e.row && e.row->dummy);
 			showBar = !e.dead && (e.hp < e.maxhp || hovered || targeted) && !(e.row && e.row->dummy);   // 허수아비는 체력 대신 계측(DrawDummyMeters)

@@ -7,7 +7,8 @@ Windows IOCP 기반 대규모 분산 MMORPG 게임 서버 · C++20 · 3개월 1�
 - 2D MMORPG 클라이언트 「하르벤」 — [Client2D/README.md](Client2D/README.md) · 서버 컨텐츠 확장(종족·보스, 그로시·상점·각인 강화, 마을·사망 패널티, PK·성향) — [docs/LINEAGE_CONTENT.md](docs/LINEAGE_CONTENT.md)
 - 세계관 · 이름 규칙 — [docs/WORLD.md](docs/WORLD.md) · 디자인 시스템 「새김」 — [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)
 - 고도화 기록 — 조작 · 이동 [PHASE_1](docs/upgrade/PHASE_1.md) · 기술 시스템 · 전투 연출 [PHASE_2](docs/upgrade/PHASE_2.md) · 직업 36기술 움직이는 그림 [docs/skills](docs/skills/README.md) ·
-  창 시스템 · HUD · 상시 채팅창(서버 채널 채팅 `CS_CHAT_EX` — Zone 소유 스레드 도배 막기 · 이름 색인 귓속말) [PHASE_3](docs/upgrade/PHASE_3.md)
+  창 시스템 · HUD · 상시 채팅창(서버 채널 채팅 `CS_CHAT_EX` — Zone 소유 스레드 도배 막기 · 이름 색인 귓속말) [PHASE_3](docs/upgrade/PHASE_3.md) ·
+  마을 3배 · 높낮이(층 0~4 — 서버 충돌 격자 그대로, 강제 이동 대각 규칙) · 레벨디자인 · 건물 19종 [PHASE_4](docs/upgrade/PHASE_4.md) · 설계도 [LEVEL_DENICA](docs/LEVEL_DENICA.md)
 - 게임 그림 · 목소리 — 캐릭터 · 몬스터 · NPC · 배경 · 소품 · 아이콘 · 효과 · UI · 대사 음성을 Higgsfield로 생성 — [tools/assetgen](tools/assetgen/README.md) · 규칙 [디자인 시스템 9장](docs/DESIGN_SYSTEM.md#9-게임-그림--higgsfield)
 
 ---

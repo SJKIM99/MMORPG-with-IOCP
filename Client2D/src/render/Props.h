@@ -37,6 +37,8 @@ namespace props
 	void DrawBuilding(const WorldData::BuildingRow& b, float time);
 	// 건물을 다 그린 뒤 한 번: 모아 둔 굴뚝 연기(깊이 쓰기 끔) · 등불 빛(더하기)
 	void DrawBuildingFx();
+	// 건물이 땅에 드리운 그늘(바닥 데칼 단계에서 — 깊이 시험 · 드리우기)
+	void DrawBuildingShadows();
 	// 그린 건물(assets/buildings — Phase 4-C): 폴더와 켜기(끄면 모두 키트 — 비교 캡처 · --kit-buildings)
 	void SetBuildingArt(const std::string& dir, bool on);
 	// 소품(props.txt — Phase 4-C): 막히는 소품 칸 하나(없으면 false) · 화면 칸 범위 안의 줄 소품(빨랫줄 · 줄깃발)

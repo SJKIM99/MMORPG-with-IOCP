@@ -1065,6 +1065,28 @@ namespace sfx
 				Tone(b, 0, 0.12f, Osc::Sine, ExpSweep(160, 70), 0.6f, 0.001f, 30.f);
 				Load(Id::Anvil, b, 0.5f);
 			}
+			{
+				// 비둘기 떼 날아오름: 날개 치는 짧은 공기 파열이 처음엔 겹쳐 빽빽하다가 점점 성기게(한 마리씩 떠난다) + 옷자락 같은 낮은 휙
+				Buf b(1.0f);
+				float t = 0.f;
+				for (int i = 0; i < 14; ++i)
+				{
+					const float gap = 0.028f + 0.0045f * i * i * 0.35f;
+					const float amp = 0.9f - i * 0.045f;
+					Noise(b, t, 0.05f, [i](float u) { return (1100.f + 180.f * (i % 3)) * (1.f + 0.6f * u); }, amp, 0.004f, 38.f, 420.f);
+					t += gap;
+				}
+				Noise(b, 0, 0.5f, Sweep(900, 400), 0.35f, 0.03f, 5.f, 160.f);
+				Load(Id::Flutter, b, 0.42f);
+			}
+			{
+				// 물고기 퐁당: 물 튀는 짧은 쏴 + 아래로 떨어지는 방울 음(퐁) + 작은 두 번째 방울
+				Buf b(0.45f);
+				Noise(b, 0, 0.09f, Sweep(2600, 900), 0.55f, 0.002f, 26.f, 300.f);
+				Tone(b, 0.004f, 0.12f, Osc::Sine, ExpSweep(820, 360), 0.7f, 0.002f, 22.f);
+				Tone(b, 0.11f, 0.08f, Osc::Sine, ExpSweep(1150, 700), 0.3f, 0.002f, 30.f);
+				Load(Id::FishSplash, b, 0.32f);
+			}
 		}
 	}
 
