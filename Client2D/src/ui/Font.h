@@ -76,6 +76,10 @@ namespace ui
 		void PopFace();
 		[[nodiscard]] Face CurrentFace() const;
 
+		// UI 배율(Phase 3-A): 그리는 곳이 물리 = off + 지역 × k로 확대돼 있으면 글자를 size × k로 래스터라이즈해
+		// 1/k로 찍는다 → 행렬이 다시 k배 하면 물리 픽셀 1:1(흐려지지 않는다). Measure도 같은 크기로 잰다.
+		void SetRenderXform(Vector2 off, float k) { m_xOff = off; m_xK = k > 0.01f ? k : 1.f; }
+
 		[[nodiscard]] bool IsReady() const noexcept { return m_ready; }
 
 	private:
@@ -104,6 +108,8 @@ namespace ui
 		std::unordered_map<uint64_t, Glyph> m_glyphs;  // (face << 48) | (size << 32) | codepoint
 		std::vector<Face> m_faceStack;
 		bool m_ready = false;
+		Vector2 m_xOff{ 0, 0 };
+		float m_xK = 1.f;
 	};
 
 	FontSystem& Fonts();

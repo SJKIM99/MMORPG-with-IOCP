@@ -25,6 +25,8 @@ CASES = [
     ('skillgrow', 24, 1), ('training', 45, 0), ('skills:2', 45, 2),
     # 기술 성장 서버 규칙(레벨 3 캐릭터 — 점수 4): 15단계 기대값 비교, 로그의 [growcheck] done pass=15 fail=0
     ('growcheck', 55, 0, 'lv3_rg_gc'), ('awaken3', 16, 0, 'lv50_rg_aw'),
+    # Phase 3-A · 3-C: 창 관리자(끌기 · 크기 · 자석 · 겹침 순서 · Esc · 저장) · UI 편집(옮기기 · 배율) · HUD 겹침 검사
+    ('wm', 16, 0), ('uiedit', 14, 0), ('hudres', 8, 0),
 ]
 
 
@@ -46,7 +48,7 @@ def main():
         try:
             r = subprocess.run(cmd, cwd=client, env=env, capture_output=True, text=True, timeout=after * 5 + 120)   # 소프트웨어 렌더링(5fps 안팎)에서도 넉넉히
             code = r.returncode
-            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]') or l.startswith('[growcheck] done') or l.startswith('[bench]')]
+            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]') or l.startswith('[growcheck] done') or l.startswith('[bench]') or l.startswith('[wmcheck] done') or l.startswith('[hudcheck] screen')]
         except subprocess.TimeoutExpired:
             code, lines = 'TIMEOUT', []
         src = os.path.join(client, shot)

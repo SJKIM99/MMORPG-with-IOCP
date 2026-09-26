@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "ui/Wm.h"
 #include "game/Texts.h"
 #include "game/KeyBinds.h"
 #include "fx/Effects.h"
@@ -399,8 +400,8 @@ void Game::DrawLogin()
 
 void Game::DrawDisconnected()
 {
-	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 0, 0, 0, 170 });
-	const Rectangle r{ m_screenW * 0.5f - 200.f, m_screenH * 0.5f - 90.f, 400.f, 180.f };
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 170 });
+	const Rectangle r{ m_uiW * 0.5f - 200.f, m_uiH * 0.5f - 90.f, 400.f, 180.f };
 	ui::Panel(r);
 	ui::TextShadow("서버와의 연결이 끊어졌습니다", Vector2{ r.x + r.width * 0.5f, r.y + 30 }, 21.f, ui::theme::kTitle, Align::Center);
 	ui::Text(m_net.LastError(), Vector2{ r.x + r.width * 0.5f, r.y + 68 }, 15.f, ui::theme::kTextDim, Align::Center);
@@ -419,7 +420,7 @@ void Game::DrawDisconnected()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawHud()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	// 경험치(화면 맨 아래 가는 띠 — 새벽빛)
 	{
 		const Rectangle r{ 0, H - 5, W, 5 };
@@ -441,6 +442,7 @@ void Game::DrawHud()
 	// 왼쪽 위: 나(직업 문장 · 이름 · 그로시)
 	{
 		const Rectangle r{ 12.f, 12.f, 268.f, 80.f };
+		wm::HudScope hs("hud.me", "나", r);
 		ui::Panel(r, 0.94f, false);
 		const Vector2 ec{ r.x + 40.f, r.y + 40.f };
 		ClassEmblem(ec, 26.f, m_classId, m_time);
@@ -483,7 +485,10 @@ void Game::DrawHud()
 			if (ui::Clicked(b)) { m_charOpen = true; sfx::Play(sfx::Id::Open, 0.6f); }
 		}
 	}
-	DrawStatusIcons(12.f, 100.f);
+	{
+		wm::HudScope hs("hud.buffs", "버프 · 약화", Rectangle{ 12.f, 100.f, 300.f, 30.f });
+		DrawStatusIcons(12.f, 100.f);
+	}
 
 	// 가운데 알림(위쪽 알림 띠가 길어지면 그 아래로)
 	float y = std::max(H * 0.27f, m_bannersBottom + 18.f);
@@ -510,9 +515,10 @@ void Game::DrawTargetFrame()
 	Entity* t = Find(m_target);
 	if (!t || t->kind == EntityKind::Item || t->removing)
 		return;
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	const bool boss = t->IsBoss();
 	const Rectangle r{ std::round(W * 0.5f - 180.f), 12.f, 360.f, boss ? 78.f : 56.f };
+	wm::HudScope hs("hud.target", "대상", Rectangle{ r.x, r.y, r.width, 78.f });
 	ui::Panel(r, 0.95f, false);
 	if (boss)
 		DrawRectangleRec(Rectangle{ r.x + 5, r.y + 1, r.width - 10, 2 }, ui::theme::kEmber);
@@ -575,9 +581,10 @@ void Game::DrawTargetFrame()
 
 void Game::DrawMinimap()
 {
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	const float size = 184.f;
 	const Rectangle r{ std::round(W - size - 14.f), 12.f, size, size + 50.f };
+	wm::HudScope hs("hud.minimap", "미니맵", r);
 	ui::Panel(r, 0.95f, false);
 	const Rectangle m{ r.x + 8, r.y + 8, size - 16, size - 16 };
 	DrawMinimapAt(m, 30, 1.f, false);
@@ -642,7 +649,9 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 	int& cy0 = bigMap ? m_bigMapY : m_minimapY;
 	const int redraw = bigMap ? 3 : 1;
 	const float margin = std::ceil(redraw * k * 2.f + 2.f);
-	const int texW = static_cast<int>(m.width + margin * 2.f), texH = static_cast<int>(m.height + margin * 2.f);
+	// UI 배율(Phase 3-A): 캐시는 물리 픽셀 크기로 굽는다(배율 1.25 · 1.3에서도 흐려지지 않게)
+	const float K = std::max(1.f, ui::CurrentXform().k);
+	const int texW = static_cast<int>(std::ceil((m.width + margin * 2.f) * K)), texH = static_cast<int>(std::ceil((m.height + margin * 2.f) * K));
 	if (rt.id == 0 || rt.texture.width != texW || rt.texture.height != texH)
 	{
 		if (rt.id != 0) UnloadRenderTexture(rt);
@@ -653,9 +662,11 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 	{
 		cx0 = m_predX;
 		cy0 = m_predY;
+		ui::SuspendXform();
 		BeginTextureMode(rt);
 		ClearBackground(bigMap ? Color{ 10, 12, 14, 0 } : Color{ 10, 12, 14, 255 });
 		const Vector2 lc{ texW * 0.5f, texH * 0.5f };
+		const float k = std::max(1.f, ui::CurrentXform().k) * (bigMap ? m.width / ((kRange * 2.f + 1.f) * 2.f) : m.width / (kRange * 2.f + 1.f) * 0.72f);
 		const int R = kRange + redraw + 1;
 		for (int dy = -R; dy <= R; ++dy)
 			for (int dx = -R; dx <= R; ++dx)
@@ -678,14 +689,16 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 				DrawRectangleV(Vector2{ p.x - k, p.y - k * 0.5f }, Vector2{ k * 2.f + 0.5f, k + 0.5f }, col);
 			}
 		EndTextureMode();
+		ui::ResumeXform();
 	}
-	BeginScissorMode(static_cast<int>(m.x), static_cast<int>(m.y), static_cast<int>(m.width), static_cast<int>(m.height));
+	ui::BeginClip(Rectangle{ m.x, m.y, m.width, m.height });
 	{
 		// 캐시 중심과 지금 칸의 차이만큼 옮겨 그린다
 		const float odx = static_cast<float>(cx0 - m_predX), ody = static_cast<float>(cy0 - m_predY);
 		const Vector2 off{ (odx - ody) * k, (odx + ody) * k * 0.5f };
-		DrawTextureRec(rt.texture, Rectangle{ 0, 0, static_cast<float>(texW), -static_cast<float>(texH) },
-			Vector2{ std::round(m.x - margin + off.x), std::round(m.y - margin + off.y) }, util::WithA(WHITE, alpha));
+		DrawTexturePro(rt.texture, Rectangle{ 0, 0, static_cast<float>(texW), -static_cast<float>(texH) },
+			Rectangle{ std::round((m.x - margin + off.x) * K) / K, std::round((m.y - margin + off.y) * K) / K, texW / K, texH / K },
+			Vector2{ 0, 0 }, 0.f, util::WithA(WHITE, alpha));
 	}
 	// 부드러운 이동 보정(내 실제 위치와 캐시 기준 칸의 차이)
 	Entity* me = Self();
@@ -769,7 +782,7 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 		DrawTriangle(Vector2{ p.x + d.x * 7, p.y + d.y * 7 }, Vector2{ p.x - d.x * 4 - n.x * 4, p.y - d.y * 4 - n.y * 4 }, Vector2{ p.x - d.x * 4 + n.x * 4, p.y - d.y * 4 + n.y * 4 }, wc);
 		DrawTriangle(Vector2{ p.x + d.x * 7, p.y + d.y * 7 }, Vector2{ p.x - d.x * 4 + n.x * 4, p.y - d.y * 4 + n.y * 4 }, Vector2{ p.x - d.x * 4 - n.x * 4, p.y - d.y * 4 - n.y * 4 }, wc);
 	}
-	EndScissorMode();
+	ui::EndClip();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -777,7 +790,7 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawChat()
 {
-	const float H = static_cast<float>(m_screenH);
+	const float H = m_uiH;
 	const float w = std::max(220.f, std::min(440.f, HudLeft() - 36.f));   // 전투 HUD 판 왼쪽까지
 	const Rectangle log{ 12.f, H - 292.f, w, 206.f };
 	const bool hover = ui::Hovered(log);
@@ -787,7 +800,7 @@ void Game::DrawChat()
 	// 최신 줄이 아래
 	const float size = 14.f;
 	float y = log.y + log.height - 6.f;
-	BeginScissorMode(static_cast<int>(log.x), static_cast<int>(log.y), static_cast<int>(log.width), static_cast<int>(log.height));
+	ui::BeginClip(Rectangle{ log.x, log.y, log.width, log.height });
 	for (auto it = m_chat.rbegin(); it != m_chat.rend() && y > log.y; ++it)
 	{
 		const float age = static_cast<float>(m_now - it->time);
@@ -801,7 +814,7 @@ void Game::DrawChat()
 			ui::Text(*ln, Vector2{ log.x + 8.f, y }, size, util::MulA(it->color, a), Align::Left, true);
 		}
 	}
-	EndScissorMode();
+	ui::EndClip();
 
 	if (open)
 	{
@@ -836,9 +849,9 @@ void Game::DrawNpcPortrait(Rectangle pr, const WorldData::NpcRow& npc)
 	if (const Texture2D* tex = art::Portrait(npc.id))
 	{
 		const float breath = 1.02f + 0.012f * std::sin(m_time * 1.5f + npc.id);
-		BeginScissorMode(static_cast<int>(pr.x + 1.f), static_cast<int>(pr.y + 1.f), static_cast<int>(pr.width - 2.f), static_cast<int>(pr.height - 2.f));
+		ui::BeginClip(Rectangle{ pr.x + 1.f, pr.y + 1.f, pr.width - 2.f, pr.height - 2.f });
 		art::DrawCover(*tex, Rectangle{ pr.x + 1.f, pr.y + 1.f, pr.width - 2.f, pr.height - 2.f }, WHITE, Vector2{ 0.5f, 0.42f }, breath);
-		EndScissorMode();
+		ui::EndClip();
 		// 아래를 판 색으로 녹이고, 위에 옅은 빛(판에 끼운 그림처럼)
 		const int gh = static_cast<int>(pr.height * 0.3f);
 		DrawRectangleGradientV(static_cast<int>(pr.x + 1.f), static_cast<int>(pr.y + pr.height) - gh - 1, static_cast<int>(pr.width - 2.f), gh,
@@ -848,7 +861,7 @@ void Game::DrawNpcPortrait(Rectangle pr, const WorldData::NpcRow& npc)
 	else
 	{
 		DrawRectangleGradientV(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height), Color{ 60, 66, 70, 90 }, Color{ 10, 12, 14, 0 });
-		BeginScissorMode(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height));
+		ui::BeginClip(Rectangle{ pr.x, pr.y, pr.width, pr.height });
 		{
 			actors::Pose pose;
 			const bool small = WorldData::IsAnimal(npc.kind) || npc.kind == WorldData::NpcKind::eChild;
@@ -863,7 +876,7 @@ void Game::DrawNpcPortrait(Rectangle pr, const WorldData::NpcRow& npc)
 			actors::DrawNpc(pose, npc);
 			gfx::Flush();
 		}
-		EndScissorMode();
+		ui::EndClip();
 	}
 	ui::Plate(pr, BLANK, ui::theme::kLineStrong, 4.f, 1.f);
 }
@@ -896,8 +909,8 @@ void Game::DrawNpcDialog()
 	if (quests.size() > 4) quests.resize(4);
 	const float extra = quests.empty() ? 0.f : quests.size() * 30.f + 6.f;
 
-	const float W = static_cast<float>(m_screenW);
-	const Rectangle r{ W * 0.5f - 300.f, std::max(12.f, HudTop() - 14.f - (226.f + extra)), 600.f, 226.f + extra };   // 전투 HUD 위
+	const float W = m_uiW;
+	const Rectangle r = wm::Window("npc", Rectangle{ W * 0.5f - 300.f, std::max(12.f, HudTop() - 14.f - (226.f + extra)), 600.f, 226.f + extra }, wm::kMove);   // 전투 HUD 위
 	bool open = true;
 	ui::Window(r, npc->name, &open);
 	if (!open) { CloseNpcWindows(); return; }
@@ -1024,8 +1037,8 @@ void Game::DrawShop()
 {
 	const auto* npc = WorldData::FindNpc(m_dialogNpc);
 	if (!npc) { m_shopMode = ShopMode::None; return; }
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Rectangle r{ std::max(12.f, W * 0.5f - 470.f), std::max(12.f, H * 0.5f - 262.f), 440.f, std::min(H - 124.f, 504.f) };
+	const float W = m_uiW, H = m_uiH;
+	const Rectangle r = wm::Window("shop", Rectangle{ std::max(12.f, W * 0.5f - 470.f), std::max(12.f, H * 0.5f - 262.f), 440.f, std::min(H - 124.f, 504.f) }, wm::kMove);
 	bool open = true;
 	ui::Window(r, std::string(npc->name) + " — 구매", &open);
 	if (!open) { CloseNpcWindows(); return; }
@@ -1122,9 +1135,9 @@ void Game::DrawSell()
 {
 	const auto* npc = WorldData::FindNpc(m_dialogNpc);
 	if (!npc) { m_shopMode = ShopMode::None; return; }
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	m_invOpen = true;
-	const Rectangle r{ std::max(12.f, W * 0.5f - 420.f), std::max(12.f, H * 0.5f - 180.f), 400.f, 300.f };
+	const Rectangle r = wm::Window("sell", Rectangle{ std::max(12.f, W * 0.5f - 420.f), std::max(12.f, H * 0.5f - 180.f), 400.f, 300.f }, wm::kMove);
 	bool open = true;
 	ui::Window(r, std::string(npc->name) + " — 판매", &open);
 	if (!open) { CloseNpcWindows(); return; }
@@ -1179,8 +1192,8 @@ void Game::DrawTeleport()
 {
 	const auto* npc = WorldData::FindNpc(m_dialogNpc);
 	if (!npc) { m_shopMode = ShopMode::None; return; }
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Rectangle r{ W * 0.5f - 280.f, std::max(12.f, H * 0.5f - 300.f), 560.f, std::min(H - 130.f, 600.f) };
+	const float W = m_uiW, H = m_uiH;
+	const Rectangle r = wm::Window("tele", Rectangle{ W * 0.5f - 280.f, std::max(12.f, H * 0.5f - 300.f), 560.f, std::min(H - 130.f, 600.f) }, wm::kMove);
 	bool open = true;
 	ui::Window(r, "옛길 이동 — 목적지", &open);
 	if (!open) { CloseNpcWindows(); return; }
@@ -1238,8 +1251,8 @@ void Game::DrawTeleport()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawEnchant()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 0, 0, 0, 120 });
+	const float W = m_uiW, H = m_uiH;
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 120 });
 	const Rectangle r{ W * 0.5f - 230.f, H * 0.5f - 190.f, 460.f, 360.f };
 	ui::Panel(r);
 	{
@@ -1358,7 +1371,7 @@ void Game::DrawDiscard()
 {
 	const InvSlot& s = m_inv.slots[m_discard.slot];
 	if (s.Empty()) { m_discard.open = false; return; }
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	const Rectangle r{ W * 0.5f - 180.f, H * 0.5f - 100.f, 360.f, 200.f };
 	ui::Window(r, "버리기", nullptr);
 	ui::SlotFrame(Rectangle{ r.x + 18, r.y + 50, 52, 52 }, false, false, SlotRarity(s) != Rarity::Common ? icons::RarityColor(SlotRarity(s)) : ui::theme::kBorder);
@@ -1389,14 +1402,14 @@ void Game::DrawDiscard()
 
 void Game::DrawDeath()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	const float t = static_cast<float>(m_now - m_deadAt);
 	const float a = util::Clamp01(t / 1.2f);
 	// 화면이 먹빛으로 가라앉고, 가운데 띠에만 붉은 기운이 남는다
-	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 8, 6, 8, static_cast<unsigned char>(170 * a) });
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 8, 6, 8, static_cast<unsigned char>(170 * a) });
 	const unsigned char band = static_cast<unsigned char>(90 * a);
-	DrawRectangleGradientV(0, static_cast<int>(H * 0.22f), m_screenW, static_cast<int>(H * 0.14f), Color{ 70, 16, 12, 0 }, Color{ 70, 16, 12, band });
-	DrawRectangleGradientV(0, static_cast<int>(H * 0.36f), m_screenW, static_cast<int>(H * 0.14f), Color{ 70, 16, 12, band }, Color{ 70, 16, 12, 0 });
+	DrawRectangleGradientV(0, static_cast<int>(H * 0.22f), static_cast<int>(std::ceil(m_uiW)), static_cast<int>(H * 0.14f), Color{ 70, 16, 12, 0 }, Color{ 70, 16, 12, band });
+	DrawRectangleGradientV(0, static_cast<int>(H * 0.36f), static_cast<int>(std::ceil(m_uiW)), static_cast<int>(H * 0.14f), Color{ 70, 16, 12, band }, Color{ 70, 16, 12, 0 });
 	if (t < 0.6f) return;
 	const float k = util::EaseOutCubic(util::Clamp01((t - 0.6f) / 0.6f));
 	ui::TextStyle st;
@@ -1426,7 +1439,7 @@ void Game::DrawDeath()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawBanners()
 {
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	float y = 84.f;
 	y += DrawQuestStackCards(y);
 	for (const auto& b : m_banners)
@@ -1457,7 +1470,7 @@ void Game::DrawBanners()
 
 void Game::DrawToasts()
 {
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	float y = std::max(262.f, m_trackerBottom + 6.f);   // 퀘스트 추적 표시 아래
 	const float x1 = m_invOpen ? m_invRect.x - 12.f : W - 14.f;
 	for (const auto& t : m_toasts)
@@ -1478,8 +1491,8 @@ void Game::DrawToasts()
 
 void Game::DrawHelp()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Rectangle r{ W * 0.5f - 330.f, std::max(8.f, H * 0.5f - 270.f), 660.f, 540.f };
+	const float W = m_uiW, H = m_uiH;
+	const Rectangle r = wm::Window("help", Rectangle{ W * 0.5f - 330.f, std::max(8.f, H * 0.5f - 270.f), 660.f, 540.f }, wm::kMove);
 	ui::Window(r, "도움말", &m_helpOpen);
 	using kb::Act;
 	auto L = [](Act a) { return kb::Label(a); };
@@ -1514,9 +1527,9 @@ void Game::DrawHelp()
 
 void Game::DrawWorldMap()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	const float cell = std::min(132.f, (std::min(W, H) - 140.f) / 4.f);
-	const Rectangle r{ W * 0.5f - (cell * 4 + 40) * 0.5f, H * 0.5f - (cell * 4 + 90) * 0.5f, cell * 4 + 40, cell * 4 + 90 };
+	const Rectangle r = wm::Window("map", Rectangle{ W * 0.5f - (cell * 4 + 40) * 0.5f, H * 0.5f - (cell * 4 + 90) * 0.5f, cell * 4 + 40, cell * 4 + 90 }, wm::kMove);
 	ui::Window(r, "월드 지도", &m_mapOpen);
 	const float x0 = r.x + 20, y0 = r.y + 46;
 	for (const auto& reg : WorldData::kRegions)
@@ -1680,9 +1693,9 @@ void Game::DrawStatusIcons(float x, float y)
 		if (total > 0.f && remain > 0.f)
 		{
 			const float frac = util::Clamp01(1.f - remain / total);
-			BeginScissorMode(static_cast<int>(b.x), static_cast<int>(b.y), static_cast<int>(b.width), static_cast<int>(b.height));
+			ui::BeginClip(Rectangle{ b.x, b.y, b.width, b.height });
 			DrawCircleSector(Vector2{ b.x + S * 0.5f, b.y + S * 0.5f }, S * 0.75f, -90.f, -90.f + 360.f * frac, 24, Color{ 0, 0, 0, 120 });
-			EndScissorMode();
+			ui::EndClip();
 		}
 		// 곧 끝나면 깜빡인다
 		const bool ending = remain > 0.f && remain < 2.f;
@@ -1734,7 +1747,7 @@ void Game::DrawStatusIcons(float x, float y)
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawComboCounter()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	const double age = m_now - m_comboLastAt;
 	const float cx = W - 360.f, cy = H * 0.42f;   // 오른쪽은 퀘스트 추적 표시 자리
 	if (m_comboHits >= 2 && age < 3.0)
@@ -1787,8 +1800,8 @@ void Game::DrawComboCounter()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawCharacter()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const Rectangle r{ std::max(20.f, W * 0.5f - 470.f), std::max(12.f, H * 0.5f - 290.f), 600.f, std::min(H - 120.f, 560.f) };
+	const float W = m_uiW, H = m_uiH;
+	const Rectangle r = wm::Window("char", Rectangle{ std::max(20.f, W * 0.5f - 470.f), std::max(12.f, H * 0.5f - 290.f), 600.f, std::min(H - 120.f, 560.f) }, wm::kMove);
 	ui::Window(r, "캐릭터", &m_charOpen);
 	const ClassRow& cls = ClassTable::Get(m_classId);
 	const Color cc = ClassColor(m_classId);
@@ -1949,7 +1962,7 @@ void Game::DrawClassSelect(Rectangle area)
 			DrawRectangleGradientV(static_cast<int>(card.x + 2.f), static_cast<int>(card.y + chipH * 0.3f), static_cast<int>(card.width - 4.f), static_cast<int>(chipH * 0.7f - 2.f),
 				util::WithA(cc, 0.f), util::WithA(cc, 0.17f));
 
-		BeginScissorMode(static_cast<int>(pv.x), static_cast<int>(pv.y), static_cast<int>(pv.width), static_cast<int>(pv.height));
+		ui::BeginClip(Rectangle{ pv.x, pv.y, pv.width, pv.height });
 		{
 			actors::Pose pose;
 			// 가장 키 큰 모습(각인술사의 두건 · 지팡이)까지 칸 안에 들어오는 배율
@@ -1975,7 +1988,7 @@ void Game::DrawClassSelect(Rectangle area)
 			actors::DrawPlayer(pose, actors::LookForPlayer(0x5EEDu * (i + 3), cls.starterWeapon, 0, static_cast<uint8_t>(i)));
 			gfx::Flush();
 		}
-		EndScissorMode();
+		ui::EndClip();
 
 		ui::TextStyle ns;
 		ns.size = 15.5f;

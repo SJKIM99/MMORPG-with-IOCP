@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "ui/Wm.h"
 #include "game/KeyBinds.h"
 #include "game/Texts.h"
 #include "fx/SkillFx.h"
@@ -100,21 +101,29 @@ namespace
 
 	void CooldownSweep(Rectangle r, float frac, unsigned char alpha)
 	{
-		BeginScissorMode(static_cast<int>(r.x), static_cast<int>(r.y), static_cast<int>(r.width), static_cast<int>(r.height));
+		ui::BeginClip(Rectangle{ r.x, r.y, r.width, r.height });
 		DrawCircleSector(Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, r.width * 0.75f, -90.f, -90.f + 360.f * util::Clamp01(frac), 36, Color{ 0, 0, 0, alpha });
-		EndScissorMode();
+		ui::EndClip();
 	}
 }
 
-float Game::HudTop() const { return Layout(static_cast<float>(m_screenW), static_cast<float>(m_screenH)).panel.y; }
-float Game::HudLeft() const { return Layout(static_cast<float>(m_screenW), static_cast<float>(m_screenH)).panel.x; }
+namespace
+{
+	// 전투 판 덩어리(Phase 3-A): 판 + 위쪽 고유 기술 게이지 · 단축키 표시 자리(18px)
+	Rectangle CombatNatural(const Hud& L) { return Rectangle{ L.panel.x, L.panel.y - 18.f, L.panel.width, L.panel.height + 18.f }; }
+}
+
+// 옮기고 배율을 건 전투 판의 위 · 왼쪽(대화창 · 채팅이 피한다)
+float Game::HudTop() const { return wm::HudRect("hud.combat", CombatNatural(Layout(m_uiW, m_uiH))).y; }
+float Game::HudLeft() const { return wm::HudRect("hud.combat", CombatNatural(Layout(m_uiW, m_uiH))).x; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 판 · HP · MP
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawCombatPanel()
 {
-	const Hud L = Layout(static_cast<float>(m_screenW), static_cast<float>(m_screenH));
+	const Hud L = Layout(m_uiW, m_uiH);
+	wm::HudScope hs("hud.combat", "전투 판", CombatNatural(L));
 	ui::Panel(L.panel, 0.94f, false);
 	const float pulse = (m_maxhp > 0 && m_hp * 4 < m_maxhp) ? 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 8.f) : 0.f;
 	ui::Bar(L.hp, m_hpShown, m_hpLag, util::Mix(ui::theme::kHp, Rgb(0xE0705A), pulse), Color{ 34, 14, 14, 255 },
@@ -294,7 +303,8 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 
 void Game::DrawSkillBar()
 {
-	const Hud L = Layout(static_cast<float>(m_screenW), static_cast<float>(m_screenH));
+	const Hud L = Layout(m_uiW, m_uiH);
+	wm::HudScope hs("hud.combat", "전투 판", CombatNatural(L));
 	m_previewSkill = -1;
 	for (int i = 0; i < 8; ++i)
 		DrawHotSlot(L.skill[i], 1 + i, 1.f);
@@ -312,7 +322,8 @@ void Game::DrawSkillBar()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawQuickBar()
 {
-	const Hud L = Layout(static_cast<float>(m_screenW), static_cast<float>(m_screenH));
+	const Hud L = Layout(m_uiW, m_uiH);
+	wm::HudScope hs("hud.combat", "전투 판", CombatNatural(L));
 	for (int i = 0; i < kItemSlots; ++i)
 	{
 		const Rectangle r = L.item[i];
@@ -401,9 +412,9 @@ void Game::DrawQuickBar()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawSystemMenu()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 0, 0, 0, 90 });
-	const Rectangle r{ std::round(W * 0.5f - 150.f), std::round(H * 0.5f - 150.f), 300.f, 290.f };
+	const float W = m_uiW, H = m_uiH;
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 90 });
+	const Rectangle r{ std::round(W * 0.5f - 150.f), std::round(H * 0.5f - 199.f), 300.f, 386.f };
 	ui::Window(r, "메뉴", &m_menuOpen);
 	float y = r.y + 58.f;
 	auto item = [&](const char* label, ButtonKind kind)
@@ -414,8 +425,11 @@ void Game::DrawSystemMenu()
 	};
 	if (item("게임으로 돌아가기", ButtonKind::Primary)) { m_menuOpen = false; sfx::Play(sfx::Id::Close, 0.5f); }
 	if (item("조작 설정", ButtonKind::Normal)) { m_menuOpen = false; m_keysOpen = true; sfx::Play(sfx::Id::Open, 0.5f); }
+	// Phase 3-A: HUD 덩어리 옮기기 · 배율(편집 모드) · 창 배치 되돌리기
+	if (item("UI 편집", ButtonKind::Normal)) { m_menuOpen = false; m_uiEdit = true; sfx::Play(sfx::Id::Open, 0.5f); }
+	if (item("창 배치 되돌리기", ButtonKind::Normal)) { wm::ResetWindows(); m_menuOpen = false; AddCenter("창 배치를 기본으로 되돌렸습니다.", ui::theme::kTextDim); sfx::Play(sfx::Id::Close, 0.5f); }
 	if (item("도움말", ButtonKind::Normal)) { m_menuOpen = false; m_helpOpen = true; sfx::Play(sfx::Id::Open, 0.5f); }
-	if (item("게임 종료", ButtonKind::Danger)) { SaveControls(); m_quit = true; }
+	if (item("게임 종료", ButtonKind::Danger)) { SaveControls(); if (wm::Dirty()) SaveUiLayout(); m_quit = true; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -461,8 +475,8 @@ void Game::ApplyKeyBind(int act, int key, uint8_t mods, bool swapIfTaken)
 
 void Game::DrawKeySettings()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	DrawRectangle(0, 0, m_screenW, m_screenH, Color{ 0, 0, 0, 110 });
+	const float W = m_uiW, H = m_uiH;
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 110 });
 	const float ww = std::min(W - 32.f, 920.f), wh = std::min(H - 32.f, 628.f);
 	const Rectangle r{ std::round((W - ww) * 0.5f), std::round((H - wh) * 0.5f), ww, wh };
 	bool open = true;
@@ -628,6 +642,13 @@ void Game::DrawKeySettings()
 		}
 		toggle("광과민 보호", o.photoSafe);
 		toggle("화면 흔들림", o.shake);
+		{
+			// Phase 3-A: UI 배율 — 자동 = 1080p까지 100%, 1440p 125%, 4K 200%
+			static const char* const kU[] = { "자동", "100", "125", "150", "200" };
+			static const int kUv[] = { 0, 100, 125, 150, 200 };
+			choice("UI 배율", kU, kUv, 5, o.uiScale, [&](int v) { o.uiScale = static_cast<uint8_t>(v); },
+				"HUD · 창 · 글자의 크기(%). 자동은 화면 높이로 정한다 — 1080p까지 100%, 1440p 125%, 4K 200%.");
+		}
 	}
 
 	// ── 아래: 충돌 경고 · 알림 · 버튼 ──
@@ -686,7 +707,7 @@ void Game::DrawKeySettings()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawBigMap()
 {
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	// 마름모(2:1)가 화면 가운데 — 전투 HUD 위 공간에 맞춘다
 	const float mw = std::round(std::min(W * 0.72f, (HudTop() - 96.f) * 2.f));
 	const float mh = std::round(mw * 0.5f);

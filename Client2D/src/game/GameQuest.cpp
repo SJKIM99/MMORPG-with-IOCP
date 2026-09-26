@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "ui/Wm.h"
 #include "game/KeyBinds.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
@@ -878,11 +879,12 @@ float Game::DrawQuestRewards(float x, float y, float w, const QuestRow& q, bool 
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawQuestTracker()
 {
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	const float w = 258.f;
 	const float x = W - 14.f - w;
 	float y = 256.f;
 	m_trackerBottom = y;
+	wm::HudScope hs("hud.quest", "퀘스트 추적", Rectangle{ x, y, w, 300.f });
 	if (!m_questsKnown || m_invOpen || m_questLogOpen)
 		return;
 
@@ -1045,9 +1047,9 @@ void Game::DrawQuestDialog(const WorldData::NpcRow& npc)
 	enum class Mode { Offer, During, Done };
 	const Mode mode = !v ? Mode::Offer : ((ready && q->turnIn == npc.id) ? Mode::Done : Mode::During);
 
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	const float rh = 334.f;
-	const Rectangle r{ W * 0.5f - 350.f, std::max(12.f, HudTop() - 14.f - rh), 700.f, rh };   // 전투 HUD 위
+	const Rectangle r = wm::Window("npc", Rectangle{ W * 0.5f - 350.f, std::max(12.f, HudTop() - 14.f - rh), 700.f, rh }, wm::kMove);   // 전투 HUD 위
 	bool open = true;
 	ui::Window(r, npc.name, &open);
 	if (!open) { CloseNpcWindows(); return; }
@@ -1157,9 +1159,9 @@ void Game::DrawQuestDialog(const WorldData::NpcRow& npc)
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawQuestLog()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	const float rh = std::min(540.f, H - 150.f);
-	const Rectangle r{ W * 0.5f - 390.f, std::max(12.f, H * 0.5f - rh * 0.5f - 30.f), 780.f, rh };
+	const Rectangle r = wm::Window("quest", Rectangle{ W * 0.5f - 390.f, std::max(12.f, H * 0.5f - rh * 0.5f - 30.f), 780.f, rh }, wm::kMove);
 	ui::Window(r, "퀘스트 일지", &m_questLogOpen);
 	if (!m_questLogOpen) { sfx::Play(sfx::Id::Close, 0.5f); return; }
 
@@ -1204,7 +1206,7 @@ void Game::DrawQuestLog()
 	if (ui::Hovered(list))
 		m_questLogScroll -= GetMouseWheelMove() * 40.f;
 	m_questLogScroll = std::clamp(m_questLogScroll, 0.f, std::max(0.f, contentH - list.height + 12.f));
-	BeginScissorMode(static_cast<int>(list.x), static_cast<int>(list.y), static_cast<int>(list.width), static_cast<int>(list.height));
+	ui::BeginClip(Rectangle{ list.x, list.y, list.width, list.height });
 	float y = list.y + 6.f - m_questLogScroll;
 	for (const auto& row : rows)
 	{
@@ -1241,7 +1243,7 @@ void Game::DrawQuestLog()
 		if (hover && ui::Clicked(rr)) { m_questLogSel = row.q->id; m_abandonArm = 0; sfx::Play(sfx::Id::Click, 0.4f); }
 		y += rowH;
 	}
-	EndScissorMode();
+	ui::EndClip();
 	if (rows.empty())
 		ui::TextWrapped("아직 받은 이야기가 없습니다. 마을 사람들 머리 위의 ! 를 찾아 말을 걸어 보세요.", Rectangle{ list.x + 14.f, list.y + 14.f, list.width - 28.f, 120.f }, 14.f, ui::theme::kTextDim, 5.f);
 
@@ -1454,7 +1456,7 @@ void Game::DrawQuestOverlay(const Camera2D& cam)
 // ─────────────────────────────────────────────────────────────────────────────
 float Game::DrawQuestStackCards(float y0)
 {
-	const float W = static_cast<float>(m_screenW);
+	const float W = m_uiW;
 	float y = y0;
 	// 글자: 계열(face)을 골라 쓴다 — 제목은 Display, 이야기 한 줄은 Serif, 라벨은 Strong
 	auto centered = [&](const std::string& s, float cx, float cy, float size, Color c, float outline = 0.f, ui::Face face = ui::Face::Display, float spacing = 0.f)
@@ -1562,7 +1564,7 @@ float Game::DrawQuestStackCards(float y0)
 
 void Game::DrawQuestScreenFx()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	// 글자: 계열(face)을 골라 쓴다 — 제목은 Display, 이야기 한 줄은 Serif, 라벨은 Strong
 	auto centered = [&](const std::string& s, float cx, float cy, float size, Color c, float outline = 0.f, ui::Face face = ui::Face::Display, float spacing = 0.f)
 	{
@@ -1594,7 +1596,7 @@ void Game::DrawQuestScreenFx()
 		if (!m_chapterBellPlayed) { m_chapterBellPlayed = true; sfx::Play(sfx::Id::ChapterBell, 0.8f, 0.f); }
 		const float a = util::Clamp01(t / 0.9f) * util::Clamp01((5.2f - t) / 1.1f);
 		const auto& ch = QuestData::kChapters[m_chapterCard];
-		DrawRectangle(0, 0, m_screenW, m_screenH, util::WithA(BLACK, 0.72f * a));
+		DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, util::WithA(BLACK, 0.72f * a));
 		const float cy = H * 0.42f;
 		// 장 그림: 화면을 가로지르는 넓은 띠(영화 화면비)로 천천히 다가온다. 위아래 가장자리는 어둠에 녹인다.
 		if (const Texture2D* plate = art::Chapter(m_chapterCard))
@@ -1624,13 +1626,13 @@ void Game::DrawQuestScreenFx()
 			const int f = static_cast<int>(bandH * 0.24f);
 			const int o = static_cast<int>(H * 0.1f);
 			const int top = static_cast<int>(band.y), bottom = static_cast<int>(band.y + band.height);
-			DrawRectangleGradientV(0, top, m_screenW, f, util::WithA(BLACK, 0.9f * a), util::WithA(BLACK, 0.f));
-			DrawRectangleGradientV(0, bottom - f, m_screenW, f, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.9f * a));
-			DrawRectangleGradientV(0, top - o, m_screenW, o, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.75f * a));
-			DrawRectangleGradientV(0, bottom, m_screenW, o, util::WithA(BLACK, 0.75f * a), util::WithA(BLACK, 0.f));
+			DrawRectangleGradientV(0, top, static_cast<int>(std::ceil(m_uiW)), f, util::WithA(BLACK, 0.9f * a), util::WithA(BLACK, 0.f));
+			DrawRectangleGradientV(0, bottom - f, static_cast<int>(std::ceil(m_uiW)), f, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.9f * a));
+			DrawRectangleGradientV(0, top - o, static_cast<int>(std::ceil(m_uiW)), o, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.75f * a));
+			DrawRectangleGradientV(0, bottom, static_cast<int>(std::ceil(m_uiW)), o, util::WithA(BLACK, 0.75f * a), util::WithA(BLACK, 0.f));
 			// 글자 자리(가운데)는 조금 더 가라앉힌다
-			DrawRectangleGradientV(0, static_cast<int>(cy - 110.f), m_screenW, 110, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.5f * a));
-			DrawRectangleGradientV(0, static_cast<int>(cy), m_screenW, 130, util::WithA(BLACK, 0.5f * a), util::WithA(BLACK, 0.f));
+			DrawRectangleGradientV(0, static_cast<int>(cy - 110.f), static_cast<int>(std::ceil(m_uiW)), 110, util::WithA(BLACK, 0.f), util::WithA(BLACK, 0.5f * a));
+			DrawRectangleGradientV(0, static_cast<int>(cy), static_cast<int>(std::ceil(m_uiW)), 130, util::WithA(BLACK, 0.5f * a), util::WithA(BLACK, 0.f));
 		}
 		else
 		{
@@ -1664,7 +1666,7 @@ void Game::DrawQuestScreenFx()
 
 		// 어둠 → 심장 박동(가운데서 번지는 빛) → 새벽
 		const float dark = util::Clamp01(t / 0.8f) * (1.f - util::Clamp01((t - 3.8f) / 2.5f)) * 0.78f;
-		DrawRectangle(0, 0, m_screenW, m_screenH, util::WithA(BLACK, dark));
+		DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, util::WithA(BLACK, dark));
 		for (int i = 0; i < 3; ++i)
 		{
 			const float u = (t - beats[i]) / 1.1f;

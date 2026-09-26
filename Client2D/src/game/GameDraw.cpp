@@ -17,6 +17,8 @@
 #include "core/Util.h"
 #include "game/Input.h"
 #include "game/KeyBinds.h"
+#include "ui/Wm.h"
+#include "audio/Sfx.h"
 
 #include "rlgl.h"
 #include <algorithm>
@@ -130,35 +132,37 @@ void Game::DrawGame()
 	if (m_scene != Scene::Game)
 		return;
 	DrawQuestCompass(cam);
+
+	// ── 여기부터 UI(Phase 3-A): UI 배율 변환 위에 논리 좌표(m_uiW × m_uiH)로 그린다 ──
+	ui::BindXform();
+	if (m_uiEdit) wm::EditBackdrop();
 	if (m_bigMapOpen) DrawBigMap();   // 창이 아니다 — HUD 아래, 달리면서 본다
 	DrawHud();
 	DrawMinimap();
 	DrawQuestTracker();
 	DrawYardMeter();
 	DrawTargetFrame();
-	DrawChat();
 	DrawSkillBar();
 	DrawQuickBar();
 	DrawComboCounter();
 	DrawBanners();
 	DrawToasts();
-	if (m_invOpen) DrawInventory();
-	if (m_charOpen) DrawCharacter();
-	if (m_questLogOpen) DrawQuestLog();
-	if (m_dialogNpc && m_shopMode == ShopMode::None) DrawNpcDialog();
-	if (m_shopMode == ShopMode::Buy) DrawShop();
-	if (m_shopMode == ShopMode::Sell) DrawSell();
-	if (m_shopMode == ShopMode::Teleport) DrawTeleport();
-	if (m_enchant.stage >= 2) DrawEnchant();
-	if (m_discard.open) DrawDiscard();
-	if (m_mapOpen) DrawWorldMap();
-	if (m_skillWinOpen) DrawSkillWindow();
-	if (m_helpOpen) DrawHelp();
+	if (m_uiEdit && wm::EditOverlay())
+	{
+		m_uiEdit = false;
+		sfx::Play(sfx::Id::Close, 0.5f);
+	}
+	DrawWindows();   // 창들(채팅 포함) — 겹침 순서대로
 	DrawQuestScreenFx();
+	// 모달: 버리기 확인 · 죽음 · 시스템 메뉴 · 조작 설정(Esc) — 떠 있으면 마우스를 혼자 갖는다
+	wm::ModalBegin();
+	if (m_enchant.stage >= 2) DrawEnchant();   // 강화 연출(굴림 → 결과)
+	if (m_discard.open) DrawDiscard();
 	if (m_dead) DrawDeath();
-	// 맨 위: 시스템 메뉴 · 조작 설정(Esc)
 	if (m_menuOpen) DrawSystemMenu();
 	if (m_keysOpen) DrawKeySettings();
+	wm::ModalEnd();
+	ui::UnbindXform();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -952,7 +956,8 @@ void Game::DrawYardMeter()
 	const int shown = std::min(n, 6);
 	const float w = 236.f, rowH = 22.f;
 	const float h = 104.f + shown * rowH + 10.f;
-	const Rectangle r{ 12.f, std::round(std::clamp(m_screenH * 0.24f, 176.f, 240.f)), w, h };
+	const Rectangle r{ 12.f, std::round(std::clamp(m_uiH * 0.24f, 176.f, 240.f)), w, h };
+	wm::HudScope hs("hud.yard", "훈련 계측", Rectangle{ r.x, r.y, w, 250.f });
 	ui::Plate(r, util::WithA(ui::theme::kInk, 0.82f * fade), util::WithA(ui::theme::kLine, fade), 4.f, 1.f);
 	ui::TextStyle ts; ts.size = ui::type::kHeading; ts.face = ui::Face::Strong; ts.color = util::WithA(ui::theme::kTitle, fade);
 	ui::Fonts().Draw("훈련 계측", Vector2{ r.x + 12.f, r.y + 9.f }, ts);
@@ -997,6 +1002,40 @@ void Game::DrawYardMeter()
 void Game::DrawCursor()
 {
 	const Vector2 m = in::MousePos();
+	// 창 크기 조절 · 옮기기(Phase 3-A): 양쪽 화살표(검은 테두리 + 밝은 몸)
+	if (const int hint = m_scene == Scene::Game ? wm::CursorHint() : 0; hint != 0)
+	{
+		const float k = ui::UiScale();
+		auto arrow2 = [&](Vector2 d)
+		{
+			const float L = 10.f * k, hw = 4.5f * k;
+			const Vector2 n{ -d.y, d.x };
+			for (int pass = 0; pass < 2; ++pass)
+			{
+				const Color c = pass == 0 ? Color{ 20, 14, 8, 255 } : Rgb(0xF2E0B0);
+				const float t = pass == 0 ? 4.f : 1.8f, g = pass == 0 ? 1.6f * k : 0.f;
+				DrawLineEx(Vector2{ m.x - d.x * (L - 3.f), m.y - d.y * (L - 3.f) }, Vector2{ m.x + d.x * (L - 3.f), m.y + d.y * (L - 3.f) }, t, c);
+				for (int sgn = -1; sgn <= 1; sgn += 2)
+				{
+					const Vector2 tip{ m.x + d.x * (L + g) * sgn, m.y + d.y * (L + g) * sgn };
+					const Vector2 base{ m.x + d.x * (L - 5.f * k) * sgn, m.y + d.y * (L - 5.f * k) * sgn };
+					const Vector2 p1{ base.x + n.x * (hw + g), base.y + n.y * (hw + g) }, p2{ base.x - n.x * (hw + g), base.y - n.y * (hw + g) };
+					DrawTriangle(tip, p1, p2, c);
+					DrawTriangle(tip, p2, p1, c);
+				}
+			}
+		};
+		const float r2 = 0.70710678f;
+		switch (hint)
+		{
+		case 1: arrow2(Vector2{ 1.f, 0.f }); break;
+		case 2: arrow2(Vector2{ 0.f, 1.f }); break;
+		case 3: arrow2(Vector2{ r2, r2 }); break;
+		case 4: arrow2(Vector2{ r2, -r2 }); break;
+		default: arrow2(Vector2{ 1.f, 0.f }); arrow2(Vector2{ 0.f, 1.f }); break;
+		}
+		return;
+	}
 	enum { Arrow, Attack, Pickup, Talk, Enchant } kind = Arrow;
 	if (m_scene == Scene::Game && !ui::MouseOverUi())
 	{

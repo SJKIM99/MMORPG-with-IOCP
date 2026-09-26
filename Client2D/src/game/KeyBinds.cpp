@@ -302,6 +302,7 @@ namespace kb
 				else if (id == "photoSafe") g_opt.photoSafe = v != 0;
 				else if (id == "otherFx") g_opt.otherFx = static_cast<uint8_t>(std::clamp(v, 0, 100));
 				else if (id == "shake") g_opt.shake = v != 0;
+				else if (id == "uiScale") g_opt.uiScale = static_cast<uint8_t>(v == 0 ? 0 : std::clamp(v, 100, 200));
 			}
 		}
 	}
@@ -325,5 +326,6 @@ namespace kb
 		out << "opt photoSafe " << (g_opt.photoSafe ? 1 : 0) << '\n';
 		out << "opt otherFx " << static_cast<int>(g_opt.otherFx) << '\n';
 		out << "opt shake " << (g_opt.shake ? 1 : 0) << '\n';
+		out << "opt uiScale " << static_cast<int>(g_opt.uiScale) << '\n';
 	}
 }

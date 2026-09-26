@@ -5,6 +5,7 @@
 #include "audio/Sfx.h"
 #include "core/Util.h"
 
+#include "rlgl.h"
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -13,9 +14,37 @@ namespace ui
 {
 	namespace
 	{
-		std::vector<Rectangle> g_blockPrev, g_blockNow;
-		Vector2 g_mouse{};
-		Vector2 g_pressPos{};
+		std::vector<Rectangle> g_blockPrev, g_blockNow;   // 물리 픽셀
+		Vector2 g_mouse{};        // 물리 픽셀(맨 아래 변환 전)
+		Vector2 g_pressPos{};     // 물리 픽셀
+
+		// ── 변환 · 층 ──
+		float g_uiScale = 1.f;
+		std::vector<Xform> g_xf{ Xform{} };   // [0] = 기본 {0, 0, UI 배율}
+		int g_bound = 0;                       // BindXform 깊이(행렬을 건 상태인가)
+		std::vector<Rectangle> g_clip;         // 물리 픽셀 가위(겹치면 교집합)
+		int g_layer = 0, g_owner = 0;
+		bool g_inert = false;
+
+		void SyncFont()
+		{
+			const Xform& x = g_xf.back();
+			if (g_bound > 0) Fonts().SetRenderXform(x.off, x.k);
+			else Fonts().SetRenderXform(Vector2{ 0, 0 }, 1.f);
+		}
+		void LoadXform()
+		{
+			const Xform& x = g_xf.back();
+			rlLoadIdentity();
+			rlTranslatef(x.off.x, x.off.y, 0.f);
+			rlScalef(x.k, x.k, 1.f);
+		}
+		Vector2 Local(Vector2 phys)
+		{
+			const Xform& x = g_xf.back();
+			return Vector2{ (phys.x - x.off.x) / x.k, (phys.y - x.off.y) / x.k };
+		}
+		bool Live() { return !g_inert && g_layer == g_owner; }
 		bool g_consumed = false;
 		float g_time = 0.f;
 		double g_lastClickTime = -10.0;
@@ -115,6 +144,9 @@ namespace ui
 		Rectangle g_lastHoverButton{};
 		bool g_mouseOverride = false;
 		Vector2 g_mouseOverridePos{};
+		bool g_btnOverride = false;
+		bool g_btnWant[2]{}, g_btnSeen[2]{}, g_btnPrev[2]{};
+		float g_wheelWant = 0.f, g_wheel = 0.f;
 
 		bool Contains(Rectangle r, Vector2 p)
 		{
@@ -126,18 +158,139 @@ namespace ui
 		}
 	}
 
+	// ── 변환 ───────────────────────────────────────────────────────────────────
+	void SetUiScale(float s) { g_uiScale = std::clamp(s, 0.5f, 3.f); }
+	float UiScale() { return g_uiScale; }
+	Vector2 LogicalScreen() { return Vector2{ GetScreenWidth() / g_uiScale, GetScreenHeight() / g_uiScale }; }
+
+	// rlgl: rlPushMatrix 뒤의 정점은 CPU에서 State.transform으로 옮겨진다 → 변환을 바꿔도 배치를 비울 필요가 없다.
+	// 단 Begin/EndTextureMode는 rlMatrixMode(MODELVIEW)로 "지금 행렬"을 modelview로 돌려 놓는다 — 그 뒤에는
+	// ReapplyXform(한 번 풀고 다시 건다)으로 지금 행렬을 transform으로 되돌린다.
+	void BindXform()
+	{
+		if (g_bound++ == 0)
+		{
+			rlPushMatrix();
+			LoadXform();
+		}
+		SyncFont();
+	}
+	// 풀 때는 modelview를 단위 행렬로 다시 둔다 — 텍스처 모드 전환 뒤(지금 행렬 = modelview)에 풀면
+	// rlPopMatrix가 스택의 옛 transform 값을 modelview에 써 버리기 때문(UI 바깥 그리기는 늘 단위 행렬 위).
+	void UnbindXform()
+	{
+		if (g_bound <= 0) return;
+		if (--g_bound == 0)
+		{
+			rlPopMatrix();
+			rlLoadIdentity();
+		}
+		SyncFont();
+	}
+	void ReapplyXform()
+	{
+		if (g_bound <= 0) return;
+		rlPopMatrix();
+		rlLoadIdentity();
+		rlPushMatrix();
+		LoadXform();
+		SyncFont();
+	}
+	void PushXform(Vector2 off, float k)
+	{
+		const Xform& p = g_xf.back();
+		g_xf.push_back(Xform{ Vector2{ p.off.x + off.x * p.k, p.off.y + off.y * p.k }, p.k * k });
+		if (g_bound > 0)
+			LoadXform();
+		SyncFont();
+	}
+	void PopXform()
+	{
+		if (g_xf.size() <= 1) return;
+		g_xf.pop_back();
+		if (g_bound > 0)
+			LoadXform();
+		SyncFont();
+	}
+	void SuspendXform()
+	{
+		if (g_bound > 0) { rlPopMatrix(); rlLoadIdentity(); }
+		Fonts().SetRenderXform(Vector2{ 0, 0 }, 1.f);
+	}
+	void ResumeXform()
+	{
+		if (g_bound > 0) { rlPushMatrix(); LoadXform(); }
+		SyncFont();
+	}
+	Xform CurrentXform() { return g_xf.back(); }
+	Vector2 ToScreen(Vector2 p) { const Xform& x = g_xf.back(); return Vector2{ x.off.x + p.x * x.k, x.off.y + p.y * x.k }; }
+	Rectangle ToScreen(Rectangle r) { const Xform& x = g_xf.back(); return Rectangle{ x.off.x + r.x * x.k, x.off.y + r.y * x.k, r.width * x.k, r.height * x.k }; }
+	Vector2 FromScreen(Vector2 p) { return Local(p); }
+	Rectangle SnapRect(Rectangle r)
+	{
+		const Xform& x = g_xf.back();
+		if (x.k == 1.f && x.off.x == std::floor(x.off.x) && x.off.y == std::floor(x.off.y))
+			return Rectangle{ std::round(r.x), std::round(r.y), std::round(r.width), std::round(r.height) };
+		const float x0 = std::round(x.off.x + r.x * x.k), y0 = std::round(x.off.y + r.y * x.k);
+		const float x1 = std::round(x.off.x + (r.x + r.width) * x.k), y1 = std::round(x.off.y + (r.y + r.height) * x.k);
+		return Rectangle{ (x0 - x.off.x) / x.k, (y0 - x.off.y) / x.k, (x1 - x0) / x.k, (y1 - y0) / x.k };
+	}
+	void BeginClip(Rectangle r)
+	{
+		Rectangle p = ToScreen(r);
+		p.x = std::round(p.x); p.y = std::round(p.y); p.width = std::round(p.width); p.height = std::round(p.height);
+		if (!g_clip.empty())
+		{
+			const Rectangle& t = g_clip.back();
+			const float x0 = std::max(p.x, t.x), y0 = std::max(p.y, t.y);
+			const float x1 = std::min(p.x + p.width, t.x + t.width), y1 = std::min(p.y + p.height, t.y + t.height);
+			p = Rectangle{ x0, y0, std::max(0.f, x1 - x0), std::max(0.f, y1 - y0) };
+		}
+		g_clip.push_back(p);
+		BeginScissorMode(static_cast<int>(p.x), static_cast<int>(p.y), static_cast<int>(p.width), static_cast<int>(p.height));
+	}
+	void EndClip()
+	{
+		if (!g_clip.empty()) g_clip.pop_back();
+		if (g_clip.empty()) EndScissorMode();
+		else
+		{
+			const Rectangle& t = g_clip.back();
+			BeginScissorMode(static_cast<int>(t.x), static_cast<int>(t.y), static_cast<int>(t.width), static_cast<int>(t.height));
+		}
+	}
+
+	// ── 층 ──
+	void SetLayer(int layer) { g_layer = layer; }
+	int Layer() { return g_layer; }
+	void SetMouseOwner(int layer) { g_owner = layer; }
+	int MouseOwner() { return g_owner; }
+	void SetInert(bool on) { g_inert = on; }
+	bool Inert() { return g_inert; }
+	Vector2 MouseScreen() { return g_mouse; }
+
 	void BeginFrame(float dt)
 	{
 		g_time += dt;
 		g_mouse = g_mouseOverride ? g_mouseOverridePos : GetMousePosition();
+		for (int i = 0; i < 2; ++i) { g_btnPrev[i] = g_btnSeen[i]; g_btnSeen[i] = g_btnWant[i]; }
+		g_wheel = g_wheelWant != 0.f ? g_wheelWant : GetMouseWheelMove();
+		g_wheelWant = 0.f;
 		g_blockPrev.swap(g_blockNow);
 		g_blockNow.clear();
 		g_consumed = false;
 		g_hasTip = false;
 		g_dragReleased = false;
 		g_focusTouched = false;
+		g_xf.assign(1, Xform{ Vector2{ 0, 0 }, g_uiScale });
+		g_bound = 0;
+		g_clip.clear();
+		g_layer = 0;
+		g_owner = 0;
+		g_inert = false;
+		SyncFont();
 
-		if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+		if (BtnPressed(MOUSE_BUTTON_LEFT))
 		{
 			g_pressPos = g_mouse;
 			const double now = GetTime();
@@ -148,7 +301,7 @@ namespace ui
 		else
 			g_doubleClick = false;
 
-		if (g_dragging && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+		if (g_dragging && BtnReleased(MOUSE_BUTTON_LEFT))
 			g_dragReleased = true;
 
 		// 문자 입력(raylib) + IME 완성 글자
@@ -161,18 +314,27 @@ namespace ui
 	void EndFrame()
 	{
 		// 입력칸 밖을 클릭하면 포커스 해제
-		if (g_focus && !g_focusTouched && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+		if (g_focus && !g_focusTouched && BtnPressed(MOUSE_BUTTON_LEFT))
 			g_focus = nullptr;
 		ime::SetEnabled(g_focus != nullptr && !g_focus->asciiOnly && !g_focus->password);
+
+		// 툴팁 · 끄는 아이콘은 기본 변환(UI 배율)으로 맨 위에
+		while (g_xf.size() > 1) g_xf.pop_back();
+		while (g_clip.size() > 0) EndClip();
+		g_layer = 0;
+		g_inert = false;
+		BindXform();
+		const Vector2 ms = Local(g_mouse);
 
 		// 툴팁(+ 비교 툴팁)
 		if (g_hasTip && !g_dragging)
 		{
-			const float SW = static_cast<float>(GetScreenWidth()), SH = static_cast<float>(GetScreenHeight());
+			const Vector2 ls = LogicalScreen();
+			const float SW = ls.x, SH = ls.y;
 			const Vector2 sz = MeasureTip(g_tip, g_tipIcon);
 			const Vector2 csz = g_hasCmp ? MeasureTip(g_cmp, g_cmpIcon) : Vector2{ 0, 0 };
-			float x = g_mouse.x + 18.f, y = g_mouse.y + 14.f;
-			if (x + sz.x > SW - 4) x = g_mouse.x - sz.x - 12.f;
+			float x = ms.x + 18.f, y = ms.y + 14.f;
+			if (x + sz.x > SW - 4) x = ms.x - sz.x - 12.f;
 			if (y + sz.y > SH - 4) y = SH - sz.y - 4.f;
 			y = std::max(4.f, y);
 			float cx = 0.f;
@@ -199,15 +361,49 @@ namespace ui
 
 		// 드래그 아이콘
 		if (g_dragging && g_dragDrawer)
-			g_dragDrawer(g_drag, g_mouse);
-		if (g_dragging && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !g_dragReleased)
+			g_dragDrawer(g_drag, ms);
+		if (g_dragging && BtnReleased(MOUSE_BUTTON_LEFT) && !g_dragReleased)
 			g_dragging = false;
 		if (g_dragReleased)
 			g_dragging = false;
+		UnbindXform();
 	}
 
-	Vector2 Mouse() { return g_mouse; }
+	Vector2 Mouse() { return Local(g_mouse); }
 	void SetMouseOverride(bool on, Vector2 pos) { g_mouseOverride = on; g_mouseOverridePos = pos; }
+	void SetButtonOverride(bool on, bool leftDown, bool rightDown)
+	{
+		g_btnOverride = on;
+		g_btnWant[0] = on && leftDown;
+		g_btnWant[1] = on && rightDown;
+		if (!on) { g_btnSeen[0] = g_btnSeen[1] = g_btnPrev[0] = g_btnPrev[1] = false; }
+	}
+	float Wheel() { return g_wheel; }
+	void SetWheelOverride(float v) { g_wheelWant = v; }
+	bool BtnPressed(int button)
+	{
+		if (g_btnOverride && (button == MOUSE_BUTTON_LEFT || button == MOUSE_BUTTON_RIGHT))
+		{
+			const int i = button == MOUSE_BUTTON_LEFT ? 0 : 1;
+			return g_btnSeen[i] && !g_btnPrev[i];
+		}
+		return IsMouseButtonPressed(button);
+	}
+	bool BtnDown(int button)
+	{
+		if (g_btnOverride && (button == MOUSE_BUTTON_LEFT || button == MOUSE_BUTTON_RIGHT))
+			return g_btnSeen[button == MOUSE_BUTTON_LEFT ? 0 : 1];
+		return IsMouseButtonDown(button);
+	}
+	bool BtnReleased(int button)
+	{
+		if (g_btnOverride && (button == MOUSE_BUTTON_LEFT || button == MOUSE_BUTTON_RIGHT))
+		{
+			const int i = button == MOUSE_BUTTON_LEFT ? 0 : 1;
+			return !g_btnSeen[i] && g_btnPrev[i];
+		}
+		return IsMouseButtonReleased(button);
+	}
 
 	bool MouseOverUi()
 	{
@@ -218,14 +414,14 @@ namespace ui
 		return false;
 	}
 
-	void Block(Rectangle r) { g_blockNow.push_back(r); }
-	bool Hovered(Rectangle r) { return Contains(r, g_mouse); }
-	bool Pressed(Rectangle r, int button) { return IsMouseButtonPressed(button) && Contains(r, g_mouse); }
+	void Block(Rectangle r) { if (!g_inert) g_blockNow.push_back(ToScreen(r)); }
+	bool Hovered(Rectangle r) { return Live() && Contains(r, Local(g_mouse)); }
+	bool Pressed(Rectangle r, int button) { return Live() && BtnPressed(button) && Contains(r, Local(g_mouse)); }
 	bool Clicked(Rectangle r, int button)
 	{
-		return IsMouseButtonReleased(button) && Contains(r, g_mouse) && Contains(r, g_pressPos);
+		return Live() && BtnReleased(button) && Contains(r, Local(g_mouse)) && Contains(r, Local(g_pressPos));
 	}
-	bool DoubleClicked(Rectangle r) { return g_doubleClick && Contains(r, g_mouse); }
+	bool DoubleClicked(Rectangle r) { return Live() && g_doubleClick && Contains(r, Local(g_mouse)); }
 	void ConsumeMouse() { g_consumed = true; }
 	bool MouseConsumed() { return g_consumed; }
 	float Time() { return g_time; }
@@ -238,9 +434,11 @@ namespace ui
 
 	void Plate(Rectangle r, Color fill, Color border, float c, float bw)
 	{
-		r.x = std::round(r.x); r.y = std::round(r.y); r.width = std::round(r.width); r.height = std::round(r.height);
+		r = SnapRect(r);
 		if (r.width <= 0.f || r.height <= 0.f) return;
 		c = std::max(0.f, std::min(std::round(c), std::floor(std::min(r.width, r.height) * 0.5f)));
+		if (const float k = g_xf.back().k; k != 1.f && bw > 0.f)
+			bw = std::max(1.f, std::round(bw * k)) / k;   // 테두리 두께를 물리 픽셀 정수로(배율 1.25에서 1px 선이 1 · 2px로 흔들리지 않게)
 		if (fill.a > 0)
 		{
 			// 겹치지 않게 나눠 칠한다(반투명이어도 이음매가 생기지 않도록)
@@ -277,7 +475,15 @@ namespace ui
 	void Rule(float x0, float x1, float y, Color c)
 	{
 		if (x1 <= x0) return;
-		DrawRectangleRec(Rectangle{ std::round(x0), std::round(y), std::round(x1 - x0), 1.f }, c);
+		const Xform& x = g_xf.back();
+		if (x.k == 1.f)
+		{
+			DrawRectangleRec(Rectangle{ std::round(x0), std::round(y), std::round(x1 - x0), 1.f }, c);
+			return;
+		}
+		// 배율이 걸린 곳: 물리 1픽셀(배율 2 이상이면 2픽셀) 두께
+		const Rectangle s = SnapRect(Rectangle{ x0, y, x1 - x0, 1.f });
+		DrawRectangleRec(Rectangle{ s.x, s.y, s.width, std::max(1.f, std::round(x.k)) / x.k }, c);
 	}
 
 	void SectionHeader(Vector2 pos, float width, std::string_view title)
@@ -427,7 +633,7 @@ namespace ui
 	bool Button(Rectangle r, std::string_view label, ButtonKind kind, bool enabled, float fontSize)
 	{
 		const bool hover = enabled && Hovered(r);
-		const bool down = hover && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && Contains(r, g_pressPos);
+		const bool down = hover && BtnDown(MOUSE_BUTTON_LEFT) && Contains(r, Local(g_pressPos));
 		Color fill = theme::kSurface2, border = theme::kLineStrong, text = theme::kTextHi;
 		switch (kind)
 		{
@@ -567,7 +773,7 @@ namespace ui
 	{
 		value = util::Clamp01(value);
 		lag = util::Clamp01(lag);
-		r.x = std::round(r.x); r.y = std::round(r.y); r.width = std::round(r.width); r.height = std::round(r.height);
+		r = SnapRect(r);
 		DrawRectangleRec(r, back);
 		// 안쪽 윗그늘(홈에 담긴 느낌)
 		DrawRectangleRec(Rectangle{ r.x, r.y, r.width, 1.f }, Color{ 0, 0, 0, 90 });
@@ -682,7 +888,7 @@ namespace ui
 			Focus(&f);
 		const bool focused = g_focus == &f;
 		if (focused)
-			g_focusTouched = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) ? Contains(r, g_mouse) : true;
+			g_focusTouched = BtnPressed(MOUSE_BUTTON_LEFT) ? (Live() && Contains(r, Local(g_mouse))) : true;
 
 		bool submitted = false;
 		if (focused)
@@ -736,7 +942,7 @@ namespace ui
 		const float ty = r.y + (r.height - size) * 0.5f - 1.f;
 		std::string shown = f.password ? std::string(f.text.size(), '*') : f.text;
 		const std::string comp = focused ? ime::Composition() : std::string();
-		BeginScissorMode(static_cast<int>(r.x + 4), static_cast<int>(r.y), static_cast<int>(r.width - 8), static_cast<int>(r.height));
+		BeginClip(Rectangle{ r.x + 4, r.y, r.width - 8, r.height });
 		const float textW = Fonts().Measure(shown, size).x;
 		const float compW = comp.empty() ? 0.f : Fonts().Measure(comp, size).x;
 		const float avail = r.width - 20.f;
@@ -759,9 +965,12 @@ namespace ui
 				DrawLineEx(Vector2{ cx, ty + 1 }, Vector2{ cx, ty + size + 1 }, 1.5f, theme::kBorderHi);
 			}
 		}
-		EndScissorMode();
+		EndClip();
 		if (focused)
-			ime::SetCaret(static_cast<int>(x0 + textW + compW), static_cast<int>(ty));
+		{
+			const Vector2 caret = ToScreen(Vector2{ x0 + textW + compW, ty });
+			ime::SetCaret(static_cast<int>(caret.x), static_cast<int>(caret.y));
+		}
 		Block(r);
 		return submitted;
 	}

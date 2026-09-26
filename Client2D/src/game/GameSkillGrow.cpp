@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "ui/Wm.h"
 #include "game/KeyBinds.h"
 #include "game/SkillView.h"
 #include "fx/SkillFx.h"
@@ -168,10 +169,10 @@ void Game::SendSkillGrow(SkillGrowOp op, uint16_t skillId, uint8_t tier, uint8_t
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawSkillWindow()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	const float wh = std::min(HudTop() - 20.f, 620.f);
 	const float ww = std::min(W - 24.f, 1010.f);
-	const Rectangle r{ std::round(std::max(12.f, W * 0.5f - ww * 0.5f)), std::round(std::max(12.f, std::min(H * 0.5f - wh * 0.5f - 30.f, HudTop() - 10.f - wh))), ww, wh };
+	const Rectangle r = wm::Window("skill", Rectangle{ std::round(std::max(12.f, W * 0.5f - ww * 0.5f)), std::round(std::max(12.f, std::min(H * 0.5f - wh * 0.5f - 30.f, HudTop() - 10.f - wh))), ww, wh }, wm::kMove);
 	ui::Window(r, "기술", &m_skillWinOpen);
 	const ClassRow& cls = ClassTable::Get(m_classId);
 	ui::Text(Fmt("%s · %s", cls.name, cls.role), Vector2{ r.x + r.width - 48.f, r.y + 15.f }, ui::type::kCaption, util::Shade(Rgb(cls.color), 1.1f), Align::Right);

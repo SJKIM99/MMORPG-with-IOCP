@@ -350,6 +350,7 @@ private:
 	void HandleHotkeys();
 	void PickUnderMouse();
 	bool CloseTopWindow();                              // Esc: 맨 위 창부터 닫는다(닫은 게 있으면 true)
+	void CloseWindowById(const char* id);               // 창 관리자 id → 그 창의 닫기(소리 포함)
 
 	// ── 그리기 ──
 	void DrawWorld(const Camera2D& cam);
@@ -358,6 +359,13 @@ private:
 	void DrawWorldOverlay(const Camera2D& cam);
 	void DrawHud();
 	void DrawChat();
+	// ── 창 관리(Phase 3-A, ui/Wm) ──
+	void DrawWindows();                                 // 창 목록 → 겹침 순서 · 열기/닫기 애니메이션
+	[[nodiscard]] float EffectiveUiScale() const;       // UI 배율(설정 · 자동)
+	[[nodiscard]] bool ModalOpen() const;               // 메뉴 · 조작 설정 · 버리기 확인 · 죽음
+	[[nodiscard]] std::string UiLayoutPath() const;     // config/ui_<캐릭터>.json
+	void LoadUiLayout();
+	void SaveUiLayout();
 	void DrawQuickBar();                                // 소모품 칸(전투 1~4 · 물약 F1 · 보조 5~8)
 	void DrawSkillBar();                                // 기술 칸(QWER · ASDF · V · Space · Z)
 	void DrawHotSlot(Rectangle r, int hot, float keySize);
@@ -411,6 +419,7 @@ private:
 	void LoadQuickSlots();
 	void SaveQuickSlots();
 	void RunScript(float dt);
+	bool RunScriptUi(float dt);                          // Phase 3 시험 시나리오(wm · uiedit · hudres)
 
 	// ── 상태 ──
 	Options          m_opts;
@@ -424,6 +433,9 @@ private:
 	double           m_now = 0.0;
 	float            m_time = 0.f;      // 애니메이션 시간(히트스톱 반영)
 	int              m_screenW = 1280, m_screenH = 720;
+	float            m_uiW = 1280.f, m_uiH = 720.f;  // UI 논리 화면(화면 ÷ UI 배율) — HUD · 창 배치는 이 값으로
+	bool             m_uiEdit = false;               // UI 편집 모드(HUD 덩어리 옮기기 · 배율)
+	double           m_uiSaveAt = 0.0;               // 창 배치 저장(바뀐 뒤 2초에 한 번)
 
 	// 로그인
 	ui::TextField    m_fHost, m_fPort, m_fName, m_fPass;
@@ -743,7 +755,8 @@ private:
 	int              m_shotIndex = 0;
 	int              m_scriptStep = 0;
 	float            m_scriptT = 0.f;
-	float            m_scriptMark = 0.f;                    // 녹화 시나리오: 달리기 시작 시각(시작 칸에 선 뒤)
+	Vector2          m_scriptFrom{}, m_scriptTo{};
+	float            m_scriptMark = 0.f;                    // 녹화 시나리오: 달리기 시작 시각(시작 칸에 선 뒤) · Phase 3 시험: 단계 시작 시각
 	int              m_scriptKeyX = 0, m_scriptKeyY = 0;   // 스크립트가 누른 WASD(화면 방향)
 	double           m_scriptNextCast = 0.0;                // aimcombat: 다음 기술 키
 	struct ScriptCast { int hot; float hold; float wait; };   // skills: 칸 · 누르고 있을 시간 · 다음까지

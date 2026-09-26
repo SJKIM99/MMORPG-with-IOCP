@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "ui/Wm.h"
 #include "game/Texts.h"
 #include "render/Icons.h"
 #include "render/Actors.h"
@@ -593,7 +594,7 @@ void Game::DrawEquipPanel(Rectangle area)
 		Entity* me = Self();
 		if (me)
 		{
-			BeginScissorMode(static_cast<int>(pv.x), static_cast<int>(pv.y), static_cast<int>(pv.width), static_cast<int>(pv.height));
+			ui::BeginClip(Rectangle{ pv.x, pv.y, pv.width, pv.height });
 			actors::Pose pose;
 			pose.base = Vector2{ cx, feet };
 			pose.scale = 1.75f;
@@ -605,7 +606,7 @@ void Game::DrawEquipPanel(Rectangle area)
 			gfx::SetDepthRaw(-0.5f);
 			actors::DrawPlayer(pose, LookOf(*me));
 			gfx::Flush();
-			EndScissorMode();
+			ui::EndClip();
 		}
 	}
 
@@ -714,7 +715,7 @@ void Game::DrawEquipPanel(Rectangle area)
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::DrawInventory()
 {
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
+	const float W = m_uiW, H = m_uiH;
 	const float slot = 54.f, gap = 4.f;
 	const float equipW = 214.f;
 	const float gridW = 6 * (slot + gap) - gap;
@@ -722,6 +723,7 @@ void Game::DrawInventory()
 	Rectangle r{ W - w - 14.f, 200.f, w, h };
 	if (r.y + r.height > H - 110.f) r.y = std::max(12.f, H - 110.f - r.height);
 	if (r.x < 8.f) r.x = 8.f;
+	r = wm::Window("inv", r, wm::kMove);
 	m_invRect = r;
 	ui::Window(r, "소지품", &m_invOpen);
 	if (m_enchant.stage == 1)

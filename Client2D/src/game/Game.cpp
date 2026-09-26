@@ -21,6 +21,7 @@
 #include "core/Recorder.h"
 #include "game/Input.h"
 #include "game/KeyBinds.h"
+#include "ui/Wm.h"
 
 #include "rlgl.h"
 #include <algorithm>
@@ -90,6 +91,7 @@ void Game::Shutdown()
 	}
 	if (m_traceFile) { std::fclose(m_traceFile); m_traceFile = nullptr; }
 	SaveControls();
+	if (wm::Dirty()) SaveUiLayout();
 	m_net.Disconnect();
 	m_terrain.Shutdown();
 	m_light.Shutdown();
@@ -196,7 +198,15 @@ void Game::Frame()
 	m_net.Update();
 	sfx::Update(dt);
 	ApplyFxOptions();
+	// UI 배율(Phase 3-A): 게임 화면만(로그인 화면은 1:1로 그린다)
+	ui::SetUiScale(m_scene == Scene::Game || m_scene == Scene::Disconnected ? EffectiveUiScale() : 1.f);
 	ui::BeginFrame(dt);
+	{
+		const Vector2 ls = ui::LogicalScreen();
+		m_uiW = ls.x;
+		m_uiH = ls.y;
+		wm::BeginFrame(ls, m_now, m_scene == Scene::Game && ModalOpen(), m_uiEdit && m_scene == Scene::Game);
+	}
 	kb::BeginFrame();   // 채팅 · 한글 조합 · 키 지정 중이면 이번 프레임의 동작 키를 모두 막는다
 	m_light.UpdateClock(m_opts.hour);
 	// 엔딩: 하르벤이 다시 뛰면 새벽이 온다(잠시 뒤 원래 시각으로 천천히 돌아간다)
@@ -226,6 +236,12 @@ void Game::Frame()
 	case Scene::Disconnected: m_time += dt; fx::Fx().Update(dt); break;
 	}
 	if (m_scene == Scene::Game) RenderSkillStage();   // 렌더 텍스처는 화면 그리기 전에
+	// 창 배치 저장: 바뀐 뒤 2초에 한 번(끄는 동안 매 프레임 쓰지 않게)
+	if (m_scene == Scene::Game && wm::Dirty() && !wm::Busy() && m_now >= m_uiSaveAt)
+	{
+		SaveUiLayout();
+		m_uiSaveAt = m_now + 2.0;
+	}
 
 	BeginDrawing();
 	ClearBackground(Color{ 8, 8, 12, 255 });
@@ -234,7 +250,7 @@ void Game::Frame()
 	case Scene::Login:
 	case Scene::Connecting: DrawLogin(); break;
 	case Scene::Game: DrawGame(); break;
-	case Scene::Disconnected: DrawGame(); DrawDisconnected(); break;
+	case Scene::Disconnected: DrawGame(); ui::BindXform(); DrawDisconnected(); ui::UnbindXform(); break;
 	}
 	ui::EndFrame();
 	if (m_debugOverlay)
@@ -1791,4 +1807,6 @@ void Game::RunScript(float dt)
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_endingAt = m_now; m_endingStage = 0; m_scriptStep = 1; }
 	}
+	else
+		RunScriptUi(dt);   // Phase 3 시험(창 · 채팅 · HUD) — game/GameScriptUi.cpp
 }

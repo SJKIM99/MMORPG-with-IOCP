@@ -84,10 +84,51 @@ namespace ui
 	void BeginFrame(float dt);
 	void EndFrame();
 
+	// ── 좌표 변환(Phase 3-A): UI 배율 · HUD 덩어리 배율 ──
+	// 화면(물리 픽셀) = off + 지역 좌표 × k. 맨 아래(기본)는 {0, 0, UI 배율}.
+	// 그리기 코드는 늘 지역 좌표로 쓴다 — 판정(Hovered …) · 가위(BeginClip) · 글자 선명도가 변환을 따라간다.
+	struct Xform { Vector2 off{ 0, 0 }; float k = 1.f; };
+	void SetUiScale(float s);                  // BeginFrame 전에(장면마다). 로그인 화면은 1
+	[[nodiscard]] float UiScale();
+	[[nodiscard]] Vector2 LogicalScreen();     // 화면 크기 ÷ UI 배율
+	void BindXform();                          // rlgl 행렬에 지금 변환을 건다(UI 그리기 시작)
+	void UnbindXform();
+	void ReapplyXform();                       // Begin/EndTextureMode 뒤에 다시 건다(지금 행렬이 modelview로 돌아가 있다)
+	void SuspendXform();                       // 렌더 텍스처에 자기 좌표로 그리기 전(미니맵 캐시 등) — 변환을 잠깐 뗀다
+	void ResumeXform();
+	void PushXform(Vector2 off, float k);      // 부모 지역 좌표 기준 p_부모 = off + p × k
+	void PopXform();
+	[[nodiscard]] Xform CurrentXform();        // 지역 → 물리
+	[[nodiscard]] Vector2 ToScreen(Vector2 p);
+	[[nodiscard]] Rectangle ToScreen(Rectangle r);
+	[[nodiscard]] Vector2 FromScreen(Vector2 p);
+	[[nodiscard]] Rectangle SnapRect(Rectangle r);   // 네 변이 물리 픽셀 경계에 오도록(배율이 1이 아니어도 선이 또렷하게)
+	void BeginClip(Rectangle r);               // 지역 좌표 가위(BeginScissorMode 대신)
+	void EndClip();
+
+	// ── 입력 층(Phase 3-A 창 가림) ──
+	// 창 관리자가 프레임마다 "마우스 아래 맨 위 창"의 층을 주인으로 정한다. 다른 층의 위젯은
+	// Hovered · Pressed · Clicked가 거짓 → 겹친 창의 뒤 단추가 눌리지 않는다. 0 = HUD · 월드.
+	void SetLayer(int layer);
+	[[nodiscard]] int Layer();
+	void SetMouseOwner(int layer);
+	[[nodiscard]] int MouseOwner();
+	void SetInert(bool on);                    // 닫히는 창 그리기 · UI 편집 모드: 판정이 모두 거짓, 영역 등록도 없음
+	[[nodiscard]] bool Inert();
+	[[nodiscard]] Vector2 MouseScreen();       // 물리 픽셀 마우스
+
 	// ── 입력 판정 ──
-	[[nodiscard]] Vector2 Mouse();
-	// 테스트 자동화: 실제 마우스 대신 이 위치를 쓴다(툴팁·호버 스크린샷)
+	[[nodiscard]] Vector2 Mouse();             // 지금 변환의 지역 좌표
+	// 테스트 자동화: 실제 마우스 대신 이 위치(물리 픽셀)를 쓴다(툴팁·호버 스크린샷)
 	void SetMouseOverride(bool on, Vector2 pos = Vector2{ 0, 0 });
+	// 자동 시나리오: 마우스 단추도 대신 정한다(창 끌기 · 크기 조절 · 탭 누르기 시험). off면 실제 단추
+	void SetButtonOverride(bool on, bool leftDown = false, bool rightDown = false);
+	// 단추 상태(시나리오 대체 포함) — UI · 창 관리자는 raylib 대신 이것을 쓴다
+	[[nodiscard]] bool BtnPressed(int button);
+	[[nodiscard]] bool BtnDown(int button);
+	[[nodiscard]] bool BtnReleased(int button);
+	[[nodiscard]] float Wheel();                // 휠(시나리오 대체 포함) — 한 프레임에 한 번 읽는다
+	void SetWheelOverride(float v);            // 자동 시나리오: 다음 프레임 휠 값
 	[[nodiscard]] bool MouseOverUi();         // 직전 프레임 UI 영역 위에 마우스가 있는가
 	void Block(Rectangle r);                   // 이번 프레임 UI 영역 등록
 	[[nodiscard]] bool Hovered(Rectangle r);

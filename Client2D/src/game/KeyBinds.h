@@ -52,6 +52,8 @@ namespace kb
 		bool     photoSafe = false;               // 광과민 보호(번쩍임 · 흔들림 · 색수차 · 암전 절반)
 		uint8_t  otherFx = 50;                    // 다른 플레이어 기술 연출 세기(%) — 25 · 50 · 100
 		bool     shake = true;                    // 화면 흔들림
+		// Phase 3-A UI
+		uint8_t  uiScale = 0;                     // UI 배율(%) — 0 자동(화면 높이로) · 100 · 125 · 150 · 175 · 200
 	};
 
 	// ── 표 ──

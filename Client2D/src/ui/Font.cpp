@@ -288,8 +288,16 @@ namespace ui
 		static thread_local std::vector<int> cps;
 		DecodeUtf8(text, cps);
 		float w = 0.f;
-		for (int cp : cps)
-			w += GetGlyph(f, isize, cp).advance + spacing;
+		if (m_xK != 1.f)
+		{
+			// 확대된 곳: 그릴 때와 같은 래스터 크기로 재고 지역 단위로 되돌린다
+			const int rsize = std::max(4, static_cast<int>(std::lround(isize * m_xK)));
+			for (int cp : cps)
+				w += GetGlyph(f, rsize, cp).advance / m_xK + spacing;
+		}
+		else
+			for (int cp : cps)
+				w += GetGlyph(f, isize, cp).advance + spacing;
 		if (!cps.empty()) w -= spacing;
 		return { w, static_cast<float>(isize) };
 	}
@@ -299,6 +307,25 @@ namespace ui
 		static thread_local std::vector<int> cps;
 		DecodeUtf8(text, cps);
 		float x = pos.x;
+		if (m_xK != 1.f)
+		{
+			// 확대된 곳(UI 배율 · HUD 덩어리 배율): size × k로 래스터라이즈 → 1/k 크기로 찍고,
+			// 자리는 물리 픽셀 경계에 맞춘다(행렬이 k배 하면 글리프 1픽셀 = 화면 1픽셀)
+			const float k = m_xK, inv = 1.f / k;
+			const int rsize = std::max(4, static_cast<int>(std::lround(isize * k)));
+			for (int cp : cps)
+			{
+				const Glyph& g = GetGlyph(face, rsize, cp);
+				if (g.page >= 0)
+				{
+					const float px = std::round(m_xOff.x + (x + g.offX * inv) * k), py = std::round(m_xOff.y + (pos.y + g.offY * inv) * k);
+					const Rectangle dst{ (px - m_xOff.x) * inv, (py - m_xOff.y) * inv, g.src.width * inv, g.src.height * inv };
+					DrawTexturePro(m_pages[g.page].tex, g.src, dst, Vector2{ 0, 0 }, 0.f, color);
+				}
+				x += g.advance * inv + spacing;
+			}
+			return x - pos.x;
+		}
 		for (int cp : cps)
 		{
 			const Glyph& g = GetGlyph(face, isize, cp);

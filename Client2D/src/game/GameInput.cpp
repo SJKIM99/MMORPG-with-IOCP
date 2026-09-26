@@ -1,6 +1,7 @@
 #include "game/Game.h"
 #include "game/Input.h"
 #include "game/KeyBinds.h"
+#include "ui/Wm.h"
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "render/Draw.h"
@@ -190,8 +191,15 @@ bool Game::CloseTopWindow()
 	auto closed = [&](bool& flag) { flag = false; sfx::Play(sfx::Id::Close, 0.5f); return true; };
 	if (m_keysOpen) { m_keysCapture = -1; kb::SetCapturing(false); return closed(m_keysOpen); }
 	if (m_menuOpen) return closed(m_menuOpen);
+	if (m_uiEdit) { m_uiEdit = false; sfx::Play(sfx::Id::Close, 0.5f); return true; }
 	if (m_enchant.stage == 1 || m_enchant.stage == 2) { m_enchant = EnchantFlow{}; return true; }
 	if (m_discard.open) { m_discard.open = false; return true; }
+	// 창 관리자(Phase 3-A): 겹침 순서의 맨 위 열린 창부터(마지막에 누르거나 연 창)
+	if (const char* top = wm::TopOpen())
+	{
+		CloseWindowById(top);
+		return true;
+	}
 	if (m_dialogQuest != 0 && m_dialogNpc != 0) { m_dialogQuest = 0; m_dialogTextAt = m_now; return true; }   // 이야기 → NPC 첫 화면
 	if (m_dialogNpc || m_shopMode != ShopMode::None) { CloseNpcWindows(); return true; }
 	if (m_questLogOpen) return closed(m_questLogOpen);
@@ -335,10 +343,10 @@ void Game::HandleWorldInput()
 {
 	PickUnderMouse();
 	UpdateAim();
-	if (m_dead || m_menuOpen || m_keysOpen)
-		return;   // 메뉴 · 조작 설정은 모달 — 어두운 바깥을 눌러도 월드로 가지 않는다
+	if (m_dead || m_menuOpen || m_keysOpen || m_uiEdit)
+		return;   // 메뉴 · 조작 설정 · UI 편집은 모달 — 어두운 바깥을 눌러도 월드로 가지 않는다
 
-	const bool overUi = ui::MouseOverUi() || ui::MouseConsumed();
+	const bool overUi = ui::MouseOverUi() || ui::MouseConsumed() || wm::Busy();
 	const bool force = kb::Down(kb::Act::ForceAttack);
 	const int moveBtn = MoveButton(), atkBtn = AttackButton();
 
@@ -594,6 +602,7 @@ void Game::LoadControls()
 {
 	kb::Load(m_playerName);
 	LoadQuickSlots();
+	LoadUiLayout();
 }
 
 void Game::SaveControls()

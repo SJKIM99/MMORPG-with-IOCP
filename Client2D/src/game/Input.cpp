@@ -56,6 +56,7 @@ namespace in
 		g_down[0] = leftDown;
 		g_down[1] = rightDown;
 		ui::SetMouseOverride(true, pos);
+		ui::SetButtonOverride(true, leftDown, rightDown);
 	}
 
 	void ClearScriptMouse()
@@ -64,6 +65,7 @@ namespace in
 		g_script = false;
 		g_down[0] = g_down[1] = g_seen[0] = g_seen[1] = g_prev[0] = g_prev[1] = false;
 		ui::SetMouseOverride(false);
+		ui::SetButtonOverride(false);
 	}
 
 	bool ScriptMouse() { return g_script; }
