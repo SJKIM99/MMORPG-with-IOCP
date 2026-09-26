@@ -145,10 +145,16 @@ namespace motion
 			running = false;
 			settleV += 6.f;
 		}
-		constexpr float k = 170.f, c = 13.f;
-		settleV += (-k * settle - c * settleV) * dt;
-		settle += settleV * dt;
-		if (std::fabs(settle) < 1e-3f && std::fabs(settleV) < 1e-2f) settle = settleV = 0.f;
+		// 감쇠 스프링은 1/120초로 잘라 적분한다 — 긴 프레임(느린 PC · 로딩 멈칫 · 소프트웨어 렌더링 170ms)에 한 번에
+		// 적분하면 발산해 NaN이 되고, NaN 자세는 몸 그림 전체를 지운다(Phase 4-A 시험에서 찾음: 걷고 난 뒤 캐릭터가 사라졌다).
+		constexpr float k = 170.f, c = 13.f, kStep = 1.f / 120.f;
+		for (float rem = std::min(dt, 0.5f); rem > 0.f; rem -= kStep)
+		{
+			const float h = std::min(rem, kStep);
+			settleV += (-k * settle - c * settleV) * h;
+			settle += settleV * h;
+		}
+		if (!std::isfinite(settle) || !std::isfinite(settleV) || (std::fabs(settle) < 1e-3f && std::fabs(settleV) < 1e-2f)) settle = settleV = 0.f;
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────
