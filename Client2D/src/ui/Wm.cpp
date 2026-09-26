@@ -535,7 +535,7 @@ namespace wm
 
 		// 위쪽 띠
 		ui::Panel(bar, 0.97f, false);
-		ui::Text("UI 편집", Vector2{ bar.x + 16.f, bar.y + 8.f }, ui::type::kHeading, ui::theme::kDawnHi);
+		ui::Text("화면 배치", Vector2{ bar.x + 16.f, bar.y + 8.f }, ui::type::kHeading, ui::theme::kDawnHi);
 		ui::Text("끌어서 옮기기 · 휠로 크기(80~130%) · 오른쪽 클릭 되돌리기", Vector2{ bar.x + 16.f, bar.y + 27.f }, ui::type::kCaption, ui::theme::kTextDim);
 		bool done = false;
 		if (ui::Button(Rectangle{ bar.x + bar.width - 204.f, bar.y + 9.f, 108.f, 28.f }, "기본 배치로", ui::ButtonKind::Normal, true, 14.f))

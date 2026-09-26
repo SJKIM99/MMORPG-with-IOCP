@@ -565,7 +565,8 @@ void Game::DrawMenuBar()
 		const Color ic = open ? ui::theme::kDawnHi : (hover ? ui::theme::kTextHi : ui::theme::kText);
 		DrawMenuIcon(it.icon, Vector2{ b.x + S * 0.5f, b.y + S * 0.5f + (down ? 1.f : 0.f) }, 1.f, ic);
 		const std::string key = it.act == kb::Act::Count ? std::string("Esc") : kb::Label(it.act);
-		if (!key.empty())
+		// 칸 안에는 짧은 키만(P · I · F9) — "Alt+U" · "Esc"처럼 긴 키는 아이콘을 덮으므로 툴팁에만(Phase 3 자기 검토)
+		if (!key.empty() && key.size() <= 2)
 		{
 			ui::TextStyle ks; ks.size = ui::type::kMicro - 1.f; ks.color = ui::theme::kTextDim; ks.face = ui::Face::Strong; ks.outline = 1.f; ks.outlineColor = Color{ 0, 0, 0, 200 };
 			ui::Fonts().Draw(key, Vector2{ b.x + 3.f, b.y + 1.f }, ks);
@@ -581,7 +582,7 @@ void Game::DrawMenuBar()
 		{
 			std::vector<ui::TooltipLine> tip{ { std::string(it.name) + (key.empty() ? "" : "  [" + key + "]"), ui::theme::kTextHi, 14.f, ui::Face::Strong } };
 			if (it.dot) tip.push_back({ it.dotText, ui::theme::kDawnHi, 12.5f });
-			if (it.icon == MenuIcon::Guild || it.icon == MenuIcon::Auction) tip.push_back({ "아직 문을 열지 않았다(Phase 5).", ui::theme::kTextDim, 12.5f });
+			if (it.icon == MenuIcon::Guild || it.icon == MenuIcon::Auction) tip.push_back({ "아직 문을 열지 않았다.", ui::theme::kTextDim, 12.5f });
 			ui::Tooltip(std::move(tip));
 		}
 		if (ui::Clicked(b))
@@ -622,7 +623,7 @@ void Game::DrawSystemMenu()
 	if (item("게임으로 돌아가기", ButtonKind::Primary)) { m_menuOpen = false; sfx::Play(sfx::Id::Close, 0.5f); }
 	if (item("조작 설정", ButtonKind::Normal)) { m_menuOpen = false; m_keysOpen = true; sfx::Play(sfx::Id::Open, 0.5f); }
 	// Phase 3-A: HUD 덩어리 옮기기 · 배율(편집 모드) · 창 배치 되돌리기
-	if (item("UI 편집", ButtonKind::Normal)) { m_menuOpen = false; m_uiEdit = true; sfx::Play(sfx::Id::Open, 0.5f); }
+	if (item("화면 배치", ButtonKind::Normal)) { m_menuOpen = false; m_uiEdit = true; sfx::Play(sfx::Id::Open, 0.5f); }
 	if (item("창 배치 되돌리기", ButtonKind::Normal)) { wm::ResetWindows(); m_menuOpen = false; AddCenter("창 배치를 기본으로 되돌렸습니다.", ui::theme::kTextDim); sfx::Play(sfx::Id::Close, 0.5f); }
 	if (item("도움말", ButtonKind::Normal)) { m_menuOpen = false; m_helpOpen = true; sfx::Play(sfx::Id::Open, 0.5f); }
 	if (item("게임 종료", ButtonKind::Danger)) { SaveControls(); if (wm::Dirty()) SaveUiLayout(); m_quit = true; }
@@ -842,8 +843,8 @@ void Game::DrawKeySettings()
 			// Phase 3-A: UI 배율 — 자동 = 1080p까지 100%, 1440p 125%, 4K 200%
 			static const char* const kU[] = { "자동", "100", "125", "150", "200" };
 			static const int kUv[] = { 0, 100, 125, 150, 200 };
-			choice("UI 배율", kU, kUv, 5, o.uiScale, [&](int v) { o.uiScale = static_cast<uint8_t>(v); },
-				"HUD · 창 · 글자의 크기(%). 자동은 화면 높이로 정한다 — 1080p까지 100%, 1440p 125%, 4K 200%.");
+			choice("창 · 글자 크기", kU, kUv, 5, o.uiScale, [&](int v) { o.uiScale = static_cast<uint8_t>(v); },
+				"전투 판 · 창 · 글자를 함께 키운다(%). 자동은 화면 높이로 정한다 — 1080p까지 100%, 1440p 125%, 4K 200%.");
 		}
 	}
 

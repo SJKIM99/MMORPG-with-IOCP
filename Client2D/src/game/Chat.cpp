@@ -2,6 +2,7 @@
 #include "ui/Ui.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 
@@ -152,6 +153,29 @@ namespace chat
 		return out;
 	}
 
+	bool WhisperNamePart(const std::string& text, std::string& cmd, std::string& partial)
+	{
+		if (text.empty() || text[0] != '/') return false;
+		const size_t sp = text.find(' ');
+		if (sp == std::string::npos) return false;
+		cmd = text.substr(0, sp);
+		if (!In(cmd, { "/귓", "/귓속말", "/w", "/ㄱ" })) return false;
+		partial = text.substr(sp + 1);
+		return partial.find(' ') == std::string::npos;
+	}
+
+	bool NamePrefix(std::string_view name, std::string_view partial)
+	{
+		if (partial.size() > name.size()) return false;
+		for (size_t i = 0; i < partial.size(); ++i)
+		{
+			const unsigned char a = static_cast<unsigned char>(name[i]), b = static_cast<unsigned char>(partial[i]);
+			if (a < 0x80 && b < 0x80) { if (std::tolower(a) != std::tolower(b)) return false; }
+			else if (a != b) return false;
+		}
+		return true;
+	}
+
 	std::string ItemToken(uint16_t itemId, uint8_t enchant, uint8_t rarity)
 	{
 		char buf[32];
@@ -250,6 +274,7 @@ namespace chat
 		v.Set("busy", json::Value::Num(s.activeAlpha));
 		v.Set("font", json::Value::Num(s.font));
 		v.Set("clock", json::Value::Bool(s.clock));
+		v.Set("fade", json::Value::Bool(s.fadeText));
 		json::Value bl = json::Value::Arr();
 		for (const auto& n : s.blocked) bl.Push(json::Value::Str(n));
 		v.Set("block", std::move(bl));
@@ -281,6 +306,7 @@ namespace chat
 		s.activeAlpha = std::clamp(static_cast<float>(v.NumOr("busy", 0.85)), 0.f, 1.f);
 		s.font = std::clamp(static_cast<int>(v.NumOr("font", 1)), 0, 2);
 		s.clock = v.BoolOr("clock", false);
+		s.fadeText = v.BoolOr("fade", true);
 		s.blocked.clear();
 		if (const json::Value* bl = v.Get("block"); bl && bl->IsArray())
 			for (const auto& n : bl->a)

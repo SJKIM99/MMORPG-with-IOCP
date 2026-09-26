@@ -353,6 +353,8 @@ private:
 	void ChatInsertItemLink(uint16_t itemId, uint8_t enchant, uint8_t rarity);   // 소지품 Shift+클릭
 	void DrawChatMenu();                                // 이름 메뉴 · 탭 설정(맨 위 작은 창)
 	[[nodiscard]] bool ChatBlocked(const std::string& name) const;
+	[[nodiscard]] std::vector<std::string> WhisperCandidates(const std::string& partial) const;   // Tab 이름 완성 후보
+	bool CompleteWhisperName();                         // Tab 한 번(채우기 · 다음 후보)
 	[[nodiscard]] std::string ChatDisplayText(const std::string& text) const;   // 아이템 고리 → [이름] (말풍선)
 
 	// ── 입력 ──
@@ -656,6 +658,9 @@ private:
 	std::string      m_lastWhisperTo;               // 귓속말 실패 알림
 	std::vector<std::string> m_chatHistory;         // ↑↓(보낸 줄)
 	int              m_chatHistIdx = -1;
+	std::vector<std::string> m_whisperCands;        // "/귓 " 뒤 Tab 이름 완성 후보(최근 상대 · 주변 사람)
+	size_t           m_whisperCandIdx = 0;
+	std::string      m_whisperCandText;             // 마지막으로 채운 입력(그대로면 Tab = 다음 후보)
 	uint32_t         m_chatSerial = 0;
 	struct ChatLinkRef { std::string shown, token; };
 	std::vector<ChatLinkRef> m_chatLinks;           // 입력칸의 [아이템 이름] ↔ 표식
@@ -665,6 +670,8 @@ private:
 	int              m_chatMenuTab = -1;
 	double           m_chatNoteAt = -10.0;          // 클라 안내(너무 김 등) 1초에 한 번
 	float            m_chatBgA = 0.35f;             // 배경 투명도(부드럽게 따라간다)
+	float            m_chatTextA = 1.f;             // 글자 진하기 — 20초 조용하면 흐려진다(설정 "조용하면 흐리게")
+	double           m_chatActiveAt = 0.0;          // 마지막으로 가리키거나 입력한 시각
 	uint32_t         m_chatSeen = 0;                // 보고 있는 탭이 마지막으로 반영한 줄 번호(올려 보기 고정)
 	ui::TextField    m_chatField;
 	bool             m_chatOpen = false;

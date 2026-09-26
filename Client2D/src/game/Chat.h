@@ -79,6 +79,10 @@ namespace chat
 	// 자동 완성: 입력이 "/"로 시작하면 맞는 명령들(보이는 이름 · 설명)
 	struct CmdHint { const char* cmd; const char* help; };
 	[[nodiscard]] std::vector<CmdHint> CommandHints(std::string_view typed);
+	// 귓속말 이름 완성: "/귓 이름…"에서 아직 이름을 치는 중이면(이름 뒤 공백 없음) 명령 · 친 부분을 돌려준다
+	[[nodiscard]] bool WhisperNamePart(const std::string& text, std::string& cmd, std::string& partial);
+	// 이름이 친 부분으로 시작하는가(영문은 대소문자 무시 — 서버 이름 색인과 같게)
+	[[nodiscard]] bool NamePrefix(std::string_view name, std::string_view partial);
 
 	// 아이템 고리 표식
 	[[nodiscard]] std::string ItemToken(uint16_t itemId, uint8_t enchant, uint8_t rarity);
@@ -97,8 +101,11 @@ namespace chat
 		float activeAlpha = 0.85f;    // 마우스를 올리거나 입력 중
 		int   font = 1;               // 0 작게 · 1 보통 · 2 크게
 		bool  clock = false;          // 줄 앞 시각
+		bool  fadeText = true;        // 조용하면(새 줄 · 가리킴 · 입력 없이 kQuietSec) 글자도 흐리게 — 싸우는 동안 월드를 덜 가린다
 		std::vector<std::string> blocked;   // 차단한 이름(클라만)
 	};
+	inline constexpr float kQuietSec = 20.f;     // 이만큼 조용하면 흐려지기 시작
+	inline constexpr float kQuietTextA = 0.28f;  // 흐려진 글자 진하기
 	[[nodiscard]] float FontSize(int font);
 	void DefaultTabs(std::vector<Tab>& tabs);
 	[[nodiscard]] json::Value ToJson(const std::vector<Tab>& tabs, int active, const Settings& s);

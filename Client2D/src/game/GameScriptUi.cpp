@@ -19,6 +19,10 @@
 //   chat3:a|b|c  세 클라이언트: a가 일반 · 전체 · 거래 · 귓속말 · 아이템 고리 · 도배(토큰 버킷) · 되풀이를, b가 /r 답 · 일반을,
 //             c가 일반을 보낸다. 받은 줄을 [chat]으로 찍는다(tools/sandbox/chat3.sh가 모아 판정)
 //   hudres    HUD 덩어리 · 채팅창 사각형이 서로 겹치는지 · 화면 밖인지 찍는다([hudcheck]) — 해상도마다 --size로
+//   chatcfg · chatcfg2  채팅창 설정(탭 · 거르기 · 투명도 · 글자 · 시각 · 차단 · 잠금)을 바꾸고 → 같은 이름으로 다시 들어와 그대로인지.
+//             귓속말 이름 완성(Tab) · 조용하면 흐려지기도 여기서
+//   uiedit · boss3  UI 편집(미니맵 끌기 · 전투 판 배율) · 보스전(여러 줄 체력바 · 무력화) 녹화
+//   hotfeel   기술 칸 손맛 — 재사용 대기 중 누름(눌림 · 붉은 반짝 · 글 안내 1초에 한 번) · 마나 0(자원 부족). 레벨 30 이름(lv30_…)으로
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace
@@ -358,6 +362,179 @@ bool Game::RunScriptUi(float dt)
 			if (ok) std::printf("[uiedit] saved combat k=%.2f · minimap dx=%.0f dy=%.0f\n", root.Get("hud")->Get("hud.combat")->NumOr("k", 1), root.Get("hud")->Get("hud.minimap")->NumOr("dx", 0), root.Get("hud")->Get("hud.minimap")->NumOr("dy", 0));
 			std::printf("[wmcheck] done pass=%d fail=%d\n", m_checkPass, m_checkFail);
 			next(99);
+		}
+		return true;
+	}
+
+	if (s == "chatcfg" || s == "chatcfg2")
+	{
+		// 채팅창 설정이 재접속 뒤에도 남는가(완료 기준 1) + 귓속말 이름 완성(Tab) + 조용하면 흐려지기.
+		//   chatcfg   탭 하나 만들기(전체 · 거래만, 반짝임 끔) · 결사 탭에 시스템 더하기 · 투명도 50/100 · 글자 크게 · 시각 · 흐리게 끔 ·
+		//             차단 한 명 · 창 잠금 → 저장 파일 확인. 이름 완성: "/귓 누" → 누리별 → 누렁바위, "/w " → 달빛여우, 차단한 이름은 안 나온다
+		//   chatcfg2  같은 이름으로 다시 들어와 위 값이 그대로인지 → 흐리게를 켜고 20초 조용히 → 글자가 흐려졌는지
+		const uint32_t kMarket = chat::Bit(chat::Ch::World) | chat::Bit(chat::Ch::Trade);
+		switch (m_scriptStep)
+		{
+		case 0:
+			if (m_scriptT < 1.5f) break;
+			if (s == "chatcfg")
+			{
+				wm::ResetWindows();
+				chat::DefaultTabs(m_chatTabs);
+				m_chatSet = chat::Settings{};
+				chat::Tab t;
+				t.name = "장터"; t.user = true; t.flash = false; t.mask = kMarket;
+				m_chatTabs.push_back(std::move(t));
+				m_chatTab = static_cast<int>(m_chatTabs.size()) - 1;
+				m_chatTabs[2].mask |= chat::Bit(chat::Ch::System);
+				m_chatSet.idleAlpha = 0.5f; m_chatSet.activeAlpha = 1.f; m_chatSet.font = 2; m_chatSet.clock = true; m_chatSet.fadeText = false;
+				m_chatSet.blocked.push_back("도배꾼");
+				wm::SetLocked("chat", true);
+				wm::MarkDirty();
+				// 이름 완성 — 입력칸에 친 것처럼 두고 Tab과 같은 함수를 부른다
+				m_lastWhisperFrom = "달빛여우";
+				AddChatMsg(chat::Ch::Normal, "누렁바위", 0, "이름 완성 시험 하나", ui::theme::kChatNormal);
+				AddChatMsg(chat::Ch::World, "도배꾼", 0, "차단한 이름", ui::theme::kChatWorld);
+				AddChatMsg(chat::Ch::World, "누리별", 0, "이름 완성 시험 둘", ui::theme::kChatWorld);
+				m_chatField.text = "/귓 누";
+				CompleteWhisperName();
+				check(m_chatField.text == "/귓 누리별", "Tab: \"/귓 누\" → 가장 최근에 말한 누리별");
+				CompleteWhisperName();
+				check(m_chatField.text == "/귓 누렁바위", "Tab 한 번 더 → 다음 후보 누렁바위");
+				m_chatField.text = "/w ";
+				CompleteWhisperName();
+				check(m_chatField.text == "/w 달빛여우", "Tab: 빈 이름 → 마지막 귓속말 상대 달빛여우");
+				m_chatField.text = "/귓 도";
+				check(!CompleteWhisperName() && m_chatField.text == "/귓 도", "차단한 이름(도배꾼)은 후보에 없다");
+				m_chatField.text.clear();
+				next(1);
+			}
+			else
+			{
+				check(m_chatTabs.size() == 7 && m_chatTabs[6].name == "장터" && m_chatTabs[6].mask == kMarket && !m_chatTabs[6].flash && m_chatTabs[6].user,
+					"만든 탭(장터 · 전체+거래 · 반짝임 끔)이 그대로");
+				check(m_chatTabs.size() > 2 && (m_chatTabs[2].mask & chat::Bit(chat::Ch::System)) != 0, "결사 탭 거르기(+시스템)가 그대로");
+				check(m_chatTab == 6, "보던 탭(장터)으로 열림");
+				check(std::fabs(m_chatSet.idleAlpha - 0.5f) < 0.01f && std::fabs(m_chatSet.activeAlpha - 1.f) < 0.01f, "투명도(평소 50% · 활성 100%)");
+				check(m_chatSet.font == 2 && m_chatSet.clock && !m_chatSet.fadeText, "글자 크게 · 시각 표시 · 흐리게 끔");
+				check(ChatBlocked("도배꾼"), "차단 목록");
+				check(wm::Locked("chat"), "창 잠금");
+				std::printf("[chatcfg2] tabs=%d active=%d idle=%.2f busy=%.2f font=%d clock=%d fade=%d lock=%d\n", static_cast<int>(m_chatTabs.size()), m_chatTab,
+					m_chatSet.idleAlpha, m_chatSet.activeAlpha, m_chatSet.font, m_chatSet.clock ? 1 : 0, m_chatSet.fadeText ? 1 : 0, wm::Locked("chat") ? 1 : 0);
+				// 흐리게를 켜고 조용히 기다린다(마우스는 창 밖)
+				m_chatSet.fadeText = true;
+				m_chatActiveAt = m_now;
+				in::SetScriptMouse(phys(Vector2{ m_uiW * 0.5f, m_uiH * 0.3f }), false);
+				next(2);
+			}
+			break;
+		case 1:   // chatcfg: 자동 저장(2초) 뒤 파일
+			if (elapsed() > 3.0f)
+			{
+				json::Value root;
+				const bool ok = json::LoadFile(UiLayoutPath(), root) && root.Get("chat") && root.Get("win") && root.Get("win")->Get("chat");
+				check(ok, "config/ui_<이름>.json에 채팅 설정이 저장됨");
+				if (ok)
+				{
+					const json::Value& c = *root.Get("chat");
+					const json::Value* tabs = c.Get("tabs");
+					check(tabs && tabs->IsArray() && tabs->a.size() == 7 && c.NumOr("active", 0) == 6 && c.NumOr("font", 1) == 2 && c.BoolOr("clock", false) && !c.BoolOr("fade", true),
+						"저장 파일: 탭 7 · 보던 탭 6 · 글자 · 시각 · 흐리게");
+					check(root.Get("win")->Get("chat")->BoolOr("lock", false), "저장 파일: 채팅창 잠금");
+				}
+				std::printf("[wmcheck] done pass=%d fail=%d\n", m_checkPass, m_checkFail);
+				next(99);
+			}
+			break;
+		case 2:   // chatcfg2: 20초 조용 → 흐려짐
+			if (elapsed() > chat::kQuietSec + 3.f)
+			{
+				std::printf("[chatfade] textA=%.2f (quiet %.0fs)\n", m_chatTextA, elapsed());
+				check(m_chatTextA < chat::kQuietTextA + 0.1f, "20초 조용하면 글자가 흐려진다");
+				std::printf("[wmcheck] done pass=%d fail=%d\n", m_checkPass, m_checkFail);
+				next(99);
+			}
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
+
+	if (s == "hotfeel")
+	{
+		// 기술 칸 손맛(3-C): 훈련장에서 Q를 쓰고 → 재사용 대기 중에 두 번 더 누른다(칸은 누를 때마다 눌림 + 붉은 반짝, 글 안내는 1초에 한 번)
+		// → 마나 0에서 W(자원 부족 반짝). 사람과 같은 함수(CastHot)로 누른다
+		static double sayAt = 0.0;
+		auto dummy = [this]() -> Entity*
+		{
+			Entity* best = nullptr;
+			float bd = 1e9f;
+			for (auto& [id, e] : m_ents)
+				if (e.kind == EntityKind::Monster && !e.dead)
+				{
+					const float d = std::fabs(e.pos.x - static_cast<float>(m_predX)) + std::fabs(e.pos.y - static_cast<float>(m_predY));
+					if (d < bd) { bd = d; best = &e; }
+				}
+			return best;
+		};
+		const SkillRow* q = HotSkill(1);
+		const SkillRow* w = HotSkill(2);
+		if (!q || !w) return true;
+		const size_t kq = static_cast<size_t>(CdIndex(q->id)), kw = static_cast<size_t>(CdIndex(w->id));
+		switch (m_scriptStep)
+		{
+		case 0:
+			if (m_scriptT > 1.2f) { SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[1].x, WorldData::kDummySpots[1].y - 2 }); next(1); }
+			break;
+		case 1:
+			if (m_goal.kind == GoalKind::None || elapsed() > 12.f)
+			{
+				if (Entity* d = dummy()) { m_target = d->id; SetScriptAim(d->tx, d->ty, d->id); }
+				CastHot(1);
+				std::printf("[hotfeel] cast q=%u ready_in=%.2f\n", static_cast<unsigned>(q->id), m_skillReady[kq] - m_now);
+				next(2);
+			}
+			break;
+		case 2:
+			if (elapsed() > 0.6f)
+			{
+				const double before = m_cdSayAt;
+				CastHot(1);
+				check(m_skillReady[kq] - m_now > 0.45 && m_now - m_cdDeniedAt[kq] < 0.001 && m_now - m_hotPressAt[1] < 0.001, "재사용 대기 중 누름 → 칸이 눌리고 붉게 반짝");
+				check(m_cdSayAt > before, "첫 누름은 글 안내(재사용 대기 중 n초)");
+				sayAt = m_cdSayAt;
+				next(3);
+			}
+			break;
+		case 3:
+			if (elapsed() > 0.3f)
+			{
+				CastHot(1);
+				check(m_now - m_cdDeniedAt[kq] < 0.001 && m_now - m_hotPressAt[1] < 0.001, "0.3초 뒤 다시 누름 → 다시 눌림 · 붉은 반짝");
+				check(m_cdSayAt == sayAt, "글 안내는 1초에 한 번(0.3초 뒤에는 건너뜀)");
+				next(4);
+			}
+			break;
+		case 4:
+			if (elapsed() > 1.2f)
+			{
+				if (m_now >= m_skillReady[kw])
+				{
+					const int mp = m_mp;
+					m_mp = 0;
+					CastHot(2);
+					check(m_now - m_cdDeniedAt[kw] < 0.001 && m_cdSayAt >= m_now - 0.001, "마나 0에서 누름 → 자원 부족 반짝 · 안내(1초가 지났다)");
+					m_mp = mp;
+				}
+				else
+					check(false, "W가 재사용 대기 중이라 자원 부족 시험을 못 했다");
+				std::printf("[wmcheck] done pass=%d fail=%d\n", m_checkPass, m_checkFail);
+				next(99);
+			}
+			break;
+		default:
+			break;
 		}
 		return true;
 	}

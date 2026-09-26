@@ -37,31 +37,6 @@ namespace
 		return buf;
 	}
 
-	// 문장을 폭에 맞춰 여러 줄로 나눈다(글자 단위)
-	std::vector<std::string> WrapLines(const std::string& text, float size, float maxW)
-	{
-		std::vector<std::string> out;
-		std::vector<int> cps;
-		ui::DecodeUtf8(text, cps);
-		std::string line;
-		for (int cp : cps)
-		{
-			std::string cand = line;
-			ui::AppendUtf8(cand, cp);
-			if (ui::Fonts().Measure(cand, size).x > maxW && !line.empty())
-			{
-				out.push_back(line);
-				line.clear();
-				if (cp == ' ') continue;
-				ui::AppendUtf8(line, cp);
-			}
-			else
-				line.swap(cand);
-		}
-		if (!line.empty()) out.push_back(line);
-		return out;
-	}
-
 	// 그로시(두툼한 은화)
 	void CoinIcon(Vector2 c, float r)
 	{
@@ -1532,7 +1507,7 @@ void Game::DrawHelp()
 		  "소지품 · 캐릭터 · 기술 · 퀘스트 일지 · 월드 지도 · 확장 미니맵" },
 		{ L(Act::Chat) + " · " + L(Act::Command), "채팅 — /귓 이름 내용 · /r 답 · /전(전체) · /거래 · /길(결사) · /일반. 이름을 누르면 귓속말 · 차단, Shift+클릭한 물건은 [고리]로" },
 		{ L(Act::ShowNames) + " · 휠", "이름 모두 보기 · 확대/축소" },
-		{ "Esc", "맨 위 창부터 닫기 → 메뉴(조작 설정 · UI 편집 — 창과 HUD는 끌어서 옮긴다)" },
+		{ "Esc", "맨 위 창부터 닫기 → 메뉴(조작 설정 · 화면 배치 — 창 · 전투 판 · 미니맵을 끌어서 옮긴다)" },
 	};
 	float y = r.y + 52;
 	for (const auto& [k, v] : rows)

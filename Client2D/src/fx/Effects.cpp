@@ -6,6 +6,7 @@
 #include "render/FxArt.h"
 #include "ui/Font.h"
 #include "core/Util.h"
+#include "rlgl.h"
 
 #include <algorithm>
 #include <cmath>
@@ -346,7 +347,7 @@ namespace fx
 				Spark(iso, z, RandF(150.f, 520.f), RandF(0.f, 6.28f), Rgb(0xFFF2C0), Rgb(0xFF6020), RandF(0.4f, 0.9f), RandF(6.f, 12.f));
 			Beam(iso, 90.f, 520.f, 1.2f, Rgb(0xFFD070, 200));
 			Ring(iso, 20.f, 260.f, 0.8f, Rgb(0xFFD070, 220), 8.f);
-			Flash(Rgb(0xFFF0D0), 0.6f, 0.35f);
+			Flash(Rgb(0xFFF0D0), 0.5f, 0.35f);   // 화면 번쩍임은 스크린 혼합(DrawScreen) — 밝은 땅에서도 쓰러지는 보스가 보인다
 		}
 	}
 
@@ -940,11 +941,17 @@ namespace fx
 		if (m_flash > 0.f && m_flashLife > 0.f)
 		{
 			const float a = (m_flash / m_flashLife);
-			Color c = m_flashColor;
-			c.a = static_cast<unsigned char>(c.a * a * a);
-			BeginBlendMode(BLEND_ADDITIVE);
+			const float k = (m_flashColor.a / 255.f) * a * a;
+			// 스크린 혼합: 결과 = 빛 + 바탕 × (1 − 빛). 어두운 바닥에서는 더하기와 같고, 밝은 바닥(눈밭 · 모래)은 하얗게 타지 않는다
+			// (Phase 3 자기 검토 — 더하기 혼합이던 때는 설원 보스 처치 순간 월드 전체가 0.3초 동안 흰 판이 됐다)
+			const Color c{ static_cast<unsigned char>(m_flashColor.r * k), static_cast<unsigned char>(m_flashColor.g * k),
+				static_cast<unsigned char>(m_flashColor.b * k), 255 };
+			rlDrawRenderBatchActive();
+			rlSetBlendFactors(1 /*GL_ONE*/, 0x0301 /*GL_ONE_MINUS_SRC_COLOR*/, 0x8006 /*GL_FUNC_ADD*/);
+			rlSetBlendMode(RL_BLEND_CUSTOM);
 			DrawRectangle(0, 0, w, h, c);
-			EndBlendMode();
+			rlDrawRenderBatchActive();
+			rlSetBlendMode(RL_BLEND_ALPHA);
 		}
 	}
 }

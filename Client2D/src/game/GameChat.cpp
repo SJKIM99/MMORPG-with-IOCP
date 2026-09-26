@@ -10,6 +10,7 @@
 #include "Data/ItemRules.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -204,6 +205,64 @@ bool Game::ChatBlocked(const std::string& name) const
 		if (n.size() == name.size() && std::equal(n.begin(), n.end(), name.begin(), [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); }))
 			return true;
 	return false;
+}
+
+// "/귓 " 뒤 Tab 이름 완성 후보: 최근 귓속말 상대 → 채팅에서 최근에 말한 사람 → 주변 사람(가까운 순). 나 · 차단은 뺀다
+std::vector<std::string> Game::WhisperCandidates(const std::string& partial) const
+{
+	std::vector<std::string> out;
+	auto add = [&](const std::string& n)
+	{
+		if (n.empty() || n == m_playerName || ChatBlocked(n) || !chat::NamePrefix(n, partial)) return;
+		if (std::find(out.begin(), out.end(), n) != out.end()) return;
+		out.push_back(n);
+	};
+	add(m_lastWhisperFrom);
+	add(m_lastWhisperTo);
+	// 줄이 가장 많이 모이는 탭(기본 "모두")의 새 줄부터 200줄
+	const chat::Tab* widest = nullptr;
+	for (const auto& t : m_chatTabs)
+		if (!widest || std::popcount(t.mask) > std::popcount(widest->mask)) widest = &t;
+	if (widest)
+	{
+		int seen = 0;
+		for (auto it = widest->lines.rbegin(); it != widest->lines.rend() && seen < 200; ++it, ++seen)
+			if ((*it)->ch != chat::Ch::System && (*it)->ch != chat::Ch::Notice && !(*it)->history)
+				add((*it)->sender);
+	}
+	std::vector<std::pair<float, const std::string*>> near;
+	const Entity* me = nullptr;
+	if (m_hasSelf)
+		if (auto it = m_ents.find(m_selfId); it != m_ents.end()) me = &it->second;
+	for (const auto& [id, e] : m_ents)
+		if (e.kind == EntityKind::Player && !(m_hasSelf && id == m_selfId) && !e.name.empty())
+			near.emplace_back(me ? std::fabs(e.pos.x - me->pos.x) + std::fabs(e.pos.y - me->pos.y) : 0.f, &e.name);
+	std::sort(near.begin(), near.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+	for (const auto& [d, n] : near) { add(*n); if (out.size() >= 12) break; }
+	return out;
+}
+
+// Tab 한 번: 입력칸이 "/귓 친부분"이면 첫 후보로 채우고, 채운 그대로면 다음 후보로. 채웠으면 true
+bool Game::CompleteWhisperName()
+{
+	std::string cmd, part;
+	if (!chat::WhisperNamePart(m_chatField.text, cmd, part)) return false;
+	if (m_chatField.text != m_whisperCandText || m_whisperCands.empty())
+	{
+		m_whisperCands = WhisperCandidates(part);
+		m_whisperCandIdx = 0;
+	}
+	else
+		m_whisperCandIdx = (m_whisperCandIdx + 1) % m_whisperCands.size();
+	if (m_whisperCands.empty())
+	{
+		sfx::Play(sfx::Id::Error, 0.25f);
+		return false;
+	}
+	m_chatField.text = cmd + " " + m_whisperCands[m_whisperCandIdx];
+	m_whisperCandText = m_chatField.text;
+	sfx::Play(sfx::Id::Hover, 0.3f);
+	return true;
 }
 
 std::string Game::ChatDisplayText(const std::string& text) const
@@ -414,21 +473,33 @@ void Game::DrawChat()
 	const bool locked = wm::Locked("chat");
 
 	// 배경: 평소 · 활성 투명도 사이를 부드럽게
-	const float wantA = (hover || typing || m_chatMenu != 0) ? m_chatSet.activeAlpha : m_chatSet.idleAlpha;
+	const bool engaged = hover || typing || m_chatMenu != 0;
+	const float wantA = engaged ? m_chatSet.activeAlpha : m_chatSet.idleAlpha;
 	m_chatBgA += (wantA - m_chatBgA) * std::min(1.f, GetFrameTime() * 10.f);
-	ui::Plate(r, util::WithA(Color{ 10, 12, 15, 255 }, 0.92f * m_chatBgA), util::WithA(ui::theme::kLineStrong, 0.35f + 0.65f * m_chatBgA), 4.f, 1.f);
+	// 조용하면 글자도 흐리게(Phase 3 자기 검토): 보는 탭에 새 줄 · 가리킴 · 입력이 20초 없으면 천천히(≈1.2초) 28%까지,
+	// 새 줄이 오거나 마우스를 올리면 바로 돌아온다 — 싸우는 동안 채팅이 월드를 덜 가린다(설정 "조용하면 흐리게")
+	if (engaged) m_chatActiveAt = m_now;
+	{
+		const auto& cur = m_chatTabs[static_cast<size_t>(m_chatTab)];
+		const double lastLine = cur.lines.empty() ? -1e9 : cur.lines.back()->time;
+		const bool quiet = m_chatSet.fadeText && !m_chatOpen && m_now - std::max(m_chatActiveAt, lastLine) > chat::kQuietSec;
+		const float wantT = quiet ? chat::kQuietTextA : 1.f;
+		m_chatTextA += (wantT - m_chatTextA) * std::min(1.f, GetFrameTime() * (quiet ? 1.6f : 14.f));
+	}
+	const float fade = 0.4f + 0.6f * m_chatTextA;   // 판 · 탭 줄은 글자만큼 흐리지 않는다
+	ui::Plate(r, util::WithA(Color{ 10, 12, 15, 255 }, 0.92f * m_chatBgA * fade), util::WithA(ui::theme::kLineStrong, (0.35f + 0.65f * m_chatBgA) * fade), 4.f, 1.f);
 	ui::Block(r);
 
 	// ── 탭 줄 ──
 	const Rectangle strip{ r.x + 1.f, r.y + 1.f, r.width - 2.f, 24.f };
 	// 탭 줄은 평소에도 짙게(≥0.7) — 뒤로 비치는 이름표 · 불빛 위에서도 탭 이름이 읽혀야 한다
-	DrawRectangleRec(Rectangle{ strip.x, strip.y, strip.width, strip.height }, util::WithA(Color{ 8, 10, 12, 255 }, 0.62f + 0.3f * m_chatBgA));
-	ui::Rule(r.x + 4.f, r.x + r.width - 4.f, strip.y + strip.height, util::WithA(ui::theme::kLine, 0.5f + 0.5f * m_chatBgA));
+	DrawRectangleRec(Rectangle{ strip.x, strip.y, strip.width, strip.height }, util::WithA(Color{ 8, 10, 12, 255 }, (0.62f + 0.3f * m_chatBgA) * fade));
+	ui::Rule(r.x + 4.f, r.x + r.width - 4.f, strip.y + strip.height, util::WithA(ui::theme::kLine, (0.5f + 0.5f * m_chatBgA) * fade));
 	wm::DragHandle(strip);
 	float tx = strip.x + 6.f;
 	const Vector2 mouse = ui::Mouse();
 	const bool clickOk = !wm::JustDragged();
-	ui::TextStyle tsBase; tsBase.size = ui::type::kCaption + 0.5f; tsBase.face = ui::Face::Strong; tsBase.outline = 1.f; tsBase.outlineColor = Color{ 0, 0, 0, 170 };
+	ui::TextStyle tsBase; tsBase.size = ui::type::kCaption + 0.5f; tsBase.face = ui::Face::Strong; tsBase.outline = 1.f; tsBase.outlineColor = util::MulA(Color{ 0, 0, 0, 170 }, fade);
 	int clickedTab = -1, menuTab = -1;
 	for (int i = 0; i < static_cast<int>(m_chatTabs.size()); ++i)
 	{
@@ -449,8 +520,9 @@ void Game::DrawChat()
 			const float pulse = since < 3.f ? 0.5f + 0.5f * std::sin(since * 9.f) : 1.f;
 			ts.color = util::Mix(ui::theme::kTextDim, ui::theme::kDawnHi, pulse);
 		}
+		ts.color = util::MulA(ts.color, fade);
 		ui::Fonts().Draw(t.name, Vector2{ b.x + 8.f, std::round(b.y + (b.height - ts.size) * 0.5f - 1.f) }, ts);
-		if (active) DrawRectangleRec(Rectangle{ b.x + 4.f, b.y + b.height - 2.f, b.width - 8.f, 2.f }, ui::theme::kDawn);
+		if (active) DrawRectangleRec(Rectangle{ b.x + 4.f, b.y + b.height - 2.f, b.width - 8.f, 2.f }, util::MulA(ui::theme::kDawn, fade));
 		if (!active && t.unread > 0)
 			DrawCircleV(Vector2{ b.x + b.width - 4.f, b.y + 5.f }, 2.5f, ui::theme::kDawn);
 		if (clickOk && ui::Clicked(b)) clickedTab = i;
@@ -482,7 +554,7 @@ void Game::DrawChat()
 		if (plus.x + plus.width <= strip.x + strip.width - 30.f)
 		{
 			const bool hp = ui::Hovered(plus);
-			ui::TextStyle ps = tsBase; ps.color = hp ? ui::theme::kDawnHi : ui::theme::kTextDim;
+			ui::TextStyle ps = tsBase; ps.color = hp ? ui::theme::kDawnHi : util::MulA(ui::theme::kTextDim, fade);
 			ui::Fonts().DrawCentered("+", Vector2{ plus.x + plus.width * 0.5f, plus.y + plus.height * 0.5f }, ps);
 			if (hp) ui::Tooltip({ { "탭 만들기", ui::theme::kTextHi, 13.f, ui::Face::Strong }, { "만든 뒤 탭을 오른쪽 클릭해 채널을 고른다.", ui::theme::kText, 12.5f } });
 			if (clickOk && ui::Clicked(plus))
@@ -507,7 +579,7 @@ void Game::DrawChat()
 		const bool hg = ui::Hovered(gear);
 		{
 			// 톱니(그린 것 — 글꼴에 ⚙가 없다)
-			const Color gc = hg ? ui::theme::kDawnHi : ui::theme::kTextDim;
+			const Color gc = hg ? ui::theme::kDawnHi : util::MulA(ui::theme::kTextDim, fade);
 			const Vector2 c{ std::round(gear.x + gear.width * 0.5f), std::round(gear.y + gear.height * 0.5f) };
 			for (int k = 0; k < 8; ++k)
 			{
@@ -515,7 +587,7 @@ void Game::DrawChat()
 				DrawLineEx(Vector2{ c.x + std::cos(a) * 3.5f, c.y + std::sin(a) * 3.5f }, Vector2{ c.x + std::cos(a) * 6.5f, c.y + std::sin(a) * 6.5f }, 2.2f, gc);
 			}
 			DrawCircleV(c, 4.6f, gc);
-			DrawCircleV(c, 2.f, Color{ 12, 14, 17, 255 });
+			DrawCircleV(c, 2.f, util::MulA(Color{ 12, 14, 17, 255 }, fade));
 		}
 		if (clickOk && ui::Clicked(gear))
 		{
@@ -528,7 +600,7 @@ void Game::DrawChat()
 		if (locked)
 		{
 			// 자물쇠(그린 것): 고리 + 몸통
-			const Color lc = ui::theme::kTextDim;
+			const Color lc = util::MulA(ui::theme::kTextDim, fade);
 			const Vector2 c{ std::round(gear.x - 12.f), std::round(gear.y + gear.height * 0.5f) };
 			DrawRing(Vector2{ c.x, c.y - 2.f }, 2.2f, 3.6f, 180.f, 360.f, 12, lc);
 			DrawRectangleRec(Rectangle{ c.x - 4.5f, c.y - 1.5f, 9.f, 7.f }, lc);
@@ -576,7 +648,7 @@ void Game::DrawChat()
 		if (y + h < area.y) break;
 		LayoutRuns(BuildRuns(m, m_chatSet.clock), fs, maxW, rows);
 		// 새 줄은 짧게 밀려 들어온다(맨 아래를 보고 있을 때)
-		float off = 0.f, alpha = m.history ? 0.72f : 1.f;
+		float off = 0.f, alpha = (m.history ? 0.72f : 1.f) * m_chatTextA;
 		const float age = static_cast<float>(m_now - m.time);
 		if (i == count - 1 && tab.scroll < 0.5f && age < 0.18f && age >= 0.f)
 		{
@@ -686,6 +758,11 @@ void Game::DrawChat()
 	// 자동 완성: Tab = 첫 명령
 	if (!hints.empty() && IsKeyPressed(KEY_TAB))
 		m_chatField.text = std::string(hints.front().cmd) + " ";
+	// 귓속말 이름 완성(Phase 3 자기 검토): "/귓 " 뒤에서 Tab — 최근 상대 · 말한 사람 · 주변 사람을 차례로. 이름을 끝까지 칠 필요가 없다
+	std::string wCmd, wPart;
+	const bool namingWhisper = hints.empty() && chat::WhisperNamePart(m_chatField.text, wCmd, wPart);
+	if (namingWhisper && IsKeyPressed(KEY_TAB) && ime::Composition().empty())
+		CompleteWhisperName();
 	const bool submitted = ui::InputText(field, m_chatField, m_chatTarget.ch == chat::Ch::WhisperOut ? "귓속말 입력 (Esc 취소)" : "메시지 입력 · /귓 이름 · /전 · /거래 (Esc 취소)");
 	// 남은 바이트(표식으로 바꾼 길이 기준)
 	{
@@ -713,6 +790,37 @@ void Game::DrawChat()
 			ui::Text(hints[i].help, Vector2{ hr.x + 64.f, hr.y + 5.f }, ui::type::kCaption, ui::theme::kTextDim);
 			if (ui::Clicked(hr)) { m_chatField.text = std::string(hints[i].cmd) + " "; ui::Focus(&m_chatField); }
 			hy += rowH;
+		}
+		ui::Block(box);
+	}
+	// 귓속말 이름 후보(입력칸 위): Tab으로 도는 중이면 목록 + 지금 이름, 아니면 한 줄 안내
+	if (namingWhisper)
+	{
+		const bool cycling = !m_whisperCands.empty() && m_chatField.text == m_whisperCandText;
+		const float rowH = 21.f;
+		const size_t shown = cycling ? std::min<size_t>(m_whisperCands.size(), 6) : 1;
+		const Rectangle box{ field.x, in.y - 6.f - rowH * static_cast<float>(shown) - 8.f, std::min(240.f, r.width - 20.f), rowH * static_cast<float>(shown) + 8.f };
+		ui::Plate(box, Color{ 16, 19, 23, 245 }, ui::theme::kLineStrong, 3.f, 1.f);
+		if (!cycling)
+			ui::Text("Tab — 이름 채우기(최근 상대 · 주변 사람)", Vector2{ box.x + 8.f, box.y + 7.f }, ui::type::kCaption, ui::theme::kTextDim);
+		else
+		{
+			// 지금 이름이 보이도록 창을 민다
+			const size_t first = m_whisperCandIdx >= shown ? m_whisperCandIdx - shown + 1 : 0;
+			for (size_t i = 0; i < shown; ++i)
+			{
+				const size_t k = first + i;
+				const Rectangle hr{ box.x + 3.f, box.y + 4.f + rowH * static_cast<float>(i), box.width - 6.f, rowH };
+				const bool cur = k == m_whisperCandIdx;
+				if (cur) DrawRectangleRec(hr, util::WithA(ui::theme::kDawnDeep, 0.5f));
+				ui::Text(m_whisperCands[k], Vector2{ hr.x + 8.f, hr.y + 3.f }, ui::type::kBodyS, cur ? ui::theme::kChatWhisper : ui::theme::kText);
+				if (ui::Clicked(hr))
+				{
+					m_whisperCandIdx = k;
+					m_chatField.text = wCmd + " " + m_whisperCands[k] + " ";
+					ui::Focus(&m_chatField);
+				}
+			}
 		}
 		ui::Block(box);
 	}
@@ -778,7 +886,7 @@ void Game::DrawChatMenu()
 	if (m_chatMenuTab < 0 || m_chatMenuTab >= static_cast<int>(m_chatTabs.size())) { closeMenu(); return; }
 	chat::Tab& t = m_chatTabs[static_cast<size_t>(m_chatMenuTab)];
 	const float w = 256.f, rowH = 26.f;
-	const float h = 40.f + rowH * 7.f + 30.f + rowH * 5.f + 14.f;
+	const float h = 40.f + rowH * 7.f + 30.f + rowH * 6.f + 14.f;
 	Rectangle def{ std::clamp(m_chatMenuPos.x, 4.f, W - w - 4.f), std::clamp(m_chatMenuPos.y, 4.f, H - h - 4.f), w, h };
 	// 창 아래쪽에 붙은 채팅창이면 위로 펼친다
 	const Rectangle chatR = wm::LastRect("chat");
@@ -858,6 +966,9 @@ void Game::DrawChatMenu()
 		static const char* const kOn[] = { "끔", "켬" };
 		static const float kOnV[] = { 0.f, 1.f };
 		choice("시각 표시", kOn, kOnV, 2, m_chatSet.clock ? 1.f : 0.f, [&](float v) { m_chatSet.clock = v > 0.5f; });
+		choice("조용하면 흐리게", kOn, kOnV, 2, m_chatSet.fadeText ? 1.f : 0.f, [&](float v) { m_chatSet.fadeText = v > 0.5f; });
+		if (ui::Hovered(Rectangle{ r.x + 8.f, y - rowH, r.width - 130.f, rowH }))
+			ui::Tooltip({ { "조용하면 흐리게", ui::theme::kTextHi, 13.f, ui::Face::Strong }, { "보는 탭에 20초 동안 새 줄이 없으면 글자까지 흐려진다.", ui::theme::kText, 12.5f }, { "새 줄이 오거나 마우스를 올리면 바로 돌아온다.", ui::theme::kTextDim, 12.5f } });
 		const bool lk = wm::Locked("chat");
 		choice("창 잠금", kOn, kOnV, 2, lk ? 1.f : 0.f, [&](float v) { wm::SetLocked("chat", v > 0.5f); });
 	}
