@@ -2,6 +2,10 @@
 #include "game/Texts.h"
 #include "fx/Effects.h"
 #include "fx/SkillFx.h"
+#include "fx/Vfx.h"
+#include "fx/Trail.h"
+#include "render/Post.h"
+#include "render/FlashLight.h"
 #include "render/Draw.h"
 #include "render/Actors.h"
 #include "render/Sprites.h"
@@ -30,11 +34,12 @@ namespace
 		return actors::PlayerHeight();
 	}
 
-	bool IsTranslucent(const Entity& e)
+	bool IsTranslucent(const Entity& e, float now)
 	{
 		if (e.kind == EntityKind::Item) return true;
 		if (e.removing || e.dead || e.spawnT < 1.f) return true;
 		if (e.row && e.row->archetype == MonsterArchetype::eGhost) return true;
+		if (e.kind == EntityKind::Player && e.Status(static_cast<uint8_t>(StatusId::Veil), now)) return true;   // 밤 장막(은신)
 		return false;
 	}
 
@@ -62,7 +67,36 @@ void Game::DrawGame()
 	BeginMode2D(cam);
 	DrawWorld(cam);
 	EndMode2D();
-	m_light.Apply(cam, m_screenW, m_screenH, props::FrameLights());
+	{
+		// 밤 라이트맵: 소품 불빛 + 순간 조명(타격 · 폭발)
+		std::vector<props::Light> lights = props::FrameLights();
+		flashlight::AppendTo(lights);
+		m_light.Apply(cam, m_screenW, m_screenH, lights);
+	}
+	flashlight::Apply(cam, m_screenW, m_screenH, m_light.Night());
+	// 후처리(Phase 2-A): 효과 빛 블룸 · 충격파 · 아지랑이 · 방사형 흐림 · 색수차 · 암전
+	// 블룸 빛 버퍼에는 떠 있는 효과만 — 바닥 층(고리 · 새김 원 · 각인진 · 균열 · 그을음)까지 번지게 하면 큰 기술의 바닥 타원 전체가
+	// 흐린 빛으로 덮여 하얗게 탔다(단죄 · 낙성 절정 — Phase 2 자기 검토). 바닥 층은 본 그리기의 더하기 혼합만으로 충분히 빛난다
+	post::Apply(cam, m_screenW, m_screenH, [&]
+	{
+		fx::Fx().DrawWorld();
+		skillfx::DrawWorld();
+		trail::Draw();
+		vfx::DrawWorld();
+	});
+	// 적의 예고 테두리: 모든 연출 · 블룸 위에 한 번 더(내 기술 연출이 예고 장판을 가리지 않게)
+	{
+		bool anyTele = false;
+		for (auto& [id, e] : m_ents) if (e.tele.active && !e.dead) { anyTele = true; break; }
+		if (anyTele)
+		{
+			BeginMode2D(cam);
+			for (auto& [id, e] : m_ents)
+				if (e.tele.active && !e.dead)
+					skillfx::DrawTelegraphEdge(e);
+			EndMode2D();
+		}
+	}
 
 	// 화면 가장자리 어둡게 + 체력이 낮으면 붉게 맥동
 	const auto& tex = assets::Get();
@@ -91,6 +125,7 @@ void Game::DrawGame()
 	DrawWorldOverlay(cam);
 	fx::Fx().DrawOverlay(cam);
 	DrawQuestOverlay(cam);
+	DrawCinematic();   // 각성기 컷인 · 차지 게이지 · 밤 장막 가장자리
 
 	if (m_scene != Scene::Game)
 		return;
@@ -99,6 +134,7 @@ void Game::DrawGame()
 	DrawHud();
 	DrawMinimap();
 	DrawQuestTracker();
+	DrawYardMeter();
 	DrawTargetFrame();
 	DrawChat();
 	DrawSkillBar();
@@ -239,6 +275,7 @@ void Game::DrawWorld(const Camera2D& cam)
 	}
 	fx::Fx().DrawGround();
 	skillfx::DrawGround();
+	vfx::DrawGround();
 	gfx::SetDepthRaw(-0.97f);
 	DrawQuestWorld(true);
 	// 몬스터 강공격 예고(바닥이 차오른다) · 내 기술 사거리 미리보기
@@ -252,7 +289,7 @@ void Game::DrawWorld(const Camera2D& cam)
 	m_terrain.DrawProps(cam, m_screenW, m_screenH, pt, t, true);
 	DrawNpcs();
 	for (auto& [id, e] : m_ents)
-		if (!IsTranslucent(e))
+		if (!IsTranslucent(e, static_cast<float>(m_now)))
 			DrawEntity(e, false);
 
 	// ── 2.5) 가려진 내 캐릭터 실루엣(나무/건물/큰 보스 뒤에서도 위치가 보이게) ──
@@ -271,8 +308,26 @@ void Game::DrawWorld(const Camera2D& cam)
 
 	// ── 3) 반투명: 깊이 쓰기 X ──
 	for (auto& [id, e] : m_ents)
-		if (IsTranslucent(e))
+		if (IsTranslucent(e, static_cast<float>(m_now)))
 			DrawEntity(e, true);
+	// 먹물 분신: 밤사냥꾼 양옆에 반투명 먹빛 복제 둘(따라 하기가 남은 동안)
+	for (auto& [id, e] : m_ents)
+	{
+		if (e.kind != EntityKind::Player || e.dead) continue;
+		const auto* cs = e.Status(static_cast<uint8_t>(StatusId::Clone), static_cast<float>(m_now));
+		if (!cs) continue;
+		for (int k = -1; k <= 1; k += 2)
+		{
+			Entity ghost = e;
+			const float sway = std::sin(m_time * 2.f + k) * 3.f;
+			ghost.visIso = util::Add(TileToIso(e.pos), Vector2{ k * 40.f + sway, -6.f + k * 3.f });
+			ghost.visUntil = m_now + 1.0;
+			ghost.pos = util::Add(e.pos, Vector2{ -0.2f, -0.2f });   // 본체보다 조금 뒤 깊이
+			m_cloneDraw = true;
+			DrawEntity(ghost, true);
+			m_cloneDraw = false;
+		}
+	}
 	// 가속 잔상
 	if (me && m_hasteUntil > m_now && me->speed > 1.f)
 	{
@@ -299,6 +354,8 @@ void Game::DrawWorld(const Camera2D& cam)
 	DrawQuestWorld(false);
 	fx::Fx().DrawWorld();
 	skillfx::DrawWorld();
+	trail::Draw();
+	vfx::DrawWorld();
 
 	sprites::EndWorld();
 	gfx::Flush();
@@ -311,7 +368,7 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 {
 	const bool isGhostCopy = m_ghostDraw;
 	actors::Pose pose;
-	pose.base = TileToIso(e.pos);
+	pose.base = e.visUntil > m_now ? e.visIso : TileToIso(e.pos);
 	pose.faceRight = e.faceRight;
 	pose.faceBack = e.faceBack;
 	pose.turn = e.body.turn;
@@ -339,12 +396,29 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	pose.windup = e.dead ? 0.f : e.windup;
 	pose.knock = e.knockT;
 	if (e.hopT >= 0.f) pose.base.y -= std::sin(util::kPi * e.hopT) * e.hopH;
+	if (e.airT >= 0.f && !e.dead)
+	{
+		// 띄우기: 빠르게 솟았다가 떨어진다(그림자는 발밑 칸에 그대로)
+		const float u = util::Clamp01(e.airT / e.airDur);
+		pose.base.y -= std::sin(util::kPi * std::pow(u, 0.8f)) * e.airH;
+		pose.air = u;
+	}
+	if (e.downT >= 0.f && !e.dead)
+	{
+		// 넘어짐: 0.12초에 쓰러져 누웠다가 0.7~0.95초에 일어난다
+		const float t = e.downT;
+		pose.down = t < 0.12f ? t / 0.12f : (t < 0.7f ? 1.f : 1.f - util::Clamp01((t - 0.7f) / 0.25f));
+	}
 	if (e.stunShake > 0.f) pose.base.x += std::sin(m_time * 70.f) * 3.f * e.stunShake;
 
 	float alpha = util::EaseOutCubic(e.spawnT);
 	if (e.removing) alpha *= 1.f - util::Clamp01(e.removeT);
 	if (e.dead) alpha *= 1.f - util::Clamp01((e.deadT - (e.kind == EntityKind::Player ? 4.5f : 0.9f)) / 0.6f);
 	if (isGhostCopy) alpha *= 0.28f;
+	if (m_cloneDraw) alpha *= 0.55f;
+	// 밤 장막: 나는 반쯤, 남에게는 거의 안 보이게(먹빛 가닥은 상태 연출이)
+	if (e.kind == EntityKind::Player && !m_cloneDraw && e.Status(static_cast<uint8_t>(StatusId::Veil), static_cast<float>(m_now)))
+		alpha *= e.id == m_selfId ? 0.45f : 0.2f;
 	if (alpha <= 0.01f) return;
 
 	gfx::ResetMod();
@@ -363,7 +437,7 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	else if (e.id == m_hover) gfx::SetFlash(0.12f);
 	// 커서에 가장 가까운 적(대상형 기술 · 기본 공격이 향할 적): 외곽선 — 같은 그림을 네 방향으로 1.5px 밀어
 	// 단색으로 조금 뒤 깊이에 먼저 그린다. 셰이더 없이 되고, 한 마리에만 쓰므로 싸다.
-	if (e.id == m_aim.enemy && !e.dead && !m_silhouetteDraw && !isGhostCopy && !m_ghostDraw
+	if (e.id == m_aim.enemy && !e.dead && !m_silhouetteDraw && !isGhostCopy && !m_ghostDraw && !m_cloneDraw
 		&& (e.kind == EntityKind::Monster || e.kind == EntityKind::Player))
 	{
 		const float flashNow = gfx::Flash();
@@ -393,6 +467,7 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 	else if (e.Status(static_cast<uint8_t>(StatusId::Poison), nowf)) gfx::SetTint(Rgb(0xC8F0B0));
 	if (e.Status(static_cast<uint8_t>(StatusId::Evade), nowf) && !m_silhouetteDraw) gfx::SetAlpha(alpha * 0.55f);
 	if (isGhostCopy) { gfx::SetFlashColor(Rgb(0x6AFF8A)); gfx::SetFlash(0.6f); }
+	if (m_cloneDraw) { gfx::SetFlashColor(Rgb(0x1C2A30)); gfx::SetFlash(0.78f); }
 	if (m_silhouetteDraw)
 	{
 		const float pulse = 0.5f + 0.5f * std::sin(m_time * 3.f);
@@ -468,7 +543,8 @@ void Game::DrawEntity(Entity& e, bool translucentPass)
 }
 
 // 기술 칸에 마우스를 올리거나 "표시 후 시전"으로 누르고 있으면 사거리(마름모 = 서버의 체비셰프 거리)와
-// 실제로 떨어질 곳을 바닥에 보여 준다. 떨어질 곳은 시전과 같은 계산(ResolveSkillAim)이다.
+// 실제로 떨어질 곳을 바닥에 보여 준다. 떨어질 곳은 시전과 같은 계산(ResolveSkillAim)이고,
+// 모양은 기술 표(SkillDefTable)의 판정 모양 그대로다 — 원 · 고리 · 부채꼴 · 직선 · 대상.
 void Game::DrawSkillPreview()
 {
 	if (m_dead) return;
@@ -476,13 +552,17 @@ void Game::DrawSkillPreview()
 	bool aiming = false;
 	if (m_aimingHot >= 0 && (row = HotSkill(m_aimingHot)) != nullptr)
 		aiming = true;
-	else if (m_previewSkill >= 0)
-		row = SkillInSlot(m_previewSkill);
+	else if (m_heldSkill != 0 && (row = SkillTable::Find(m_heldSkill)) != nullptr)
+		aiming = true;   // 모으는 중 · 도는 중: 놓을 곳 · 도는 범위
+	else if (m_previewSkill > 0)
+		row = SkillTable::Find(static_cast<uint16_t>(m_previewSkill));
 	Entity* me = Self();
 	if (!row || !me) return;
+	const SkillDef* def = MyDef(row->id);   // Phase 2-D: 갈래를 입힌 모양(넓은 범위 · 세 줄기)
 	const Color col = Rgb(row->color);
 	const float pulse = 0.5f + 0.5f * std::sin(m_time * 4.f);
 	const float k = aiming ? 1.f : 0.8f;
+	auto toIso = [](Vector2 t) { return gfx::IsoPx(t.x, t.y); };
 	auto diamond = [&](Vector2 center, float R, Color fill, Color line, float th)
 	{
 		const Vector2 q[4] = { gfx::IsoPx(center.x - R, center.y - R), gfx::IsoPx(center.x + R, center.y - R),
@@ -492,10 +572,93 @@ void Game::DrawSkillPreview()
 	};
 	gfx::SetDepthRaw(-0.966f);
 	const Vector2 c{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
-	const float reach = static_cast<float>(row->id == 10 ? row->dash : row->range);
+	const int effRange = def && def->range > 0 ? def->range : row->range;
+	const float reach = static_cast<float>(row->id == 10 ? row->dash : effRange);
 	if (reach > 1.f)
 		diamond(c, reach + 0.5f, util::MulA(col, 0.05f * k), util::MulA(col, (0.45f + 0.25f * pulse) * k), 2.f);
 	const SkillAim a = ResolveSkillAim(*row, ObjID{});
+
+	// ── 표의 판정 모양 ──
+	if (def && def->hitCount > 0 && def->special != SkillSpecial::Legacy)
+	{
+		Vector2 aimTile{ static_cast<float>(a.tx), static_cast<float>(a.ty) };
+		if (a.target) aimTile = Vector2{ static_cast<float>(a.target->tx), static_cast<float>(a.target->ty) };
+		if (row->target == SkillTarget::Direction && !a.target && m_aim.valid)
+			aimTile = Vector2{ static_cast<float>(m_aim.tx), static_cast<float>(m_aim.ty) };
+		// 사거리로 자르기(서버 ResolveAim과 같다)
+		{
+			const float d = std::max(std::fabs(aimTile.x - c.x), std::fabs(aimTile.y - c.y));
+			const float lim = static_cast<float>(std::max(1, effRange));
+			if (row->target == SkillTarget::Self) aimTile = c;
+			else if (d > lim) aimTile = Vector2{ c.x + std::round((aimTile.x - c.x) * lim / d), c.y + std::round((aimTile.y - c.y) * lim / d) };
+		}
+		Vector2 dir = util::Sub(aimTile, c);
+		if (util::Len(dir) < 0.1f) dir = m_aim.dir;
+		dir = util::Norm(dir);
+		const float fillA = (aiming ? 0.2f : 0.14f) * k, lineA = (aiming ? 0.9f : 0.7f) * k;
+		struct Seen { uint8_t shape, anchor, a, b; int8_t along; };
+		std::vector<Seen> seen;
+		for (int i = 0; i < def->hitCount; ++i)
+		{
+			const SkillHit& h = def->hits[i];
+			// 콤보 · 체인은 지금 나갈 단만
+			if (def->kind == SkillKind::Basic && h.stage != 0)
+			{
+				const uint8_t next = (m_now - m_comboAt <= def->stageMs / 1000.0 && m_comboStage < def->stages) ? static_cast<uint8_t>(m_comboStage + 1) : 1;
+				if (h.stage != next) continue;
+			}
+			const Seen key{ static_cast<uint8_t>(h.shape), static_cast<uint8_t>(h.anchor), h.a, h.b, h.along };
+			if (std::any_of(seen.begin(), seen.end(), [&](const Seen& q) { return q.shape == key.shape && q.anchor == key.anchor && q.a == key.a && q.b == key.b && q.along == key.along; }))
+				continue;
+			seen.push_back(key);
+			Vector2 center = h.anchor == HitAnchor::Caster ? c : aimTile;
+			if (h.along != 0) center = Vector2{ center.x + std::round(dir.x * h.along), center.y + std::round(dir.y * h.along) };
+			const Color fill = util::MulA(col, fillA * ((h.flags & HF_Final) ? 1.3f : 1.f)), line = util::MulA(col, lineA);
+			switch (h.shape)
+			{
+			case HitShape::Target:
+				diamond(center, 0.5f, fill, line, 2.5f);
+				break;
+			case HitShape::Circle:
+				diamond(center, h.a + 0.5f, fill, line, 2.5f);
+				break;
+			case HitShape::Ring:
+				diamond(center, h.a + 0.5f, fill, line, 2.5f);
+				if (h.b > 0) diamond(center, h.b - 0.5f, BLANK, util::MulA(line, 0.7f), 1.5f);
+				break;
+			case HitShape::Cone:
+			{
+				constexpr int n = 16;
+				Vector2 pts[n + 2];
+				pts[0] = toIso(center);
+				const float base = std::atan2(dir.y, dir.x), half = h.b * util::kPi / 180.f, R = h.a + 0.5f;
+				for (int j = 0; j <= n; ++j)
+				{
+					const float ang = base - half + 2.f * half * j / n;
+					pts[j + 1] = toIso(Vector2{ center.x + std::cos(ang) * R, center.y + std::sin(ang) * R });
+				}
+				gfx::PolyGrad(pts, n + 2, pts[0], util::MulA(fill, 0.4f), fill);
+				for (int j = 1; j < n + 2; ++j) gfx::Line(pts[j - 1], pts[j], 2.f, line);
+				gfx::Line(pts[n + 1], pts[0], 2.f, line);
+				break;
+			}
+			case HitShape::Line:
+			{
+				const Vector2 nrm{ -dir.y, dir.x };
+				const float w = h.b * 0.5f + 0.35f, L = h.a + 0.5f;
+				const Vector2 q0 = toIso(util::Add(center, util::Mul(nrm, w))), q1 = toIso(util::Add(util::Add(center, util::Mul(dir, L)), util::Mul(nrm, w)));
+				const Vector2 q2 = toIso(util::Sub(util::Add(center, util::Mul(dir, L)), util::Mul(nrm, w))), q3 = toIso(util::Sub(center, util::Mul(nrm, w)));
+				gfx::Quad(q0, q1, q2, q3, fill);
+				gfx::Line(q0, q1, 2.f, line); gfx::Line(q1, q2, 2.f, line); gfx::Line(q2, q3, 2.f, line); gfx::Line(q3, q0, 2.f, line);
+				break;
+			}
+			}
+		}
+		if (aiming && row->target != SkillTarget::Self)
+			gfx::Line(gfx::IsoPx(c.x, c.y), gfx::IsoPx(aimTile.x, aimTile.y), 2.f, util::MulA(col, 0.45f));
+		return;
+	}
+
 	switch (row->target)
 	{
 	case SkillTarget::Self:
@@ -506,7 +669,7 @@ void Game::DrawSkillPreview()
 		if (a.target)
 		{
 			const Vector2 tc{ static_cast<float>(a.target->tx), static_cast<float>(a.target->ty) };
-			const bool far = Cheb(m_predX, m_predY, a.target->tx, a.target->ty) > row->range;
+			const bool far = Cheb(m_predX, m_predY, a.target->tx, a.target->ty) > effRange;
 			const float R = (row->shape == SkillShape::Circle || row->shape == SkillShape::Chain ? row->radius : 0) + 0.5f;
 			diamond(tc, R, util::MulA(col, (far ? 0.10f : 0.22f) * k), util::MulA(col, (far ? 0.5f : 0.9f) * k), 2.5f);
 			if (aiming)
@@ -683,7 +846,10 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		switch (e.kind)
 		{
 		case EntityKind::Player: showName = true; showBar = id != m_selfId && (e.hp < e.maxhp || targeted) && !e.dead; break;
-		case EntityKind::Monster: showName = e.IsBoss() || hovered || targeted || recentHit || alt; showBar = !e.dead && (e.hp < e.maxhp || hovered || targeted); break;
+		case EntityKind::Monster:
+			showName = e.IsBoss() || hovered || targeted || recentHit || alt || (e.row && e.row->dummy);
+			showBar = !e.dead && (e.hp < e.maxhp || hovered || targeted) && !(e.row && e.row->dummy);   // 허수아비는 체력 대신 계측(DrawDummyMeters)
+			break;
 		case EntityKind::Item: showName = hovered || alt || FieldRarity(e) >= Rarity::Rare; break;
 		}
 		if (e.dead && e.kind == EntityKind::Monster) showName = false;
@@ -744,6 +910,87 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			const float a = util::Clamp01(e.chatT / 0.4f);
 			bubble(e.chat, head.x, y - 10.f, 14.f, 220.f, a, true);
 		}
+	}
+	DrawDummyMeters(cam);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 훈련장 허수아비(Phase 2-E) — 월드에는 안내 한 줄만(숫자판을 머리 위에 띄우면 이름 · 피해 숫자와 겹친다).
+// 계측은 왼쪽의 훈련 계측 판 하나로 모은다(DrawYardMeter).
+// ─────────────────────────────────────────────────────────────────────────────
+void Game::DrawDummyMeters(const Camera2D& cam)
+{
+	if (m_now - m_yard.last < 5.0) return;   // 재는 중이면 판이 말한다
+	for (auto& [id, e] : m_ents)
+	{
+		if (e.kind != EntityKind::Monster || !e.row || !e.row->dummy || e.dead) continue;
+		const Vector2 foot = GetWorldToScreen2D(TileToIso(e.pos), cam);
+		if (foot.x < -120 || foot.y < -80 || foot.x > m_screenW + 120 || foot.y > m_screenH + 80) continue;
+		ui::TextStyle hs; hs.size = ui::type::kMicro; hs.color = util::WithA(ui::theme::kTextDim, 0.9f); hs.outline = 1.2f; hs.outlineColor = Color{ 0, 0, 0, 170 };
+		ui::Fonts().DrawCentered("때려서 초당 피해 재기", Vector2{ foot.x, foot.y + 16.f }, hs);
+	}
+}
+
+void Game::DrawYardMeter()
+{
+	const YardMeter& m = m_yard;
+	const double idle = m_now - m.last;
+	if (m.hits == 0 || idle > 30.0) return;
+	const float fade = idle > 5.0 ? 0.55f : 1.f;   // 끝난 측정은 흐리게(다음 타격부터 새로)
+	auto drawRight = [](const char* text, Vector2 pos, const ui::TextStyle& st)
+	{
+		const float tw = ui::Fonts().Measure(text, st.size, 0.f, st.face).x;
+		ui::Fonts().Draw(text, Vector2{ std::round(pos.x - tw), pos.y }, st);
+	};
+	const double span = std::max(1.0, m.last - m.first);
+	// 기술별 몫 — 큰 순서로 여섯까지
+	std::array<std::pair<uint64_t, uint16_t>, SkillGrowth::kIdSpan> rows{};
+	int n = 0;
+	for (size_t i = 0; i < m.bySkill.size(); ++i)
+		if (m.bySkill[i] > 0) rows[static_cast<size_t>(n++)] = { m.bySkill[i], static_cast<uint16_t>(i) };
+	std::sort(rows.begin(), rows.begin() + n, [](const auto& a, const auto& b) { return a.first > b.first; });
+	const int shown = std::min(n, 6);
+	const float w = 236.f, rowH = 22.f;
+	const float h = 104.f + shown * rowH + 10.f;
+	const Rectangle r{ 12.f, std::round(std::clamp(m_screenH * 0.24f, 176.f, 240.f)), w, h };
+	ui::Plate(r, util::WithA(ui::theme::kInk, 0.82f * fade), util::WithA(ui::theme::kLine, fade), 4.f, 1.f);
+	ui::TextStyle ts; ts.size = ui::type::kHeading; ts.face = ui::Face::Strong; ts.color = util::WithA(ui::theme::kTitle, fade);
+	ui::Fonts().Draw("훈련 계측", Vector2{ r.x + 12.f, r.y + 9.f }, ts);
+	ui::TextStyle tm; tm.size = ui::type::kCaption; tm.face = ui::Face::Number; tm.color = util::WithA(ui::theme::kTextDim, fade);
+	drawRight(TextFormat("%.1f초", m.last - m.first), Vector2{ r.x + r.width - 12.f, r.y + 12.f }, tm);
+	// 초당 피해(큰 숫자)
+	ui::TextStyle big; big.size = 30.f; big.face = ui::Face::NumberBold; big.color = util::WithA(ui::theme::kDawnHi, fade);
+	const float bw = ui::Fonts().Draw(TextFormat("%.0f", static_cast<double>(m.total) / span), Vector2{ r.x + 12.f, r.y + 34.f }, big);
+	ui::TextStyle cap; cap.size = ui::type::kCaption; cap.color = util::WithA(ui::theme::kTextDim, fade);
+	ui::Fonts().Draw("초당 피해", Vector2{ r.x + 18.f + bw, r.y + 48.f }, cap);
+	ui::TextStyle sm; sm.size = ui::type::kCaption; sm.color = util::WithA(ui::theme::kText, fade);
+	ui::Fonts().Draw(TextFormat("합계 %llu · %u타", static_cast<unsigned long long>(m.total), m.hits), Vector2{ r.x + 12.f, r.y + 72.f }, sm);
+	{
+		const SkillRow* br = SkillTable::Find(m.bestSkill);
+		ui::Fonts().Draw(TextFormat("가장 큰 한 방 %u%s%s", m.best, br ? " · " : "", br ? br->name : ""), Vector2{ r.x + 12.f, r.y + 88.f }, sm);
+	}
+	ui::Rule(r.x + 10.f, r.x + r.width - 10.f, r.y + 106.f, util::WithA(ui::theme::kLine, fade));
+	float y = r.y + 112.f;
+	for (int i = 0; i < shown; ++i)
+	{
+		const auto [dmg, sid] = rows[static_cast<size_t>(i)];
+		const SkillRow* row = SkillTable::Find(sid);
+		const float share = m.total > 0 ? static_cast<float>(static_cast<double>(dmg) / static_cast<double>(m.total)) : 0.f;
+		skillfx::DrawSkillIcon(sid, Vector2{ r.x + 21.f, y + 9.f }, 16.f, m_time, false);
+		const Color cc = row ? util::Rgb(row->color) : ui::theme::kDawn;
+		const Rectangle bar{ r.x + 34.f, y + 13.f, (r.width - 90.f), 4.f };
+		DrawRectangleRec(bar, util::WithA(ui::theme::kSurface2, fade));
+		DrawRectangleRec(Rectangle{ bar.x, bar.y, std::round(bar.width * share), bar.height }, util::WithA(util::Mix(cc, ui::theme::kDawn, 0.35f), fade));
+		ui::TextStyle ns; ns.size = ui::type::kCaption; ns.color = util::WithA(ui::theme::kText, fade);
+		ui::Fonts().Draw(row ? row->name : "?", Vector2{ r.x + 34.f, y - 2.f }, ns);
+		ui::TextStyle ps; ps.size = ui::type::kCaption; ps.face = ui::Face::Number; ps.color = util::WithA(ui::theme::kTextHi, fade);
+		drawRight(TextFormat("%.0f%%", share * 100.f), Vector2{ r.x + r.width - 12.f, y + 3.f }, ps);
+		y += rowH;
+	}
+	if (idle > 5.0)
+	{
+		ui::TextStyle hs; hs.size = ui::type::kMicro; hs.color = util::WithA(ui::theme::kTextMute, 0.9f);
+		ui::Fonts().Draw("다음 타격부터 새로 잽니다", Vector2{ r.x + 12.f, r.y + r.height - 14.f }, hs);
 	}
 }
 

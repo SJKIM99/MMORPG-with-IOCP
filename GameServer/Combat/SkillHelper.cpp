@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "Combat/SkillHelper.h"
+#include "Combat/SkillDetail.h"
+#include "Combat/SkillEx.h"
 #include "Combat/CombatHelper.h"
 #include "User.h"
 #include "Monster.h"
@@ -25,6 +27,20 @@ namespace
 	int Cheb(int ax, int ay, int bx, int by) { return (std::max)(std::abs(ax - bx), std::abs(ay - by)); }
 	int Sign(int v) { return (v > 0) - (v < 0); }
 
+	void BroadcastCast(const shared_ptr<User>& u, uint16_t skillId, const ObjID& targetId, short fromX, short fromY, short x, short y, uint16_t castMs);
+}
+
+namespace SkillDetail
+{
+	using namespace CombatHelper;
+
+	namespace
+	{
+		thread_local const HitSpec* t_legacy = nullptr;
+	}
+	LegacyScope::LegacyScope(const HitSpec& ctx) : m_prev(t_legacy) { t_legacy = &ctx; }
+	LegacyScope::~LegacyScope() { t_legacy = m_prev; }
+
 	void SendResult(const shared_ptr<User>& u, uint16_t seq, uint16_t skillId, SkillResult r, uint32_t ms)
 	{
 		auto session = u->GetGameSession();
@@ -41,6 +57,10 @@ namespace
 		session->PostSend(packet);
 	}
 
+}
+
+namespace
+{
 	void BroadcastCast(const shared_ptr<User>& u, uint16_t skillId, const ObjID& targetId, short fromX, short fromY, short x, short y, uint16_t castMs)
 	{
 		if (u->GetSectorX() < 0)
@@ -70,6 +90,10 @@ namespace
 		});
 	}
 
+}
+
+namespace SkillDetail
+{
 	// 대상 지정 스킬의 대상: 몬스터 또는(강제 공격한) 다른 플레이어
 	shared_ptr<Subject> ResolveEnemy(const shared_ptr<User>& u, const ObjID& targetId)
 	{
@@ -88,24 +112,19 @@ namespace
 
 	bool IsMonster(const shared_ptr<Subject>& s) { return s && s->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eMonster; }
 
-	// 한 번의 적중 — 연계(대상 상태) 판정, 피해, 상태이상, 넉백까지.
-	struct HitSpec
-	{
-		uint32_t coeff = 100;
-		bool     forceCrit = false;
-		uint32_t bonusPercent = 0;   // 추가 피해 %(연계 외)
-		uint8_t  comboId = 0;        // 강제 연계 표시
-		uint8_t  flags2 = 0;
-		uint8_t  hitIndex = 0;
-		bool     applyStatus = true;
-		bool     applyKnockback = true;
-		bool     evaluateCombo = true;
-	};
-
-	void DealHit(const shared_ptr<User>& u, const SkillRow& row, const shared_ptr<Subject>& target, HitSpec spec)
+	uint32_t DealHit(const shared_ptr<User>& u, const SkillRow& row, const shared_ptr<Subject>& target, HitSpec spec)
 	{
 		if (!target || target->GetStat()->IsDead())
-			return;
+			return 0;
+		if (t_legacy != nullptr && !spec.extras)
+		{
+			// 확장 경로의 예전 판정: 표의 무력화 · 반격 · 반응 · 게이지를 싣는다
+			spec.stagger = (std::max)(spec.stagger, t_legacy->stagger);
+			spec.counter = spec.counter || t_legacy->counter;
+			if (spec.react == HitReact::None && spec.applyKnockback) spec.react = t_legacy->react;
+			spec.extras = true;
+			spec.castSeq = t_legacy->castSeq;
+		}
 		const uint32_t now = GetNowTime();
 		uint8_t comboId = spec.comboId;
 		uint32_t bonus = spec.bonusPercent;
@@ -125,9 +144,31 @@ namespace
 			}
 		}
 
+		// Phase 2-B: 함성(+15%) · 후방(+20%) · 무력화된 보스(+30%) · 기습/밤 장막(급소)
+		if (spec.extras)
+		{
+			if (u->Status().Has(StatusId::Rally, now)) bonus += 15;
+			if (u->Status().Has(StatusId::Ambush, now) && row.slot != 0)
+			{
+				spec.forceCrit = true;
+				spec.flags2 |= DAMAGE2_BACKSTAB;
+			}
+			else if (IsMonster(target))
+			{
+				const int side = u->GetX() - target->GetX();
+				const bool behind = side != 0 && ((target->IsFacingLeft() && side > 0) || (!target->IsFacingLeft() && side < 0));
+				if (behind) { bonus += 20; spec.flags2 |= DAMAGE2_BACK; }
+			}
+		}
+		if (target->Status().Has(StatusId::Broken, now)) bonus += 30;
+		if (spec.counter) spec.flags2 |= DAMAGE2_COUNTER;
+
 		bool crit = false;
 		uint32_t damage = RollUserDamage(u, row.kind, spec.coeff, spec.forceCrit, crit);
 		damage = damage * (100u + bonus) / 100u;
+		// Phase 2-D 기술 레벨: 레벨마다 +5%(레벨 1 = 그대로 — 봇 · 레거시 세션은 늘 레벨 1)
+		if (const uint8_t lv = u->GrowState(row.id).level; lv > 1)
+			damage = damage * SkillGrowth::DamagePercent(lv) / 100u;
 
 		// V2 장비: 기술 강화(그 기술 피해 +%) · 처형자(HP 30% 이하 대상 피해 +%)
 		const GearExtras& gx = u->m_gearEx;
@@ -148,8 +189,27 @@ namespace
 		ctx.hitIndex = spec.hitIndex;
 
 		// 넉백은 피해보다 먼저 계산해 표시 플래그를 싣는다(벽 충돌이면 추가 피해·기절).
+		// 확장 타격은 표의 반응(react)을 쓴다: 넉백 1칸(표에 칸이 있으면 그만큼) · 끌어당김 2칸 · 띄우기 · 넘어뜨리기(짧은 기절)
 		bool knocked = false, wall = false;
-		if (spec.applyKnockback && row.knockback > 0 && IsMonster(target))
+		if (spec.react != HitReact::None && IsMonster(target) && !target->GetStat()->IsDead())
+		{
+			const auto m = static_pointer_cast<Monster>(target);
+			const short fx = spec.fromX != 0 || spec.fromY != 0 ? spec.fromX : u->GetX();
+			const short fy = spec.fromX != 0 || spec.fromY != 0 ? spec.fromY : u->GetY();
+			switch (spec.react)
+			{
+			case HitReact::Knockback:
+				knocked = Knockback(m, fx, fy, row.knockback > 0 ? row.knockback : 1, wall);
+				break;
+			case HitReact::Pull:
+				knocked = Pull(m, fx, fy, 2);
+				break;
+			default:
+				break;
+			}
+			if (knocked) ctx.flags |= DAMAGE_KNOCKBACK;
+		}
+		else if (spec.applyKnockback && row.knockback > 0 && IsMonster(target))
 		{
 			knocked = Knockback(static_pointer_cast<Monster>(target), u->GetX(), u->GetY(), row.knockback, wall);
 			if (knocked) ctx.flags |= DAMAGE_KNOCKBACK;
@@ -162,17 +222,28 @@ namespace
 			}
 		}
 
+		uint32_t dealt = 0;
 		if (IsMonster(target))
 		{
 			const auto monster = static_pointer_cast<Monster>(target);
-			const uint32_t dealt = HitMonster(u, monster, damage, ctx);
+			// 반격: 강공격 예고 중이면 끊긴다(판정 시각에 취소 — MonsterHelper::HandlePatternImpact)
+			if (spec.counter && monster->m_pattern.pending)
+				monster->m_countered = true;
+			dealt = HitMonster(u, monster, damage, ctx);
 			ApplyGearProcs(u, row.id, row.slot == 0, row.kind, monster, dealt, spec.hitIndex);
+			if (spec.stagger > 0)
+				SkillEx::ApplyStagger(u, monster, spec.stagger);
 		}
 		else
-			ContentHelper::ApplyPvpDamage(u, static_pointer_cast<User>(target), damage * 7u / 10u, ctx.flags, ctx.skillId, ctx.comboId, ctx.flags2, ctx.hitIndex);
+		{
+			dealt = damage * 7u / 10u;
+			ContentHelper::ApplyPvpDamage(u, static_pointer_cast<User>(target), dealt, ctx.flags, ctx.skillId, ctx.comboId, ctx.flags2, ctx.hitIndex);
+		}
+		if (spec.extras)
+			SkillEx::OnHitDealt(u, row, target, dealt, ctx.flags2, spec.castSeq);
 
 		if (target->GetStat()->IsDead())
-			return;
+			return dealt;
 		if (spec.applyStatus && row.status != StatusId::None && row.status != StatusId::Ambush && row.status != StatusId::Guard && row.status != StatusId::Evade)
 		{
 			const StatusRow& st = StatusTable::Get(row.status);
@@ -183,6 +254,13 @@ namespace
 		}
 		if (wall)
 			ApplyStatus(target, StatusId::Stun, 900, 1, u->GetObjID());
+		// 띄우기 · 넘어뜨리기: 잠깐 움직이지 못한다(보스는 무력화 게이지로만)
+		if (IsMonster(target) && !static_pointer_cast<Monster>(target)->IsBoss())
+		{
+			if (spec.react == HitReact::Launch) ApplyStatus(target, StatusId::Stun, 550, 1, u->GetObjID());
+			else if (spec.react == HitReact::Knockdown) ApplyStatus(target, StatusId::Stun, 800, 1, u->GetObjID());
+		}
+		return dealt;
 	}
 
 	// 방향 단위 벡터(8방향)
@@ -328,7 +406,7 @@ namespace
 			for (int i = 0; i < row.dash; ++i)
 			{
 				const int nx = x + dx, ny = y + dy;
-				if (!Walkable(nx, ny) || (row.id == 4 && WorldData::IsSafeZone(nx, ny)))
+				if (!Walkable(nx, ny) || (row.id == 4 && WorldData::IsSafeZone(nx, ny) && !WorldData::IsTrainingYard(nx, ny)))
 					break;
 				if (row.id == 4)
 				{
@@ -389,7 +467,8 @@ namespace
 			auto first = ResolveEnemy(u, targetId);
 			if (!first) return;
 			std::vector<shared_ptr<Subject>> hitList{ first };
-			int chains = 3;
+			// 튀는 수 = 2 + 행의 타수(표 1 → 3번, 예전과 같다). 갈래 「일곱 번 튐」은 ApplyRow가 타수를 늘린다
+			int chains = 2 + static_cast<int>(row.hits);
 			shared_ptr<Subject> cur = first;
 			uint8_t index = 0;
 			while (cur)
@@ -400,7 +479,7 @@ namespace
 				const bool conduct = cur->Status().Has(StatusId::Burn, now) || cur->Status().Has(StatusId::Marked, now) || cur->Status().Has(StatusId::Freeze, now);
 				if (conduct) chains += 1;   // 전도 대상이면 한 번 더 튄다
 				DealHit(u, row, cur, spec);
-				if (--chains < 0 || hitList.size() > 7)
+				if (--chains < 0 || hitList.size() > static_cast<size_t>(6 + row.hits))
 					break;
 				// 다음: 아직 안 맞은 가장 가까운 적(반경 radius)
 				shared_ptr<Subject> next;
@@ -428,7 +507,8 @@ namespace
 			int dx = Sign(target->GetX() - ux), dy = Sign(target->GetY() - uy);
 			if (dx == 0 && dy == 0) dx = 1;
 			int bx = target->GetX() + dx, by = target->GetY() + dy;
-			if (!Walkable(bx, by) || WorldData::IsSafeZone(bx, by))
+			auto landable = [](int x, int y) { return Walkable(x, y) && (!WorldData::IsSafeZone(x, y) || WorldData::IsTrainingYard(x, y)); };   // 훈련장은 예외(Phase 2-E)
+			if (!landable(bx, by))
 			{
 				bool found = false;
 				for (int oy = -1; oy <= 1 && !found; ++oy)
@@ -436,7 +516,7 @@ namespace
 					{
 						if (ox == 0 && oy == 0) continue;
 						const int cx = target->GetX() + ox, cy = target->GetY() + oy;
-						if (Walkable(cx, cy) && !WorldData::IsSafeZone(cx, cy)) { bx = cx; by = cy; found = true; }
+						if (landable(cx, cy)) { bx = cx; by = cy; found = true; }
 					}
 				if (!found) return;
 			}
@@ -475,10 +555,32 @@ namespace
 			return;
 		}
 	}
+
+	bool BlinkLanding(const shared_ptr<User>& u, const SkillRow& row, short& tx, short& ty)
+	{
+		// 옛길 도약: 도착 칸이 걸을 수 있어야 한다. 막혔으면 가까운 쪽으로 당긴다.
+		const int ux = u->GetX(), uy = u->GetY();
+		int dx = Sign(tx - ux), dy = Sign(ty - uy);
+		int bx = ux, by = uy;
+		for (int i = 0; i < row.dash; ++i)
+		{
+			const int nx = bx + dx * (std::abs(tx - bx) > 0 ? 1 : 0);
+			const int ny = by + dy * (std::abs(ty - by) > 0 ? 1 : 0);
+			if (nx == bx && ny == by) break;
+			if (!Walkable(nx, ny)) break;
+			bx = nx; by = ny;
+		}
+		if (bx == ux && by == uy) return false;
+		tx = static_cast<short>(bx);
+		ty = static_cast<short>(by);
+		return true;
+	}
 }
 
 namespace SkillHelper
 {
+	using namespace SkillDetail;
+
 	void HandleCast(const shared_ptr<User>& u, const SKILL_CAST_REQ_PACKET& req)
 	{
 		if (!u)
@@ -488,6 +590,8 @@ namespace SkillHelper
 			return;
 		const uint32_t now = GetNowTime();
 		auto fail = [&](SkillResult r, uint32_t ms = 0) { SendResult(u, req.seq, req.skillId, r, ms); };
+		// Phase 2-B 새 기술(slot 6)은 확장 요청(SKILL_EX_REQ)으로만 — 예전 슬롯 배열(0~5)을 넘지 않게
+		if (row->slot >= u->m_skillReadyAt.size()) return fail(SkillResult::WrongClass);
 
 		if (u->GetStat()->IsDead() || u->IsTransferring() || u->GetSectorX() < 0) return fail(SkillResult::Busy);
 		if (row->cls != u->m_classId) return fail(SkillResult::WrongClass);
@@ -528,23 +632,8 @@ namespace SkillHelper
 		{
 			if (Cheb(ux, uy, tx, ty) > row->range + 1)
 				return fail(SkillResult::OutOfRange);
-			if (row->id == 10)
-			{
-				// 옛길 도약: 도착 칸이 걸을 수 있어야 한다. 막혔으면 가까운 쪽으로 당긴다.
-				int dx = Sign(tx - ux), dy = Sign(ty - uy);
-				int bx = ux, by = uy;
-				for (int i = 0; i < row->dash; ++i)
-				{
-					const int nx = bx + dx * (std::abs(tx - bx) > 0 ? 1 : 0);
-					const int ny = by + dy * (std::abs(ty - by) > 0 ? 1 : 0);
-					if (nx == bx && ny == by) break;
-					if (!Walkable(nx, ny)) break;
-					bx = nx; by = ny;
-				}
-				if (bx == ux && by == uy) return fail(SkillResult::Blocked);
-				tx = static_cast<short>(bx);
-				ty = static_cast<short>(by);
-			}
+			if (row->id == 10 && !BlinkLanding(u, *row, tx, ty))
+				return fail(SkillResult::Blocked);
 			u->UpdateFacing(tx - ux);
 			break;
 		}
@@ -610,6 +699,11 @@ namespace SkillHelper
 		list.erase(it);
 		if (u->GetStat()->IsDead() || u->IsTransferring() || u->GetSectorX() < 0)
 			return;
+		if (impact.kind != 0)
+		{
+			SkillEx::HandleEvent(u, impact);
+			return;
+		}
 		const SkillRow* row = SkillTable::Find(impact.skillId);
 		if (!row)
 			return;

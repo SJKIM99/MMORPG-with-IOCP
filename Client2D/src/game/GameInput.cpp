@@ -33,13 +33,7 @@ namespace
 {
 	int Cheb(int ax, int ay, int bx, int by) { return std::max(std::abs(ax - bx), std::abs(ay - by)); }
 
-	// 직업별 기본 배치: 칸 → ClassRow.skills의 몇 번째(-1 비움). Phase 2 기술표의 자리.
-	//                      C  Q  W  E  R  A  S  D  F  V  Spc Z
-	constexpr int kLayout[3][12] = {
-		{ 0, 1, 2, -1, -1, 3, 4, -1, -1, 5, -1, -1 },   // 서약기사: 방패 강타 · 회전 베기 · 돌진 · 철벽 태세 · 단죄
-		{ 0, 1, 2, 4, -1, -1, -1, -1, -1, 5, 3, -1 },   // 각인술사: 서리 각인 · 화염 고리 · 벼락 사슬 · 낙성 · 옛길 도약
-		{ 0, 2, 1, 4, -1, -1, -1, -1, -1, 5, 3, -1 },   // 밤사냥꾼: 독 칼날 · 그늘 걸음 · 후방 습격 · 그믐 베기 · 잔상 회피
-	};
+	// 직업별 기본 배치는 공유 표(SkillDefTable::Default — C Q W E R A S D F V Space Z)가 정한다.
 
 	// 칸 좌표 방향 → 8방향 중 가장 가까운 것
 	void Snap8(Vector2 d, int& dx, int& dy)
@@ -59,11 +53,8 @@ void Game::InitHotbar(bool loadSaved)
 {
 	m_hot = {};
 	m_hotClass = m_classId;
-	const int cls = static_cast<int>(m_classId) < 3 ? static_cast<int>(m_classId) : 0;
-	const ClassRow& c = ClassTable::Get(m_classId);
-	for (int i = 0; i < kHotSlots; ++i)
-		if (kLayout[cls][i] >= 0)
-			m_hot[static_cast<size_t>(i)] = c.skills[kLayout[cls][i]];
+	for (int i = 0; i < kHotSlots && i < kSkillKeys; ++i)
+		m_hot[static_cast<size_t>(i)] = SkillDefTable::Default(m_classId, static_cast<SkillKey>(i));
 	// 캐릭터별로 바꿔 둔 배치(기술 창에서 끌어다 놓은 것) — 이 직업 기술만 받는다
 	if (!loadSaved || m_playerName.empty()) return;
 	std::ifstream in("hotbar_" + m_playerName + ".txt");
@@ -74,10 +65,18 @@ void Game::InitHotbar(bool loadSaved)
 		int id = 0;
 		if (!(in >> id)) return;
 		const SkillRow* row = SkillTable::Find(static_cast<uint16_t>(id));
-		if (id != 0 && (!row || row->cls != m_classId || (i == kHotBasic) != (row->slot == 0))) return;
+		const SkillDef* def = SkillDefTable::Find(static_cast<uint16_t>(id));
+		if (id != 0 && (!row || !def || row->cls != m_classId || (i == kHotBasic) != (def->kind == SkillKind::Basic))) return;
 		saved[static_cast<size_t>(i)] = static_cast<uint16_t>(id);
 	}
 	if (saved[kHotBasic] == 0) return;
+	// 예전(6기술) 배치를 읽었으면: 빈 칸에 아직 없는 기술을 기본 자리대로 채운다(Phase 2-B 새 기술)
+	for (int i = 0; i < kHotSlots && i < kSkillKeys; ++i)
+	{
+		const uint16_t def = SkillDefTable::Default(m_classId, static_cast<SkillKey>(i));
+		if (saved[static_cast<size_t>(i)] != 0 || def == 0) continue;
+		if (std::find(saved.begin(), saved.end(), def) == saved.end()) saved[static_cast<size_t>(i)] = def;
+	}
 	m_hot = saved;
 }
 
@@ -480,9 +479,9 @@ void Game::HandleWorldInput()
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::BasicAttackAtAim(bool hold)
 {
-	if (m_dead || InTown())
+	if (m_dead || CombatBlocked())
 	{
-		if (!hold && InTown()) AddCenter("마을 안에서는 싸울 수 없습니다.", Rgb(0xFFD070));
+		if (!hold && CombatBlocked()) AddCenter("마을 안에서는 싸울 수 없습니다.", Rgb(0xFFD070));
 		return;
 	}
 	const SkillRow* basic = SkillInSlot(0);
@@ -507,18 +506,11 @@ void Game::BasicAttackAtAim(bool hold)
 	}
 	if (hold)
 		return;
-	// 대상이 없으면 커서 쪽으로 한 번 휘두른다(보이기만 — 서버에 보내지 않는다)
+	// 대상이 없으면 커서 쪽으로 휘두른다 — 콤보도 이어지고, 서버가 부채꼴 안의 적을 판정한다
 	Entity* me = Self();
-	if (!me || m_now - m_whiffAt < 0.35 || m_now < m_actionLockUntil) return;
+	if (!me || m_now < m_actionLockUntil) return;
 	m_whiffAt = m_now;
-	int dx = 0, dy = 0;
-	Snap8(m_aim.dir, dx, dy);
-	const int sx = dx - dy, sy = dx + dy;
-	if (sx != 0) me->faceRight = sx > 0;
-	if (sy != 0) me->faceBack = sy < 0;
-	me->attackT = 0.f;
-	me->animT = -1.f;
-	sfx::Play(sfx::Id::Swing, 0.45f, 0.08f);
+	TryCastSkill(SkillDefTable::Default(m_classId, SkillKey::C), true);
 }
 
 void Game::CastHot(int hot)
@@ -529,12 +521,12 @@ void Game::CastHot(int hot)
 		sfx::Play(sfx::Id::Error, 0.25f);
 		return;
 	}
-	if (row->slot == 0)
+	if (const SkillDef* def = SkillDefTable::Find(row->id); def && def->kind == SkillKind::Basic)
 	{
 		BasicAttackAtAim(false);
 		return;
 	}
-	TryCastSkill(row->slot);
+	TryCastSkill(row->id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1055,15 +1047,15 @@ void Game::TickGoal()
 		if (arrived && Cheb(m_predX, m_predY, t->tx, t->ty) <= range)
 		{
 			m_path.clear();
-			if (m_queuedSkill >= 0 && m_queuedTarget == t->id)
+			if (m_queuedSkill > 0 && m_queuedTarget == t->id)
 			{
 				// 사거리 밖에서 눌러 둔 기술 — 닿았으니 쓴다(실패해도 4초 뒤엔 잊는다)
-				const int slot = m_queuedSkill;
-				if (TryCastSkill(slot, true, t->id) || m_now - m_queuedAt > 4.0)
+				const uint16_t skill = static_cast<uint16_t>(m_queuedSkill);
+				if (TryCastSkill(skill, true, t->id) || m_now - m_queuedAt > 4.0)
 					m_queuedSkill = -1;
 			}
-			else
-				TryAttackTarget(*t);
+			else if (m_heldSkill == 0)
+				TryAttackTarget(*t);   // 모으거나 도는 동안에는 자동 공격이 기술을 끊지 않는다(다른 기술 누름 = 끊김 규칙)
 		}
 		break;
 	}
@@ -1117,7 +1109,8 @@ void Game::TryAttackTarget(Entity& t)
 		ClearGoal();
 		return;
 	}
-	TryCastSkill(0, true, t.id);   // 기본 공격도 기술 표(검격·각인탄·연속 찌르기)로
+	// 기본 공격도 기술 표(검격 · 각인탄 · 연속 찌르기 — 콤보)로
+	TryCastSkill(SkillDefTable::Default(m_classId, SkillKey::C), true, t.id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

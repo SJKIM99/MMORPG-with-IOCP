@@ -329,6 +329,12 @@
     <ClCompile Include="Combat\SkillHelper.cpp">
       <Filter>Combat</Filter>
     </ClCompile>
+    <ClCompile Include="Combat\SkillEx.cpp">
+      <Filter>Combat</Filter>
+    </ClCompile>
+    <ClCompile Include="Combat\SkillGrow.cpp">
+      <Filter>Combat</Filter>
+    </ClCompile>
     <ClCompile Include="Npc\NpcHelper.cpp">
       <Filter>Npc</Filter>
     </ClCompile>
@@ -349,6 +355,15 @@
     <ClInclude Include="Data\CombatData.h">
       <Filter>Data</Filter>
     </ClInclude>
+    <ClInclude Include="Data\SkillData.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\SkillGrowth.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Combat\SkillGrow.h">
+      <Filter>Combat</Filter>
+    </ClInclude>
     <ClInclude Include="Data\NpcTalk.h">
       <Filter>Data</Filter>
     </ClInclude>
@@ -359,6 +374,12 @@
       <Filter>Combat</Filter>
     </ClInclude>
     <ClInclude Include="Combat\SkillHelper.h">
+      <Filter>Combat</Filter>
+    </ClInclude>
+    <ClInclude Include="Combat\SkillEx.h">
+      <Filter>Combat</Filter>
+    </ClInclude>
+    <ClInclude Include="Combat\SkillDetail.h">
       <Filter>Combat</Filter>
     </ClInclude>
     <ClInclude Include="Combat\StatusSet.h">

@@ -1,4 +1,6 @@
 #include "game/Game.h"
+#include "render/Post.h"
+#include "fx/FxScale.h"
 #include "game/KeyBinds.h"
 #include "render/Terrain.h"
 #include "game/Texts.h"
@@ -373,6 +375,44 @@ void Game::OnPacket(const char* data, uint16_t size)
 		if (As(data, size, p)) HandleSkillCast(p);
 		break;
 	}
+	// Phase 2-B 기술 구조 V3
+	case PacketType::SKILL_EX_NFY:
+	{
+		SKILL_EX_NFY_PACKET p{};
+		if (As(data, size, p)) HandleSkillEx(p);
+		break;
+	}
+	case PacketType::SUBJECT_FORCED_MOVE_NFY:
+	{
+		SUBJECT_FORCED_MOVE_NFY_PACKET p{};
+		if (As(data, size, p)) HandleForcedMove(p);
+		break;
+	}
+	case PacketType::COMBAT_GAUGE_INF:
+	{
+		COMBAT_GAUGE_INF_PACKET p{};
+		if (As(data, size, p)) HandleCombatGauge(p);
+		break;
+	}
+	case PacketType::MONSTER_GAUGE_NFY:
+	{
+		MONSTER_GAUGE_NFY_PACKET p{};
+		if (As(data, size, p)) HandleMonsterGauge(p);
+		break;
+	}
+	// Phase 2-D 기술 성장
+	case PacketType::SKILL_TREE_INF:
+	{
+		SKILL_TREE_INF_PACKET p{};
+		if (As(data, size, p)) HandleSkillTree(p);
+		break;
+	}
+	case PacketType::SKILL_GROW_ACK:
+	{
+		SKILL_GROW_ACK_PACKET p{};
+		if (As(data, size, p)) HandleSkillGrowAck(p);
+		break;
+	}
 	case PacketType::STATUS_NFY:
 	{
 		STATUS_NFY_PACKET p{};
@@ -509,6 +549,17 @@ void Game::HandleLoginAck(const USER_LOGIN_ACK_PACKET& p)
 	m_actionLockUntil = 0.0;
 	m_comboHits = 0;
 	m_statsKnown = false;
+	// 기술 구조 V3 예측 상태
+	m_heldSkill = 0; m_heldHot = -1;
+	m_comboStage = 0; m_comboAt = -10.0;
+	m_chainSkill = 0; m_chainStage = 0;
+	m_toggleSkill = 0;
+	m_identity = 0; m_identityFull = false; m_identityActiveUntil = 0.0;
+	m_timelines.clear();
+	m_bounceMarks.clear();
+	m_expectDashSkill = 0;
+	m_awakeTotal = AwakeTotal{};
+	m_cine = Cinematic{};
 	InitNpcs();
 	m_level = p.level;
 	m_hp = p.hp;
@@ -644,6 +695,19 @@ void Game::HandleSubjectMove(const SUBJECT_MOVE_NFY_PACKET& p)
 {
 	if (p.id == m_selfId)
 	{
+		// 기술 이동(돌진 · 구르기 · 회피 · 달 가르기 · 도약)을 기다리는 중: 순간이동 대신 표의 칸당 시간으로 미끄러진다
+		if (m_expectDashSkill != 0 && m_now < m_expectDashUntil)
+		{
+			const SkillDef* d = SkillDefTable::Find(m_expectDashSkill);
+			const int tiles = std::max(std::abs(p.x - m_mover.SrvX()), std::abs(p.y - m_mover.SrvY()));
+			const double dur = d ? d->moveMs * tiles / 1000.0 : 0.0;
+			m_mover.Dash(p.x, p.y, m_now, dur);
+			SyncMover();
+			m_expectDashSkill = 0;
+			m_dashWaitSeq = 0;
+			m_actionLockUntil = std::max(m_actionLockUntil, m_now + dur * 0.85);
+			return;
+		}
 		// 확장 세션의 보통 걸음은 USER_MOVE_EX_ACK로 온다. 여기로 오는 건 존 이동 메아리
 		// (예측 경로 위의 칸 → 무시)이거나 순간이동/재배치다.
 		if (m_mover.OnServerPosition(p.x, p.y, m_now))
@@ -949,6 +1013,42 @@ void Game::HandleEffect(const EFFECT_NFY_PACKET& p)
 	case EffectId::PoisonBurst:
 		skillfx::OnServerEffect(id, subj ? TileToIso(subj->pos) : iso, p.param);
 		PlayAt(static_cast<int>(sfx::Id::PoisonBurst), tile, 0.9f, 0.05f);
+		break;
+	// ── Phase 2-B 기술 구조 V3 ──
+	case EffectId::StaggerBreak:
+	case EffectId::OathRelease:
+		break;   // 무력화는 MONSTER_GAUGE_NFY, 서약 해방은 SKILL_EX_NFY(고유 기술)가 연출한다
+	case EffectId::Resonance:
+	{
+		fxscale::Scope scope(self);
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::Burst), tile, 0.7f, 0.02f);
+		PlayAt(static_cast<int>(sfx::Id::BellSmall), tile, 0.4f, 0.02f);
+		if (self) { m_feelStop = std::max(m_feelStop, 0.04f); m_feelTrauma = std::max(m_feelTrauma, 0.2f); }
+		break;
+	}
+	case EffectId::PerfectDodge:
+		if (subj)
+		{
+			fx::Fx().FloatText(TileToIso(subj->pos), actors::PlayerHeight() + 24.f, "완벽 회피", Rgb(0xE8EEF6), self ? 22.f : 16.f, 1.1f, ui::Face::Display);
+			if (self)
+			{
+				post::Desaturate(0.65f, 0.35f);
+				sfx::Play(sfx::Id::Perfect, 0.8f, 0.01f);
+				m_feelStop = std::max(m_feelStop, 0.06f);
+			}
+		}
+		break;
+	case EffectId::CloneStrike:
+	{
+		fxscale::Scope scope(self);
+		skillfx::OnServerEffect(id, iso, p.param);
+		PlayAt(static_cast<int>(sfx::Id::InkSplash), tile, 0.5f, 0.1f);
+		break;
+	}
+	case EffectId::Taunted:
+		if (subj && p.param > 0)
+			fx::Fx().FloatText(TileToIso(subj->pos), actors::PlayerHeight() + 30.f, "도발 ×" + std::to_string(p.param), Rgb(0xE0604E), self ? 18.f : 14.f, 1.0f);
 		break;
 	// ── 장비 특수 효과(모양은 skillfx, 소리·숫자는 여기) ──
 	case EffectId::ProcThunder:

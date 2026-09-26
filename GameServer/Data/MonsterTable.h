@@ -29,6 +29,8 @@ enum class MonsterArchetype : uint8_t
 	eCrab,        // 게
 	eMushroom,    // 버섯
 	eSkeleton,    // 백골/파약 기사
+	// ── Phase 2-E(끝에만 추가) ──
+	eDummy,       // 허수아비(훈련장) — 나무 기둥 + 짚 몸통 + 과녁
 };
 
 // V2: 몬스터 강공격 패턴 — 모두 예고(telegraph) 뒤에 판정되어 피할 수 있다.
@@ -76,6 +78,8 @@ struct MonsterTableRow
 	uint32_t         color1       = 0xFFFFFF;  // 0xRRGGBB
 	uint32_t         color2       = 0x000000;
 	uint16_t         scale        = 100;       // 100 = 1.0배
+	// ── Phase 2-E ──
+	bool             dummy        = false;     // 훈련장 허수아비: 움직이지 않고 · 때리지 않고 · 죽지 않는다(HP가 늘 찬다) · 경험치 · 전리품 없음
 };
 
 namespace MonsterTable
@@ -88,6 +92,7 @@ namespace MonsterTable
 		inline constexpr uint16_t BurrowQueen  = 32;   // 굴개미 여왕 — 둔덕의 어미
 		inline constexpr uint16_t Zmaj         = 33;   // 즈마이 — 바트라의 늙은 용
 		inline constexpr uint16_t Gramok       = 34;   // 그라목 — 삼키는 주인
+		inline constexpr uint16_t TrainingDummy = 35;  // 허수아비 — 데니차 훈련장(Phase 2-E)
 	}
 
 	using A = MonsterArchetype;
@@ -137,6 +142,8 @@ namespace MonsterTable
 		{ 32, "굴개미 여왕", true,  24, 15000, 45,  4500, 4000,  8000, 100, 6, 4, 1500, 650, 12, true,  A::eInsect,    V::eNormal,   0xA0301F, 0xF0C040, 230 },
 		{ 33, "즈마이",      true,  36, 30000, 70, 12000, 12000, 25000, 100, 8, 6, 1500, 600, 12, true, A::eDragon,    V::eNormal,   0xE0501A, 0xFFD040, 260 },
 		{ 34, "그라목",      true,  40, 35000, 80, 15000, 15000, 30000, 100, 9, 6, 1500, 600, 12, true,  A::eDemon,     V::eNormal,   0x3A1A2A, 0xC02030, 250 },
+		// ── Phase 2-E 훈련장 ── 레벨 10(방어 보통) · 경험치 · 그로시 · 전리품 없음(dropTable 0)
+		{ 35, "허수아비",    false, 10, 60000,  1,     0,    0,     0,   0, 0, 1, 1000, 500,  0, false, A::eDummy,     V::eNormal,   0xB08A5A, 0x6A4A2A, 100, true },
 	};
 
 	inline constexpr size_t kRowCount = sizeof(kRows) / sizeof(kRows[0]);

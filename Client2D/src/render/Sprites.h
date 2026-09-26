@@ -44,4 +44,7 @@ namespace sprites
 	void SetAlphaTest(float alphaTest);
 	void EndWorld();
 	[[nodiscard]] bool ShaderActive();
+	// 다른 셰이더로 그리는 동안 월드 셰이더를 잠시 내렸다가(Suspend → 켜져 있었으면 true) 다시 올린다(Resume)
+	[[nodiscard]] bool Suspend();
+	void Resume(bool wasOn);
 }

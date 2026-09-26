@@ -177,6 +177,17 @@ namespace WorldData
 		return IsInTown(x, y);
 	}
 
+	// ── Phase 2-E 훈련장(마을 동쪽 풀밭) — 안전지대 안이지만 여기서는 기술을 쓸 수 있다(맞는 것은 허수아비뿐:
+	//    몬스터는 마을에 들어오지 못하고, 안전지대의 사람은 강제 공격으로도 맞지 않는다). Phase 4에서 훈련장 건물로 옮긴다.
+	inline constexpr int kYardX0 = kTownX0 + 31, kYardY0 = kTownY0 + 15, kYardX1 = kTownX0 + 42, kYardY1 = kTownY0 + 19;   // 포함
+	[[nodiscard]] constexpr bool IsTrainingYard(int x, int y) noexcept
+	{
+		return x >= kYardX0 && x <= kYardX1 && y >= kYardY0 && y <= kYardY1;
+	}
+	struct DummySpot { short x, y; };
+	inline constexpr DummySpot kDummySpots[] = { { kTownX0 + 34, kTownY0 + 18 }, { kTownX0 + 37, kTownY0 + 18 }, { kTownX0 + 40, kTownY0 + 18 } };
+	inline constexpr int kDummyCount = static_cast<int>(sizeof(kDummySpots) / sizeof(kDummySpots[0]));
+
 	// 기존 서버의 장애물 패턴(Collision.cpp의 checkCollision과 동일한 식).
 	// 마을 밖 월드는 이 패턴을 그대로 유지한다 — 기존 A*/몬스터 이동/저장 좌표와의 호환.
 	[[nodiscard]] constexpr bool LegacyPatternBlocked(int x, int y) noexcept
@@ -195,6 +206,17 @@ namespace WorldData
 			return IsTownCellBlocked(TownCell(x, y));
 		return LegacyPatternBlocked(x, y);
 	}
+
+	namespace Detail
+	{
+		constexpr bool ValidateYard() noexcept
+		{
+			for (const auto& d : kDummySpots)
+				if (!IsTrainingYard(d.x, d.y) || IsBlocked(d.x, d.y) || !IsSafeZone(d.x, d.y)) return false;
+			return true;
+		}
+	}
+	static_assert(Detail::ValidateYard(), "허수아비 자리는 훈련장 안의 걸을 수 있는 칸이어야 합니다.");
 
 	// ── 마을 건물(클라이언트가 입체로 그리기 위한 사각형. 충돌은 레이아웃이 담당) ──
 	enum class BuildingKind : uint8_t { eStore, eWeaponShop, eTemple, eInn, eHouse };

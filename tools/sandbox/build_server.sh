@@ -38,6 +38,12 @@ grep -rl --include=*.h --include=*.cpp 'steady_clock' "$SRC" | while read -r f; 
 	sed -i -E 's/std::chrono::steady_clock/sandbox_clock/g; s/chrono::steady_clock/sandbox_clock/g' "$f"
 done
 
+# 2-1) 타이머 대기 폴링(샌드박스만): 공유 시계에서는 condition_variable::wait_until이 "시계 차이"를 실제 시간으로 바꿔
+#      기다리는데, MinGW(winpthreads) + Wine에서 새로 앞선 예약(기술 타격 60ms 뒤)의 notify로 제때 깨지 않는 경우가 있었다
+#      (녹화에서 타격이 1~2초 늦게 한꺼번에 — Phase 2-B). 실제 서버(MSVC · steady_clock)는 그대로이고, 복사본에서만 5ms로 끊어 기다린다.
+sed -i -E 's/_cv\.wait_until\(lock, nextWakeup,/_cv.wait_until(lock, (std::min)(nextWakeup, Now() + std::chrono::milliseconds(5)),/' "$SRC/Thread/TimerThread.cpp"
+grep -q 'milliseconds(5)' "$SRC/Thread/TimerThread.cpp" || { echo "TimerThread 대기 치환 실패"; exit 1; }
+
 # 3) 대소문자 래퍼
 mkdir -p "$SRC/_case"
 echo '#pragma once' > "$SRC/_case/ContentID.h"

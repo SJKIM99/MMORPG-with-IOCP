@@ -13,6 +13,8 @@
 #include "Content/ContentHelper.h"
 #include "Combat/CombatHelper.h"
 #include "Combat/SkillHelper.h"
+#include "Combat/SkillEx.h"
+#include "Combat/SkillGrow.h"
 #include "Npc/NpcHelper.h"
 #include "Quest/QuestHelper.h"
 #include "Data/LevelTable.h"
@@ -111,6 +113,28 @@ namespace Route
 			if (client == nullptr)
 				break;
 			SkillHelper::HandleCast(client, *reinterpret_cast<const SKILL_CAST_REQ_PACKET*>(packet));
+			break;
+		}
+		case PacketType::SKILL_EX_REQ:
+		{
+			// Phase 2-B 기술 구조 V3 — 확장 세션만(봇 · 레거시 경로에는 없다)
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			SkillEx::HandleRequest(client, *reinterpret_cast<const SKILL_EX_REQ_PACKET*>(packet));
+			break;
+		}
+		case PacketType::SKILL_GROW_REQ:
+		{
+			// Phase 2-D 기술 성장 — 확장 세션만
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr)
+				break;
+			SkillGrow::HandleRequest(client, *reinterpret_cast<const SKILL_GROW_REQ_PACKET*>(packet));
 			break;
 		}
 		case PacketType::STAT_ALLOC_REQ:

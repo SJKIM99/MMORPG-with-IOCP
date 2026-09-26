@@ -31,8 +31,32 @@ namespace sfx
 		QuestAccept, QuestTick, QuestObjDone, QuestReady, QuestComplete, ChapterBell, Discover, Heartbeat, QuestFly,
 		// Phase 1-C: 바닥 종류별 발소리(풀 · 돌 · 나무 · 눈 · 모래)
 		StepGrass, StepStone, StepWood, StepSnow, StepSand,
+		// Phase 2-A: 기술 소리 겹(예고 · 발동 · 타격 · 여운을 섞어 쓴다 — Layered)
+		BellToll,     // 큰 종(심판의 종 · 단죄) — 어긋난 배음, 긴 울림
+		BellSmall,    // 작은 종(서약 · 방패)
+		Scribe,       // 허공에 글자를 새기는 반짝임(각인술사의 시작)
+		Whoosh,       // 공기를 가르는 빠른 쉭(돌진 · 투척 · 휘두름 꼬리)
+		BoomLow,      // 땅울림(서브 베이스)
+		Burst,        // 폭발 몸통(노이즈 파열 + 딱딱 튀는 잔불)
+		FireRoar,     // 불길이 치솟는 웅
+		IceCrack,     // 얼음 금 가는 소리 + 유리 배음
+		ThunderClap,  // 벼락: 쩍 + 우르릉
+		InkSplash,    // 먹물이 튀는 젖은 소리
+		MetalRing,    // 쨍한 쇳소리(배음 셋)
+		TailVerb,     // 공기 같은 긴 여운
+		ChargeLoop,   // 힘이 차오르는 상승음(0.9초)
+		ChargeStage,  // 차지 단계 도달 — 짧은 딩
+		Perfect,      // 완벽 구간 — 맑은 화음
+		Roll,         // 몸 굴리기(쿵 + 옷 스침)
+		Rally,        // 외침(뿔나팔 같은 톤)
+		BladeHum,     // 칼날 여럿이 도는 빠른 쉭쉭
+		Cutin,        // 각성기 컷인: 휙 + 쿵
+		Drone,        // 암전 저음(각성기 예고)
 		Count
 	};
+
+	// 겹 하나: delay초 뒤 volume, 음높이 pitch(1 = 원래)
+	struct Layer { Id id; float delay = 0.f; float volume = 1.f; float pitch = 1.f; };
 
 	void Init();
 	void Shutdown();
@@ -44,4 +68,11 @@ namespace sfx
 	void PlayPitched(Id id, float volume, float pitch, float pan = 0.5f);
 	void SetMasterVolume(float v);
 	[[nodiscard]] float MasterVolume();
+
+	// Phase 2-A: 늦게 울리기 · 겹 여러 개(예고 · 발동 · 타격 · 여운) · 매 프레임 진행
+	void PlayAfter(Id id, float delay, float volume = 1.f, float pitchVar = 0.04f, float pan = 0.5f);
+	void Layered(const Layer* layers, int count, float volume = 1.f, float pan = 0.5f);
+	void Update(float dt);
+	// 같은 소리를 이 시간(초) 안에 다시 부르면 무시한다(겹쳐 찢어지는 소리 방지 — 기본 0.03)
+	void SetDedupe(float seconds);
 }

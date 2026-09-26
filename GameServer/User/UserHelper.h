@@ -93,7 +93,7 @@ namespace UserHelper
 
 	void HandleLoginFail(const shared_ptr<GameSession>& session);
 	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items,
-		const std::vector<uint8_t>& progress);
+		const std::vector<uint8_t>& progress, const std::vector<DB_SKILL_INFO>& skills);
 	// V2 진행 데이터(직업·포인트·퀘스트…) 저장 요청
 	void SaveProgress(const shared_ptr<User>& user);
 	void HandleAddUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo);

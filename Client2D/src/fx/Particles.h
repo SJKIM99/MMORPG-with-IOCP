@@ -13,6 +13,8 @@
 namespace fx
 {
 	enum class Shape : uint8_t { Glow, Soft, Smoke, Spark, Star, Ring, Chunk, Leaf, Flake, Coin, Tex };
+	// 하위 입자(Phase 2-A): 죽을 때 한 번(onDeath) · 사는 동안 꼬리(trail)
+	enum class Sub : uint8_t { None, Sparks, Smoke, Embers, Frost, Ink, Dust };
 
 	struct Particle
 	{
@@ -39,11 +41,18 @@ namespace fx
 		bool    flipX = false;
 		bool    ground = false;     // 바닥 문양: 캐릭터 발밑(깊이 맨 뒤)에 그린다
 		float   pop = 0.f;          // 처음 pop초 동안 0 → 1로 튀어나오듯 커진다(EaseOutBack)
+		// Phase 2-A
+		float   alphaK = 1.f;       // 연출 세기(fxscale — 다른 플레이어 기술은 약하게)
+		Sub     onDeath = Sub::None;
+		Sub     trail = Sub::None;
+		float   trailAcc = 0.f;
+		Color   subColor{ 255, 255, 255, 255 };
 	};
 
 	class ParticleSystem
 	{
 	public:
+		// 품질 · 연출 세기에 따라 일부는 버린다(버린 것은 목록 밖의 임시 입자 — 부르는 쪽은 신경 쓰지 않아도 된다)
 		Particle& Emit();
 		void Update(float dt);
 		// 월드 패스에서 호출(깊이 테스트 켠 상태, 깊이 쓰기 끔)
@@ -52,7 +61,10 @@ namespace fx
 		[[nodiscard]] size_t Count() const { return m_parts.size(); }
 
 	private:
+		void SpawnSub(Sub kind, const Particle& from, bool death);
 		std::vector<Particle> m_parts;
+		std::vector<Particle> m_pending;   // Update 도중 생긴 하위 입자
+		std::vector<uint32_t> m_order;     // 더하기 패스 그리기 순서(텍스처별로 묶어 그리기 호출을 줄인다)
 	};
 
 	ParticleSystem& Particles();

@@ -281,7 +281,7 @@ namespace actors
 		case 1:   // 각인술사: 짙은 로브 + 이름마다 다른 각인 빛
 		{
 			static const Color robes[] = { Rgb(0x2A3468), Rgb(0x3A2A5A), Rgb(0x1E3A4A), Rgb(0x2E2A3E), Rgb(0x3A3050) };
-			static const Color runes[] = { Rgb(0x6AD8FF), Rgb(0xB08AFF), Rgb(0x7AF0C8), Rgb(0xFFC870) };
+			static const Color runes[] = { Rgb(0x6AD8FF), Rgb(0xBFE6FF), Rgb(0x7AF0C8), Rgb(0xFFC870) };
 			look.cloth = robes[nameHash % 5];
 			look.trim = runes[(nameHash / 5) % 4];
 			look.armor = Rgb(0xB8A07A);
@@ -292,7 +292,7 @@ namespace actors
 			static const Color scarves[] = { Rgb(0x9A2A3A), Rgb(0x5A3A9A), Rgb(0x2A6A5A), Rgb(0x7A6A2A), Rgb(0x3A4A8A) };
 			look.cloth = scarves[nameHash % 5];
 			look.armor = Rgb(0x3A3236);
-			look.trim = Rgb(0xB88AFF);
+			look.trim = Rgb(0xC8D2E0);
 			break;
 		}
 		default:  // 서약기사: 강철 + 저녁노을 망토
@@ -1584,6 +1584,60 @@ namespace actors
 			}
 		}
 
+		// ── 허수아비(Phase 2-E 훈련장) — 나무 기둥 · 가로대 · 짚 몸통 · 칠한 과녁. 맞으면 기둥째 흔들린다(쓰러지지 않는다)
+		void Dummy(const Rig& g0, const Pose& p, Color c1, Color c2)
+		{
+			Rig g = g0;
+			g.rot = 0.f;
+			// 맞은 뒤 잦아드는 흔들림 + 늘 조금 삐걱이는 흔들림
+			const float wob = (p.hurt > 0.f ? std::sin(p.time * 34.f) * p.hurt * 5.f : 0.f) + std::sin(p.time * 1.3f + static_cast<float>(p.seed % 97u) * 0.7f) * 0.6f
+				+ (p.knock > 0.f ? p.knock * 4.f : 0.f);
+			const Color wood = c2, woodHi = Shade(c2, 1.35f), woodLo = Shade(c2, 0.65f);
+			const Color straw = c1, strawHi = Shade(c1, 1.25f), strawLo = Shade(c1, 0.75f);
+			// 받침: 땅에 박은 십자 발
+			Ell(g, 0, -1, 13.f, 4.5f, Shade(woodLo, 0.7f));
+			Seg(g, -11, -1, 11, -1, 3.f, woodLo);
+			Seg(g, -5, 2, 5, -4, 2.6f, wood);
+			// 기둥(아래는 그대로, 위로 갈수록 흔들림)
+			Quad4(g, -2.4f, 0, 2.4f, 0, 2.2f + wob * 0.9f, -58, -2.2f + wob * 0.9f, -58, wood, woodLo, woodLo, woodHi);
+			// 가로대(팔)
+			Seg(g, -19 + wob * 0.7f, -41, 19 + wob * 0.7f, -42, 3.4f, woodHi);
+			Seg(g, -19 + wob * 0.7f, -39.5f, 19 + wob * 0.7f, -40.5f, 1.2f, woodLo);
+			// 팔 끝 짚 뭉치
+			for (int s = -1; s <= 1; s += 2)
+			{
+				const float ax = s * 20.f + wob * 0.7f;
+				Ell(g, ax, -41, 4.f, 3.2f, straw);
+				Seg(g, ax, -41, ax + s * 5.f, -44, 0.9f, strawHi);
+				Seg(g, ax, -41, ax + s * 5.5f, -38, 0.9f, strawHi);
+			}
+			// 짚 몸통(자루) — 허리를 끈으로 묶었다
+			const float bx = wob * 0.6f;
+			Quad4(g, -10 + bx, -20, 10 + bx, -20, 12 + bx, -44, -12 + bx, -44, strawLo, strawLo, straw, strawHi);
+			Ell(g, bx, -44, 12.f, 4.f, strawHi);
+			Ell(g, bx, -20, 10.f, 3.2f, strawLo);
+			Seg(g, -10 + bx, -25, 10 + bx, -25, 1.3f, woodLo);
+			// 칠한 과녁(앞에서만)
+			if (!p.faceBack)
+			{
+				Ell(g, bx + 1.f, -33, 7.5f, 7.f, Rgb(0xE8DFC8));
+				Ell(g, bx + 1.f, -33, 5.4f, 5.f, Rgb(0xA8382A));
+				Ell(g, bx + 1.f, -33, 3.2f, 3.f, Rgb(0xE8DFC8));
+				Ell(g, bx + 1.f, -33, 1.3f, 1.2f, Rgb(0xA8382A));
+			}
+			// 머리: 짚 공 + 끈
+			Circ(g, wob, -53, 7.f, strawHi);
+			Circ(g, wob - 1.5f, -54.5f, 4.5f, Shade(strawHi, 1.1f));
+			Seg(g, wob - 6, -47.5f, wob + 6, -47.5f, 1.6f, woodLo);
+			// 삐져나온 짚
+			for (int i = 0; i < 7; ++i)
+			{
+				const float a = -2.4f + i * 0.8f;
+				const float hx = wob + std::cos(a) * 7.f, hy = -53.f + std::sin(a) * 7.f;
+				Seg(g, hx, hy, hx + std::cos(a) * 3.5f, hy + std::sin(a) * 3.5f, 0.8f, Rgb(0xEAD08A));
+			}
+		}
+
 		void Skeleton(const Rig& g0, const Pose& p, const MonsterTableRow& row, Color c1, Color c2)
 		{
 			Rig g = g0;
@@ -1674,6 +1728,7 @@ namespace actors
 		case MonsterArchetype::eDemon: h = 72.f; break;
 		case MonsterArchetype::eCrab: h = 34.f; break;
 		case MonsterArchetype::eMushroom: h = 40.f; break;
+		case MonsterArchetype::eDummy: h = 60.f; break;
 		default: h = 66.f; break;
 		}
 		return h * row.scale / 100.f;
@@ -1718,6 +1773,7 @@ namespace actors
 		case MonsterArchetype::eCrab: Crab(g, p, c1, c2); break;
 		case MonsterArchetype::eMushroom: Mushroom(g, p, c1, c2); break;
 		case MonsterArchetype::eSkeleton: Skeleton(g, p, row, c1, c2); break;
+		case MonsterArchetype::eDummy: Dummy(g, p, c1, c2); break;
 		}
 	}
 

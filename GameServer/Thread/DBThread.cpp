@@ -164,6 +164,23 @@ void DBThread::RequestSaveProgress(int playerId, std::vector<uint8_t> data)
 	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
 }
 
+void DBThread::RequestSaveSkill(int playerId, const DB_SKILL_INFO& skill)
+{
+	auto event        = std::make_shared<DB_SKILL_SAVE_EVENT>();
+	event->wakeupTime = Now();
+	event->playerId   = playerId;
+	event->skill      = skill;
+	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
+}
+
+void DBThread::RequestResetSkills(int playerId)
+{
+	auto event        = std::make_shared<DB_SKILL_RESET_EVENT>();
+	event->wakeupTime = Now();
+	event->playerId   = playerId;
+	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
+}
+
 void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 {
 	ScopedDBConnection scopedConnection(GDBConnectionPool);
@@ -181,9 +198,13 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 			vector<DB_ITEM_INFO> items = connection->ExtractInventory(userInfo._playerId);
 			std::vector<uint8_t> progress;
 			(void)connection->LoadPlayerProgress(userInfo._playerId, progress);
-			GZoneManager->EnqueueByWorld(userInfo._x, userInfo._y, [session = e->session, userInfo, items, progress = std::move(progress)]()
+			// Phase 2-D 기술 성장 — 확장 세션만 읽는다(봇 · 레거시 로그인의 DB 왕복은 그대로)
+			std::vector<DB_SKILL_INFO> skills;
+			if (e->session != nullptr && e->session->IsExtended())
+				(void)connection->LoadPlayerSkills(userInfo._playerId, skills);
+			GZoneManager->EnqueueByWorld(userInfo._x, userInfo._y, [session = e->session, userInfo, items, progress = std::move(progress), skills = std::move(skills)]()
 			{
-				UserHelper::HandleGetUserInfo(session, userInfo, items, progress);
+				UserHelper::HandleGetUserInfo(session, userInfo, items, progress, skills);
 			});
 		}
 		else {
@@ -256,6 +277,14 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 	else if (const auto e = std::dynamic_pointer_cast<DB_ALIGNMENT_SAVE_EVENT>(event))
 	{
 		connection->SavePlayerAlignment(e->playerId, e->alignment, e->pkCount);
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_SKILL_SAVE_EVENT>(event))
+	{
+		connection->SavePlayerSkill(e->playerId, e->skill);
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_SKILL_RESET_EVENT>(event))
+	{
+		connection->ResetPlayerSkills(e->playerId);
 	}
 }
 

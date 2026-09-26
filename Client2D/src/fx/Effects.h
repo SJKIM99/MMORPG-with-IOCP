@@ -17,7 +17,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 namespace fx
 {
-	enum class DamageStyle { Normal, Crit, Skill, Taken, TakenCrit, Heal, Other, Exp, DotBurn, DotPoison, Guarded };
+	enum class DamageStyle { Normal, Crit, Skill, Taken, TakenCrit, Heal, Other, Exp, DotBurn, DotPoison, Guarded, Total };
+	// 숫자 위 표지(Phase 2-A) — 여럿이면 " · "로 잇는다
+	enum DamageTag : uint8_t { TagWeak = 1 << 0, TagBack = 1 << 1, TagCounter = 1 << 2, TagEcho = 1 << 3, TagClone = 1 << 4 };
 
 	class Effects
 	{
@@ -34,7 +36,12 @@ namespace fx
 		// ── 기본 요소 ──
 		// stackKey != 0: 같은 열쇠의 숫자가 막 떠 있으면 새로 띄우지 않고 합쳐서 키운다
 		// (연타·다단 히트가 숫자 비로 번지지 않고 "쌓이는" 맛이 나게).
-		void Damage(Vector2 iso, float height, int amount, DamageStyle style, uint64_t stackKey = 0);
+		// victimKey != 0(합치지 않는 숫자): 같은 대상의 최근 숫자들을 한 줄씩 위로 밀고 새 숫자는 좌우를 번갈아 선다
+		// (다단 타격이 겹치지 않고 쌓인다). tags: DamageTag
+		void Damage(Vector2 iso, float height, int amount, DamageStyle style, uint64_t stackKey = 0, uint64_t victimKey = 0, uint8_t tags = 0);
+		// 각성기 끝의 "총 피해" 큰 숫자
+		void TotalDamage(Vector2 iso, float height, int total);
+		[[nodiscard]] float HitStopLeft() const { return m_hitStop; }
 		// 떠오르는 글자(상태 · 알림). face: 기본 Strong, 영문 연출은 Latin.
 		void FloatText(Vector2 iso, float height, const std::string& text, Color color, float size, float life = 1.4f, ui::Face face = ui::Face::Strong);
 		void Ring(Vector2 iso, float r0, float r1, float life, Color color, float thickness);
@@ -72,7 +79,11 @@ namespace fx
 		void Ambient(WorldData::Biome biome, Vector2 isoCenter, float viewW, float viewH, float dt, float night, bool inTown);
 
 	private:
-		struct DamageNum { Vector2 iso; float h; std::string text; DamageStyle style; float t, life; float vx; uint64_t key = 0; int total = 0; int hits = 1; float punch = 0.f; };
+		struct DamageNum
+		{
+			Vector2 iso; float h; std::string text; DamageStyle style; float t, life; float vx; uint64_t key = 0; int total = 0; int hits = 1; float punch = 0.f;
+			uint64_t victim = 0; float stack = 0.f, stackShown = 0.f; uint8_t tags = 0;
+		};
 		struct Floating { Vector2 iso; float h; std::string text; Color color; float size, t, life; ui::Face face = ui::Face::Strong; };
 		struct RingFx { Vector2 iso; float r0, r1, t, life, thick; Color color; };
 		struct BeamFx { Vector2 iso; float w, h, t, life; Color color; };

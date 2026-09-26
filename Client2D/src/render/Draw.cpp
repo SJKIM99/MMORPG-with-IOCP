@@ -18,6 +18,8 @@ namespace gfx
 		float g_alpha = 1.f;
 		bool g_modActive = false;
 		bool g_depthWrite = true;
+		bool g_additive = false;
+		bool g_emissiveOnly = false;
 
 		// 보이는 X+Y 범위(카메라 기준 ±80칸 정도)를 깊이 [0.05, 0.95]로 편다.
 		constexpr float kDepthSpan = 220.f;
@@ -71,6 +73,8 @@ namespace gfx
 
 	Color Mod(Color c)
 	{
+		if (g_emissiveOnly && !g_additive)
+			return Color{ 0, 0, 0, 0 };
 		if (!g_modActive)
 			return c;
 		Color out{
@@ -98,9 +102,19 @@ namespace gfx
 	void Additive(bool on)
 	{
 		rlDrawRenderBatchActive();
-		if (on) rlSetBlendMode(RL_BLEND_ADDITIVE);
+		g_additive = on;
+		if (on || g_emissiveOnly) rlSetBlendMode(RL_BLEND_ADDITIVE);
 		else rlSetBlendMode(RL_BLEND_ALPHA);
 	}
+	bool AdditiveOn() { return g_additive; }
+	void EmissiveOnly(bool on)
+	{
+		rlDrawRenderBatchActive();
+		g_emissiveOnly = on;
+		g_additive = false;
+		rlSetBlendMode(on ? RL_BLEND_ADDITIVE : RL_BLEND_ALPHA);
+	}
+	bool EmissiveOnlyOn() { return g_emissiveOnly; }
 
 	// ─────────────────────────────────────────────────────────────────────────
 	void Tri(Vector2 a, Vector2 b, Vector2 c, Color col)
@@ -498,6 +512,7 @@ namespace gfx
 	void SpriteMesh(const Texture2D& tex, Rectangle src, Vector2 anchor, Vector2 base, float scale, const SpriteXform& xf)
 	{
 		if (tex.id == 0 || src.width <= 0.f || src.height <= 0.f) return;
+		if (g_emissiveOnly) return;   // 캐릭터 · 소품 그림은 빛 버퍼에 넣지 않는다(번쩍임 좌표가 기본 셰이더에서 깨진다)
 		// 정점 색 = 틴트 × 알파(번쩍임은 셰이더가 한다)
 		const Color col{ g_tint.r, g_tint.g, g_tint.b, static_cast<unsigned char>(g_tint.a * g_alpha) };
 		if (col.a == 0) return;

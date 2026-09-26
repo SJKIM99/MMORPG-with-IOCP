@@ -426,14 +426,38 @@ def process_props(raw, packer):
 # ─────────────────────────────────────────────────────────────────────────────
 # 아이콘
 # ─────────────────────────────────────────────────────────────────────────────
+def existing_icon_tiles(outdir, cell):
+    """지금 아틀라스(icons.png + icons.txt)의 칸 — 원본 판이 없는(다른 기계에서 만든) 아이콘은 이것을 그대로 쓴다."""
+    tiles = {}
+    png, txt = os.path.join(outdir, "icons.png"), os.path.join(outdir, "icons.txt")
+    if not (os.path.exists(png) and os.path.exists(txt)):
+        return tiles
+    atlas = Image.open(png).convert("RGBA")
+    cols = atlas.width // cell
+    for line in open(txt, encoding="utf-8"):
+        if line.startswith("#") or not line.strip():
+            continue
+        name, idx = line.split()
+        i = int(idx)
+        box = ((i % cols) * cell, (i // cols) * cell, (i % cols + 1) * cell, (i // cols + 1) * cell)
+        tiles[name] = atlas.crop(box)
+    return tiles
+
+
 def process_icons(raw, outdir):
     from catalog import ICON_SHEETS
     cell = 128
     names = []
     tiles = []
+    old = existing_icon_tiles(outdir, cell)
     for key, items in ICON_SHEETS:
         path = os.path.join(raw, key + ".png")
         if not os.path.exists(path):
+            # 원본 판이 없으면 지금 아틀라스의 칸을 그대로(새 판만 추가할 때 — Phase 2-C)
+            for name, _ in items:
+                if name in old:
+                    names.append(name)
+                    tiles.append(old[name])
             continue
         parts = split_grid(clean_alpha(load_rgba(path)), 3, 3, dilate=5)
         for (name, _), p in zip(items, parts):

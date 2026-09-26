@@ -156,7 +156,8 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	{
 		const uint16_t id = ui::Drag().itemId;
 		const int from = ui::Drag().index;
-		if (const SkillRow* dr = SkillTable::Find(id); dr && dr->slot != 0 && dr->cls == m_classId)
+		const SkillDef* dd = SkillDefTable::Find(id);
+		if (const SkillRow* dr = SkillTable::Find(id); dr && dd && dd->kind != SkillKind::Basic && dr->cls == m_classId)
 		{
 			if (from > 0 && from < kHotSlots && from != hot)
 				std::swap(m_hot[static_cast<size_t>(from)], m_hot[static_cast<size_t>(hot)]);
@@ -181,7 +182,9 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 		return;
 	}
 
-	const int slot = row->slot;
+	const int slot = CdIndex(row->id);
+	const SkillDef* def = SkillDefTable::Find(row->id);
+	const bool basic = def && def->kind == SkillKind::Basic;
 	const float S = base.width;
 	// 누른 순간 살짝 눌렸다가 튀어나온다
 	const float press = static_cast<float>(std::max(0.0, 0.14 - (m_now - m_castSentAt[static_cast<size_t>(slot)])) / 0.14);
@@ -199,7 +202,7 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	if (cooling)
 	{
 		CooldownSweep(r, static_cast<float>(remain / std::max(0.05, m_skillCdTotal[static_cast<size_t>(slot)])), 165);
-		if (slot != 0 && remain > 0.5)
+		if (!basic && remain > 0.5)
 		{
 			ui::TextStyle cs; cs.size = std::round(S * 0.4f); cs.color = ui::theme::kTextHi; cs.outline = 1.5f; cs.outlineColor = Color{ 0, 0, 0, 210 }; cs.face = ui::Face::Number;
 			ui::Fonts().DrawCentered(remain >= 10.0 ? Fmt("%.0f", remain) : Fmt("%.1f", remain), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, cs);
@@ -218,7 +221,36 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 		ui::Plate(Rectangle{ r.x - 5 * u, r.y - 5 * u, r.width + 10 * u, r.height + 10 * u }, BLANK, util::WithA(util::Mix(cc, WHITE, 0.5f), 1.f - u), 3.f, 1.5f);
 	}
 	// 예약 · 선입력 · 표시 후 시전 중이면 테두리가 맥동. 각성기는 쓸 수 있으면 은은하게 숨 쉰다.
-	const bool queued = m_queuedSkill == slot || m_bufferSlot == slot || m_aimingHot == hot;
+	const bool queued = m_queuedSkill == row->id || m_bufferSlot == row->id || m_aimingHot == hot;
+	// 기술 구조 V3 상태: 고유 기술 게이지 · 토글 켜짐 · 모으는 중 · 체인 입력 창
+	if (def && def->kind == SkillKind::Identity && !locked)
+	{
+		const float g = util::Clamp01(m_identity / 1000.f);
+		if (g < 1.f)
+		{
+			ui::Plate(Rectangle{ r.x, r.y, r.width, r.height * (1.f - g) }, Color{ 0, 0, 0, 150 }, BLANK, 2.f, 0.f);
+			ui::TextStyle gs; gs.size = std::round(S * 0.3f); gs.color = ui::theme::kTextHi; gs.outline = 1.5f; gs.outlineColor = Color{ 0, 0, 0, 210 }; gs.face = ui::Face::Number;
+			ui::Fonts().DrawCentered(Fmt("%d%%", static_cast<int>(g * 100.f)), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, gs);
+		}
+	}
+	const bool toggled = def && def->kind == SkillKind::Toggle && m_toggleSkill == row->id;
+	const bool holding = m_heldSkill == row->id;
+	const bool chainOpen = def && def->kind == SkillKind::Chain && m_chainSkill == row->id && m_now < m_chainUntil;
+	if (toggled || holding || chainOpen)
+	{
+		const float p2 = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * (holding ? 16.f : 6.f));
+		BeginBlendMode(BLEND_ADDITIVE);
+		ui::Plate(r, util::WithA(util::Mix(cc, WHITE, 0.3f), 0.18f + 0.18f * p2), BLANK, 2.f, 0.f);
+		EndBlendMode();
+		if (chainOpen)
+		{
+			// 체인: 다음 입력 창이 줄어든다 + 남은 단
+			const float left = static_cast<float>((m_chainUntil - m_now) / std::max(0.1, def->stageMs / 1000.0));
+			ui::Plate(Rectangle{ r.x + 2.f, r.y + r.height - 5.f, (r.width - 4.f) * util::Clamp01(left), 3.f }, util::Mix(cc, WHITE, 0.4f), BLANK, 1.f, 0.f);
+			for (int k = 0; k < def->stages; ++k)
+				DrawCircleV(Vector2{ r.x + r.width - 7.f - k * 7.f, r.y + 7.f }, 2.5f, k < m_chainStage ? util::Mix(cc, WHITE, 0.5f) : Color{ 60, 64, 70, 230 });
+		}
+	}
 	const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 12.f);
 	Color border = queued ? util::Mix(ui::theme::kDawn, WHITE, 0.3f * pulse) : (hover ? ui::theme::kTextDim : (locked ? ui::theme::kLine : ui::theme::kLineStrong));
 	if (!queued && hot == kHotAwaken && !locked && !cooling && !noMana)
@@ -256,7 +288,7 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	if (hover && !ui::Dragging())
 	{
 		DrawSkillTooltip(*row);
-		m_previewSkill = slot;   // 월드에 사거리 · 범위를 보여 준다
+		m_previewSkill = row->id;   // 월드에 사거리 · 범위를 보여 준다
 	}
 }
 
@@ -269,6 +301,8 @@ void Game::DrawSkillBar()
 	DrawHotSlot(L.awaken, kHotAwaken, 1.15f);
 	DrawHotSlot(L.mobility, kHotMobility, 1.f);
 	DrawHotSlot(L.identity, kHotIdentity, 1.f);
+	// 고유 기술 게이지(HP 막대 위 — 직업마다 칸 모양)
+	DrawIdentityGauge(Rectangle{ std::round(L.hp.x + L.hp.width * 0.3f), std::round(L.panel.y - 15.f), std::round(L.hp.width * 0.4f), 9.f });
 	if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressKind == kDragSkill)
 		m_pressKind = 0;
 }
@@ -567,6 +601,33 @@ void Game::DrawKeySettings()
 		}
 		y += rowH;
 		toggle("바닥 격자", o.showGrid);
+		// 전투 연출(Phase 2-A): 칸 여러 개 중 하나 고르기
+		auto choice = [&](const char* name, const char* const* labels, const int* values, int n, int cur, auto&& set, const char* tip)
+		{
+			ui::Text(name, Vector2{ x + 4.f, y + 5.f }, ui::type::kBodyS, ui::theme::kText);
+			const float bw = n >= 3 ? 44.f : 62.f;
+			for (int i = 0; i < n; ++i)
+			{
+				const Rectangle b{ x + colW - bw * (n - i) - 3.f * (n - 1 - i), y + 1.f, bw, rowH - 4.f };
+				if (ui::Button(b, labels[i], cur == values[i] ? ButtonKind::Primary : ButtonKind::Normal, true, 13.f)) { set(values[i]); kb::Save(m_playerName); }
+			}
+			const Rectangle hit{ x, y, colW - (bw + 3.f) * n, rowH };
+			if (tip && ui::Hovered(hit))
+				ui::Tooltip({ { name, ui::theme::kTextHi, 14.f, ui::Face::Strong }, { tip, ui::theme::kText, 13.f } });
+			y += rowH;
+		};
+		{
+			static const char* const kQ[] = { "낮음", "보통", "높음" };
+			static const int kQv[] = { 0, 1, 2 };
+			choice("그래픽 품질", kQ, kQv, 3, o.gfxQuality, [&](int v) { o.gfxQuality = static_cast<uint8_t>(v); },
+				"낮음: 빛 번짐 · 화면 일그러짐을 끄고 입자를 절반으로. 보통: 빛 번짐을 가볍게.");
+			static const char* const kO[] = { "25%", "50%", "100%" };
+			static const int kOv[] = { 25, 50, 100 };
+			choice("남의 기술 연출", kO, kOv, 3, o.otherFx, [&](int v) { o.otherFx = static_cast<uint8_t>(v); },
+				"다른 모험가가 쓴 기술이 보이는 세기. 내 기술은 늘 100%.");
+		}
+		toggle("광과민 보호", o.photoSafe);
+		toggle("화면 흔들림", o.shake);
 	}
 
 	// ── 아래: 충돌 경고 · 알림 · 버튼 ──
@@ -617,84 +678,6 @@ void Game::DrawKeySettings()
 		m_keysConflictFor = -1;
 		kb::SetCapturing(false);
 		sfx::Play(sfx::Id::Close, 0.5f);
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 기술 창(K) — 직업 기술 · 놓인 칸 · 끌어서 칸 바꾸기(성장 · 변형은 Phase 2-D)
-// ─────────────────────────────────────────────────────────────────────────────
-void Game::DrawSkillWindow()
-{
-	const float W = static_cast<float>(m_screenW), H = static_cast<float>(m_screenH);
-	const float wh = std::min(HudTop() - 24.f, 520.f);
-	const Rectangle r{ std::round(std::max(12.f, W * 0.5f - 470.f)), std::round(std::max(12.f, std::min(H * 0.5f - 280.f, HudTop() - 12.f - wh))), 560.f, wh };
-	ui::Window(r, "기술", &m_skillWinOpen);
-	const ClassRow& cls = ClassTable::Get(m_classId);
-	ui::Text(Fmt("%s · %s", cls.name, cls.role), Vector2{ r.x + r.width - 48.f, r.y + 15.f }, ui::type::kCaption, util::Shade(Rgb(cls.color), 1.1f), Align::Right);
-	float y = r.y + 50.f;
-	const float rowH = 66.f;
-	for (int i = 0; i < 6; ++i)
-	{
-		const SkillRow* row = SkillTable::Find(cls.skills[i]);
-		if (!row) continue;
-		const Rectangle rr{ r.x + 12.f, y, r.width - 24.f, rowH - 4.f };
-		const bool hover = ui::Hovered(rr);
-		const bool locked = m_level < row->unlockLevel;
-		ui::Plate(rr, hover ? ui::theme::kSurface2 : ui::theme::kSurface1, ui::theme::kLine, 3.f, 1.f);
-		const Rectangle icon{ rr.x + 8.f, rr.y + 7.f, 48.f, 48.f };
-		ui::Plate(Rectangle{ icon.x - 2, icon.y - 2, icon.width + 4, icon.height + 4 }, Color{ 10, 12, 15, 245 }, ui::theme::kLineStrong, 3.f, 1.f);
-		skillfx::DrawSkillIcon(row->id, Vector2{ icon.x + 24.f, icon.y + 24.f }, 44.f, m_time, locked);
-		// 이름 · 놓인 칸
-		{
-			ui::TextStyle ns; ns.size = ui::type::kHeading; ns.color = locked ? ui::theme::kTextDim : util::Mix(Rgb(row->color), ui::theme::kTextHi, 0.45f); ns.face = ui::Face::Strong;
-			const float nw = ui::Fonts().Draw(row->name, Vector2{ icon.x + 62.f, rr.y + 8.f }, ns);
-			std::string where;
-			if (row->slot == 0) where = kb::Label(kb::Act::BasicAttack) + " · 우클릭";
-			else if (const int h = HotOfSkill(row->id); h > 0) where = kb::Label(kb::HotAct(h));
-			const float kx = icon.x + 62.f + nw + 10.f;
-			if (!where.empty())
-			{
-				const float kw = std::round(ui::Fonts().Measure(where, ui::type::kMicro, 0.f, ui::Face::Strong).x + 10.f);
-				ui::Keycap(Rectangle{ kx, rr.y + 9.f, kw, 16.f }, where, true);
-			}
-			else
-				ui::Text("칸에 없음", Vector2{ kx, rr.y + 10.f }, ui::type::kCaption, ui::theme::kTextMute);
-		}
-		std::string meta = locked ? Fmt("Lv.%d에 배움", row->unlockLevel) : std::string();
-		if (row->mp > 0) meta += (meta.empty() ? "" : " · ") + Fmt("MP %d", row->mp);
-		if (row->slot != 0) meta += (meta.empty() ? "" : " · ") + Fmt("재사용 %.1f초", SkillTable::CooldownMs(*row, m_stats.cooldownReduction) / 1000.f);
-		if (row->range > 0) meta += (meta.empty() ? "" : " · ") + Fmt("사거리 %d칸", row->range);
-		ui::Text(meta, Vector2{ rr.x + rr.width - 10.f, rr.y + 10.f }, ui::type::kCaption, locked ? ui::theme::kBad : ui::theme::kInfo, Align::Right);
-		ui::TextWrapped(row->desc, Rectangle{ icon.x + 62.f, rr.y + 31.f, rr.width - 80.f, 30.f }, ui::type::kCaption, ui::theme::kText, 3.f);
-		// 끌기(기본 공격은 고정)
-		if (row->slot != 0 && ui::Pressed(icon))
-		{
-			m_pressKind = kDragSkill; m_pressIndex = -1 - i; m_pressPos = ui::Mouse();
-			ui::ConsumeMouse();
-		}
-		if (m_pressKind == kDragSkill && m_pressIndex == -1 - i && IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !ui::Dragging()
-			&& util::Len(util::Sub(ui::Mouse(), m_pressPos)) > 6.f)
-		{
-			ui::BeginDrag(ui::DragPayload{ kDragSkill, -1, row->id });
-			m_pressKind = 0;
-		}
-		if (hover && !ui::Dragging())
-		{
-			DrawSkillTooltip(*row);
-			m_previewSkill = row->slot;
-		}
-		y += rowH;
-	}
-	if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressKind == kDragSkill)
-		m_pressKind = 0;
-	ui::Rule(r.x + 12.f, r.x + r.width - 12.f, y + 4.f, ui::theme::kLine);
-	ui::TextWrapped("아이콘을 끌어 아래 가운데 기술 칸(각성기 · 이동기 · 고유 기술 칸 포함)에 놓으면 자리를 바꿉니다. 기술 레벨 · 변형은 다음 단계에서 열립니다.",
-		Rectangle{ r.x + 18.f, y + 14.f, r.width - 190.f, 40.f }, ui::type::kCaption, ui::theme::kTextDim, 3.f);
-	if (ui::Button(Rectangle{ r.x + r.width - 160.f, y + 14.f, 142.f, 32.f }, "기본 배치로", ButtonKind::Normal, true, 14.f))
-	{
-		InitHotbar(false);
-		SaveHotbar();
-		sfx::Play(sfx::Id::Equip, 0.5f);
 	}
 }
 

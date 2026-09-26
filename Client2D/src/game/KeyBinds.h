@@ -47,6 +47,11 @@ namespace kb
 		bool     swapMouse = false;               // 좌클릭 = 공격, 우클릭 = 이동
 		CastMode castMode = CastMode::Quick;      // 빠른 시전 · 표시 후 시전
 		bool     showGrid = true;                 // 바닥 격자
+		// Phase 2-A 전투 연출
+		uint8_t  gfxQuality = 2;                  // 0 낮음 · 1 보통 · 2 높음(블룸 · 왜곡 · 입자 수)
+		bool     photoSafe = false;               // 광과민 보호(번쩍임 · 흔들림 · 색수차 · 암전 절반)
+		uint8_t  otherFx = 50;                    // 다른 플레이어 기술 연출 세기(%) — 25 · 50 · 100
+		bool     shake = true;                    // 화면 흔들림
 	};
 
 	// ── 표 ──

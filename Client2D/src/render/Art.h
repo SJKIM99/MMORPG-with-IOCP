@@ -22,6 +22,7 @@ namespace art
 	[[nodiscard]] const Texture2D* KeyArt();
 	[[nodiscard]] const Texture2D* Chapter(int chapter);        // 1~5
 	[[nodiscard]] const Texture2D* Portrait(uint16_t npcId);    // 없으면 nullptr(동물 등)
+	[[nodiscard]] const Texture2D* Cutin(int classId);          // 각성기 컷인(21:9, 인물은 왼쪽 3분의 1) — 없으면 nullptr
 
 	// 한가할 때(로그인 화면) 한 프레임에 한 장씩 초상화를 미리 읽는다 — 대화창을 처음 열 때 멈칫하지 않게.
 	// 더 읽을 것이 없으면 false.

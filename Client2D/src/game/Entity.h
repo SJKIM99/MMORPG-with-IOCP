@@ -75,6 +75,20 @@ struct Entity
 	float    hopH = 46.f;
 	double   projArriveAt = 0.0;     // 이 대상에게 날아가는 투사체가 닿는 시각(표시 지연)
 	float    stunShake = 0.f;        // 기절/빙결 걸린 순간 흔들림
+	// 피격 반응(Phase 2-A) — 판정은 서버, 모양은 기술 표의 반응(띄우기 · 넘어뜨리기 · 밀기)
+	float    airT = -1.f;            // 띄우기 진행(초), <0 없음 — 몸만 뜨고 그림자는 땅에
+	float    airDur = 0.62f;
+	float    airH = 52.f;
+	float    downT = -1.f;           // 넘어짐 경과(초), <0 없음
+	double   slideUntil = 0.0;       // 넉백 미끄러짐(이때까지 온 걸음은 발을 떼지 않고 미끄러진다)
+	// 보스 무력화(Phase 2-B, MONSTER_GAUGE_NFY)
+	uint16_t stagger = 1000;         // 남은 무력화 게이지 ‰
+	double   brokenUntil = 0.0;      // 무력화 끝나는 시각
+	double   staggerAt = -10.0;      // 마지막으로 게이지가 바뀐 시각(깎인 몫이 잠깐 남는다)
+	uint16_t staggerLag = 1000;      // 늦게 따라오는 게이지
+	// 연출용 그리기 위치(그믐 베기 순간이동 · 각성기 도약) — 논리 칸은 그대로
+	Vector2  visIso{};
+	double   visUntil = 0.0;
 
 	// 연출
 	bool  dead = false;

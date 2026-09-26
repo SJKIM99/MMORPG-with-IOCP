@@ -13,6 +13,7 @@ MSVC · 실제 MSSQL · 실제 GPU 확인은 여기서 대신할 수 없다 — 
 | `motion_sim.cpp` · `build_motion_sim.sh` | 게임 · 서버 없이 `game/Motion`과 걸음 계획을 30fps로 돌려 이동 기록(csv)을 만드는 모의 시험(아래) |
 | `regress.py` | 모든 `--script` 시나리오를 차례로 돌려 스크린샷 · 종료 코드 · 성능 줄을 모은다(회귀 검사) |
 | `input_test.py` | Xvfb 창에 xdotool로 **실제** 키보드 · 마우스를 넣는 시험(조작 설정 · 채팅 중 차단 · 창 단축키) |
+| `build_stress.sh` · `stress/stress_main.cpp` | **STRESS_TEST 머리 없는 빌드**(Phase 2~) — 원본 `NetworkModule.cpp`(봇 행동 · 증가 규칙 그대로)에 그리기 대신 1초마다 수치를 찍는 main. 서버 변경 Phase의 전/후 비교용 |
 
 ## 한 번 준비
 
@@ -72,3 +73,18 @@ build/motion_sim remote 30 150 40 2 --botpace --bg 4 --bgpoisson --seed 3      #
 python3 tools/record/analyze_trace.py stats c.csv
 ```
 `--noguide`: 안내선 없이(따라가기 · 쫓아가기처럼 궤적 앞보기). 마을 밖 들판은 예전 장애물 무늬가 촘촘해 곧은 길이 거의 없다 — `--at`으로 광장 · 길을 쓴다.
+
+## 부하 비교 — STRESS_TEST 머리 없이(서버를 바꾼 Phase의 전/후)
+
+```bash
+tools/sandbox/build_stress.sh build/stress 20000          # 원본 MAX_TEST 50만은 정적 배열이 수백 MB — 샌드박스에 맞춰 줄인다
+git worktree add ../base <바꾸기 전 커밋> && (cd ../base && ../MMORPG-with-IOCP/tools/sandbox/build_server.sh build/server_base)
+# 같은 명령으로 두 서버를 차례로(실제 시계 — 공유 시계 없이, 다른 프로그램 없이)
+cd build/server_base && wine GameServer.exe &   # "DB Connect Success"까지 기다린 뒤
+cd build/stress && wine stress.exe 150 base.csv  # 끝나면 서버를 내리고 새 서버로 한 번 더
+```
+`[stress] summary peak_active_at_delay<=100ms=N mean_delay_2nd_half=Dms` — 원래 도구와 같은 규칙(지연 100ms에서 늘리기를 멈추고 150ms에서 줄인다)으로
+**지연 100ms 이하에서 붙어 있던 봇 수의 최댓값**과 후반 평균 지연을 본다. 샌드박스는 CPU 2개 + Wine이라 절대값은 실제(봇 1만 6천 수준)와 다르다 — 같은 샌드박스에서의 **비율**만 쓴다.
+
+샌드박스 빌드만의 차이: 공유 시계에서 `TimerThread`의 `condition_variable::wait_until`이 새로 앞선 예약에 제때 깨지 않는 경우가 있어
+(MinGW winpthreads + Wine — 타격이 1~2초 늦게 한꺼번에 오던 문제), `build_server.sh`가 **복사본에서만** 대기를 5ms로 끊는다. 실제 서버(MSVC)는 그대로다.

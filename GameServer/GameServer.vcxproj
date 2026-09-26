@@ -210,6 +210,8 @@
     <ClCompile Include="Content\ContentHelper.cpp" />
     <ClCompile Include="Combat\CombatHelper.cpp" />
     <ClCompile Include="Combat\SkillHelper.cpp" />
+    <ClCompile Include="Combat\SkillEx.cpp" />
+    <ClCompile Include="Combat\SkillGrow.cpp" />
     <ClCompile Include="Npc\NpcHelper.cpp" />
     <ClCompile Include="Quest\QuestHelper.cpp" />
   </ItemGroup>
@@ -263,6 +265,11 @@
     <ClInclude Include="Content\ContentHelper.h" />
     <ClInclude Include="Combat\CombatHelper.h" />
     <ClInclude Include="Combat\SkillHelper.h" />
+    <ClInclude Include="Combat\SkillEx.h" />
+    <ClInclude Include="Combat\SkillDetail.h" />
+    <ClInclude Include="Data\SkillData.h" />
+    <ClInclude Include="Data\SkillGrowth.h" />
+    <ClInclude Include="Combat\SkillGrow.h" />
     <ClInclude Include="Combat\StatusSet.h" />
     <ClInclude Include="Npc\NpcHelper.h" />
     <ClInclude Include="Quest\QuestHelper.h" />

@@ -58,6 +58,9 @@ public:
 	void RequestShopTransaction(int playerId, uint32_t adena, const DB_ITEM_SLOT_SAVE& slot);
 	void RequestSaveAlignment(int playerId, int16_t alignment, uint16_t pkCount);
 	void RequestSaveProgress(int playerId, std::vector<uint8_t> data);
+	// Phase 2-D 기술 성장(PlayerSkills) — 같은 playerId 샤드라 넣은 순서대로 커밋된다
+	void RequestSaveSkill(int playerId, const DB_SKILL_INFO& skill);
+	void RequestResetSkills(int playerId);
 
 	[[nodiscard]] static Clock::time_point Now() noexcept { return Clock::now(); }
 

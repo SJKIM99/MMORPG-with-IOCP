@@ -34,6 +34,10 @@
 #include "render/Sprites.h"
 #include "render/EnvArt.h"
 #include "render/FxArt.h"
+#include "render/Post.h"
+#include "fx/Vfx.h"
+#include "fx/Trail.h"
+#include "render/FlashLight.h"
 #include "ui/UiArt.h"
 #include "audio/Sfx.h"
 #include "audio/Voice.h"
@@ -67,6 +71,152 @@ namespace
 	}
 
 	// ── 서버 없이 보는 도감(그림 확인용) ──
+	// ─────────────────────────────────────────────────────────────────────────
+	// 셰이더 효과 표(--vfx-sheet out): 종류(줄) × 나이(칸) — 들판 바닥 위에 실제 블룸까지 그려 쪽마다 PNG로
+	void RunVfxSheet(const std::string& outBase, float hour)
+	{
+		Terrain terrain;
+		terrain.Init();
+		Lighting light;
+		light.UpdateClock(hour);
+		props::SetNight(light.Night());
+		const float cx = WorldData::kTownX0 + 22.f, cy = WorldData::kTownY0 + 58.f;
+		constexpr float ages[6] = { 0.05f, 0.14f, 0.28f, 0.45f, 0.65f, 0.85f };
+		constexpr float kLife = 1.f, kT = 0.9f;
+		const int kinds = static_cast<int>(vfx::Kind::Count);
+		const char* names[] = { "Fire", "Explosion", "Smoke", "IceBurst", "InkBurst", "Dust", "Pillar", "Vortex", "Lightning", "Slash", "Flare",
+			"Beam", "Glyph", "Rune", "Seal", "Crack", "Scorch", "Frost", "InkStain", "GroundRing" };
+		const vfx::Ramp ramps[] = { vfx::FireRamp(), vfx::FireRamp(), vfx::SmokeRamp(), vfx::FrostRamp(), vfx::InkRamp(), vfx::DustRamp(), vfx::GoldRamp(),
+			vfx::TealRamp(), vfx::BoltRamp(), vfx::MoonRamp(), vfx::GoldRamp(), vfx::TealRamp(), vfx::TealRamp(), vfx::TealRamp(), vfx::GoldRamp(),
+			vfx::FireRamp(), vfx::SmokeRamp(), vfx::FrostRamp(), vfx::InkRamp(), vfx::GoldRamp() };
+		const int pages = (kinds + 4) / 5 + 1;   // 마지막 쪽 = 궤적 리본 · 순간 조명 · 충격파
+		for (int page = 0; page < pages && !WindowShouldClose(); ++page)
+		{
+			vfx::Clear(); trail::Clear(); post::Clear(); flashlight::Clear();
+			const int W = GetScreenWidth(), H = GetScreenHeight();
+			Camera2D cam{};
+			cam.offset = Vector2{ W * 0.5f, H * 0.5f };
+			cam.target = gfx::IsoPx(cx, cy);
+			cam.zoom = 1.f;
+			const float colW = std::floor((W - 170.f) / 6.f), rowH = std::floor((H - 40.f) / 5.f);
+			auto cellWorld = [&](int r, int c, float fy)
+			{
+				return GetScreenToWorld2D(Vector2{ 170.f + colW * (c + 0.5f), 34.f + rowH * r + rowH * fy }, cam);
+			};
+			const bool lastPage = page == pages - 1;
+			struct StreakReq { Vector2 a, b; float age; };
+			std::vector<StreakReq> streaks;
+			for (int r = 0; r < 5; ++r)
+			{
+				const int k = page * 5 + r;
+				if (!lastPage && k >= kinds) break;
+				for (int c = 0; c < 6; ++c)
+				{
+					if (lastPage)
+					{
+						// 0: 수평 베기 리본 · 1: 세로 내려치기 리본 · 2: 따라가기 궤적 · 3: 순간 조명 · 4: 충격파(나이 = 칸)
+						const float t = ages[c];
+						if (r == 0 || r == 1)
+						{
+							trail::ArcSpec a;
+							a.iso = cellWorld(r, c, 0.78f);
+							a.radius = 70.f; a.blade = 40.f; a.z = 20.f;
+							if (r == 0) { a.a0 = -2.6f; a.a1 = 1.0f; }
+							else { a.tilt = 1.25f; a.a0 = -2.9f; a.a1 = 0.4f; a.edge = util::Rgb(0xEFFFFB); a.body = util::Rgb(0x7FD0C4); }
+							a.delay = kT - t * 0.3f;   // 리본은 0.28초 안에 끝난다 — 나이를 0.3배로
+							trail::Arc(a);
+						}
+						else if (r == 2)
+						{
+							trail::FollowSpec f;
+							f.width = 22.f; f.fade = 0.3f;
+							const Vector2 a = cellWorld(r, c, 0.7f);
+							streaks.push_back({ Vector2{ a.x - 80.f, a.y + 10.f }, Vector2{ a.x + 80.f, a.y - 10.f }, t * 0.3f });
+						}
+						continue;
+					}
+					const vfx::Kind kind = static_cast<vfx::Kind>(k);
+					const bool ground = kind >= vfx::Kind::Rune;
+					const bool bottom = kind == vfx::Kind::Fire || kind == vfx::Kind::Pillar || kind == vfx::Kind::Lightning || kind == vfx::Kind::Dust;
+					const float size = ground ? 190.f : 130.f;
+					vfx::Spec s = vfx::Make(kind, cellWorld(r, c, ground ? 0.55f : 0.88f), 0.f, size, kLife, ramps[k]);
+					s.seed = 0.37f;
+					if (kind == vfx::Kind::Pillar || kind == vfx::Kind::Lightning) { s.w = 70.f; s.h = rowH * 0.95f; }
+					if (kind == vfx::Kind::Fire) { s.w = 90.f; s.h = rowH * 0.9f; }
+					if (!ground && !bottom) s.z = s.h * 0.5f + 6.f;
+					s.delay = kT - ages[c] * kLife;
+					if (kind == vfx::Kind::Beam)
+					{
+						const Vector2 a = cellWorld(r, c, 0.6f);
+						vfx::BeamBetween(Vector2{ a.x - 90.f, a.y }, 10.f, Vector2{ a.x + 90.f, a.y }, 30.f, 30.f, kLife, s);
+					}
+					else vfx::Spawn(s);
+				}
+			}
+			// 시간을 kT까지 돌린다(1/60초씩)
+			for (int i = 0; i < static_cast<int>(kT * 60.f + 0.5f); ++i) { vfx::Update(1.f / 60.f); trail::Update(1.f / 60.f); }
+			for (const auto& q : streaks)
+			{
+				trail::FollowSpec f;
+				f.width = 22.f; f.fade = 0.3f;
+				trail::Streak(q.a, 20.f, q.b, 30.f, f, q.age);
+			}
+			if (lastPage)
+			{
+				// 순간 조명 · 충격파는 칸마다 같은 나이로 따로 그려야 해서 한 칸씩(마지막 칸 나이) 보여 준다
+				for (int c = 0; c < 6; ++c)
+				{
+					flashlight::Add(cellWorld(3, c, 0.6f), 110.f, util::Rgb(0xFFC878), 1.f, 1.f, 0.02f);
+				}
+				for (int c = 0; c < 6; ++c)
+					post::Shockwave(cellWorld(4, c, 0.5f), 10.f, 90.f, 16.f, 1.2f, 1.f);
+				for (int i = 0; i < 12; ++i) { flashlight::Update(1.f / 60.f); post::Update(1.f / 60.f, 1.f / 60.f); }
+			}
+			for (int frame = 0; frame < 2; ++frame)
+			{
+				BeginDrawing();
+				ClearBackground(BLACK);
+				terrain.DrawGround(cam, W, H, Vector2{ cx, cy }, 0.f, false, 0.f);
+				BeginMode2D(cam);
+				gfx::BeginWorld(cx + cy, cam.zoom);
+				vfx::DrawGround();
+				trail::Draw();
+				vfx::DrawWorld();
+				EndMode2D();
+				flashlight::Apply(cam, W, H, light.Night());
+				post::Apply(cam, W, H, [] { vfx::DrawGround(); trail::Draw(); vfx::DrawWorld(); });
+				if (frame == 1)
+				{
+					const auto& st = post::LastStats();
+					TraceLog(LOG_INFO, "VFXSHEET: post shocks=%d grabbed=%d bloom=%d %.2fms trails=%d", st.shocks, st.grabbed ? 1 : 0, st.bloom ? 1 : 0, st.bloomMs, trail::Count());
+				}
+				// 칸 선 · 이름
+				for (int r = 0; r <= 5; ++r) DrawLine(0, 34 + static_cast<int>(rowH * r), W, 34 + static_cast<int>(rowH * r), Color{ 0, 0, 0, 120 });
+				for (int c = 0; c < 6; ++c)
+					DrawText(TextFormat("age %.2f", ages[c]), 180 + static_cast<int>(colW * c), 8, 20, RAYWHITE);
+				for (int r = 0; r < 5; ++r)
+				{
+					const int k = page * 5 + r;
+					const char* n = lastPage ? (r == 0 ? "Arc" : r == 1 ? "Arc tilt" : r == 2 ? "Streak" : r == 3 ? "FlashLight" : "Shockwave") : (k < kinds ? names[k] : "");
+					DrawRectangle(0, 34 + static_cast<int>(rowH * r), 165, static_cast<int>(rowH), Color{ 12, 14, 18, 230 });
+					DrawText(n, 10, 34 + static_cast<int>(rowH * r + rowH * 0.5f) - 10, 20, RAYWHITE);
+				}
+				if (frame == 1)
+				{
+					rlDrawRenderBatchActive();
+					Image img = LoadImageFromScreen();
+					const std::string path = outBase + "_" + std::to_string(page) + ".png";
+					ExportImage(img, path.c_str());
+					UnloadImage(img);
+					TraceLog(LOG_INFO, "VFXSHEET: %s", path.c_str());
+				}
+				EndDrawing();
+			}
+		}
+		terrain.Shutdown();
+		light.Shutdown();
+	}
+
 	void RunGallery(const std::string& shot, float after, float hour)
 	{
 		Terrain terrain;
@@ -216,6 +366,7 @@ int main(int argc, char** argv)
 	rec::Options recOpts;
 	int width = 1280, height = 720;
 	bool gallery = false;
+	std::string vfxSheet;
 	bool noMsaa = false;
 	std::string sandboxClock;
 	for (int i = 1; i < argc; ++i)
@@ -236,6 +387,14 @@ int main(int argc, char** argv)
 		else if (a == "--trace-move") opts.traceMove = next("move.csv");
 		else if (a == "--jitter") opts.jitterMs = std::atoi(next("0").c_str());
 		else if (a == "--gallery") gallery = true;
+		else if (a == "--vfx-sheet") vfxSheet = next("vfx_sheet");
+		else if (a == "--quality")
+		{
+			const std::string q = next("high");
+			opts.quality = q == "low" || q == "0" ? 0 : (q == "medium" || q == "1" ? 1 : 2);
+		}
+		else if (a == "--photosafe") opts.photoSafe = 1;
+		else if (a == "--otherfx") opts.otherFx = std::clamp(std::atoi(next("50").c_str()), 0, 100);
 		else if (a == "--f3") opts.debugOverlay = true;
 		else if (a == "--no-msaa") noMsaa = true;
 		else if (a == "--record") recOpts.dir = next("record");
@@ -282,6 +441,15 @@ int main(int argc, char** argv)
 			const std::string s = next("1280x720");
 			std::sscanf(s.c_str(), "%dx%d", &width, &height);
 		}
+	}
+
+	// --script skills:<직업>(Phase 2-E): 훈련장 허수아비에 그 직업의 모든 기술 — 직업은 이름(서약기사 · 각인술사 · 밤사냥꾼) 또는 0~2
+	if (opts.script.rfind("skills:", 0) == 0)
+	{
+		const std::string c = opts.script.substr(7);
+		if (c == "서약기사" || c == "0") opts.classId = 0;
+		else if (c == "각인술사" || c == "1") opts.classId = 1;
+		else if (c == "밤사냥꾼" || c == "2") opts.classId = 2;
 	}
 
 	// --no-msaa: 소프트웨어 렌더링(샌드박스 녹화)에서는 4배 표본이 그대로 4배 비용이다
@@ -333,7 +501,9 @@ int main(int argc, char** argv)
 	}
 	ime::Attach();
 
-	if (gallery)
+	if (!vfxSheet.empty())
+		RunVfxSheet(vfxSheet, opts.hour);
+	else if (gallery)
 	{
 		ShowCursor();
 		RunGallery(opts.screenshot, opts.screenshotAfter, opts.hour);
@@ -355,6 +525,9 @@ int main(int argc, char** argv)
 	sprites::Shutdown();
 	envart::Shutdown();
 	fxart::Shutdown();
+	post::Shutdown();
+	vfx::Shutdown();
+	trail::Shutdown();
 	uiart::Shutdown();
 	art::Shutdown();
 	ui::Fonts().Shutdown();

@@ -893,6 +893,159 @@ namespace sfx
 				}
 				Load(Id::Heartbeat, b, 0.85f);
 			}
+			// ── Phase 2-A: 기술 소리 겹 ──
+			{
+				// 큰 종: 어긋난 배음(1 · 2 · 2.4 · 3 · 4.2 · 5.4) + 때리는 소리. 낮은 음은 길게, 높은 음은 짧게
+				Buf b(2.8f);
+				const float f0 = 196.f;
+				const float part[6] = { 1.f, 2.f, 2.4f, 3.f, 4.2f, 5.4f };
+				const float amp[6] = { 1.f, 0.6f, 0.45f, 0.35f, 0.25f, 0.18f };
+				for (int i = 0; i < 6; ++i)
+					Tone(b, 0, 2.7f, Osc::Sine, Const(f0 * part[i]), amp[i], 0.002f, 1.1f + i * 0.9f, 0.6f + i * 0.3f, 0.0025f);
+				Tone(b, 0, 2.6f, Osc::Sine, Const(f0 * 0.5f), 0.5f, 0.01f, 0.9f);
+				Noise(b, 0, 0.03f, Const(4000), 0.9f, 0.f, 120.f, 800.f);
+				Load(Id::BellToll, b, 0.85f);
+			}
+			{
+				Buf b(1.2f);
+				const float f0 = 587.f;
+				const float part[4] = { 1.f, 2.1f, 2.9f, 4.3f };
+				for (int i = 0; i < 4; ++i)
+					Tone(b, 0, 1.1f, Osc::Sine, Const(f0 * part[i]), 1.f / (1.f + i), 0.001f, 2.5f + i * 2.f, 1.f, 0.002f);
+				Noise(b, 0, 0.012f, Const(8000), 0.6f, 0.f, 250.f, 2000.f);
+				Load(Id::BellSmall, b, 0.6f);
+			}
+			{
+				// 글자 새기기: 올라가는 쉬익 + 반짝이는 높은 톤 몇 개
+				Buf b(0.55f);
+				Noise(b, 0, 0.5f, ExpSweep(1500, 7000), 0.45f, 0.15f, 5.f, 900.f);
+				for (int i = 0; i < 6; ++i)
+					Tone(b, 0.05f + i * 0.06f, 0.2f, Osc::Sine, Const(1800.f + i * 330.f), 0.18f, 0.002f, 14.f);
+				Tone(b, 0, 0.5f, Osc::Tri, ExpSweep(420, 880), 0.2f, 0.1f, 4.f);
+				Load(Id::Scribe, b, 0.4f);
+			}
+			{
+				Buf b(0.32f);
+				Noise(b, 0, 0.3f, [](float u) { return 900.f + 5200.f * std::sin(u * 3.14159f); }, 1.f, 0.06f, 7.f, 500.f);
+				Load(Id::Whoosh, b, 0.5f);
+			}
+			{
+				Buf b(1.1f);
+				Tone(b, 0, 1.05f, Osc::Sine, ExpSweep(62, 28), 1.f, 0.003f, 3.2f);
+				Tone(b, 0, 0.6f, Osc::Sine, ExpSweep(124, 50), 0.4f, 0.002f, 6.f);
+				Noise(b, 0, 0.25f, Const(300), 0.5f, 0.005f, 9.f);
+				Load(Id::BoomLow, b, 0.95f);
+			}
+			{
+				Buf b(0.8f);
+				Noise(b, 0, 0.012f, Const(11000), 1.3f, 0.f, 260.f, 1500.f);
+				Noise(b, 0, 0.5f, ExpSweep(6000, 350), 1.1f, 0.f, 6.5f, 90.f);
+				Tone(b, 0, 0.5f, Osc::Sine, ExpSweep(110, 34), 0.8f, 0.002f, 6.f);
+				for (int i = 0; i < 14; ++i)
+					Noise(b, Rand(0.08f, 0.7f), 0.015f, Const(6000), Rand(0.1f, 0.35f), 0.f, 170.f, 1500.f);
+				Load(Id::Burst, b, 0.85f);
+			}
+			{
+				Buf b(1.0f);
+				Noise(b, 0, 0.95f, [](float u) { return 400.f + 900.f * std::sin(u * 3.14159f); }, 1.f, 0.18f, 2.2f, 60.f);
+				Tone(b, 0, 0.9f, Osc::Saw, ExpSweep(55, 80), 0.18f, 0.2f, 2.5f, 7.f, 0.04f);
+				for (int i = 0; i < 10; ++i)
+					Noise(b, Rand(0.1f, 0.85f), 0.01f, Const(5000), Rand(0.08f, 0.2f), 0.f, 200.f, 1800.f);
+				Load(Id::FireRoar, b, 0.6f);
+			}
+			{
+				Buf b(0.7f);
+				for (int i = 0; i < 5; ++i)
+					Noise(b, i * 0.035f + Rand(0.f, 0.02f), 0.012f, Const(9000), 1.f - i * 0.12f, 0.f, 300.f, 2500.f);
+				const float glass[4] = { 2350.f, 3520.f, 4710.f, 6150.f };
+				for (int i = 0; i < 4; ++i)
+					Tone(b, 0.01f, 0.6f, Osc::Sine, Const(glass[i]), 0.22f - i * 0.04f, 0.001f, 7.f + i * 2.f);
+				Tone(b, 0, 0.25f, Osc::Sine, ExpSweep(300, 120), 0.4f, 0.001f, 14.f);
+				Load(Id::IceCrack, b, 0.6f);
+			}
+			{
+				Buf b(1.6f);
+				Noise(b, 0, 0.02f, Const(12000), 1.5f, 0.f, 200.f, 2000.f);
+				Noise(b, 0.005f, 0.12f, ExpSweep(8000, 1500), 1.2f, 0.f, 22.f, 600.f);
+				Noise(b, 0.05f, 1.5f, [](float u) { return 180.f + 120.f * std::sin(u * 9.f); }, 1.f, 0.12f, 1.8f);
+				Tone(b, 0.03f, 1.2f, Osc::Sine, ExpSweep(58, 30), 0.7f, 0.05f, 2.2f);
+				Load(Id::ThunderClap, b, 0.9f);
+			}
+			{
+				Buf b(0.5f);
+				Noise(b, 0, 0.3f, ExpSweep(2200, 500), 1.f, 0.004f, 11.f, 150.f);
+				for (int i = 0; i < 7; ++i)
+					Tone(b, Rand(0.02f, 0.3f), 0.06f, Osc::Sine, ExpSweep(Rand(300.f, 700.f), Rand(900.f, 1500.f)), 0.25f, 0.002f, 40.f);
+				Load(Id::InkSplash, b, 0.55f);
+			}
+			{
+				Buf b(1.0f);
+				Noise(b, 0, 0.008f, Const(10000), 1.2f, 0.f, 350.f, 2500.f);
+				const float fr[3] = { 1870.f, 2980.f, 4410.f };
+				for (int i = 0; i < 3; ++i)
+					Tone(b, 0.002f, 0.95f, Osc::Sine, Const(fr[i]), 0.5f - i * 0.12f, 0.f, 5.f + i * 2.f, 5.f, 0.004f);
+				Tone(b, 0, 0.2f, Osc::Sine, ExpSweep(240, 90), 0.5f, 0.001f, 18.f);
+				Load(Id::MetalRing, b, 0.6f);
+			}
+			{
+				Buf b(1.8f);
+				Noise(b, 0, 1.75f, ExpSweep(2600, 500), 0.6f, 0.05f, 1.6f, 200.f);
+				Load(Id::TailVerb, b, 0.35f);
+			}
+			{
+				Buf b(0.95f);
+				Tone(b, 0, 0.92f, Osc::Saw, ExpSweep(110, 440), 0.35f, 0.8f, 0.2f, 6.f, 0.02f);
+				Tone(b, 0, 0.92f, Osc::Sine, ExpSweep(220, 880), 0.5f, 0.8f, 0.2f);
+				Noise(b, 0, 0.92f, ExpSweep(500, 5000), 0.3f, 0.8f, 0.2f, 300.f);
+				Load(Id::ChargeLoop, b, 0.4f);
+			}
+			{
+				Buf b(0.3f);
+				Tone(b, 0, 0.28f, Osc::Sine, Const(1320), 1.f, 0.001f, 14.f);
+				Tone(b, 0, 0.28f, Osc::Sine, Const(1980), 0.5f, 0.001f, 18.f);
+				Load(Id::ChargeStage, b, 0.4f);
+			}
+			{
+				Buf b(0.9f);
+				const float ch[3] = { 1046.5f, 1318.5f, 1568.f };
+				for (int i = 0; i < 3; ++i)
+					Tone(b, i * 0.03f, 0.85f, Osc::Sine, Const(ch[i]), 0.6f, 0.002f, 4.f);
+				Noise(b, 0, 0.3f, ExpSweep(3000, 9000), 0.3f, 0.01f, 10.f, 2000.f);
+				Load(Id::Perfect, b, 0.55f);
+			}
+			{
+				Buf b(0.4f);
+				Noise(b, 0, 0.3f, ExpSweep(1800, 400), 0.8f, 0.03f, 10.f, 150.f);
+				Tone(b, 0.2f, 0.18f, Osc::Sine, ExpSweep(140, 60), 0.9f, 0.002f, 20.f);
+				Load(Id::Roll, b, 0.55f);
+			}
+			{
+				Buf b(0.9f);
+				Tone(b, 0, 0.85f, Osc::Saw, [](float u) { return 196.f * (1.f + 0.06f * std::sin(u * 3.14159f)); }, 0.5f, 0.06f, 2.2f, 5.5f, 0.012f);
+				Tone(b, 0, 0.85f, Osc::Saw, [](float u) { return 294.f * (1.f + 0.06f * std::sin(u * 3.14159f)); }, 0.35f, 0.08f, 2.2f, 5.f, 0.012f);
+				Noise(b, 0, 0.8f, Const(1400), 0.15f, 0.05f, 3.f, 600.f);
+				Load(Id::Rally, b, 0.5f);
+			}
+			{
+				Buf b(0.7f);
+				for (int i = 0; i < 9; ++i)
+					Noise(b, i * 0.07f, 0.09f, [](float u) { return 1500.f + 4500.f * std::sin(u * 3.14159f); }, 0.8f, 0.02f, 18.f, 700.f);
+				Load(Id::BladeHum, b, 0.45f);
+			}
+			{
+				Buf b(1.0f);
+				Noise(b, 0, 0.45f, ExpSweep(600, 7000), 0.9f, 0.3f, 3.f, 300.f);
+				Noise(b, 0.42f, 0.015f, Const(9000), 1.3f, 0.f, 260.f, 1500.f);
+				Tone(b, 0.42f, 0.55f, Osc::Sine, ExpSweep(90, 35), 1.f, 0.002f, 5.f);
+				Load(Id::Cutin, b, 0.85f);
+			}
+			{
+				Buf b(1.4f);
+				Tone(b, 0, 1.35f, Osc::Saw, Const(55), 0.3f, 0.35f, 1.4f, 3.f, 0.01f);
+				Tone(b, 0, 1.35f, Osc::Sine, Const(41), 0.8f, 0.3f, 1.3f);
+				Noise(b, 0, 1.3f, Const(260), 0.35f, 0.3f, 1.6f);
+				Load(Id::Drone, b, 0.6f);
+			}
 			{
 				// 퀘스트 물건이 날아온다: 쉭 + 높은 반짝임
 				Buf b(0.45f);
@@ -934,12 +1087,69 @@ namespace sfx
 
 	bool Ready() { return g_ready; }
 
+	namespace
+	{
+		struct Pending { Id id; float at; float volume; float pitch; float pan; bool fixedPitch; };
+		std::vector<Pending> g_pending;
+		float g_clock = 0.f;
+		float g_dedupe = 0.03f;
+		std::array<double, static_cast<size_t>(Id::Count)> g_lastAt{};
+
+		// 같은 소리를 아주 짧은 간격으로 겹치지 않는다
+		bool Dedupe(Id id)
+		{
+			const double now = GetTime();
+			double& last = g_lastAt[static_cast<size_t>(id)];
+			if (now - last < g_dedupe) return true;
+			last = now;
+			return false;
+		}
+	}
+
+	void SetDedupe(float seconds) { g_dedupe = std::max(0.f, seconds); }
+
+	void PlayAfter(Id id, float delay, float volume, float pitchVar, float pan)
+	{
+		if (!g_ready) return;
+		if (delay <= 0.f) { Play(id, volume, pitchVar, pan); return; }
+		if (g_pending.size() > 64) g_pending.erase(g_pending.begin());
+		g_pending.push_back(Pending{ id, g_clock + delay, volume, 1.f + Rand(-pitchVar, pitchVar), pan, false });
+	}
+
+	void Layered(const Layer* layers, int count, float volume, float pan)
+	{
+		if (!g_ready || !layers) return;
+		for (int i = 0; i < count; ++i)
+		{
+			const Layer& l = layers[i];
+			if (l.delay <= 0.f) PlayPitched(l.id, l.volume * volume, l.pitch * (1.f + Rand(-0.03f, 0.03f)), pan);
+			else g_pending.push_back(Pending{ l.id, g_clock + l.delay, l.volume * volume, l.pitch * (1.f + Rand(-0.03f, 0.03f)), pan, true });
+		}
+	}
+
+	void Update(float dt)
+	{
+		g_clock += dt;
+		if (g_pending.empty()) return;
+		for (size_t i = 0; i < g_pending.size();)
+		{
+			if (g_pending[i].at <= g_clock)
+			{
+				const Pending p = g_pending[i];
+				g_pending.erase(g_pending.begin() + static_cast<std::ptrdiff_t>(i));
+				PlayPitched(p.id, p.volume, p.pitch, p.pan);
+			}
+			else
+				++i;
+		}
+	}
+
 	void Play(Id id, float volume, float pitchVar, float pan)
 	{
 		if (!g_ready)
 			return;
 		Slot& slot = g_slots[static_cast<size_t>(id)];
-		if (!slot.loaded)
+		if (!slot.loaded || Dedupe(id))
 			return;
 		Sound& s = slot.alias[slot.next];
 		slot.next = (slot.next + 1) % kVoices;
@@ -954,7 +1164,7 @@ namespace sfx
 		if (!g_ready)
 			return;
 		Slot& slot = g_slots[static_cast<size_t>(id)];
-		if (!slot.loaded)
+		if (!slot.loaded || Dedupe(id))
 			return;
 		Sound& s = slot.alias[slot.next];
 		slot.next = (slot.next + 1) % kVoices;

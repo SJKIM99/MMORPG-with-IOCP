@@ -4,6 +4,8 @@
 #include "fx/Effects.h"
 #include "fx/Particles.h"
 #include "fx/SkillFx.h"
+#include "fx/Impact.h"
+#include "fx/FxGrade.h"
 #include "render/Draw.h"
 #include "render/Actors.h"
 #include "audio/Sfx.h"
@@ -78,7 +80,24 @@ namespace
 		dy = static_cast<int>(std::lround(std::sin(k * util::kPi * 0.25f)));
 	}
 
-	bool IsDashSkill(uint16_t id) { return id == 4 || id == 10 || id == 14 || id == 16; }
+	bool IsDashSkill(uint16_t id) { return id == 4 || id == 10 || id == 14 || id == 16 || id == 23; }
+
+	// 확장 경로의 사거리(각성기처럼 표에 따로 있으면 그것)
+	int EffRange(const SkillRow& row)
+	{
+		const SkillDef* d = SkillDefTable::Find(row.id);
+		return d && d->range > 0 ? d->range : row.range;
+	}
+
+	const char* GaugeName(ClassId c)
+	{
+		switch (c)
+		{
+		case ClassId::Knight: return "서약";
+		case ClassId::Engraver: return "새김";
+		default: return "그늘";
+		}
+	}
 
 	// 기술 이동 시간(표시) — 서버가 칸당 60ms로 옮긴다
 	double DashDuration(uint16_t id, int tiles)
@@ -105,20 +124,6 @@ namespace
 		}
 	}
 
-	// 기술 동작 중 걸음을 멈추는 시간(무게감). 짧게 — 조작이 굼떠지지 않게.
-	double ActionLock(const SkillRow& row)
-	{
-		if (row.slot == 0) return 0.14;
-		switch (row.id)
-		{
-		case 6:  return 0.46;   // 처형: 힘을 모으는 동안 서 있는다
-		case 18: return 0.5;    // 그믐 베기
-		case 3: case 9: return 0.24;
-		case 5:  return 0.12;
-		default: return 0.2;
-		}
-	}
-
 	sfx::Id CastSfx(uint16_t id)
 	{
 		switch (id)
@@ -138,7 +143,7 @@ namespace
 		case 15: return sfx::Id::PoisonSlash;
 		case 16: return sfx::Id::Evade;
 		case 18: return sfx::Id::MoonDance;
-		default: return sfx::Id::Swing;
+		default: return id >= 19 ? sfx::Id::Count : sfx::Id::Swing;   // 새 기술은 연출(SkillFxEx)이 겹 소리를 낸다
 		}
 	}
 
@@ -185,11 +190,22 @@ const SkillRow* Game::SkillInSlot(int slot) const
 	return SkillTable::Find(ClassTable::Get(m_classId).skills[slot]);
 }
 
+int Game::CastSound(uint16_t skillId) { return static_cast<int>(CastSfx(skillId)); }
+
+int Game::CdIndex(uint16_t skillId)
+{
+	const SkillKey k = SkillDefTable::KeyOf(skillId);
+	return k == SkillKey::Count ? 0 : static_cast<int>(k);
+}
+
 int Game::AttackRange() const
 {
-	if (m_queuedSkill >= 0)
-		if (const SkillRow* r = SkillInSlot(m_queuedSkill))
-			return std::max<int>(1, r->range);
+	if (m_queuedSkill > 0)
+		if (const SkillRow* r = SkillTable::Find(static_cast<uint16_t>(m_queuedSkill)))
+		{
+			const SkillDef* d = SkillDefTable::Find(r->id);
+			return std::max<int>(1, d && d->range > 0 ? d->range : r->range);
+		}
 	const SkillRow* basic = SkillInSlot(0);
 	return basic ? std::max<int>(1, basic->range) : 1;
 }
@@ -211,7 +227,7 @@ Game::SkillAim Game::ResolveSkillAim(const SkillRow& row, const ObjID& forced)
 		if (!t && forced == ObjID{})
 		{
 			// 커서 근처에 적이 없으면: 지금 싸우는 대상 → 커서 쪽(앞 반쪽)의 가까운 적(사거리 + 2칸 안)
-			if (Entity* cur = Find(m_target); cur && IsEnemy(*cur) && Cheb(m_predX, m_predY, cur->tx, cur->ty) <= row.range + 6)
+			if (Entity* cur = Find(m_target); cur && IsEnemy(*cur) && Cheb(m_predX, m_predY, cur->tx, cur->ty) <= EffRange(row) + 6)
 				t = cur;
 			else
 			{
@@ -220,7 +236,7 @@ Game::SkillAim Game::ResolveSkillAim(const SkillRow& row, const ObjID& forced)
 				{
 					if (!IsEnemy(e)) continue;
 					const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
-					if (d > row.range + 2) continue;
+					if (d > EffRange(row) + 2) continue;
 					const Vector2 to{ static_cast<float>(e.tx - m_predX), static_cast<float>(e.ty - m_predY) };
 					const float len = util::Len(to);
 					const float front = len > 0.01f ? (to.x * m_aim.dir.x + to.y * m_aim.dir.y) / len : 1.f;
@@ -242,7 +258,7 @@ Game::SkillAim Game::ResolveSkillAim(const SkillRow& row, const ObjID& forced)
 	case SkillTarget::Ground:
 	{
 		int gx = m_aim.tx, gy = m_aim.ty;
-		const int reach = row.id == 10 ? std::max<int>(1, row.dash) : std::max<int>(1, row.range);
+		const int reach = row.id == 10 ? std::max<int>(1, row.dash) : std::max<int>(1, EffRange(row));
 		if (!m_aim.valid || (gx == m_predX && gy == m_predY))
 		{
 			// 커서가 발밑이면 바라보는 쪽으로(옛길 도약은 끝까지, 다른 지점 기술은 3칸 앞)
@@ -349,15 +365,17 @@ Vector2 Game::PredictLanding(const SkillRow& row, int tx, int ty, const Entity* 
 // ─────────────────────────────────────────────────────────────────────────────
 // 시전
 // ─────────────────────────────────────────────────────────────────────────────
-bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
+bool Game::TryCastSkill(uint16_t skillId, bool quiet, const ObjID& forced)
 {
 	Entity* me = Self();
 	if (!me || m_dead || m_scene != Scene::Game)
 		return false;
-	const SkillRow* row = SkillInSlot(slot);
-	if (!row)
+	const SkillRow* row = SkillTable::Find(skillId);
+	const SkillDef* def = MyDef(skillId);   // Phase 2-D: 켜진 갈래를 입힌 표(재빠름 · 후딜 · 타격 시각)
+	if (!row || !def || row->cls != m_classId)
 		return false;
-	const bool basic = row->slot == 0;
+	const bool basic = def->kind == SkillKind::Basic;
+	const int k = CdIndex(skillId);
 	const float nowf = static_cast<float>(m_now);
 	auto say = [&](const std::string& text, Color c)
 	{
@@ -371,45 +389,60 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 		say(Fmt("%s — Lv.%d에 배울 수 있습니다.", row->name, row->unlockLevel), Rgb(0xC8C0B0));
 		return false;
 	}
-	if (InTown())
+	if (CombatBlocked())
 	{
-		AddCenter("마을 안에서는 싸울 수 없습니다.", Rgb(0xFFD070));
+		AddCenter("마을 안에서는 싸울 수 없습니다. 기술은 동쪽 훈련장에서 시험할 수 있습니다.", Rgb(0xFFD070));
 		m_queuedSkill = -1;
 		if (m_goal.kind == GoalKind::Attack) ClearGoal();
 		return false;
 	}
-	if (me->Status(static_cast<uint8_t>(StatusId::Stun), nowf) || (row->dash > 0 && me->Status(static_cast<uint8_t>(StatusId::Freeze), nowf)))
+	if (me->Status(static_cast<uint8_t>(StatusId::Stun), nowf) || me->Status(static_cast<uint8_t>(StatusId::Broken), nowf)
+		|| ((row->dash > 0 || def->kind == SkillKind::Move) && me->Status(static_cast<uint8_t>(StatusId::Freeze), nowf)))
 	{
 		say("몸이 움직이지 않습니다!", Rgb(0xFFE070));
 		return false;
 	}
-	if (m_dashWaitSeq != 0 && m_now < m_dashWaitUntil)
+	if (m_dashWaitSeq != 0 && m_now < m_dashWaitUntil && def->kind != SkillKind::Move)
 		return false;   // 돌진 착지 전
-	if (m_now < m_skillReady[slot] - 0.02)
+	// 이미 모으는 중 · 도는 중(키 반복)
+	if (m_heldSkill == skillId)
+		return false;
+	// 토글 끄기 · 체인 다음 단은 재사용 대기와 상관없다
+	const bool toggleOff = def->kind == SkillKind::Toggle && m_toggleSkill == skillId;
+	const bool chainNext = def->kind == SkillKind::Chain && m_chainSkill == skillId && m_now < m_chainUntil && m_chainStage < def->stages;
+	if (!toggleOff && !chainNext)
 	{
-		if (!basic)
+		if (m_now < m_skillReady[k] - 0.02)
 		{
-			const double remain = m_skillReady[slot] - m_now;
-			if (remain < 0.45)
+			if (!basic)
 			{
-				// 선입력: 곧 풀리니 그때 나간다
-				m_bufferSlot = slot;
-				m_bufferAt = m_now;
-				return false;
+				const double remain = m_skillReady[k] - m_now;
+				if (remain < 0.45)
+				{
+					// 선입력: 곧 풀리니 그때 나간다
+					m_bufferSlot = skillId;
+					m_bufferAt = m_now;
+					return false;
+				}
+				say(Fmt("%s 재사용 대기 중 (%.1f초)", row->name, remain), Rgb(0xC8C8C8));
 			}
-			say(Fmt("%s 재사용 대기 중 (%.1f초)", row->name, remain), Rgb(0xC8C8C8));
+			return false;
 		}
-		return false;
-	}
-	if (m_mp < static_cast<int>(row->mp))
-	{
-		if (!quiet)
+		if (m_mp < static_cast<int>(row->mp))
 		{
-			AddCenter("마나가 부족합니다.", Rgb(0x8AB8FF));
-			sfx::Play(sfx::Id::NoMana, 0.7f);
+			if (!quiet)
+			{
+				AddCenter("마나가 부족합니다.", Rgb(0x8AB8FF));
+				sfx::Play(sfx::Id::NoMana, 0.7f);
+			}
+			m_mpFlashAt = m_now;
+			return false;
 		}
-		m_mpFlashAt = m_now;
-		return false;
+		if (def->kind == SkillKind::Identity && m_identity < 1000)
+		{
+			say(Fmt("%s이 아직 차지 않았습니다 (%d%%)", GaugeName(m_classId), m_identity / 10), Rgb(0xC8C0B0));
+			return false;
+		}
 	}
 
 	// ── 대상/지점(커서 조준 — ResolveSkillAim) ──
@@ -417,11 +450,30 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 	const SkillAim aim = ResolveSkillAim(*row, forced);
 	int tx = aim.tx, ty = aim.ty;
 	Entity* target = nullptr;
+	const bool force = kb::Down(kb::Act::ForceAttack) || (forced != ObjID{} && m_goal.kind == GoalKind::Attack && m_goal.force);
 	switch (row->target)
 	{
 	case SkillTarget::Enemy:
 	{
 		target = aim.target;
+		if (def->kind == SkillKind::Awaken && (!aim.ok || !target))
+		{
+			// 각성기: 대상이 없으면 커서 지점으로
+			int gx = m_aim.valid ? m_aim.tx : m_predX, gy = m_aim.valid ? m_aim.ty : m_predY;
+			const int reach = EffRange(*row), d = Cheb(m_predX, m_predY, gx, gy);
+			if (d > reach) { const float kk = static_cast<float>(reach) / d; gx = m_predX + static_cast<int>(std::lround((gx - m_predX) * kk)); gy = m_predY + static_cast<int>(std::lround((gy - m_predY) * kk)); }
+			tx = gx; ty = gy;
+			target = nullptr;
+			break;
+		}
+		if (basic && (!aim.ok || !target))
+		{
+			// 기본 공격: 대상이 없으면 커서 쪽으로 휘두른다(콤보도 이어진다)
+			tx = m_aim.valid ? m_aim.tx : m_predX;
+			ty = m_aim.valid ? m_aim.ty : m_predY;
+			target = nullptr;
+			break;
+		}
 		if (!aim.ok || !target)
 		{
 			if (!basic) say("대상이 없습니다.", Rgb(0xC8C8C8));
@@ -429,8 +481,7 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 		}
 		if (target->kind == EntityKind::Player)
 		{
-			const bool force = kb::Down(kb::Act::ForceAttack);
-			if (!force && !(m_goal.kind == GoalKind::Attack && m_goal.force && m_goal.target == target->id))
+			if (!force)
 			{
 				if (!basic) say("다른 모험가를 공격하려면 " + kb::Label(kb::Act::ForceAttack) + "을 누른 채로 쓰세요.", Rgb(0xFFB070));
 				return false;
@@ -442,10 +493,10 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 			}
 		}
 		const int d = Cheb(m_predX, m_predY, target->tx, target->ty);
-		if (d > row->range)
+		if (d > EffRange(*row) && !chainNext)
 		{
 			// 사거리 밖 — 다가가서 쓴다
-			m_queuedSkill = basic ? -1 : slot;
+			m_queuedSkill = basic ? -1 : skillId;
 			m_queuedTarget = target->id;
 			m_queuedAt = m_now;
 			m_target = target->id;
@@ -460,33 +511,74 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 	case SkillTarget::Ground:
 		if (!aim.ok)
 		{
-			say("도약할 방향이 막혀 있습니다.", Rgb(0xC8C0FF));
+			say("그곳으로는 갈 수 없습니다.", Rgb(0xC8C0B0));
 			return false;
 		}
+		// 커서 칸 바로 곁의 적을 보조로 싣는다 — 대상 기준 타격(낙뢰 각인)은 그 적을 따라간다. 지점 기술은 쓰지 않는다
+		if (Entity* t = AimEnemy(row); t && Cheb(t->tx, t->ty, tx, ty) <= 1)
+			targetId = t->id;
 		break;
 	case SkillTarget::Direction:
 	case SkillTarget::Self:
+		// 방향 기술도 커서 근처 적을 보조로 싣는다(서버가 방향을 그쪽으로 잡는다)
+		if (Entity* t = AimEnemy(row); t && row->target == SkillTarget::Direction && def->kind != SkillKind::Move)
+			targetId = t->id;
 		break;
 	}
 
-	// ── 요청 + 예측(쿨다운·MP는 응답이 바로잡는다) ──
+	// 다른 기술을 누르면 모으던 · 돌던 기술은 끊긴다(서버도 같은 규칙 — 이동기는 아래에서 따로)
+	if (m_heldSkill != 0 && m_heldSkill != skillId && def->kind != SkillKind::Move)
+		ReleaseHeldSkill(true);
+
+	// ── 요청 ──
 	const uint16_t seq = ++m_castSeq;
-	m_net.SendSkillCast(row->id, targetId, tx, ty, seq);
-	m_castSentAt[slot] = m_now;
+	m_net.SendSkillEx(row->id, SkillPhase::Press, force ? SKILLREQ_FORCE : 0, targetId, tx, ty, m_aim.dir256, seq);
+	if (SkillTrace())
+		std::fprintf(stderr, "[skill] t=%.3f press id=%u seq=%u aim=%d,%d target=%s\n", m_now, row->id, seq, tx, ty, targetId == ObjID{} ? "-" : "yes");
+	m_castSentAt[k] = m_now;
 	const double cd = basic
 		? SkillTable::BasicIntervalMs(m_classId, m_stats.attackSpeed) / 1000.0
-		: SkillTable::CooldownMs(*row, m_stats.cooldownReduction) / 1000.0;
-	m_skillReady[slot] = m_now + cd;
-	m_skillCdTotal[slot] = cd;
+		: SkillDefTable::CooldownMs(*def, *row, m_stats.cooldownReduction) / 1000.0;
+
+	// ── 예측: 재사용 대기 · 자원 · 잠금 ──
+	uint8_t stage = 0;
+	if (toggleOff)
+	{
+		m_toggleSkill = 0;
+		m_skillReady[k] = m_now + cd;
+		m_skillCdTotal[k] = cd;
+	}
+	else if (chainNext)
+		stage = ++m_chainStage;
+	else
+	{
+		if (def->kind != SkillKind::Toggle)
+		{
+			m_skillReady[k] = m_now + cd;
+			m_skillCdTotal[k] = cd;
+		}
+		if (row->mp > 0)
+			m_mp = std::max(0, m_mp - static_cast<int>(row->mp));
+		if (def->kind == SkillKind::Identity) m_identity = 0;
+	}
 	if (!basic)
 	{
-		m_skillReady[0] = std::max(m_skillReady[0], m_now + 0.22);   // 기술 뒤 평타는 한 박자 쉬고
+		m_skillReady[0] = std::max(m_skillReady[0], m_now + 0.2);   // 기술 뒤 평타는 한 박자 쉬고
 		m_queuedSkill = -1;
 	}
-	if (row->mp > 0)
-		m_mp = std::max(0, m_mp - static_cast<int>(row->mp));
 	m_bufferSlot = -1;
-	m_actionLockUntil = std::max(m_actionLockUntil, m_now + ActionLock(*row));
+	if (def->kind == SkillKind::Move)
+	{
+		// 이동기: 모든 기술의 후딜 · 모으기 · 돌기를 끊는다
+		if (m_heldSkill != 0) ReleaseHeldSkill(true);
+		m_actionLockUntil = m_now;
+		m_timelines.erase(std::remove_if(m_timelines.begin(), m_timelines.end(), [&](const CastTimeline& t)
+		{
+			const SkillDef* d = MyDef(t.skillId);
+			return t.mine && d && d->kind == SkillKind::Cast && m_now - t.t0 < d->castMs / 1000.0;
+		}), m_timelines.end());
+	}
+	m_actionLockUntil = std::max(m_actionLockUntil, m_now + def->lockMs / 1000.0);
 	if (IsDashSkill(row->id))
 	{
 		m_dashWaitSeq = seq;
@@ -494,39 +586,90 @@ bool Game::TryCastSkill(int slot, bool quiet, const ObjID& forced)
 		m_path.clear();
 	}
 
+	switch (def->kind)
+	{
+	case SkillKind::Basic:
+		stage = (m_now - m_comboAt <= def->stageMs / 1000.0 && m_comboStage < def->stages) ? static_cast<uint8_t>(m_comboStage + 1) : 1;
+		m_comboStage = stage;
+		m_comboAt = m_now;
+		break;
+	case SkillKind::Charge:
+	case SkillKind::Hold:
+		m_heldSkill = skillId;
+		m_heldHot = HotOfSkill(skillId);
+		m_heldAt = m_now;
+		m_heldCharge = def->kind == SkillKind::Charge;
+		m_holdTickAt = m_now;
+		break;
+	case SkillKind::Chain:
+		if (!chainNext)
+		{
+			m_chainSkill = skillId;
+			m_chainStage = 1;
+			m_chainUntil = m_now + def->stageMs / 1000.0;
+			stage = 1;
+		}
+		if (stage >= def->stages) m_chainSkill = 0;
+		break;
+	case SkillKind::Toggle:
+		if (!toggleOff) m_toggleSkill = skillId;
+		break;
+	default:
+		break;
+	}
+
 	// ── 즉시 연출: 입력 → 준비 → 모션(판정은 서버) ──
 	if (row->target != SkillTarget::Self)
 		FaceToward(*me, m_predX, m_predY, tx, ty);
 	me->animSkill = row->id;
 	me->animT = 0.f;
-	me->animDur = skillfx::AnimDuration(row->id);
-	me->animCast = row->castMs / 1000.f;
+	me->animDur = std::max(skillfx::AnimDuration(row->id), def->lockMs / 1000.f);
+	// 갈래 「재빠름」: 동작 자체도 25% 빠르게(후딜 · 타격 시각은 표의 복사본이 이미 줄였다)
+	if (SkillGrowth::FindMod(row->id, MyGrow(row->id), SkillGrowth::Mod::Swift)) me->animDur *= 0.75f;
+	me->animCast = def->castMs > 0 ? def->castMs / 1000.f : row->castMs / 1000.f;
 	me->attackT = -1.f;
 	me->castT = -1.f;
+	if (basic) { me->animSkill = 0; me->animT = -1.f; me->attackT = 0.f; }
 
-	skillfx::CastInfo ci;
-	ci.casterIso = TileToIso(me->pos);
-	ci.targetIso = target ? TileToIso(target->pos) : gfx::IsoPx(static_cast<float>(tx), static_cast<float>(ty));
-	const Vector2 land = PredictLanding(*row, tx, ty, target);
-	ci.landIso = gfx::IsoPx(land.x, land.y);
-	ci.casterHeight = actors::PlayerHeight();
-	ci.targetHeight = target ? EntityHeight(*target) : 40.f;
-	ci.faceRight = me->faceRight;
-	ci.castSec = row->castMs / 1000.f;
-	ci.self = true;
-	ci.classId = static_cast<uint8_t>(m_classId);
-	const float travel = skillfx::OnCast(row->id, ci);
+	const Vector2 origin{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
+	Vector2 aimTile{ static_cast<float>(tx), static_cast<float>(ty) };
+	if (target) aimTile = target->pos;
+	Vector2 dirTile = util::Sub(target ? target->pos : Vector2{ static_cast<float>(tx), static_cast<float>(ty) }, me->pos);
+	if (util::Len(dirTile) < 0.1f) dirTile = m_aim.dir;
+	dirTile = util::Norm(dirTile);
+
+	const uint8_t phase = static_cast<uint8_t>(def->kind == SkillKind::Charge ? SkillExPhase::ChargeBegin
+		: def->kind == SkillKind::Hold ? SkillExPhase::HoldBegin
+		: def->kind == SkillKind::Chain ? SkillExPhase::ChainStep
+		: def->kind == SkillKind::Toggle ? (toggleOff ? SkillExPhase::ToggleOff : SkillExPhase::ToggleOn)
+		: def->kind == SkillKind::Identity ? SkillExPhase::Identity : SkillExPhase::Start);
+	skillfx::ExCtx ci = MakeExCtx(*me, row->id, phase, stage, 0, origin, aimTile, dirTile, target, true);
+	if (row->id == 4 || row->id == 10 || row->id == 14 || row->id == 16)
+	{
+		// 예전 이동 기술: 예전 착지 예측(연출용)
+		const Vector2 land = PredictLanding(*row, tx, ty, target);
+		ci.landIso = gfx::IsoPx(land.x, land.y);
+	}
+	const float travel = skillfx::OnExPhase(ci);
 	if (travel > 0.f && target)
 		target->projArriveAt = m_now + travel;
 
-	sfx::Play(CastSfx(row->id), basic ? 0.6f : 0.85f, 0.08f);
-	// 궁극기(단죄 · 낙성 · 그믐 베기): 기합 한마디
-	if (row->id == 6 || row->id == 12 || row->id == 18)
-		voice::Play("pc_" + std::to_string(static_cast<int>(m_classId)) + "_ult", 1.f, 2);
+	// 타격 시각표(예측 연출): 차지는 놓을 때, 토글은 없음, 나머지는 지금부터
+	if (def->kind != SkillKind::Charge && def->kind != SkillKind::Toggle)
+		StartCastTimeline(ci, m_selfId, origin, aimTile, dirTile, targetId, false, m_now);
+	if (def->kind == SkillKind::Awaken)
+		StartAwakenCinematic(row->id, ci.aimIso);
+	if (IsDashSkill(row->id))
+	{
+		m_expectDashSkill = row->id;
+		m_expectDashUntil = m_now + 0.8;
+	}
+
+	if (CastSfx(row->id) != sfx::Id::Count) sfx::Play(CastSfx(row->id), basic ? 0.6f : 0.85f, 0.08f);
 	const skillfx::Feel feel = skillfx::CastFeel(row->id);
 	if (feel.trauma > 0.f) m_cam.AddTrauma(feel.trauma);
 	if (feel.kick > 0.f) m_cam.Kick(feel.kick);
-	if (target && row->range <= 2)
+	if (target && EffRange(*row) <= 2)
 		m_cam.Nudge(util::Sub(ci.targetIso, ci.casterIso), basic ? 1.5f : 2.5f);
 	return true;
 }
@@ -589,8 +732,11 @@ void Game::HandleSkillResult(const SKILL_RESULT_ACK_PACKET& p)
 	const SkillRow* row = SkillTable::Find(p.skillId);
 	if (!row)
 		return;
-	const int slot = row->slot;
+	const int slot = CdIndex(row->id);
+	const SkillDef* def = SkillDefTable::Find(row->id);
 	const auto r = static_cast<SkillResult>(p.result);
+	if (SkillTrace())
+		std::fprintf(stderr, "[skill] t=%.3f result id=%u seq=%u r=%u cd=%u mp=%u\n", m_now, p.skillId, p.seq, p.result, p.cooldownMs, p.mp);
 	if (p.seq == m_dashWaitSeq && r != SkillResult::Ok)
 	{
 		m_dashWaitSeq = 0;
@@ -598,11 +744,19 @@ void Game::HandleSkillResult(const SKILL_RESULT_ACK_PACKET& p)
 	}
 	if (r == SkillResult::Ok)
 	{
-		// 서버 쿨다운(능력치가 바뀌었으면 다를 수 있다)을 요청 시각 기준으로 맞춘다
+		// 서버 쿨다운(능력치가 바뀌었으면 다를 수 있다)을 요청 시각 기준으로 맞춘다.
+		// 토글을 켤 때 · 체인 다음 단은 그대로(끌 때 · 첫 단에 이미 셌다)
+		if (def && ((def->kind == SkillKind::Toggle && m_toggleSkill == row->id) || (def->kind == SkillKind::Chain && m_chainStage > 1)))
+			return;
 		m_skillCdTotal[slot] = p.cooldownMs / 1000.0;
 		m_skillReady[slot] = m_castSentAt[slot] + p.cooldownMs / 1000.0;
 		return;
 	}
+	// 실패한 누름은 예측을 되돌린다(모으기 · 돌기 · 토글 · 체인)
+	if (m_heldSkill == row->id) { m_heldSkill = 0; m_heldHot = -1; }
+	if (m_toggleSkill == row->id) m_toggleSkill = 0;
+	if (m_chainSkill == row->id) m_chainSkill = 0;
+	m_timelines.erase(std::remove_if(m_timelines.begin(), m_timelines.end(), [&](const CastTimeline& t) { return t.mine && t.skillId == row->id && m_now - t.t0 < 0.6; }), m_timelines.end());
 	// 실패 — 쿨다운을 되돌리고 이유를 알린다(평타의 흔한 실패는 조용히)
 	m_skillReady[slot] = r == SkillResult::Cooldown ? m_now + p.cooldownMs / 1000.0 : m_now;
 	m_actionLockUntil = m_now;
@@ -628,6 +782,7 @@ void Game::HandleSkillResult(const SKILL_RESULT_ACK_PACKET& p)
 	case SkillResult::Stunned: msg = "몸이 움직이지 않습니다!"; c = Rgb(0xFFE070); break;
 	case SkillResult::Blocked: msg = "그곳으로는 갈 수 없습니다."; break;
 	case SkillResult::WrongClass: msg = "배우지 않은 기술입니다."; break;
+	case SkillResult::NoGauge: msg = Fmt("%s이 아직 차지 않았습니다 (%u%%)", GaugeName(m_classId), static_cast<unsigned>(p.cooldownMs / 10)); break;
 	default: break;
 	}
 	if (!msg.empty())
@@ -658,7 +813,7 @@ void Game::HandleSkillCast(const SKILL_CAST_NFY_PACKET& p)
 			m_dashWaitSeq = 0;
 			m_actionLockUntil = std::max(m_actionLockUntil, m_now + dur * 0.85);
 			if (p.skillId == 10)
-				fx::Fx().Ring(gfx::IsoPx(p.x, p.y), 6.f, 70.f, 0.3f, Rgb(0xD8C8FF, 220), 3.f);
+				fx::Fx().Ring(gfx::IsoPx(p.x, p.y), 6.f, 70.f, 0.3f, Rgb(0xC8F0EA, 220), 3.f);
 		}
 		return;
 	}
@@ -729,6 +884,8 @@ void Game::HandleStatus(const STATUS_NFY_PACKET& p)
 		case StatusId::Stun:
 		case StatusId::Freeze:
 			e->stunShake = 1.f;
+			// 띄우기 · 넘어뜨리기의 짧은 기절(0.55 · 0.8초)은 글자 없이 — 몸이 뜨고 눕는 것으로 보인다
+			if (id == StatusId::Stun && p.durationMs < 900 && !self) break;
 			fx::Fx().FloatText(iso, h + 22.f, row.name, StatusColor(id), self || mine ? 20.f : 16.f, 1.0f);
 			PlayAt(static_cast<int>(id == StatusId::Stun ? sfx::Id::Stun : sfx::Id::Freeze), e->pos, self ? 0.9f : 0.6f, 0.05f);
 			if (self)
@@ -838,7 +995,13 @@ bool Game::HasDelayedHitFor(const ObjID& victim) const
 void Game::QueueDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 {
 	double at = m_now;
-	if ((p.flags & DAMAGE_DOT) == 0 && p.skillId != 0)
+	if ((p.flags & DAMAGE_DOT) == 0 && p.skillId != 0 && (p.hitIndex & 0x80) != 0)
+	{
+		// 확장 타격은 서버가 표의 시각에 보냈다 — 투사체가 아직 날아가는 중이면 닿을 때까지만
+		if (Entity* v = Find(p.victimId); v && v->projArriveAt > m_now && v->projArriveAt - m_now < 0.3)
+			at = v->projArriveAt;
+	}
+	else if ((p.flags & DAMAGE_DOT) == 0 && p.skillId != 0)
 	{
 		const SkillRow* row = SkillTable::Find(p.skillId);
 		Entity* v = Find(p.victimId);
@@ -852,6 +1015,9 @@ void Game::QueueDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 	// 같은 대상의 앞선 표시보다 먼저 보여 주면 체력바가 거꾸로 간다 — 순서를 지킨다
 	for (const auto& d : m_delayedHits)
 		if (d.p.victimId == p.victimId) at = std::max(at, d.at);
+	// 히트스톱 동안 도착한 숫자는 줄 세웠다가 풀릴 때(DESIGN_SYSTEM 10.3)
+	if (const float hs = fx::Fx().HitStopLeft(); hs > 0.f && (p.attackerId == m_selfId || p.victimId == m_selfId))
+		at = std::max(at, m_now + hs);
 	if (at <= m_now + 0.004)
 	{
 		HandleDamage(p);
@@ -862,6 +1028,8 @@ void Game::QueueDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 
 void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 {
+	if (SkillTrace() && p.attackerId == m_selfId)
+		std::fprintf(stderr, "[skill] t=%.3f dmg id=%u hit=%u amount=%d flags=%u flags2=%u combo=%u f=%llu\n", m_now, p.skillId, p.hitIndex, p.damage, p.flags, p.flags2, p.comboId, static_cast<unsigned long long>(m_frameNo));
 	Entity* v = Find(p.victimId);
 	Entity* a = Find(p.attackerId);
 	const bool selfVictim = p.victimId == m_selfId;
@@ -919,18 +1087,47 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 		return;
 	}
 
+	// ── 허수아비 계측(내 피해만 · 세 허수아비를 합쳐서) ──
+	if (selfAttacker && v->kind == EntityKind::Monster && v->row && v->row->dummy && p.damage > 0)
+	{
+		YardMeter& m = m_yard;
+		if (m_now - m.last > 5.0) { m = YardMeter{}; m.first = m_now; }
+		m.last = m_now;
+		m.total += static_cast<uint64_t>(p.damage);
+		m.hits += 1;
+		if (static_cast<uint32_t>(p.damage) > m.best) { m.best = static_cast<uint32_t>(p.damage); m.bestSkill = p.skillId; }
+		if (p.skillId < m.bySkill.size()) m.bySkill[p.skillId] += static_cast<uint64_t>(p.damage);
+	}
+
 	// ── 숫자 ──
 	fx::DamageStyle style = fx::DamageStyle::Other;
 	if (dot) style = p.skillId == 9 ? fx::DamageStyle::DotBurn : fx::DamageStyle::DotPoison;
 	else if (selfAttacker) style = crit ? fx::DamageStyle::Crit : ((skill || combo) ? fx::DamageStyle::Skill : fx::DamageStyle::Normal);
 	else if (selfVictim) style = guard ? fx::DamageStyle::Guarded : (crit ? fx::DamageStyle::TakenCrit : fx::DamageStyle::Taken);
+	// 다단 타격은 합치지 않고 같은 대상의 숫자를 한 줄씩 쌓는다(좌우 번갈아 — 겹침 금지). 지속 피해만 합친다.
 	uint64_t stackKey = 0;
-	if (!dot && p.skillId != 0)
-		if (const SkillRow* r = SkillTable::Find(p.skillId); r && r->hits > 1)
-			stackKey = (static_cast<uint64_t>(p.victimId.GetSerial()) << 20) ^ (static_cast<uint64_t>(p.victimId.GetDatabaseID()) << 8) ^ p.skillId ^ (static_cast<uint64_t>(p.attackerId.GetSerial()) << 40);
+	const uint64_t victimKey = (static_cast<uint64_t>(p.victimId.GetSerial()) << 20) ^ (static_cast<uint64_t>(p.victimId.GetDatabaseID()) << 4) ^ 0x9E37u;
 	if (dot && selfAttacker)
 		stackKey = (static_cast<uint64_t>(p.victimId.GetSerial()) << 20) ^ (static_cast<uint64_t>(p.victimId.GetDatabaseID()) << 8) ^ 0xD07u;
-	fx::Fx().Damage(iso, h + 6.f, p.damage, style, stackKey);
+	uint8_t tags = 0;
+	if (p.flags2 & DAMAGE2_BACKSTAB) tags |= fx::TagWeak;
+	if (p.flags2 & DAMAGE2_BACK) tags |= fx::TagBack;
+	if ((p.flags2 & DAMAGE2_COUNTER) || (combo && p.comboId == 8)) tags |= fx::TagCounter;
+	if ((p.flags2 & DAMAGE2_PROC) && p.skillId == 24) tags |= fx::TagEcho;
+	if ((p.flags2 & DAMAGE2_PROC) && p.skillId == 32) tags |= fx::TagClone;
+	fx::Fx().Damage(iso, h + 6.f, p.damage, style, stackKey, dot ? 0 : victimKey, tags);
+	// 각성기 총 피해(마지막 타 뒤에 큰 숫자)
+	if (selfAttacker && !dot && p.skillId != 0)
+		if (const SkillDef* d = SkillDefTable::Find(p.skillId); d && d->kind == SkillKind::Awaken)
+		{
+			if (m_awakeTotal.skillId != p.skillId || m_now - m_awakeTotal.lastAt > 1.5) m_awakeTotal = AwakeTotal{ p.skillId, 0, 0, m_now, iso };
+			m_awakeTotal.sum += p.damage;
+			m_awakeTotal.hits += 1;
+			m_awakeTotal.lastAt = m_now;
+			m_awakeTotal.iso = util::LerpV(m_awakeTotal.iso, iso, 1.f / static_cast<float>(m_awakeTotal.hits));
+		}
+	const bool exHit = (p.hitIndex & 0x80) != 0;
+	if (!dot && p.skillId != 0) ApplyHitReaction(*v, p.skillId, exHit ? p.hitIndex : 0, p.flags, p.flags2);
 
 	if (dot)
 	{
@@ -957,7 +1154,10 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 			fx::Fx().ClawMarks(iso, h, dirSign, arch == MonsterArchetype::eDemon ? Rgb(0xFF6A3A) : Rgb(0xFFD0B0));
 	}
 	if (p.skillId != 0)
-		skillfx::OnHit(p.skillId, iso, h, crit, combo ? p.comboId : 0, p.flags2, false);
+	{
+		if (exHit) skillfx::OnExVictim(p.skillId, static_cast<uint8_t>(p.hitIndex & 0x7F), iso, h, crit, combo ? p.comboId : 0, p.flags2);
+		else skillfx::OnHit(p.skillId, iso, h, crit, combo ? p.comboId : 0, p.flags2, false);
+	}
 	if (guard)
 		fx::Fx().Ring(util::Sub(iso, Vector2{ 0, h * 0.45f }), 10.f, 44.f, 0.25f, Rgb(0xFFD070, 230), 3.f);
 
@@ -997,7 +1197,34 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 	// ── 체감 ──
 	if (selfAttacker)
 	{
-		const skillfx::Feel feel = skillfx::HitFeel(p.skillId, crit, combo, killed);
+		skillfx::Feel feel = skillfx::HitFeel(p.skillId, crit, combo, killed);
+		fxgrade::Tier hitTier = fxgrade::Tier::T1;
+		const SkillDef* hd = p.skillId != 0 ? MyDef(p.skillId) : nullptr;
+		if (hd)
+		{
+			// 등급표(fxgrade) 예산 — 타격 한 줄의 등급: 기술의 주 타격(가장 센 줄)이면 기술 등급, 아니면 강타 T3 · 보통 T2까지,
+			// 갈래로 덧붙은 줄(메아리 · 세 줄기)은 T2까지. 예전 판정 기술(0x80 없음)은 한 번의 판정 = 주 타격.
+			// 예측 타격(OnExBeat)이 방금 멈춤 · 줌을 줬으면 다시 주지 않는다(예전 판정 기술도 — 두 번 멈추던 것)
+			const int tier = std::clamp<int>(hd->tier, 1, 4);
+			int t = tier;
+			if ((p.hitIndex & 0x80) != 0)
+			{
+				const int hi = p.hitIndex & 0x7F;
+				if (hi < hd->hitCount)
+				{
+					const SkillHit& h = hd->hits[hi];
+					const int src = h.tag != HT_None && h.src < hd->hitCount ? h.src : hi;
+					if (src != SkillGrowth::MainHit(*hd)) t = std::min(tier, (h.flags & HF_Heavy) ? 3 : 2);
+					if (h.tag != HT_None) t = std::min(t, 2);
+				}
+			}
+			hitTier = static_cast<fxgrade::Tier>(t);
+			const bool predicted = m_lastBeatSkill == p.skillId && m_now - m_lastBeatAt < 0.3;
+			const impact::Feel f = impact::FeelOf(hitTier, crit, combo, killed, 1);
+			feel.trauma = f.trauma * 0.6f;
+			feel.kick = predicted ? 0.f : f.kick;
+			feel.hitstop = predicted ? (crit || combo || killed ? 0.03f : 0.f) : f.hitstop;
+		}
 		m_feelTrauma = std::max(m_feelTrauma, feel.trauma);
 		m_feelKick = std::max(m_feelKick, feel.kick);
 		m_feelStop = std::max(m_feelStop, feel.hitstop);
@@ -1005,6 +1232,12 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 		if (!throttleSfx)
 		{
 			PlayAt(static_cast<int>(HitSfx(p.skillId, crit, heavy)), v->pos, 1.f, 0.12f);
+			// 등급표의 소리 겹(원소 · 저음 · 쇳소리/파열 · 여운) — 몸통은 위의 기술 고유 소리
+			if (hd)
+			{
+				const float dx = (v->pos.x - v->pos.y) - static_cast<float>(m_predX - m_predY);
+				impact::HitSound(impact::ElementOfSkill(p.skillId), hitTier, 0.7f, util::Clamp01(0.5f + dx * 0.06f), 1, true);
+			}
 			m_lastHitSfxAt = m_now;
 		}
 		if (killed)
@@ -1074,6 +1307,22 @@ void Game::TickCombat(float dt)
 			if (e.animT > e.animDur) { e.animT = -1.f; e.animSkill = 0; }
 		}
 		e.knockT = std::max(0.f, e.knockT - sdt * 4.f);
+		if (e.airT >= 0.f)
+		{
+			e.airT += sdt;
+			if (e.airT >= e.airDur)
+			{
+				e.airT = -1.f;
+				// 떨어진 자리: 먼지 + 짧은 넘어짐(큰 몸은 흙만)
+				fx::Fx().Dust(TileToIso(e.pos), 7.f);
+				if (!e.IsBoss() && e.downT < 0.f) e.downT = 0.05f;
+			}
+		}
+		if (e.downT >= 0.f)
+		{
+			e.downT += sdt;
+			if (e.downT >= 0.95f) e.downT = -1.f;
+		}
 		e.stunShake = std::max(0.f, e.stunShake - sdt * 3.f);
 		if (e.hopT >= 0.f)
 		{
@@ -1111,22 +1360,22 @@ void Game::TickCombat(float dt)
 	}
 
 	// 5) 선입력
-	if (m_bufferSlot >= 0)
+	if (m_bufferSlot > 0)
 	{
 		if (m_now - m_bufferAt > 0.5)
 			m_bufferSlot = -1;
-		else if (m_now >= m_skillReady[m_bufferSlot] - 0.02)
+		else if (m_now >= m_skillReady[CdIndex(static_cast<uint16_t>(m_bufferSlot))] - 0.02)
 		{
 			const int s = m_bufferSlot;
 			m_bufferSlot = -1;
-			TryCastSkill(s, true);
+			TryCastSkill(static_cast<uint16_t>(s), true);
 		}
 	}
 	// 6) 돌진 착지를 너무 오래 기다리면 풀어 준다(응답 유실 대비)
 	if (m_dashWaitSeq != 0 && m_now > m_dashWaitUntil)
 		m_dashWaitSeq = 0;
 	// 7) 쿨다운이 끝난 기술: 반짝 + 작은 소리(긴 쿨다운만)
-	for (int s = 1; s < 6; ++s)
+	for (int s = 1; s < kSkillKeys; ++s)
 	{
 		const bool readyNow = m_now >= m_skillReady[s];
 		if (readyNow && m_readyPrev[s] > 0.5 && m_skillCdTotal[s] >= 2.5)

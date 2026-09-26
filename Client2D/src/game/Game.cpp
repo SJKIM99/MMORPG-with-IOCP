@@ -3,6 +3,11 @@
 #include "fx/Effects.h"
 #include "fx/Particles.h"
 #include "fx/SkillFx.h"
+#include "fx/Vfx.h"
+#include "fx/Trail.h"
+#include "render/Post.h"
+#include "render/FlashLight.h"
+#include "fx/FxScale.h"
 #include "render/Draw.h"
 #include "render/Props.h"
 #include "render/Actors.h"
@@ -88,6 +93,7 @@ void Game::Shutdown()
 	m_net.Disconnect();
 	m_terrain.Shutdown();
 	m_light.Shutdown();
+	if (m_stage.ready) { UnloadRenderTexture(m_stage.rt); m_stage.ready = false; }
 }
 
 void Game::BeginConnect()
@@ -180,6 +186,7 @@ void Game::Frame()
 	perf::BeginFrame();
 	clk::BeginFrame();
 	in::BeginFrame();
+	++m_frameNo;
 	m_screenW = GetScreenWidth();
 	m_screenH = GetScreenHeight();
 	const float dt = std::min(clk::FrameDt(), 0.05f);
@@ -187,6 +194,8 @@ void Game::Frame()
 	m_runTime += dt;
 
 	m_net.Update();
+	sfx::Update(dt);
+	ApplyFxOptions();
 	ui::BeginFrame(dt);
 	kb::BeginFrame();   // 채팅 · 한글 조합 · 키 지정 중이면 이번 프레임의 동작 키를 모두 막는다
 	m_light.UpdateClock(m_opts.hour);
@@ -216,6 +225,7 @@ void Game::Frame()
 	case Scene::Game: UpdateGame(dt); break;
 	case Scene::Disconnected: m_time += dt; fx::Fx().Update(dt); break;
 	}
+	if (m_scene == Scene::Game) RenderSkillStage();   // 렌더 텍스처는 화면 그리기 전에
 
 	BeginDrawing();
 	ClearBackground(Color{ 8, 8, 12, 255 });
@@ -312,6 +322,7 @@ Entity* Game::Find(const ObjID& id)
 }
 
 bool Game::InTown() const { return WorldData::IsSafeZone(m_predX, m_predY); }
+bool Game::CombatBlocked() const { return InTown() && !WorldData::IsTrainingYard(m_predX, m_predY); }
 
 // 바닥 종류(발소리 · 먼지): 0 풀 · 1 돌 · 2 나무 · 3 눈 · 4 모래
 int Game::GroundAt(Vector2 tile) const
@@ -430,6 +441,8 @@ void Game::UpdateGame(float dt)
 	TickMovement();
 	RunScript(dt);
 	TickCombat(dt);
+	TickSkills(dt);
+	TickSkillStage(dt);   // 기술 창 시연(창이 보여 줄 때만)
 	TickLoot();
 	UpdateNpcs(netDt);
 	UpdateQuests(dt);
@@ -496,6 +509,9 @@ void Game::UpdateGame(float dt)
 		else
 		{
 			motion::UpdateRemote(e, netDt, netDt);
+			// 넉백 미끄러짐 · 띄워짐 · 넘어짐: 발을 떼지 않는다(달리는 다리로 밀려나지 않게)
+			if (m_now < e.slideUntil || e.airT >= 0.f || e.downT >= 0.f)
+				e.moving = 0.f;
 			static const bool debugRemote = std::getenv("HARVEN_REMOTE_DEBUG") != nullptr;   // 원격 재생 진단(stderr, 프레임마다)
 			if (e.kind == EntityKind::Player && debugRemote)
 			{
@@ -604,6 +620,10 @@ void Game::UpdateGame(float dt)
 	// ── 이펙트/분위기 ──
 	fx::Fx().Update(dt);
 	skillfx::Update(sdt);
+	vfx::Update(sdt);
+	trail::Update(sdt);
+	flashlight::Update(sdt);
+	post::Update(dt, sdt);
 	const auto* region = WorldData::FindRegion(Region());
 	const WorldData::Biome biome = region ? region->biome : WorldData::Biome::eMeadow;
 	fx::Fx().Ambient(biome, m_cam.Target(), m_screenW / m_cam.Zoom(), m_screenH / m_cam.Zoom(), dt, m_light.Night(), InTown());
@@ -730,6 +750,78 @@ void Game::SubmitChat()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 연출 설정 → 후처리 · 연출 세기 · 카메라(매 프레임 — 값 몇 개라 싸다)
+void Game::ApplyFxOptions()
+{
+	const kb::Options& o = kb::Opt();
+	const int q = m_opts.quality >= 0 ? m_opts.quality : o.gfxQuality;
+	const bool photo = m_opts.photoSafe >= 0 ? m_opts.photoSafe != 0 : o.photoSafe;
+	const int other = m_opts.otherFx >= 0 ? m_opts.otherFx : o.otherFx;
+	post::SetQuality(q <= 0 ? post::Quality::Low : (q == 1 ? post::Quality::Medium : post::Quality::High));
+	post::SetPhotoSafe(photo);
+	fxscale::SetQuality(q <= 0 ? fxscale::Quality::Low : (q == 1 ? fxscale::Quality::Medium : fxscale::Quality::High));
+	fxscale::SetPhotoSafe(photo);
+	fxscale::SetOther(other / 100.f);
+	fxscale::SetShake(o.shake ? 1.f : 0.f);
+	m_cam.SetShakeScale(fxscale::Shake());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 셰이더 효과 목록(--script vfx, Phase 2-A 확인용) — 모든 종류를 격자로 한꺼번에 띄운다
+namespace
+{
+	void SpawnVfxSheet(Vector2 c)
+	{
+		using vfx::Kind;
+		struct Row { Kind k; vfx::Ramp r; float w, h; const char* name; };
+		const Row rows[] = {
+			{ Kind::Fire, vfx::FireRamp(), 90, 150, "Fire" }, { Kind::Explosion, vfx::FireRamp(), 170, 170, "Explosion" },
+			{ Kind::Smoke, vfx::SmokeRamp(), 150, 150, "Smoke" }, { Kind::IceBurst, vfx::FrostRamp(), 170, 170, "IceBurst" },
+			{ Kind::InkBurst, vfx::InkRamp(), 160, 160, "InkBurst" }, { Kind::Dust, vfx::DustRamp(), 190, 110, "Dust" },
+			{ Kind::Pillar, vfx::GoldRamp(), 90, 230, "Pillar" }, { Kind::Vortex, vfx::TealRamp(), 170, 170, "Vortex" },
+			{ Kind::Lightning, vfx::BoltRamp(), 80, 260, "Lightning" }, { Kind::Slash, vfx::MoonRamp(), 170, 170, "Slash" },
+			{ Kind::Flare, vfx::GoldRamp(), 170, 170, "Flare" }, { Kind::Beam, vfx::TealRamp(), 200, 30, "Beam" },
+			{ Kind::Glyph, vfx::TealRamp(), 110, 110, "Glyph" },
+			{ Kind::Rune, vfx::TealRamp(), 210, 0, "Rune" }, { Kind::Seal, vfx::GoldRamp(), 210, 0, "Seal" },
+			{ Kind::Crack, vfx::FireRamp(), 210, 0, "Crack" }, { Kind::Scorch, vfx::SmokeRamp(), 210, 0, "Scorch" },
+			{ Kind::Frost, vfx::FrostRamp(), 210, 0, "Frost" }, { Kind::InkStain, vfx::InkRamp(), 210, 0, "InkStain" },
+			{ Kind::GroundRing, vfx::GoldRamp(), 210, 0, "GroundRing" },
+		};
+		constexpr int kCols = 5;
+		int i = 0;
+		for (const Row& r : rows)
+		{
+			const int col = i % kCols, row = i / kCols;
+			const Vector2 at{ c.x + (col - 2) * 240.f, c.y + (row - 1.5f) * 175.f + 40.f };
+			++i;
+			vfx::Spec s = vfx::Make(r.k, at, 0.f, r.w, 1.6f, r.r);
+			s.h = r.h > 0 ? r.h : r.w;
+			const bool bottom = r.k == Kind::Fire || r.k == Kind::Pillar || r.k == Kind::Lightning || r.k == Kind::Dust;
+			const bool ground = r.k >= Kind::Rune;
+			s.z = ground || bottom ? 0.f : s.h * 0.5f;
+			if (r.k == Kind::Beam)
+			{
+				vfx::BeamBetween(Vector2{ at.x - 100.f, at.y }, 40.f, Vector2{ at.x + 100.f, at.y }, 60.f, 30.f, 1.6f, s);
+			}
+			else vfx::Spawn(s);
+			fx::Fx().FloatText(at, -18.f, r.name, Color{ 240, 236, 226, 255 }, 15.f, 1.9f, ui::Face::Latin);
+		}
+		// 궤적 리본 두 개 · 순간 조명 · 충격파
+		trail::ArcSpec a;
+		a.iso = Vector2{ c.x + 240.f * 2.f, c.y + 2.5f * 175.f + 20.f };
+		a.a0 = -2.4f; a.a1 = 1.2f;
+		trail::Arc(a);
+		trail::ArcSpec b = a;
+		b.iso.x -= 240.f;
+		b.tilt = 1.3f; b.a0 = -2.8f; b.a1 = 0.6f; b.edge = Color{ 230, 255, 250, 255 }; b.body = Color{ 111, 181, 172, 255 };
+		b.delay = 0.3f;
+		trail::Arc(b);
+		flashlight::Add(c, 180.f, Color{ 255, 200, 120, 255 }, 1.f, 0.9f);
+		post::Shockwave(c, 20.f, 320.f, 26.f, 1.f, 0.7f);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 테스트 자동 조작(--script). 사람이 조작하는 것과 같은 경로(목표/입력 함수)를 탄다.
 // ─────────────────────────────────────────────────────────────────────────────
 void Game::RunScript(float dt)
@@ -852,6 +944,26 @@ void Game::RunScript(float dt)
 			if (m_hp * 2 < m_maxhp) UseItemSlot(kPotionSlot);
 		}
 	}
+	else if (s == "vfx")
+	{
+		// 마을 밖 빈 들판으로 나가(건물에 가리지 않게) 2.4초마다 모든 종류를 격자로
+		if (m_scriptStep == 0 && m_scriptT > 1.0f)
+		{
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			m_scriptStep = 1;
+		}
+		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
+		{
+			m_scriptStep = 2;
+			m_scriptT = 99.f;
+			m_cam.SetZoom(0.9f);
+		}
+		if (m_scriptStep == 2 && m_scriptT > 2.4f)
+		{
+			m_scriptT = 0.f;
+			if (Entity* me = Self()) SpawnVfxSheet(TileToIso(me->pos));
+		}
+	}
 	else if (s == "skill" || s == "combat" || s == "loot")
 	{
 		// 마을 밖으로 나가 가까운 몬스터에게 직업 기술을 돌려 가며 쓴다(연계 순서대로).
@@ -864,6 +976,8 @@ void Game::RunScript(float dt)
 			m_scriptStep = 2;
 		else if (m_scriptStep == 2)
 		{
+			// 누르고 있는 동안 걷던 목표가 남아 있으면 서버가 모으기를 끊는다(걸으면 끊김) — 멈춰 세운다
+			if (m_scriptHolding && m_goal.kind == GoalKind::Move) ClearGoal();
 			// loot: 떨어진 물건이 가까이 있으면 먼저 줍는다(희귀도 빛기둥 · 획득 연출 확인용)
 			if (s == "loot" && (m_goal.kind == GoalKind::None || m_goal.kind == GoalKind::Move))
 			{
@@ -887,21 +1001,24 @@ void Game::RunScript(float dt)
 			Entity* t = Find(m_target);
 			if (t && !t->dead && m_now >= m_actionLockUntil)
 			{
-				// 직업별 연계 순서(슬롯): 기사 방패 강타→처형→회전 베기→철벽→돌진 /
+				// 직업별 연계 순서(기술 id): 기사 방패 강타→단죄→회전 베기→철벽→돌진 /
 				// 각인술사 서리 각인→낙성→번개→화염 고리 / 사냥꾼 독 칼날→그늘 걸음→후방 습격→그믐 베기
-				static const int order[3][5] = { { 1, 5, 2, 4, 3 }, { 1, 5, 4, 2, 0 }, { 2, 1, 4, 5, 0 } };
+				// (차지 · 홀딩 · 캐스팅처럼 누르고 있어야 하는 새 기술은 skill 스크립트가 다룬다)
+				static const uint16_t order[3][5] = { { 2, 6, 3, 5, 4 }, { 8, 12, 11, 9, 0 }, { 15, 14, 17, 18, 0 } };
 				const int cls = static_cast<int>(m_classId);
 				const int d = Cheb(m_predX, m_predY, t->tx, t->ty);
 				for (int k = 0; k < 5; ++k)
 				{
-					const int slot = order[cls][k];
-					if (slot == 0) continue;
-					const SkillRow* row = SkillInSlot(slot);
-					if (!row || m_level < row->unlockLevel || m_now < m_skillReady[slot] || m_mp < static_cast<int>(row->mp)) continue;
+					const uint16_t id = order[cls][k];
+					if (id == 0) continue;
+					const SkillRow* row = SkillTable::Find(id);
+					const SkillDef* def = SkillDefTable::Find(id);
+					if (!row || !def || m_level < row->unlockLevel || m_now < m_skillReady[CdIndex(id)] || m_mp < static_cast<int>(row->mp)) continue;
+					if (def->kind == SkillKind::Hold || def->kind == SkillKind::Charge || def->kind == SkillKind::Toggle) continue;
 					if (row->target == SkillTarget::Enemy && d > row->range) continue;
 					if ((row->target == SkillTarget::Self || row->target == SkillTarget::Direction) && d > std::max<int>(1, row->radius)) continue;
 					SetScriptAim(t->tx, t->ty, t->id);   // 사람이 커서를 대상에 올린 것처럼(지점 기술은 그 칸으로)
-					if (TryCastSkill(slot, true, row->target == SkillTarget::Enemy ? t->id : ObjID{})) break;
+					if (TryCastSkill(id, true, row->target == SkillTarget::Enemy ? t->id : ObjID{})) break;
 				}
 			}
 			if (m_hp * 2 < m_maxhp) UseItemSlot(kPotionSlot);
@@ -1187,18 +1304,160 @@ void Game::RunScript(float dt)
 			const Vector2 scr = GetWorldToScreen2D(util::Add(TileToIso(best->pos, 0.f), Vector2{ 0.f, -(best->row ? actors::MonsterHeight(*best->row) : 40.f) * 0.45f }), m_cam2d);
 			const bool rmb = std::fmod(m_scriptT, 1.4f) < 0.5f;   // 우클릭을 눌렀다 뗐다
 			in::SetScriptMouse(scr, false, rmb);
-			if (m_now >= m_scriptNextCast && m_now >= m_actionLockUntil)
+			// 누르고 있는 기술(차지 · 홀딩): 정한 시간이 되면 뗀다
+			if (m_scriptHolding && m_now >= m_scriptHoldUntil)
 			{
-				for (int k = 0; k < 10; ++k)
+				kb::ScriptHold(static_cast<kb::Act>(m_scriptHoldAct), false);
+				m_scriptHolding = false;
+			}
+			if (!m_scriptHolding && m_now >= m_scriptNextCast && m_now >= m_actionLockUntil)
+			{
+				for (int k = 0; k < 11; ++k)
 				{
-					const int hot = 1 + (m_scriptCastIdx + k) % 10;   // Q W E R A S D F V (Space는 빼고 도는 차례)
+					const int hot = 1 + (m_scriptCastIdx + k) % 11;   // Q W E R A S D F V (Space) Z — 이동기는 빼고 도는 차례
 					const SkillRow* row = HotSkill(hot);
-					if (!row || hot == kHotMobility || m_level < row->unlockLevel || m_now < m_skillReady[row->slot] || m_mp < static_cast<int>(row->mp)) continue;
-					kb::ScriptPress(kb::HotAct(hot));
+					const SkillDef* def = row ? SkillDefTable::Find(row->id) : nullptr;
+					if (!row || !def || hot == kHotMobility || m_level < row->unlockLevel || m_now < m_skillReady[CdIndex(row->id)] || m_mp < static_cast<int>(row->mp)) continue;
+					if (def->kind == SkillKind::Identity && m_identity < 1000) continue;
+					if (def->kind == SkillKind::Toggle && m_toggleSkill == row->id) continue;
+					const kb::Act act = kb::HotAct(hot);
+					kb::ScriptPress(act);
+					if (def->kind == SkillKind::Charge || def->kind == SkillKind::Hold)
+					{
+						// 차지는 완벽 구간 가운데까지, 홀딩은 끝의 80%까지 누르고 있는다
+						const double hold = def->kind == SkillKind::Charge ? (def->stageMs * def->stages + def->perfectMs * 0.5) / 1000.0 : def->holdMaxMs * 0.8 / 1000.0;
+						kb::ScriptHold(act, true);
+						m_scriptHoldAct = static_cast<int>(act);
+						m_scriptHoldUntil = m_now + hold;
+						m_scriptHolding = true;
+					}
 					m_scriptCastIdx = hot;
 					break;
 				}
 				m_scriptNextCast = m_now + 1.6;
+			}
+			if (m_hp * 2 < m_maxhp) kb::ScriptPress(kb::Act::Potion);
+		}
+	}
+	else if (s == "skills" || s.rfind("skills:", 0) == 0 || s == "training")
+	{
+		// training · skills:<직업>(Phase 2-E): 들판 대신 마을 동쪽 훈련장의 허수아비에게 같은 순서로 — 기술별 녹화 · 초당 피해 계측.
+		// 기술이 바뀔 때마다 [skillseg](녹화 시작 기준 초)를 찍는다 → tools/record/split_skills.py가 기술별 GIF로 자른다
+		const bool yard = s == "training" || s.rfind("skills:", 0) == 0;
+		// 기술 구조 V3 전수 시험: 들판의 가까운 적에게 C(콤보) → Q W E R A S D F → Space → V → Z를 차례로.
+		// 차지는 완벽 구간 가운데까지 · 홀딩은 80% · 체인은 끝 단까지 · 토글은 켰다 끄기. HARVEN_SKILL_TRACE=1로 결과를 모은다.
+		// Phase 2-D: HARVEN_GROW="ab"(예: "12")면 먼저 마을에서 여덟 칸을 레벨 7로 올리고 갈래 Ⅰ=a · Ⅱ=b를 고른 뒤 시작한다(갈래 전수 시험)
+		static const char* grow = std::getenv("HARVEN_GROW");
+		if (grow && grow[0] >= '0' && grow[0] <= '2' && grow[1] >= '0' && grow[1] <= '2' && !m_scriptGrowDone)
+		{
+			if (m_scriptT > 1.0f && ScriptGrowStep(7, static_cast<uint8_t>(grow[0] - '0'), static_cast<uint8_t>(grow[1] - '0')))
+			{
+				m_scriptGrowDone = true;
+				m_scriptT = 0.5f;   // 아래 순서(마을 밖으로)를 처음부터
+				m_scriptSeq.clear();
+			}
+			return;
+		}
+		if (m_scriptSeq.empty())
+		{
+			const SkillDef* basic = SkillDefTable::Find(SkillDefTable::Default(m_classId, SkillKey::C));
+			const int combo = basic ? basic->stages : 3;
+			// 콤보는 다음 타를 받을 수 있는 순간(기본 공격 간격)마다 — 너무 이르면 누름이 버려져 콤보가 끊긴다(wait −1 = 누를 때 간격을 잰다)
+			for (int i = 0; i < combo; ++i) m_scriptSeq.push_back(ScriptCast{ 0, 0.f, -1.f });
+			for (int hot = 1; hot < kHotSlots; ++hot)
+			{
+				const SkillRow* row = HotSkill(hot);
+				const SkillDef* def = row ? MyDef(row->id) : nullptr;   // 갈래(재빠름)를 입힌 시각
+				if (!def) continue;
+				const float lock = def->lockMs / 1000.f, cast = def->castMs / 1000.f;
+				switch (def->kind)
+				{
+				case SkillKind::Charge: m_scriptSeq.push_back(ScriptCast{ hot, (def->stageMs * def->stages + def->perfectMs * 0.5f) / 1000.f, lock + 0.7f }); break;
+				case SkillKind::Hold:   m_scriptSeq.push_back(ScriptCast{ hot, def->holdMaxMs * 0.8f / 1000.f, 0.8f }); break;
+				case SkillKind::Chain:
+					for (int k = 0; k < def->stages; ++k) m_scriptSeq.push_back(ScriptCast{ hot, 0.f, k + 1 < def->stages ? 0.7f : lock + 0.6f });
+					break;
+				case SkillKind::Toggle:
+					m_scriptSeq.push_back(ScriptCast{ hot, 0.f, 1.4f });
+					m_scriptSeq.push_back(ScriptCast{ hot, 0.f, 0.6f });
+					break;
+				default: m_scriptSeq.push_back(ScriptCast{ hot, 0.f, std::max(0.9f, lock + cast + 0.5f) }); break;
+				}
+				// 훈련장(기술별 녹화): 여운이 다 보이게 기술 사이를 0.9초 더 띄운다
+				if (yard && !m_scriptSeq.empty()) m_scriptSeq.back().wait += def->kind == SkillKind::Awaken ? 1.6f : 0.9f;
+			}
+		}
+		if (m_scriptStep == 0 && m_scriptT > 1.0f)
+		{
+			// 훈련장: 가운데 허수아비 두 칸 앞(위쪽) — 들판: 남쪽 문 밖
+			if (yard) SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[1].x, WorldData::kDummySpots[1].y - 2 });
+			else SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kTownX0 + 22, WorldData::kTownY0 + 50 });
+			m_scriptStep = 1;
+		}
+		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
+			m_scriptStep = 2;
+		else if (m_scriptStep == 2)
+		{
+			// 기본 공격 누름이 남긴 자동 공격 목표는 지운다 — 순서표의 누름만 나가게(허수아비는 죽지 않아 자동 공격이 끝나지 않는다)
+			if (m_goal.kind == GoalKind::Attack) ClearGoal();
+			Entity* best = nullptr;
+			int bestD = 99;
+			for (auto& [id, e] : m_ents)
+			{
+				if (e.kind != EntityKind::Monster || e.dead || e.removing) continue;
+				const int d = Cheb(m_predX, m_predY, e.tx, e.ty);
+				if (d < bestD) { bestD = d; best = &e; }
+			}
+			if (m_scriptHolding && m_now >= m_scriptHoldUntil)
+			{
+				kb::ScriptHold(static_cast<kb::Act>(m_scriptHoldAct), false);
+				m_scriptHolding = false;
+			}
+			// 근접 기술도 닿게 2칸 안까지 다가간다(누르고 있는 동안은 서서)
+			if (!best || bestD > 2)
+			{
+				if (!m_scriptHolding)
+				{
+					in::ClearScriptMouse();
+					if (m_goal.kind == GoalKind::None || (best && bestD < 12 && m_now - m_scriptApproachAt > 0.8))
+					{
+						m_scriptApproachAt = m_now;
+						SetGoal(Goal{ GoalKind::Move, ObjID{}, best && bestD < 12 ? best->tx : m_predX + util::RandI(-6, 6), best && bestD < 12 ? best->ty : m_predY + util::RandI(3, 8) });
+					}
+				}
+				if (!best || bestD > 6 || !m_scriptHolding) return;
+			}
+			if (m_goal.kind == GoalKind::Move) ClearGoal();
+			const Vector2 scr = GetWorldToScreen2D(util::Add(TileToIso(best->pos, 0.f), Vector2{ 0.f, -(best->row ? actors::MonsterHeight(*best->row) : 40.f) * 0.45f }), m_cam2d);
+			in::SetScriptMouse(scr, false, false);
+			if (!m_scriptHolding && m_now >= m_scriptNextCast && m_now >= m_actionLockUntil && !m_scriptSeq.empty())
+			{
+				const ScriptCast sc = m_scriptSeq[static_cast<size_t>(m_scriptSeqIdx % static_cast<int>(m_scriptSeq.size()))];
+				if (++m_scriptSeqIdx % static_cast<int>(m_scriptSeq.size()) == 0) ++m_scriptSeqLoops;
+				const SkillRow* row = HotSkill(sc.hot);
+				const SkillDef* def = row ? SkillDefTable::Find(row->id) : nullptr;
+				const bool gaugeOk = !def || def->kind != SkillKind::Identity || m_identity >= 1000;
+				if (row && m_level >= row->unlockLevel && gaugeOk)
+				{
+					const kb::Act act = kb::HotAct(sc.hot);
+					if (row->id != m_scriptSegSkill)
+					{
+						m_scriptSegSkill = row->id;
+						const double r0 = rec::StartAt();
+						std::printf("[skillseg] t=%.3f rec=%.3f slot=%d id=%u name=%s\n", m_now, r0 >= 0.0 ? m_now - r0 : -1.0, sc.hot, row->id, row->name);
+						std::fflush(stdout);
+					}
+					kb::ScriptPress(act);
+					if (sc.hold > 0.f)
+					{
+						kb::ScriptHold(act, true);
+						m_scriptHoldAct = static_cast<int>(act);
+						m_scriptHoldUntil = m_now + sc.hold;
+						m_scriptHolding = true;
+					}
+				}
+				const float wait = sc.wait >= 0.f ? sc.wait : std::max(0.32f, SkillTable::BasicIntervalMs(m_classId, m_stats.attackSpeed) / 1000.f + 0.06f);
+				m_scriptNextCast = m_now + sc.hold + wait;
 			}
 			if (m_hp * 2 < m_maxhp) kb::ScriptPress(kb::Act::Potion);
 		}
@@ -1235,6 +1494,223 @@ void Game::RunScript(float dt)
 	else if (s == "skillwin")
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { kb::ScriptPress(kb::Act::SkillWindow); m_scriptStep = 1; }
+	}
+	else if (s == "skillgrow" || s.rfind("skillgrow:", 0) == 0)
+	{
+		// Phase 2-D 기술 창: K를 열고 여덟 칸을 레벨 7까지 올리며 갈래를 고른다(skillgrow:ab — 기본 12). 끝나면 레벨이 가장 높은 기술을 골라 둔다
+		const uint8_t a = s.size() >= 12 ? static_cast<uint8_t>(s[10] - '0') : 1;
+		const uint8_t b = s.size() >= 12 ? static_cast<uint8_t>(s[11] - '0') : 2;
+		if (m_scriptStep == 0 && m_scriptT > 1.0f) { kb::ScriptPress(kb::Act::SkillWindow); m_scriptStep = 1; }
+		else if (m_scriptStep == 1 && m_scriptT > 2.0f && ScriptGrowStep(7, a, b))
+		{
+			m_growSel = SkillDefTable::Default(m_classId, SkillKey::W);
+			m_scriptStep = 2;
+			m_scriptT = 0.f;
+		}
+		else if (m_scriptStep == 2 && m_scriptT > 2.5f)
+		{
+			// 고르지 않은 갈래 Ⅱ 칸에 마우스를 올린다 — 시연이 "미리 보기"로 바뀌는지(기술 창 시연 확인)
+			const Rectangle& cr = m_growCardRect[1][b == 1 ? 1 : 0];
+			if (cr.width > 0.f) in::SetScriptMouse(Vector2{ cr.x + cr.width * 0.5f, cr.y + cr.height * 0.5f }, false);
+			m_scriptStep = 3;
+		}
+		else if (m_scriptStep == 3 && std::getenv("HARVEN_GROW_TOUR"))
+		{
+			// 갈래 네 칸을 3초씩 차례로 가리킨다(갈래별 시연 비교 녹화) — 가리킨 칸이 고른 칸이면 지금 모습
+			const int idx = static_cast<int>((m_scriptT - 2.5f) / 3.f) % 4;
+			const Rectangle& cr = m_growCardRect[idx / 2][idx % 2];
+			if (cr.width > 0.f) in::SetScriptMouse(Vector2{ cr.x + cr.width * 0.5f, cr.y + cr.height * 0.5f }, false);
+		}
+	}
+	else if (s == "awaken3")
+	{
+		// Phase 2 완료 기준 "3명 동시 각성기 + 몬스터 30마리 장면의 프레임 그래프" — 그리기 비용 측정.
+		// 훈련장(기술을 쓸 수 있다)에서 가짜 몬스터 30 · 가짜 모험가 둘(각인술사 · 밤사냥꾼 — 클라에만 있는 개체)을 두고,
+		// 내 각성기(서버 판정 그대로)와 둘의 각성기 알림(가짜 SKILL_EX_NFY — 남의 연출 50% 경로 그대로)을 같은 프레임에 시작한다.
+		// 전 3초 · 각성 4초 · 뒤 2초의 프레임 CPU 시간 · 드로우콜 · 입자를 [bench]로 찍고, 절정(1.45초)에 F3 그래프를 켠 채 스크린샷
+		Entity* me = Self();
+		if (!me) return;
+		if (m_scriptStep == 0 && m_scriptT > 1.0f)
+		{
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[0].x, WorldData::kDummySpots[0].y - 2 });
+			m_scriptStep = 1;
+		}
+		else if (m_scriptStep == 1 && (m_goal.kind == GoalKind::None || m_scriptT > 30.f))
+		{
+			static const uint16_t kSpecies[] = { 1, 2, 3, 4, 5, 7, 8, 11, 12, 14 };
+			for (int i = 0; i < 30; ++i)
+			{
+				Entity e;
+				e.id = ObjID(EnumCategory::eMonster, MONSTER_ID_START + 0x0FFFF000u + static_cast<uint32_t>(i));
+				e.kind = EntityKind::Monster;
+				e.species = kSpecies[i % 10];
+				e.row = MonsterTable::Find(e.species);
+				const float a = i * 2.f * util::kPi / 30.f, r = 2.4f + static_cast<float>(i % 3) * 1.1f;
+				e.pos = e.logPos = Vector2{ me->pos.x + std::cos(a) * r, me->pos.y + std::sin(a) * r };
+				e.tx = static_cast<int>(std::round(e.pos.x)); e.ty = static_cast<int>(std::round(e.pos.y));
+				e.faceRight = std::cos(a) < 0.f;
+				e.spawnT = 1.f; e.hp = e.maxhp = 1000; e.level = 20;
+				e.nameHash = 991u + static_cast<uint32_t>(i) * 7u;
+				motion::RemoteSnap(e, Vector2{ static_cast<float>(e.tx), static_cast<float>(e.ty) });   // 재생 시간표도 그 칸에(안 하면 (0,0)으로 끌려간다)
+				m_ents[e.id] = e;
+			}
+			for (int k = 0; k < 2; ++k)
+			{
+				Entity e;
+				e.id = ObjID(EnumCategory::eUser, 0x7FFFFF10u + static_cast<uint32_t>(k));
+				e.kind = EntityKind::Player;
+				e.classId = static_cast<uint8_t>(k + 1);
+				e.pos = e.logPos = Vector2{ me->pos.x + (k == 0 ? -1.5f : 1.5f), me->pos.y - 1.5f };
+				e.tx = static_cast<int>(std::round(e.pos.x)); e.ty = static_cast<int>(std::round(e.pos.y));
+				e.spawnT = 1.f; e.hp = e.maxhp = 1000; e.level = 50;
+				e.nameHash = 4242u + static_cast<uint32_t>(k);
+				motion::RemoteSnap(e, Vector2{ static_cast<float>(e.tx), static_cast<float>(e.ty) });
+				m_ents[e.id] = e;
+			}
+			m_debugOverlay = true;
+			m_bench = Bench{};
+			m_scriptStep = 2;
+			m_scriptT = 0.f;
+		}
+		else if (m_scriptStep == 2 && m_scriptT > 3.0f)
+		{
+			TryCastSkill(SkillDefTable::Default(m_classId, SkillKey::V));
+			static const uint16_t kAwaken[2] = { 12, 18 };
+			for (int k = 0; k < 2; ++k)
+			{
+				const ObjID fid(EnumCategory::eUser, 0x7FFFFF10u + static_cast<uint32_t>(k));
+				const Entity* f = Find(fid);
+				const SkillDef* d = SkillDefTable::Find(kAwaken[k]);
+				if (!f || !d) continue;
+				SKILL_EX_NFY_PACKET p{};
+				p.casterId = fid; p.skillId = kAwaken[k]; p.phase = static_cast<uint8_t>(SkillExPhase::Start);
+				p.fromX = static_cast<short>(f->tx); p.fromY = static_cast<short>(f->ty);
+				p.aimX = static_cast<short>(me->tx + 2); p.aimY = static_cast<short>(me->ty + 1);
+				p.castMs = d->castMs;
+				HandleSkillEx(p);
+			}
+			m_opts.screenshotAfter = m_runTime + 1.45f;   // 절정(단죄 1.4초 · 그믐 베기 1.4초 · 낙성 1.6초)
+			m_scriptStep = 3;
+			m_scriptT = 0.f;
+		}
+		else if (m_scriptStep == 3 && m_scriptT > 6.0f)
+		{
+			const char* names[3] = { "전 3초", "각성 4초", "뒤 2초" };
+			for (int k = 0; k < 3; ++k)
+			{
+				const Bench::Part& b = m_bench.part[k];
+				if (b.frames == 0) continue;
+				std::printf("[bench] %s frames=%d work avg=%.1fms max=%.1fms | draw avg=%d max=%d | particles max=%d | over33(work)=%d\n", names[k], b.frames,
+					b.workSum / b.frames, b.workMax, b.drawSum / b.frames, b.drawMax, b.partMax, b.over33);
+			}
+			std::fflush(stdout);
+			m_scriptStep = 4;
+		}
+		// 매 프레임 모으기(직전 프레임의 CPU 시간 · 드로우콜)
+		if (m_scriptStep == 2 || m_scriptStep == 3)
+		{
+			const int k = m_scriptStep == 2 ? 0 : (m_scriptT < 4.f ? 1 : 2);
+			Bench::Part& b = m_bench.part[k];
+			const float w = perf::WorkMs(0);
+			const int dc = perf::DrawCallsLast();
+			const int pc = static_cast<int>(fx::Particles().Count());
+			++b.frames; b.workSum += w; b.workMax = std::max(b.workMax, w); b.drawSum += std::max(0, dc); b.drawMax = std::max(b.drawMax, dc);
+			b.partMax = std::max(b.partMax, pc); if (w > 33.f) ++b.over33;
+		}
+	}
+	else if (s == "growcheck")
+	{
+		// Phase 2-D 서버 규칙 시험(레벨 3 캐릭터 = 점수 4): 초기화 → 올림 ×3 → 갈래 Ⅰ → 갈래 Ⅱ(TierLocked) → 올림(NoPoints) →
+		// 내림(갈래 Ⅰ이 꺼짐) → 내림 ×2 → 내림(MinLevel) → 잠긴 기술(Locked) → 훈련장에서 기본 공격 직후(InCombat) → 5.5초 뒤(Ok) → 초기화(점수 4)
+		struct Step { SkillGrowOp op; int key; uint8_t tier, choice; SkillGrowResult expect; };
+		static const Step kSteps[] = {
+			{ SkillGrowOp::ResetAll, -1, 0, 0, SkillGrowResult::Ok },
+			{ SkillGrowOp::LevelUp, 1, 0, 0, SkillGrowResult::Ok }, { SkillGrowOp::LevelUp, 1, 0, 0, SkillGrowResult::Ok }, { SkillGrowOp::LevelUp, 1, 0, 0, SkillGrowResult::Ok },
+			{ SkillGrowOp::Pick, 1, 0, 1, SkillGrowResult::Ok }, { SkillGrowOp::Pick, 1, 1, 1, SkillGrowResult::TierLocked },
+			{ SkillGrowOp::LevelUp, 1, 0, 0, SkillGrowResult::NoPoints },
+			{ SkillGrowOp::LevelDown, 1, 0, 0, SkillGrowResult::Ok }, { SkillGrowOp::LevelDown, 1, 0, 0, SkillGrowResult::Ok }, { SkillGrowOp::LevelDown, 1, 0, 0, SkillGrowResult::Ok },
+			{ SkillGrowOp::LevelDown, 1, 0, 0, SkillGrowResult::MinLevel },
+			{ SkillGrowOp::LevelUp, 99, 0, 0, SkillGrowResult::Locked },
+			{ SkillGrowOp::LevelUp, 2, 0, 0, SkillGrowResult::InCombat },   // 훈련장에서 때린 직후
+			{ SkillGrowOp::LevelUp, 2, 0, 0, SkillGrowResult::Ok },         // 5.5초 쉰 뒤
+			{ SkillGrowOp::ResetAll, -1, 0, 0, SkillGrowResult::Ok },
+		};
+		constexpr int kN = static_cast<int>(sizeof(kSteps) / sizeof(kSteps[0]));
+		auto skillFor = [&](int key) -> uint16_t
+		{
+			if (key < 0) return 0;
+			if (key == 99)   // 아직 못 배운 자라는 기술
+			{
+				for (int k = static_cast<int>(SkillKey::Q); k <= static_cast<int>(SkillKey::F); ++k)
+				{
+					const uint16_t id = SkillDefTable::Default(m_classId, static_cast<SkillKey>(k));
+					const SkillRow* row = SkillTable::Find(id);
+					if (row && m_level < row->unlockLevel && SkillGrowth::Growable(id)) return id;
+				}
+				return 0;
+			}
+			return SkillDefTable::Default(m_classId, static_cast<SkillKey>(key));
+		};
+		const int i = m_scriptStep / 3, phase = m_scriptStep % 3;   // 단계마다 준비 · 보냄 · 결과
+		if (i >= kN)
+		{
+			if (m_scriptStep == kN * 3)
+			{
+				std::printf("[growcheck] done pass=%d fail=%d points=%u/%u\n", m_checkPass, m_checkFail, m_skillPoints, m_skillPointsTotal);
+				std::fflush(stdout);
+				++m_scriptStep;
+			}
+			return;
+		}
+		const Step& st = kSteps[i];
+		if (!m_skillTreeKnown || m_scriptT < 1.5f) return;
+		if (phase == 0)
+		{
+			// InCombat 단계: 훈련장 허수아비 곁으로 가서 기본 공격 한 번 / 다음 단계: 5.5초 쉬기
+			if (st.expect == SkillGrowResult::InCombat)
+			{
+				Entity* best = nullptr;
+				int bestD = 99;
+				for (auto& [id, e] : m_ents)
+					if (e.kind == EntityKind::Monster && !e.dead && e.row && e.row->dummy)
+						if (const int d = Cheb(m_predX, m_predY, e.tx, e.ty); d < bestD) { bestD = d; best = &e; }
+				if (!best || bestD > 1)
+				{
+					if (m_goal.kind == GoalKind::None)
+						SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[1].x, WorldData::kDummySpots[1].y - 1 });
+					return;
+				}
+				if (m_goal.kind != GoalKind::None) ClearGoal();
+				TryAttackTarget(*best);
+				ClearGoal();
+				m_scriptT = 1.5f;
+				m_scriptStep = i * 3 + 1;
+				return;
+			}
+			if (i > 0 && kSteps[i - 1].expect == SkillGrowResult::InCombat && m_scriptT < 7.0f) return;
+			m_scriptStep = i * 3 + 1;
+			return;
+		}
+		if (phase == 1)
+		{
+			if (st.expect == SkillGrowResult::InCombat && m_scriptT < 1.8f) return;   // 공격이 서버에 닿을 틈
+			SendSkillGrow(st.op, skillFor(st.key), st.tier, st.choice);
+			m_scriptStep = i * 3 + 2;
+			m_scriptT = 1.5f;
+			return;
+		}
+		if (m_growAckSeq != m_growSeq) { if (m_scriptT > 6.f) { std::printf("[growcheck] step %d no ack\n", i); ++m_checkFail; m_scriptStep = (i + 1) * 3; } return; }
+		const bool ok = m_growAckResult == static_cast<uint8_t>(st.expect);
+		// 내림으로 갈래 레벨 밑이 되면 그 갈래가 꺼져야 한다(두 번째 내림 = 레벨 3)
+		bool extra = true;
+		if (i == 7) extra = MyGrow(skillFor(1)).pick[0] == 0 && MyGrow(skillFor(1)).level == 3;
+		if (i == kN - 1) extra = m_skillPoints == m_skillPointsTotal;
+		std::printf("[growcheck] step %d op=%u id=%u expect=%u got=%u %s%s\n", i, static_cast<unsigned>(st.op), skillFor(st.key),
+			static_cast<unsigned>(st.expect), m_growAckResult, ok && extra ? "PASS" : "FAIL", extra ? "" : " (state)");
+		std::fflush(stdout);
+		if (ok && extra) ++m_checkPass; else ++m_checkFail;
+		m_scriptStep = (i + 1) * 3;
+		m_scriptT = 1.5f;
 	}
 	else if (s == "behind")
 	{

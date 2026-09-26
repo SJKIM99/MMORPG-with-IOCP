@@ -267,7 +267,7 @@ namespace actorspr
 					a.xf.lean -= 3.f * u;
 					Tremble(a, p, 0.4f + u);
 					a.glow = 0.25f + 0.55f * u;
-					a.glowCol = cls == 1 ? Rgb(0xFFC870) : (cls == 2 ? Rgb(0xC08AFF) : Rgb(0x7FE8DA));
+					a.glowCol = cls == 1 ? Rgb(0xFFC870) : (cls == 2 ? Rgb(0xD8E2EC) : Rgb(0x7FE8DA));
 				}
 				else
 				{
@@ -359,6 +359,15 @@ namespace actorspr
 				a.xf.offset.x -= 5.f * p.hurt + 9.f * p.knock;
 				a.xf.lean -= 7.f * h;
 				a.xf.squash *= 1.f - 0.06f * h;
+			}
+			// 띄우기 · 넘어짐(Phase 2-A): 맞은 그림으로 젖혀져 떴다가 / 옆으로 누웠다 일어난다
+			if (p.dead <= 0.f && (p.air > 0.f || p.down > 0.f))
+			{
+				a.s = set.s[PcHurt];
+				a.ghost = nullptr;
+				a.xf.rot += -0.35f * std::sin(kPi * p.air) - 1.25f * p.down;
+				a.xf.squash *= 1.f - 0.08f * p.down;
+				a.xf.offset.y += 5.f * p.down;
 			}
 			// 쓰러짐: 맞은 자세로 젖혀지다가 누운 그림으로
 			if (p.dead > 0.f)
@@ -472,6 +481,18 @@ namespace actorspr
 				a.xf.lean -= 7.f * h;
 				a.xf.squash *= 1.f - 0.07f * h;
 				a.xf.stretch *= 1.f + 0.05f * h;
+			}
+			if (p.dead <= 0.f && (p.air > 0.f || p.down > 0.f))
+			{
+				a.s = set.s[MHurt];
+				a.ghost = nullptr;
+				if (FlattensOnDeath(row))
+					a.xf.squash *= 1.f - 0.3f * p.down;   // 누울 몸이 아닌 것은 납작 눌린다
+				else
+				{
+					a.xf.rot += -0.35f * std::sin(kPi * p.air) - 1.1f * p.down;
+					a.xf.offset.y += 5.f * p.down;
+				}
 			}
 			if (p.dead > 0.f)
 			{

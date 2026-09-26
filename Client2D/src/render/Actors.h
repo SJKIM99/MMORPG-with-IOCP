@@ -37,6 +37,9 @@ namespace actors
 		float bank = 0.f;        // 도는 쪽 기울기(도)
 		float settle = 0.f;      // 멈출 때 한 번 흔들림(−1~1 정도)
 		float gait = -1.f;       // 지금 속도 ÷ 규칙 속도(Body::gait). 음수 = 모름(도감 · 예전 호출 — moving만 본다)
+		// Phase 2-A 피격 반응
+		float air = 0.f;         // 0~1 띄워진 동안(뒤로 젖혀짐)
+		float down = 0.f;        // 0~1 넘어짐(1 = 누움)
 	};
 	// 좌우 방향(부호)과 돌아서는 중의 가로 배율. 그릴 때는 kTurnMinWidth 밑으로 좁히지 않는다 —
 	// 0 근처(한 프레임)에서 종잇장처럼 보이지 않고 "휙 도는" 인상만 남게(1-C 녹화 검토)

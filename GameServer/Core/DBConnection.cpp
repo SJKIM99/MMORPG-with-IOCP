@@ -529,3 +529,59 @@ bool DBConnection::SavePlayerProgress(int playerId, const std::vector<uint8_t>& 
 	if (!BindParam(2, SQL_C_BINARY, SQL_VARBINARY, 4000, (SQLPOINTER)data.data(), &cb_data)) return false;
 	return Execute(query.c_str());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2-D 기술 성장 — PlayerSkills(playerId, skillId, level, pick1, pick2)
+// ─────────────────────────────────────────────────────────────────────────────
+bool DBConnection::LoadPlayerSkills(int playerId, std::vector<DB_SKILL_INFO>& out)
+{
+	out.clear();
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC LoadPlayerSkills ?";
+	SQLINTEGER  pid = playerId;
+	SQLSMALLINT skillId{};
+	SQLCHAR     level{}, pick1{}, pick2{};
+	SQLLEN cb_id{}, cb_level{}, cb_p1{}, cb_p2{};
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_SHORT,    sizeof(skillId), &skillId, &cb_id))    return false;
+	if (!BindCol(2, SQL_C_UTINYINT, sizeof(level),   &level,   &cb_level)) return false;
+	if (!BindCol(3, SQL_C_UTINYINT, sizeof(pick1),   &pick1,   &cb_p1))    return false;
+	if (!BindCol(4, SQL_C_UTINYINT, sizeof(pick2),   &pick2,   &cb_p2))    return false;
+	while (Fetch())
+	{
+		DB_SKILL_INFO info{};
+		info._skillId = static_cast<uint16_t>(skillId);
+		info._level   = static_cast<uint8_t>(level);
+		info._pick1   = static_cast<uint8_t>(pick1);
+		info._pick2   = static_cast<uint8_t>(pick2);
+		out.push_back(info);
+	}
+	return true;
+}
+
+bool DBConnection::SavePlayerSkill(int playerId, const DB_SKILL_INFO& skill)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC SavePlayerSkill ?, ?, ?, ?, ?";
+	SQLINTEGER  pid   = playerId;
+	SQLSMALLINT sid   = static_cast<SQLSMALLINT>(skill._skillId);
+	SQLCHAR     level = skill._level;
+	SQLCHAR     p1    = skill._pick1;
+	SQLCHAR     p2    = skill._pick2;
+	if (!BindParam(1, SQL_C_LONG,     SQL_INTEGER,  0, (SQLPOINTER)&pid,   nullptr)) return false;
+	if (!BindParam(2, SQL_C_SHORT,    SQL_SMALLINT, 0, (SQLPOINTER)&sid,   nullptr)) return false;
+	if (!BindParam(3, SQL_C_UTINYINT, SQL_TINYINT,  0, (SQLPOINTER)&level, nullptr)) return false;
+	if (!BindParam(4, SQL_C_UTINYINT, SQL_TINYINT,  0, (SQLPOINTER)&p1,    nullptr)) return false;
+	if (!BindParam(5, SQL_C_UTINYINT, SQL_TINYINT,  0, (SQLPOINTER)&p2,    nullptr)) return false;
+	return Execute(query.c_str());
+}
+
+bool DBConnection::ResetPlayerSkills(int playerId)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC ResetPlayerSkills ?";
+	SQLINTEGER pid = playerId;
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	return Execute(query.c_str());
+}

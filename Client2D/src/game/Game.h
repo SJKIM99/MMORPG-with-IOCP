@@ -11,6 +11,8 @@
 #include "render/Actors.h"
 #include "ui/Ui.h"
 #include "Data/QuestData.h"
+#include "Data/SkillGrowth.h"
+#include "fx/SkillFx.h"
 
 #include <array>
 #include <cstdio>
@@ -50,6 +52,10 @@ public:
 		net::NetClient::NetSim netsim;  // 테스트: --netsim latency=150,jitter=40,spike=2
 		bool        debugOverlay = false;   // --f3: 처음부터 F3 정보 표시
 		int         classId = -1;       // 새 캐릭터 직업(-1이면 로그인 화면에서 고른다)
+		// Phase 2-A 시험용 덮어쓰기(-1 = 설정값 그대로): --quality 0~2 · --photosafe · --otherfx 0~100
+		int         quality = -1;
+		int         photoSafe = -1;
+		int         otherFx = -1;
 	};
 
 	bool Init(const Options& opts);
@@ -208,6 +214,7 @@ private:
 	[[nodiscard]] int AttackButton() const;
 	void LoadControls();                                // 키 · 소모품 칸(캐릭터별)
 	void SaveControls();
+	void ApplyFxOptions();   // 그래픽 품질 · 광과민 보호 · 다른 플레이어 연출 세기 · 흔들림(설정 → post · fxscale · 카메라)
 	[[nodiscard]] Vector2 NpcTile(uint16_t npcId) const;  // NPC의 지금 칸(서버가 알려 준 배회 위치)
 	// ── 마을 NPC(GameNpc.cpp) — 서버가 배회시키는 위치를 받아 걷게 그린다 ──
 	struct NpcView
@@ -283,10 +290,50 @@ private:
 	void DrawQuestOverlay(const Camera2D& cam);                    // 날아오는 퀘스트 물건
 	void DrawQuestScreenFx();                                      // 장 제목 · 엔딩(화면 전체)
 	float DrawQuestStackCards(float y);                            // 알림 띠 맨 위: 새 장소 · 퀘스트 완료 카드(차지한 높이)
-	// 0 = 기본 공격, 1~5 스킬. quiet: 안내 문구 없이(자동 공격·예약 시전).
+	// 기술 id로 시전(Phase 2-B: 확장 요청 SKILL_EX_REQ — 누름). quiet: 안내 문구 없이(자동 공격·예약 시전).
 	// forced: 대상을 정해서(자동 공격의 목표·사거리 밖에서 눌러 예약한 대상).
-	bool TryCastSkill(int slot, bool quiet = false, const ObjID& forced = ObjID{});
-	[[nodiscard]] const SkillRow* SkillInSlot(int slot) const;
+	bool TryCastSkill(uint16_t skillId, bool quiet = false, const ObjID& forced = ObjID{});
+	[[nodiscard]] const SkillRow* SkillInSlot(int slot) const;   // 0 = 기본 공격(직업 표의 첫 칸)
+	[[nodiscard]] static int CdIndex(uint16_t skillId);           // 재사용 대기 칸(SkillKey) — 서버와 같다
+	// ── Phase 2-B 기술 구조 V3(game/GameSkill.cpp) ──
+	void ReleaseHeldSkill(bool cancel);                // 차지 · 홀딩을 놓는다(키를 뗌 · 우클릭 취소)
+	void TickSkills(float dt);                         // 차지 게이지 · 홀딩 틱 연출 · 타격 시각표 · 놓침 확인
+	// 타격 시각표(예측 연출): ctx = 시전 연출 문맥(대상 예측 포함), 칸 좌표로 시작 · 조준 · 방향
+	void StartCastTimeline(const skillfx::ExCtx& ctx, const ObjID& caster, Vector2 originTile, Vector2 aimTile, Vector2 dirTile,
+		const ObjID& target, bool releaseOnly, double t0);
+	// 연출 문맥(시전자 · 조준 · 방향 · 예측 대상) — 내 시전 · 남의 알림이 같이 쓴다
+	skillfx::ExCtx MakeExCtx(const Entity& caster, uint16_t skillId, uint8_t phase, uint8_t stage, uint8_t flags, Vector2 originTile,
+		Vector2 aimTile, Vector2 dirTile, const Entity* target, bool mine);
+	[[nodiscard]] int CountInShape(const SkillHit& h, Vector2 center, Vector2 dirTile) const;   // 모양 안의 적(예측)
+	[[nodiscard]] static int CastSound(uint16_t skillId);              // 기술 시전음(GameCombat의 표)
+	[[nodiscard]] static bool SkillTrace();                            // HARVEN_SKILL_TRACE=1: 기술 요청 · 결과 · 알림 · 타격을 stderr로(시험용)
+	void HandleSkillEx(const SKILL_EX_NFY_PACKET& p);
+	void HandleForcedMove(const SUBJECT_FORCED_MOVE_NFY_PACKET& p);
+	void HandleCombatGauge(const COMBAT_GAUGE_INF_PACKET& p);
+	void HandleMonsterGauge(const MONSTER_GAUGE_NFY_PACKET& p);
+	void ApplyHitReaction(Entity& v, uint16_t skillId, uint8_t hitIndex, uint8_t flags, uint8_t flags2);
+	void StartAwakenCinematic(uint16_t skillId, Vector2 focusIso);
+	void DrawCinematic();                              // 각성기 컷인 · 차지 게이지(화면)
+	void DrawIdentityGauge(Rectangle r);
+	// ── Phase 2-E 훈련장(마을 동쪽) — 안전지대지만 기술을 쓸 수 있고 허수아비만 맞는다 ──
+	[[nodiscard]] bool CombatBlocked() const;          // 마을 안(훈련장 밖): 싸울 수 없다
+	void DrawDummyMeters(const Camera2D& cam);         // 허수아비 발밑: 아직 안 때렸으면 안내 한 줄
+	void DrawYardMeter();                              // 훈련 계측 판(왼쪽): 초당 피해 · 합계 · 가장 큰 한 방 · 기술별 몫
+	// ── Phase 2-D 기술 성장(game/GameSkillGrow.cpp) — 레벨 · 점수 · 갈래는 서버 권위(SKILL_TREE_INF · SKILL_GROW_ACK) ──
+	[[nodiscard]] SkillGrowth::State MyGrow(uint16_t skillId) const;   // 내 기술 레벨 · 갈래
+	[[nodiscard]] uint8_t MyVarBits(uint16_t skillId) const;           // 켜진 갈래(SKILL_EX_NFY.flags 비트 1~4와 같은 모양)
+	[[nodiscard]] const SkillDef* MyDef(uint16_t skillId) const;       // 갈래를 입힌 내 기술 표(skillview)
+	void HandleSkillTree(const SKILL_TREE_INF_PACKET& p);
+	void HandleSkillGrowAck(const SKILL_GROW_ACK_PACKET& p);
+	void SendSkillGrow(SkillGrowOp op, uint16_t skillId, uint8_t tier = 0, uint8_t choice = 0);
+	void DrawSkillGrowPanel(Rectangle r, uint16_t skillId);             // 기술 창 오른쪽: 레벨 · 갈래 · 시연
+	// 기술 시연(game/GameSkillStage.cpp) — 월드 밖 무대에서 실제 연출 시스템으로 반복 재생, 렌더 텍스처에 그린다.
+	// 그리는 쪽이 보여 줄 동안 매 프레임 DrawSkillStage를 부른다(0.25초 안 부르면 멈춘다). varBits: 입힐 갈래(미리 보기)
+	void TickSkillStage(float dt);
+	void RenderSkillStage();                                            // BeginDrawing 전에(렌더 텍스처)
+	void DrawSkillStage(Rectangle r, uint16_t skillId, uint8_t varBits, const char* caption);
+	// 시험(--script skillgrow · skills + HARVEN_GROW="12"): 여덟 칸을 targetLevel까지 올리고 갈래 Ⅰ=a · Ⅱ=b를 고른다. 끝나면 true
+	bool ScriptGrowStep(uint8_t targetLevel, uint8_t pickA, uint8_t pickB);
 
 	[[nodiscard]] int AttackRange() const;              // 자동 공격/예약 기술이 멈춰 설 거리
 	[[nodiscard]] Vector2 PredictLanding(const SkillRow& row, int tx, int ty, const Entity* target) const;
@@ -409,11 +456,12 @@ private:
 	uint16_t         m_freePoints = 0;
 	int              m_mp = 0, m_maxmp = 0;
 	float            m_mpShown = 1.f;
-	std::array<double, 6> m_skillReady{};           // 슬롯별 다시 쓸 수 있는 시각(로컬)
-	std::array<double, 6> m_skillCdTotal{};         // 쿨다운 길이(스윕 표시)
-	std::array<double, 6> m_skillFlash{};           // 쿨다운이 끝난 순간(반짝임)
+	// 재사용 대기 — 칸(SkillKey: C Q W E R A S D F V Space Z)마다. 서버의 m_keyReadyAt과 같은 칸
+	std::array<double, kSkillKeys> m_skillReady{};  // 다시 쓸 수 있는 시각(로컬)
+	std::array<double, kSkillKeys> m_skillCdTotal{};// 쿨다운 길이(스윕 표시)
+	std::array<double, kSkillKeys> m_skillFlash{};  // 쿨다운이 끝난 순간(반짝임)
 	uint16_t         m_castSeq = 0;
-	int              m_queuedSkill = -1;            // 사거리 밖에서 누른 스킬 — 다가가서 쓴다
+	int              m_queuedSkill = -1;            // 사거리 밖에서 누른 기술 id — 다가가서 쓴다
 	double           m_queuedAt = 0.0;
 	ObjID            m_queuedTarget{};
 	struct DelayedHit { double at; SUBJECT_DAMAGE_NFY_PACKET p; };
@@ -423,11 +471,11 @@ private:
 	std::string      m_comboName;
 	double           m_comboNameAt = -10.0;
 	bool             m_charOpen = false;            // 캐릭터(능력치) 창
-	std::array<double, 6> m_castSentAt{};           // 슬롯별 마지막 시전 요청 시각(쿨다운 기준)
+	std::array<double, kSkillKeys> m_castSentAt{};  // 칸별 마지막 시전 요청 시각(쿨다운 기준)
 	double           m_actionLockUntil = 0.0;       // 기술 동작 중엔 걸음을 보내지 않는다(무게감)
 	uint16_t         m_dashWaitSeq = 0;             // 돌진류: 서버 도착 칸을 받을 때까지 멈춤
 	double           m_dashWaitUntil = 0.0;
-	int              m_bufferSlot = -1;             // 쿨다운 직전에 누른 기술(선입력)
+	int              m_bufferSlot = -1;             // 쿨다운 직전에 누른 기술 id(선입력)
 	double           m_bufferAt = 0.0;
 	double           m_mpFlashAt = -10.0;
 	double           m_lastHitSfxAt = 0.0;
@@ -440,8 +488,106 @@ private:
 	double           m_dangerAt = -10.0;            // 내 발밑에 예고가 깔린 시각(화면 가장자리 경고)
 	struct ChainHop { ObjID caster; Vector2 iso; float z; double at; };
 	std::vector<ChainHop> m_chainHops;              // 벼락 사슬: 직전에 맞은 곳(다음 줄기의 시작점)
-	std::array<double, 6> m_readyPrev{};            // 쿨다운 끝 알림(반짝임) 판정용
+	std::array<double, kSkillKeys> m_readyPrev{};   // 쿨다운 끝 알림(반짝임) 판정용
+	// Phase 2-B 기술 상태(예측 — 서버 알림이 바로잡는다)
+	uint16_t         m_heldSkill = 0;               // 차지 · 홀딩 중인 기술
+	int              m_heldHot = -1;                // 그 기술의 칸(키를 떼는지 본다)
+	double           m_heldAt = 0.0;                // 누른 시각
+	bool             m_heldCharge = false;          // 차지(떼면 단계) / 홀딩(누르는 동안 틱)
+	double           m_holdTickAt = 0.0;
+	uint8_t          m_comboStage = 0;              // 기본 공격 콤보(예측)
+	double           m_comboAt = -10.0;
+	uint16_t         m_chainSkill = 0;              // 체인 입력 창
+	uint8_t          m_chainStage = 0;
+	double           m_chainUntil = 0.0;
+	uint16_t         m_toggleSkill = 0;             // 켜 둔 토글(철벽 태세)
+	uint16_t         m_identity = 0;                // 고유 기술 게이지 0~1000(서버 COMBAT_GAUGE_INF)
+	// Phase 2-E 허수아비 계측(내가 준 피해만) — 세 허수아비를 합쳐 한 번의 "측정". 5초 동안 안 때리면 다음 타격부터 다시 센다
+	struct YardMeter
+	{
+		double   first = 0.0, last = -100.0;
+		uint64_t total = 0;
+		uint32_t hits = 0, best = 0;
+		uint16_t bestSkill = 0;
+		std::array<uint64_t, SkillGrowth::kIdSpan> bySkill{};   // 기술별 합계(몫 막대)
+	};
+	YardMeter        m_yard;
+	// Phase 2-D 기술 성장(서버 SKILL_TREE_INF가 기준 — 요청은 결과가 올 때 바뀐다)
+	std::array<uint8_t, SkillGrowth::kIdSpan> m_skillGrow{};   // 기술 id → SkillGrowth::Pack
+	uint16_t         m_skillPoints = 0;             // 남은 기술 점수
+	uint16_t         m_skillPointsTotal = 0;
+	bool             m_skillTreeKnown = false;
+	uint16_t         m_growSeq = 0;
+	double           m_growBusyUntil = 0.0;         // 요청을 보내고 결과를 기다리는 동안(연타 막기)
+	uint16_t         m_growSel = 0;                 // 기술 창에서 고른 기술
+	double           m_growFlashAt = -10.0;         // 레벨이 오른 순간(창 반짝임)
+	uint16_t         m_growFlashSkill = 0;
+	Rectangle        m_growCardRect[2][2]{};
+	uint16_t         m_scriptSegSkill = 0;          // skills 시험: 마지막으로 [skillseg]를 찍은 기술
+	uint64_t         m_frameNo = 0;                 // 그린 프레임 수(추적: 예측 타격 ↔ 서버 피해가 몇 프레임 차이인지)
+	struct Bench { struct Part { int frames = 0; float workSum = 0.f, workMax = 0.f; int drawSum = 0, drawMax = 0, partMax = 0, over33 = 0; } part[3]; };
+	Bench            m_bench;                       // --script awaken3 구간별 계측
+	uint16_t         m_growAckSeq = 0;              // 마지막 SKILL_GROW_ACK(시험 growcheck가 기대값과 맞춰 본다)
+	uint8_t          m_growAckResult = 0xFF;
+	int              m_checkPass = 0, m_checkFail = 0;        // 갈래 칸(마지막으로 그린 자리 — 시험 스크립트가 마우스를 올린다)
+	// 기술 시연 무대(Phase 2-D)
+	struct SkillStage
+	{
+		RenderTexture2D rt{};
+		bool     ready = false;
+		uint16_t want = 0;            // 보여 달라는 기술(이번 프레임에 그린 쪽이 정한다)
+		uint8_t  wantBits = 0;        // 그 기술에 입힐 갈래
+		double   wantAt = -10.0;
+		uint16_t skill = 0;           // 지금 도는 시연(0 = 멈춤)
+		uint8_t  flags = 0;
+		double   t0 = 0.0;
+		float    endAt = 0.f;         // 한 바퀴 길이(초)
+		int      step = 0;            // 다음에 알릴 단계
+		struct Evt { float at = 0.f; uint8_t phase = 0, stage = 0, flags = 0; bool release = false; };
+		struct Beat { float at = 0.f; uint8_t hit = 0; uint8_t evt = 0; bool tick = false; bool fired = false; };
+		std::vector<Evt>  evts;
+		std::vector<Beat> beats;
+		float    holdFrom = -1.f, holdTo = -1.f;   // 모으기 · 돌기 구간
+		Vector2  slideFrom{}, slideTo{};
+		float    slideAt = -1.f, slideDur = -1.f;  // 이동 기술: 미끄러짐
+		Entity   caster;
+		Entity   dummies[3];
+	};
+	SkillStage       m_stage;
+	bool             m_identityFull = false;
+	double           m_identityActiveUntil = 0.0;
+	double           m_identityFullAt = -10.0;
+	struct CastTimeline
+	{
+		ObjID    caster;
+		uint16_t skillId = 0;
+		uint8_t  stage = 0, flags = 0;
+		Vector2  origin{}, aim{}, dir{ 1.f, 0.f };   // 칸 좌표
+		ObjID    target;
+		double   t0 = 0.0;
+		uint32_t fired = 0;                          // 쏜 타격표 비트
+		bool     releaseOnly = false;
+		bool     mine = false;
+		bool     charging = false;                   // 남의 차지: 놓을 때까지 모으는 연출만
+		bool     leapDone = false;                   // 단죄: 0.6초에 뛰어오름
+		double   holdUntil = 0.0;                    // 홀딩: 이때까지 틱 연출
+		double   nextTick = 0.0;
+		skillfx::ExCtx ctx;                          // 연출 문맥(예측 대상 · 방향)
+	};
+	std::vector<CastTimeline> m_timelines;
+	struct Cinematic { uint16_t skillId = 0; double start = -10.0; Vector2 focus{}; uint8_t cls = 0; };
+	Cinematic        m_cine;
+	struct AwakeTotal { uint16_t skillId = 0; int sum = 0; int hits = 0; double lastAt = 0.0; Vector2 iso{}; };
+	AwakeTotal       m_awakeTotal;
 	float            m_feelTrauma = 0.f, m_feelKick = 0.f, m_feelStop = 0.f;   // 이번 프레임 적중 체감(최댓값만)
+	uint16_t         m_expectDashSkill = 0;         // 기술 이동을 기다린다(서버의 내 SUBJECT_MOVE_NFY를 순간이동 대신 미끄러짐으로)
+	double           m_expectDashUntil = 0.0;
+	double           m_lastBeatAt = -10.0;          // 내 기술 타격 예측(히트스톱을 이미 줬다)
+	uint16_t         m_lastBeatSkill = 0;
+	std::unordered_map<uint64_t, std::vector<ObjID>> m_bounceMarks;   // 방패 투척: 시전자 → 튕긴 대상(2단 연출)
+	int              m_scriptHoldAct = -1;          // 스크립트: 누르고 있는 기술 키(kb::Act)
+	double           m_scriptHoldUntil = 0.0;
+	bool             m_scriptHolding = false;
 
 	// 이동 예측(game/Motion.h). m_srv*/m_pred*는 mover 값을 매 프레임 비춰 둔 사본.
 	motion::LocalMover m_mover;
@@ -541,6 +687,7 @@ private:
 	double           m_ambNext = 0.0;
 	bool             m_ghostDraw = false;
 	bool             m_silhouetteDraw = false;
+	bool             m_cloneDraw = false;           // 먹물 분신(반투명 먹빛 복제)
 	int              m_pressKind = 0;      // 1 인벤토리, 2 퀵슬롯
 	int              m_pressIndex = -1;
 	Vector2          m_pressPos{};
@@ -599,6 +746,12 @@ private:
 	float            m_scriptMark = 0.f;                    // 녹화 시나리오: 달리기 시작 시각(시작 칸에 선 뒤)
 	int              m_scriptKeyX = 0, m_scriptKeyY = 0;   // 스크립트가 누른 WASD(화면 방향)
 	double           m_scriptNextCast = 0.0;                // aimcombat: 다음 기술 키
+	struct ScriptCast { int hot; float hold; float wait; };   // skills: 칸 · 누르고 있을 시간 · 다음까지
+	std::vector<ScriptCast> m_scriptSeq;
+	int              m_scriptSeqIdx = 0;
+	int              m_scriptSeqLoops = 0;
+	double           m_scriptApproachAt = -10.0;
+	bool             m_scriptGrowDone = false;      // skills + HARVEN_GROW: 갈래를 다 골랐다
 	int              m_scriptCastIdx = 0;
 	uint32_t         m_lastPacketsIn = 0;                   // 통신 멈춤 판단(원격 외삽 — motion::SetNetQuiet)
 	double           m_lastRecvAt = 0.0;

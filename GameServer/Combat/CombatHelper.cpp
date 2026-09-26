@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Combat/CombatHelper.h"
+#include "Combat/SkillEx.h"
 #include "User.h"
 #include "Monster.h"
 #include "UserHelper.h"
@@ -233,10 +234,11 @@ namespace CombatHelper
 		const ObjID monsterId = monster->GetObjID();
 		victim->m_lastCombatAt = now;
 
-		// 잔상 회피 중이면 전부 피한다.
-		if (victim->Status().Has(StatusId::Evade, now))
+		// 잔상 회피 · 무적(이동기 · 각성기) 중이면 전부 피한다. 잔상 회피 직후(0.3초 안)면 완벽 회피.
+		if (victim->Status().Has(StatusId::Evade, now) || now < victim->m_invulnUntil)
 		{
 			UserHelper::BroadcastDamage(victim, monsterId, 0, flags, 0, 0, DAMAGE2_EVADE);
+			SkillEx::OnEvaded(victim, now);
 			return false;
 		}
 		const int monsterLevel = monster->GetSpecies() ? monster->GetSpecies()->level : 1;
@@ -254,6 +256,7 @@ namespace CombatHelper
 		{
 			damage = std::max<uint32_t>(1, damage / 2);
 			flags2 |= DAMAGE2_GUARD;
+			SkillEx::AddIdentity(victim, 60);   // 서약기사: 막으면 서약이 찬다
 		}
 
 		victim->GetStat()->TakeDamage(static_cast<uint16_t>(std::min<uint32_t>(damage, 65535)));
@@ -277,7 +280,12 @@ namespace CombatHelper
 		{
 			victim->m_lastCounterAt = now;
 			bool crit = false;
-			const uint32_t counter = RollUserDamage(victim, DamageKind::Physical, 70, false, crit);
+			// Phase 2-D 철벽 태세 갈래: 「날 선 반격」 피해 +30% · 「불꽃 반격」「울림 반격」 상태이상
+			const SkillGrowth::State gs = victim->GrowState(5);
+			const SkillGrowth::Variant* sharp = SkillGrowth::FindMod(5, gs, SkillGrowth::Mod::Heavy);
+			const SkillGrowth::Variant* elem = SkillGrowth::FindMod(5, gs, SkillGrowth::Mod::Element);
+			uint32_t counter = RollUserDamage(victim, DamageKind::Physical, sharp ? 70u * (100u + sharp->value) / 100u : 70u, false, crit);
+			counter = counter * SkillGrowth::DamagePercent(gs.level) / 100u;
 			UserHelper::BroadcastEffect(victim, victim->GetObjID(), EffectId::Counter, monster->GetX(), monster->GetY(), 0);
 			HitCtx ctx;
 			ctx.skillId = 5;
@@ -285,6 +293,12 @@ namespace CombatHelper
 			ctx.flags = static_cast<uint8_t>(DAMAGE_COMBO | (crit ? DAMAGE_CRIT : 0));
 			ctx.flags2 = DAMAGE2_COUNTER;
 			HitMonster(victim, monster, counter, ctx);
+			if (elem && !monster->GetStat()->IsDead())
+			{
+				const StatusRow& st = StatusTable::Get(elem->status);
+				const uint16_t tick = st.tickMs > 0 ? static_cast<uint16_t>(std::max<uint32_t>(1, victim->m_derived.attack * st.tickPercent / 100u)) : 0;
+				ApplyStatus(monster, elem->status, SkillGrowth::DefaultStatusMs(elem->status), 1, victim->GetObjID(), tick);
+			}
 		}
 		return dead;
 	}
@@ -298,6 +312,10 @@ namespace CombatHelper
 		if (StatusTable::Get(id).debuff && target->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eUser)
 		{
 			const auto user = static_pointer_cast<User>(target);
+			// Phase 2-B 슈퍼아머(홀딩 · 차지 · 서약 해방) · 무적: 몬스터가 거는 기절 · 빙결을 받지 않는다
+			if ((id == StatusId::Stun || id == StatusId::Freeze) && source.GetCategory<EnumCategory>() == EnumCategory::eMonster
+				&& (now < user->m_superArmorUntil || now < user->m_invulnUntil || user->Status().Has(StatusId::Oath, now)))
+				return;
 			durationMs = durationMs * (100u - std::min<uint32_t>(user->m_derived.statusResist, 60)) / 100u;
 		}
 		// 보스는 기절·빙결을 짧게 받는다(연계는 되지만 무한 제어는 안 되게).
@@ -389,8 +407,8 @@ namespace CombatHelper
 		outWall = false;
 		if (!target || target->GetStat()->IsDead() || tiles <= 0)
 			return false;
-		if (target->IsBoss())
-			return false;   // 보스는 밀리지 않는다
+		if (target->IsBoss() || target->IsDummy())
+			return false;   // 보스 · 허수아비는 밀리지 않는다(허수아비는 안전지대 안이라 늘 "벽"이 된다)
 		int dx = Sign(target->GetX() - fromX), dy = Sign(target->GetY() - fromY);
 		if (dx == 0 && dy == 0)
 			dx = target->IsFacingLeft() ? 1 : -1;
@@ -407,6 +425,30 @@ namespace CombatHelper
 			}
 			ObjID id = target->GetObjID();
 			target->SetLastStepMs(95);
+			MonsterHelper::AStarMove(id, nx, ny);
+			moved = true;
+		}
+		target->ClearPath();
+		return moved;
+	}
+
+	bool Pull(const shared_ptr<Monster>& target, int toX, int toY, int tiles)
+	{
+		if (!target || target->GetStat()->IsDead() || tiles <= 0 || target->IsBoss() || target->IsDummy())
+			return false;
+		bool moved = false;
+		for (int i = 0; i < tiles; ++i)
+		{
+			const int dx = Sign(toX - target->GetX()), dy = Sign(toY - target->GetY());
+			if (dx == 0 && dy == 0) break;
+			const short nx = static_cast<short>(target->GetX() + dx);
+			const short ny = static_cast<short>(target->GetY() + dy);
+			if (nx == toX && ny == toY) break;   // 시전자 칸 바로 앞에서 멈춘다
+			if (!ZoneLayout::IsValidWorldPosition(nx, ny) || isCollision(nx, ny) || WorldData::IsSafeZone(nx, ny)
+				|| ZoneLayout::GetZoneIdByWorld(nx, ny) != target->GetZoneId())
+				break;
+			ObjID id = target->GetObjID();
+			target->SetLastStepMs(90);
 			MonsterHelper::AStarMove(id, nx, ny);
 			moved = true;
 		}

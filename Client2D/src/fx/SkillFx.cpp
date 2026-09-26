@@ -1,4 +1,10 @@
 #include "fx/SkillFx.h"
+#include "fx/SkillFxKit.h"
+#include "fx/Impact.h"
+#include "fx/FxGrade.h"
+#include "fx/Vfx.h"
+#include "fx/Trail.h"
+#include "render/Post.h"
 #include "fx/Effects.h"
 #include "fx/Particles.h"
 #include "game/Entity.h"
@@ -65,6 +71,11 @@ namespace skillfx
 		std::vector<Fall> g_falls;
 		float g_time = 0.f;
 
+	}
+
+	// 기술 연출 공용 도구(fx/SkillFxKit.h) — SkillFx(예전 18기술) · SkillFxEx(기술 구조 V3)가 함께 쓴다
+	namespace kit
+	{
 		Particle& P()
 		{
 			return fx::Particles().Emit();
@@ -72,13 +83,13 @@ namespace skillfx
 
 		// ── 그린 효과(fxart) — 없으면 nullptr, 절차적 효과는 그대로 ──
 		Particle* Tx(fxart::Id id, Vector2 iso, float z, float s0, float s1, float life, Color c0, Color c1, bool additive,
-			float rot = 0.f, float vrot = 0.f, float pop = 0.f)
+			float rot, float vrot, float pop)
 		{
 			Particle* p = fx::EmitTex(id, iso, z, s0, s1, life, c0, c1, additive);
 			if (p) { p->rot = rot; p->vrot = vrot; p->pop = pop; }
 			return p;
 		}
-		Particle* TxGround(fxart::Id id, Vector2 iso, float s0, float s1, float life, Color c0, Color c1, bool additive, float rot = 0.f, float vrot = 0.f)
+		Particle* TxGround(fxart::Id id, Vector2 iso, float s0, float s1, float life, Color c0, Color c1, bool additive, float rot, float vrot)
 		{
 			Particle* p = Tx(id, iso, 0.f, s0, s1, life, c0, c1, additive, rot, vrot);
 			if (p)
@@ -165,16 +176,21 @@ namespace skillfx
 			p.wobble = 12.f;
 		}
 
-		void AddDecal(Decal kind, Vector2 iso, float radius, float life, Color color)
-		{
-			g_decals.push_back(DecalFx{ kind, iso, radius, 0.f, life, color, RandF(0.f, 6.f) });
-			if (g_decals.size() > 24) g_decals.erase(g_decals.begin());
-		}
-
 		// 아이소 바닥 위 원(가로 반지름 r)
 		void GroundRing(Vector2 c, float r, float th, Color col)
 		{
 			gfx::EllipseArc(c, r, r * 0.5f, 0.f, kPi * 2.f, th, col);
+		}
+
+	}
+	using namespace kit;
+
+	namespace
+	{
+		void AddDecal(Decal kind, Vector2 iso, float radius, float life, Color color)
+		{
+			g_decals.push_back(DecalFx{ kind, iso, radius, 0.f, life, color, RandF(0.f, 6.f) });
+			if (g_decals.size() > 24) g_decals.erase(g_decals.begin());
 		}
 
 		// 각인 문양(바닥): 겹원 + 회전하는 획
@@ -206,6 +222,7 @@ namespace skillfx
 		}
 
 		float TileDist(Vector2 a, Vector2 b) { return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
+		Vector2 OnRing(Vector2 c, float r) { const float a = RandF(0.f, kPi * 2.f); return Vector2{ c.x + std::cos(a) * r, c.y + std::sin(a) * r * 0.5f }; }
 	}
 
 	void Clear()
@@ -214,11 +231,13 @@ namespace skillfx
 		g_bolts.clear();
 		g_decals.clear();
 		g_falls.clear();
+		kit::ClearEx();
 	}
 
 	void Update(float dt)
 	{
 		g_time += dt;
+		kit::UpdateEx(dt);
 		for (auto& p : g_proj)
 		{
 			p.t += dt;
@@ -254,6 +273,7 @@ namespace skillfx
 
 	void DrawGround()
 	{
+		kit::DrawExGround();
 		for (const auto& d : g_decals)
 		{
 			const float u = util::Clamp01(d.t / d.life);
@@ -321,6 +341,7 @@ namespace skillfx
 
 	void DrawWorld()
 	{
+		kit::DrawExWorld();
 		const auto& tex = assets::Get();
 		gfx::Additive(true);
 		for (const auto& p : g_proj)
@@ -418,9 +439,9 @@ namespace skillfx
 			{
 				const Vector2 p = util::LerpV(c.casterIso, c.landIso, i / static_cast<float>(n));
 				if (i % 3 == 0)
-					Tx(id == 4 ? fxart::Dust : fxart::ShadowSmoke, p, 4.f, 26.f, 64.f, 0.6f, id == 4 ? Rgb(0xD8C8A8, 170) : Rgb(0xC8B0FF, 150), Rgb(0x8A7A60, 0), id != 4 ? true : false, RandF(0.f, 6.f), RandF(-1.f, 1.f));
+					Tx(id == 4 ? fxart::Dust : fxart::ShadowSmoke, p, 4.f, 26.f, 64.f, 0.6f, id == 4 ? Rgb(0xD8C8A8, 170) : Rgb(0xD8E2EC, 150), Rgb(0x8A7A60, 0), id != 4 ? true : false, RandF(0.f, 6.f), RandF(-1.f, 1.f));
 				if (id == 4) Smoke(p, 6.f, Rgb(0xB8A078, 150), 18.f, 0.6f, 12.f);
-				else { Glow(p, 30.f, 26.f, 6.f, Rgb(0xB0A0FF, 160), 0.4f); Smoke(p, 20.f, Rgb(0x6A5A9A, 110), 16.f, 0.5f, 20.f); }
+				else { Glow(p, 30.f, 26.f, 6.f, Rgb(0xC8D2E0, 160), 0.4f); Smoke(p, 20.f, Rgb(0x3A4250, 110), 16.f, 0.5f, 20.f); }
 			}
 			return 0.f;
 		}
@@ -481,11 +502,11 @@ namespace skillfx
 			}
 			return 0.f;
 		case 10:  // 옛길 도약 — 사라짐/나타남 + 떠난 자리 각인
-			TxGround(fxart::RuneCircle, c.casterIso, 130.f, 90.f, 1.0f, Rgb(0xE0D0FF, 230), Rgb(0x9A6AFF, 0), true, 0.f, 3.f);
-			Tx(fxart::PillarTeal, c.landIso, 100.f, 200.f, 220.f, 0.5f, Rgb(0xE8E0FF, 230), Rgb(0x9A6AFF, 0), true, 0.f, 0.f, 0.06f);
-			for (int i = 0; i < 14; ++i) { Glow(c.casterIso, RandF(10.f, 60.f), 18.f, 2.f, Rgb(0xB08AFF, 200), RandF(0.2f, 0.5f)); }
-			for (int i = 0; i < 14; ++i) { Glow(c.landIso, RandF(10.f, 60.f), 2.f, 22.f, Rgb(0xD8C8FF, 220), RandF(0.2f, 0.4f)); }
-			fxs.Ring(c.landIso, 6.f, 60.f, 0.3f, Rgb(0xD8C8FF, 220), 3.f);
+			TxGround(fxart::RuneCircle, c.casterIso, 130.f, 90.f, 1.0f, Rgb(0xE0FFF8, 230), Rgb(0x3AA8A0, 0), true, 0.f, 3.f);
+			Tx(fxart::PillarTeal, c.landIso, 100.f, 200.f, 220.f, 0.5f, Rgb(0xE6FFF9, 230), Rgb(0x3AA8A0, 0), true, 0.f, 0.f, 0.06f);
+			for (int i = 0; i < 14; ++i) { Glow(c.casterIso, RandF(10.f, 60.f), 18.f, 2.f, Rgb(0x7FD0C4, 200), RandF(0.2f, 0.5f)); }
+			for (int i = 0; i < 14; ++i) { Glow(c.landIso, RandF(10.f, 60.f), 2.f, 22.f, Rgb(0xC8F0EA, 220), RandF(0.2f, 0.4f)); }
+			fxs.Ring(c.landIso, 6.f, 60.f, 0.3f, Rgb(0xC8F0EA, 220), 3.f);
 			return 0.f;
 		case 12:  // 낙성 — 예고 + 낙하
 			AddDecal(Decal::CometMark, c.targetIso, 150.f, std::max(0.3f, c.castSec), Rgb(0xFF5A3A));
@@ -493,16 +514,16 @@ namespace skillfx
 			return 0.f;
 		case 13:  // 연속 찌르기
 			for (int k = 0; k < 2; ++k)
-				if (Particle* t = Tx(fxart::Thrust, Vector2{ c.casterIso.x + dir * (26.f + k * 10.f), c.casterIso.y + k * 4.f }, 30.f - k * 8.f, 40.f, 80.f, 0.16f + k * 0.05f, Rgb(0xF4ECFF, 240), Rgb(0xA06AFF, 0), true, 0.f, 0.f, 0.03f))
+				if (Particle* t = Tx(fxart::Thrust, Vector2{ c.casterIso.x + dir * (26.f + k * 10.f), c.casterIso.y + k * 4.f }, 30.f - k * 8.f, 40.f, 80.f, 0.16f + k * 0.05f, Rgb(0xF6F9FF, 240), Rgb(0x9AA8BC, 0), true, 0.f, 0.f, 0.03f))
 					t->flipX = dir < 0.f;
-			fxs.Slash(c.casterIso, 30.f, dir, false, Rgb(0xE8D8FF, 200), 0.7f);
+			fxs.Slash(c.casterIso, 30.f, dir, false, Rgb(0xE8EEF6, 200), 0.7f);
 			return 0.f;
 		case 14:  // 그늘 걸음 — 연기 + 도착 지점 그림자
-			Tx(fxart::ShadowSmoke, c.casterIso, 30.f, 50.f, 120.f, 0.7f, Rgb(0xB8A0E0, 220), Rgb(0x2A1A4A, 0), false, RandF(0.f, 6.f), 0.8f);
-			Tx(fxart::ShadowSmoke, c.landIso, 30.f, 40.f, 100.f, 0.6f, Rgb(0xB8A0E0, 200), Rgb(0x2A1A4A, 0), false, RandF(0.f, 6.f), -0.8f);
-			for (int i = 0; i < 10; ++i) Smoke(c.casterIso, RandF(5.f, 40.f), Rgb(0x3A2A5A, 170), 22.f, 0.6f, 30.f);
-			AddDecal(Decal::Shadow, c.landIso, 48.f, 0.6f, Rgb(0x2A1A4A));
-			for (int i = 0; i < 8; ++i) Smoke(c.landIso, RandF(5.f, 40.f), Rgb(0x4A3A7A, 150), 18.f, 0.5f, 20.f);
+			Tx(fxart::ShadowSmoke, c.casterIso, 30.f, 50.f, 120.f, 0.7f, Rgb(0x9AA4B4, 220), Rgb(0x14161C, 0), false, RandF(0.f, 6.f), 0.8f);
+			Tx(fxart::ShadowSmoke, c.landIso, 30.f, 40.f, 100.f, 0.6f, Rgb(0x9AA4B4, 200), Rgb(0x14161C, 0), false, RandF(0.f, 6.f), -0.8f);
+			for (int i = 0; i < 10; ++i) Smoke(c.casterIso, RandF(5.f, 40.f), Rgb(0x23262E, 170), 22.f, 0.6f, 30.f);
+			AddDecal(Decal::Shadow, c.landIso, 48.f, 0.6f, Rgb(0x14161C));
+			for (int i = 0; i < 8; ++i) Smoke(c.landIso, RandF(5.f, 40.f), Rgb(0x2E333C, 150), 18.f, 0.5f, 20.f);
 			return 0.f;
 		case 15:  // 독 칼날
 			if (Particle* v = Tx(fxart::Venom, Vector2{ c.casterIso.x + dir * 24.f, c.casterIso.y }, 30.f, 30.f, 70.f, 0.35f, Rgb(0xD8FFB0, 230), Rgb(0x4AB020, 0), true, 0.f, 0.f, 0.05f))
@@ -510,16 +531,16 @@ namespace skillfx
 			fxs.Slash(c.casterIso, 30.f, dir, false, Rgb(0x9AF06A, 220), 1.0f);
 			return 0.f;
 		case 17:  // 후방 습격 — 붉은 보라 X
-			Tx(fxart::DaggerFlash, Vector2{ c.casterIso.x + dir * 20.f, c.casterIso.y }, 34.f, 50.f, 110.f, 0.22f, Rgb(0xFFE8FF, 245), Rgb(0xE06AFF, 0), true, 0.6f * dir, 0.f, 0.04f);
-			fxs.Slash(c.casterIso, 34.f, dir, false, Rgb(0xE06AFF, 230), 1.1f);
-			fxs.Slash(c.casterIso, 26.f, -dir, true, Rgb(0xFF5A8A, 200), 0.9f);
+			Tx(fxart::DaggerFlash, Vector2{ c.casterIso.x + dir * 20.f, c.casterIso.y }, 34.f, 50.f, 110.f, 0.22f, Rgb(0xFFFFFF, 245), Rgb(0xC8D2E0, 0), true, 0.6f * dir, 0.f, 0.04f);
+			fxs.Slash(c.casterIso, 34.f, dir, false, Rgb(0xC8D2E0, 230), 1.1f);
+			fxs.Slash(c.casterIso, 26.f, -dir, true, Rgb(0xB8C4D4, 200), 0.9f);
 			return 0.f;
 		case 18:  // 그믐 베기 — 달빛 원
-			TxGround(fxart::Halo, c.casterIso, 30.f, 90.f, 0.9f, Rgb(0xE8E0FF, 220), Rgb(0x8A6AFF, 0), true);
-			Tx(fxart::SlashHeavy, c.casterIso, 32.f, 120.f, 170.f, 0.5f, Rgb(0xE8E0FF, 230), Rgb(0x8A6AFF, 0), true, 0.f, dir * 20.f, 0.05f);
-			AddDecal(Decal::Whirl, c.casterIso, 84.f, 0.9f, Rgb(0xD8D0FF));
-			AddDecal(Decal::Shadow, c.casterIso, 90.f, 1.0f, Rgb(0x1A1030));
-			Glow(c.casterIso, 60.f, 60.f, 140.f, Rgb(0xC8C0FF, 120), 0.8f);
+			TxGround(fxart::Halo, c.casterIso, 30.f, 90.f, 0.9f, Rgb(0xF0F4FA, 220), Rgb(0x6A7890, 0), true);
+			Tx(fxart::SlashHeavy, c.casterIso, 32.f, 120.f, 170.f, 0.5f, Rgb(0xF0F4FA, 230), Rgb(0x6A7890, 0), true, 0.f, dir * 20.f, 0.05f);
+			AddDecal(Decal::Whirl, c.casterIso, 84.f, 0.9f, Rgb(0xD8E2EC));
+			AddDecal(Decal::Shadow, c.casterIso, 90.f, 1.0f, Rgb(0x0C0E12));
+			Glow(c.casterIso, 60.f, 60.f, 140.f, Rgb(0xC8D2E0, 120), 0.8f);
 			return 0.f;
 		default:
 			return 0.f;
@@ -539,20 +560,35 @@ namespace skillfx
 		}
 		switch (id)
 		{
-		case 2:   // 방패 강타: 둔탁한 충격 + 별
-			fxs.Ring(iso, 6.f, 58.f, 0.3f, Rgb(0xFFE08A, 230), 5.f);
-			for (int i = 0; i < 6; ++i) Spark(iso, z, RandF(120.f, 240.f), RandF(0.f, 6.28f), Rgb(0xFFF6C0), Rgb(0xFFB030, 0), 0.3f, 8.f);
+		case 2:   // 방패 강타: 둔탁한 충격 + 새김 원(종 울림 고리)
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T2; c.elem = impact::Element::Gold; c.heavy = true; c.crit = crit;
+			impact::Strike(c);
+			vfx::Spawn(vfx::Make(vfx::Kind::Seal, iso, 0.f, 120.f, 0.7f, vfx::GoldRamp()));
 			break;
+		}
 		case 3:
 			fxs.HitSpark(iso, height, Rgb(0xFFD070), crit, 1.f);
 			break;
-		case 4:
+		case 4:   // 돌진 충돌(T2 5겹: 섬광 · 고리 · 파편 · 흙먼지 · 조명 + 자국)
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T2; c.elem = impact::Element::Earth; c.heavy = true; c.crit = crit;
+			impact::Strike(c);
+		}
 			if (Particle* d = Tx(fxart::Dirt, iso, 6.f, 50.f, 110.f, 0.6f, Rgb(0xE0D0B8, 220), Rgb(0x8A7A60, 0), false, RandF(-0.3f, 0.3f)))
 				d->vz = 40.f;
 			fxs.Ring(iso, 8.f, 70.f, 0.35f, Rgb(0xFFB050, 220), 6.f);
-			for (int i = 0; i < 8; ++i) Smoke(iso, 6.f, Rgb(0xB8A078, 150), 20.f, 0.6f, 14.f);
 			break;
 		case 6:   // 처형: 땅이 갈라진다
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T4; c.elem = impact::Element::Gold; c.heavy = true; c.crit = crit;
+			impact::Slam(c, 70.f);
+			impact::Pillar(c, 320.f);
+			impact::Strike(c);
+		}
 			Tx(fxart::PillarGold, iso, 120.f, 200.f, 260.f, 0.55f, Rgb(0xFFF4D0, 245), Rgb(0xFF8A3A, 0), true, 0.f, 0.f, 0.05f);
 			Tx(fxart::HitCrit, iso, z, 100.f, 200.f, 0.3f, Rgb(0xFFFFFF, 255), Rgb(0xFF8A3A, 0), true, RandF(0.f, 6.f), 0.f, 0.05f);
 			AddDecal(Decal::Crack, iso, 70.f, 1.6f, Rgb(0xFF8A3A));
@@ -566,6 +602,11 @@ namespace skillfx
 			for (int i = 0; i < 7; ++i) Spark(iso, z, RandF(90.f, 200.f), RandF(0.f, 6.28f), Rgb(0xE0F8FF), Rgb(0x4AB8FF, 0), 0.25f, 6.f);
 			break;
 		case 8:   // 빙결: 얼음 조각
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T2; c.elem = impact::Element::Frost;
+			impact::Shatter(c, 34.f);
+		}
 			Tx(fxart::IceBurst, iso, z, 50.f, 120.f, 0.35f, Rgb(0xF0FCFF, 240), Rgb(0x6AC8FF, 0), true, RandF(0.f, 6.f), 0.f, 0.05f);
 			Tx(fxart::IceSpikes, iso, 24.f, 50.f, 80.f, 0.9f, Rgb(0xE8F8FF, 235), Rgb(0x9AE8FF, 0), false, 0.f, 0.f, 0.08f);
 			for (int i = 0; i < 8; ++i) Shard(iso, z, Rgb(0xC8F0FF, 230), RandF(40.f, 120.f), RandF(4.f, 7.f), RandF(0.5f, 0.9f));
@@ -576,16 +617,33 @@ namespace skillfx
 			Tx(fxart::Embers, iso, z + 10.f, 40.f, 70.f, 0.6f, Rgb(0xFFD080, 230), Rgb(0xFF3A10, 0), true);
 			for (int i = 0; i < 8; ++i) Ember(iso, z, Rgb(0xFFD060), Rgb(0xFF3A10, 0), 12.f, RandF(0.4f, 0.7f));
 			break;
-		case 10:  // 각인 폭발
-			Tx(fxart::HitMagic, iso, z, 60.f, 130.f, 0.3f, Rgb(0xF0E8FF, 240), Rgb(0x9A6AFF, 0), true, RandF(0.f, 6.f), 2.f, 0.05f);
-			Glow(iso, z, 30.f, 90.f, Rgb(0xC0A0FF, 220), 0.3f);
+		case 10:  // 각인 폭발(떠난 자리) — T2 폭발(섬광 · 고리 · 균열 · 그을음 · 연기 · 조명)
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T2; c.elem = impact::Element::Teal; c.crit = crit;
+			impact::Explosion(c, 34.f);
+		}
+			Tx(fxart::HitMagic, iso, z, 60.f, 130.f, 0.3f, Rgb(0xE6FFF9, 240), Rgb(0x3AA8A0, 0), true, RandF(0.f, 6.f), 2.f, 0.05f);
 			break;
 		case 11:  // 번개
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T2; c.elem = impact::Element::Bolt; c.crit = crit;
+			impact::LightningStrike(c, 260.f);
+		}
 			Tx(fxart::SparkBall, iso, z, 40.f, 90.f, 0.24f, Rgb(0xFFFFFF, 250), Rgb(0x6AB8FF, 0), true, RandF(0.f, 6.f), 6.f, 0.04f);
 			Glow(iso, z, 26.f, 80.f, Rgb(0xE8F0FF, 240), 0.2f);
 			for (int i = 0; i < 9; ++i) Spark(iso, z, RandF(140.f, 320.f), RandF(0.f, 6.28f), Rgb(0xFFFFFF), Rgb(0x6AB8FF, 0), 0.3f, 7.f);
+			// 5겹 채우기: 발밑 충격 고리 · 타는 연기
+			vfx::Spawn(vfx::Make(vfx::Kind::GroundRing, iso, 0.f, 90.f, 0.3f, impact::RampOf(impact::Element::Bolt)));
+			for (int i = 0; i < 3; ++i) Smoke(iso, z * 0.6f, Rgb(0x6A7078, 140), 16.f, 0.6f, 22.f);
 			break;
 		case 12:  // 낙성 충돌
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = 20.f; c.tier = fxgrade::Tier::T4; c.elem = impact::Element::Fire; c.heavy = true;
+			impact::Explosion(c, 62.f);
+		}
 			Tx(fxart::HitCrit, iso, 40.f, 140.f, 300.f, 0.4f, Rgb(0xFFF0C0, 255), Rgb(0xFF5A1A, 0), true, RandF(0.f, 6.f), 0.f, 0.06f);
 			TxGround(fxart::FireRing, iso, 40.f, 180.f, 0.7f, Rgb(0xFFD8A0, 240), Rgb(0xFF4A10, 0), true);
 			for (int i = 0; i < 3; ++i)
@@ -598,12 +656,25 @@ namespace skillfx
 			for (int i = 0; i < 26; ++i) Spark(iso, 10.f, RandF(200.f, 480.f), RandF(0.f, 6.28f), Rgb(0xFFE08A), Rgb(0xFF3A10, 0), 0.6f, 10.f);
 			for (int i = 0; i < 16; ++i) Smoke(iso, 10.f, Rgb(0x5A4A3A, 180), 40.f, 1.4f, 40.f);
 			break;
-		case 13: case 17:
-			for (int i = 0; i < (crit ? 10 : 5); ++i) Spark(iso, z, RandF(140.f, 280.f), RandF(-0.8f, 0.8f), Rgb(0xF0E0FF), Rgb(0xA06AFF, 0), 0.25f, 7.f);
+		case 13:
+			for (int i = 0; i < (crit ? 10 : 5); ++i) Spark(iso, z, RandF(140.f, 280.f), RandF(-0.8f, 0.8f), Rgb(0xF0F4FA), Rgb(0x9AA8BC, 0), 0.25f, 7.f);
 			break;
-		case 14:
-			Tx(fxart::ShadowSmoke, iso, z, 40.f, 90.f, 0.5f, Rgb(0xB8A0E0, 200), Rgb(0x2A1A4A, 0), false, RandF(0.f, 6.f), 1.f);
-			for (int i = 0; i < 6; ++i) Smoke(iso, z, Rgb(0x3A2A5A, 160), 18.f, 0.5f, 25.f);
+		case 17:  // 후방 습격(T2): 달빛 타격 + 먹물 자국 2초
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T2; c.elem = impact::Element::Moon; c.crit = crit; c.heavy = crit;
+			impact::Strike(c);
+			vfx::Spawn(vfx::Make(vfx::Kind::InkStain, iso, 0.f, 70.f, 2.f, vfx::InkRamp()));
+			break;
+		}
+		case 14:  // 그늘 걸음 기습(T2): 먹물 폭발 · 고리
+		{
+			impact::Ctx c;
+			c.iso = iso; c.z = z; c.tier = fxgrade::Tier::T2; c.elem = impact::Element::Ink; c.crit = crit;
+			impact::InkBurst(c, 34.f);
+			vfx::Spawn(vfx::Make(vfx::Kind::GroundRing, iso, 0.f, 90.f, 0.3f, vfx::MoonRamp()));
+		}
+			Tx(fxart::ShadowSmoke, iso, z, 40.f, 90.f, 0.5f, Rgb(0x9AA4B4, 200), Rgb(0x14161C, 0), false, RandF(0.f, 6.f), 1.f);
 			break;
 		case 15:  // 독
 			Tx(fxart::Venom, iso, z, 40.f, 80.f, 0.35f, Rgb(0xE0FFC0, 235), Rgb(0x4AB020, 0), true, RandF(0.f, 6.f), 0.f, 0.05f);
@@ -613,8 +684,8 @@ namespace skillfx
 			fxs.HitSpark(iso, height, Rgb(0x8AE85A), crit, 1.f);
 			break;
 		case 18:
-			Tx(fxart::HitMagic, iso, z, 50.f, 110.f, 0.26f, Rgb(0xF4F0FF, 240), Rgb(0x9A8AFF, 0), true, RandF(0.f, 6.f), -2.f, 0.05f);
-			for (int i = 0; i < 5; ++i) Spark(iso, z, RandF(120.f, 260.f), RandF(0.f, 6.28f), Rgb(0xFFFFFF), Rgb(0xB0A0FF, 0), 0.25f, 7.f);
+			Tx(fxart::HitMagic, iso, z, 50.f, 110.f, 0.26f, Rgb(0xF6F9FF, 240), Rgb(0x8A98AC, 0), true, RandF(0.f, 6.f), -2.f, 0.05f);
+			for (int i = 0; i < 5; ++i) Spark(iso, z, RandF(120.f, 260.f), RandF(0.f, 6.28f), Rgb(0xFFFFFF), Rgb(0xC8D2E0, 0), 0.25f, 7.f);
 			break;
 		default:
 			fxs.HitSpark(iso, height, Rgb(0xFFE0B0), crit, 1.f);
@@ -628,19 +699,7 @@ namespace skillfx
 			for (int i = 0; i < 10; ++i) Smoke(iso, 8.f, Rgb(0x9A8A70, 170), 22.f, 0.8f, 20.f);
 		}
 		if (comboId != 0)
-		{
-			Tx(fxart::HitCrit, iso, z, 110.f, 230.f, 0.34f, Rgb(0xFFF8E0, 255), Rgb(0xFFB040, 0), true, RandF(0.f, 6.f), 1.5f, 0.06f);
-			// 연계: 금빛 폭발 + 별
-			Glow(iso, z, 40.f, 140.f, Rgb(0xFFE08A, 230), 0.3f);
-			Particle& s = P();
-			s.pos = iso; s.z = z;
-			s.life = s.maxLife = 0.35f;
-			s.size0 = 40.f; s.size1 = 150.f;
-			s.c0 = Rgb(0xFFFFFF); s.c1 = Rgb(0xFFB040, 0);
-			s.rot = RandF(0.f, 1.f);
-			s.shape = Shape::Star;
-			s.additive = true;
-		}
+			ComboFx(comboId, iso, height, crit);
 	}
 
 	Feel CastFeel(uint16_t id)
@@ -688,9 +747,9 @@ namespace skillfx
 		switch (id)
 		{
 		case EffectId::RuneExplosion:
-			fxs.Ring(iso, 10.f, 90.f, 0.35f, Rgb(0xC0A0FF, 230), 6.f);
-			Glow(iso, 20.f, 40.f, 120.f, Rgb(0xB08AFF, 200), 0.35f);
-			for (int i = 0; i < 16; ++i) Spark(iso, 16.f, RandF(120.f, 300.f), RandF(0.f, 6.28f), Rgb(0xF0E8FF), Rgb(0x8A5AFF, 0), 0.4f, 7.f);
+			fxs.Ring(iso, 10.f, 90.f, 0.35f, Rgb(0x9ADCD2, 230), 6.f);
+			Glow(iso, 20.f, 40.f, 120.f, Rgb(0x7FD0C4, 200), 0.35f);
+			for (int i = 0; i < 16; ++i) Spark(iso, 16.f, RandF(120.f, 300.f), RandF(0.f, 6.28f), Rgb(0xE6FFF9), Rgb(0x2E8A82, 0), 0.4f, 7.f);
 			break;
 		case EffectId::SteamBurst:
 			fxs.Ring(iso, 10.f, 100.f, 0.4f, Rgb(0xE8F8FF, 230), 7.f);
@@ -706,6 +765,28 @@ namespace skillfx
 		case EffectId::PoisonBurst:
 			fxs.Ring(iso, 6.f, 50.f + param * 12.f, 0.4f, Rgb(0x9AF06A, 230), 6.f);
 			for (int i = 0; i < 8 + param * 3; ++i) Ember(iso, 20.f, Rgb(0xC8FF8A), Rgb(0x2A8A20, 0), 18.f, RandF(0.4f, 0.8f));
+			vfx::Spawn(vfx::Make(vfx::Kind::InkBurst, iso, 26.f, 70.f + param * 10.f, 0.5f, vfx::PoisonRamp()));
+			break;
+		// ── Phase 2-B ──
+		case EffectId::Resonance:
+		{
+			// 새김 울림: 표식이 차례로 폭발(param = 순서)
+			impact::Ctx c;
+			c.iso = iso; c.z = 26.f; c.tier = fxgrade::Tier::T3; c.elem = impact::Element::Teal; c.heavy = true;
+			impact::Explosion(c, 46.f);
+			vfx::Spawn(vfx::Make(vfx::Kind::Glyph, iso, 60.f, 60.f, 0.45f, vfx::TealRamp()));
+			vfx::Spawn(vfx::Make(vfx::Kind::Rune, iso, 0.f, 120.f, 1.2f, vfx::TealRamp()));
+			post::Shockwave(iso, 10.f, 120.f, 22.f, 0.5f, 0.35f);
+			break;
+		}
+		case EffectId::CloneStrike:
+			for (int k = 0; k < 2; ++k)
+			{
+				vfx::Spec sl = vfx::Make(vfx::Kind::Slash, iso, 34.f, 76.f, 0.2f, vfx::InkRamp());
+				sl.rot = RandF(0.f, kPi); sl.delay = k * 0.06f;
+				vfx::Spawn(sl);
+			}
+			for (int i = 0; i < 6; ++i) Smoke(iso, 30.f, Rgb(0x23232C, 160), 16.f, 0.5f, 18.f);
 			break;
 		// ── 장비 특수 효과 ──
 		case EffectId::ProcThunder:
@@ -740,9 +821,9 @@ namespace skillfx
 			for (int i = 0; i < 10; ++i) Spark(iso, 30.f, RandF(140.f, 280.f), RandF(0.f, 6.28f), Rgb(0xFFE0A0), Rgb(0xFF3A10, 0), 0.32f, 6.f);
 			break;
 		case EffectId::ProcEcho:
-			fxs.Ring(iso, 4.f, 40.f, 0.3f, Rgb(0xD8C0FF, 220), 3.f);
-			fxs.Ring(iso, 4.f, 64.f, 0.45f, Rgb(0xB090FF, 160), 2.f);
-			Glow(iso, 30.f, 16.f, 60.f, Rgb(0xC8A8FF, 180), 0.3f);
+			fxs.Ring(iso, 4.f, 40.f, 0.3f, Rgb(0xD8F0EC, 220), 3.f);
+			fxs.Ring(iso, 4.f, 64.f, 0.45f, Rgb(0x9ADCD2, 160), 2.f);
+			Glow(iso, 30.f, 16.f, 60.f, Rgb(0xB8E8E0, 180), 0.3f);
 			break;
 		case EffectId::ProcGuardian:
 			fxs.Ring(iso, 10.f, 46.f, 0.5f, Rgb(0xFFE08A, 230), 5.f);
@@ -782,7 +863,16 @@ namespace skillfx
 		if (e.Status(static_cast<uint8_t>(StatusId::Freeze), now) && RandF() < dt * 3.f)
 			Shard(iso, RandF(10.f, height * 0.6f), Rgb(0xE0F8FF, 200), 20.f, 3.f, 0.5f);
 		if (e.Status(static_cast<uint8_t>(StatusId::Ambush), now) && RandF() < dt * 10.f)
-			Glow(iso, RandF(20.f, height * 0.8f), 10.f, 1.f, Rgb(0xC08AFF, 200), 0.4f);
+			Glow(iso, RandF(20.f, height * 0.8f), 10.f, 1.f, Rgb(0xE8EEF6, 200), 0.4f);
+		// 서약 해방: 발밑에 불씨
+		if (e.Status(static_cast<uint8_t>(StatusId::Oath), now) && RandF() < dt * 14.f)
+			Ember(iso, RandF(2.f, 10.f), Rgb(0xFFE0A0), Rgb(0xE08A30, 0), 12.f, RandF(0.5f, 0.9f));
+		// 밤 장막: 먹빛 가닥이 몸에서 흩날린다
+		if (e.Status(static_cast<uint8_t>(StatusId::Veil), now) && RandF() < dt * 16.f)
+			Smoke(iso, RandF(10.f, height * 0.9f), Rgb(0x1E1E26, 150), RandF(10.f, 16.f), 0.6f, 26.f);
+		// 함성: 금빛 기운이 오른다
+		if (e.Status(static_cast<uint8_t>(StatusId::Rally), now) && RandF() < dt * 6.f)
+			Glow(OnRing(iso, 16.f), RandF(10.f, height * 0.7f), 8.f, 1.f, Rgb(0xF2C47C, 200), 0.5f);
 	}
 
 	void DrawStatus(const Entity& e, Vector2 iso, float height, float now)
@@ -811,14 +901,29 @@ namespace skillfx
 				gfx::Line(pts[i], pts[(i + 1) % 6], 1.5f, Rgb(0xF0FAFF, 180));
 			gfx::Line(Vector2{ iso.x - w * 0.5f, iso.y - h * 0.7f }, Vector2{ iso.x - w * 0.1f, iso.y - h * 0.9f }, 3.f, Rgb(0xFFFFFF, 150));
 		}
-		// 철벽 태세: 금빛 방패 막
+		// 철벽 태세: 새김 문양이 도는 반투명 금빛 방벽(발밑 고리 + 몸을 감싼 막)
 		if (e.Status(static_cast<uint8_t>(StatusId::Guard), now))
 		{
 			const float pulse = 0.5f + 0.5f * std::sin(now * 6.f);
 			gfx::SetDepth(iso.y / gfx::kHalfH + 0.66f);
 			gfx::Additive(true);
-			gfx::EllipseGrad(Vector2{ iso.x, iso.y - height * 0.45f }, 34.f, height * 0.62f, Rgb(0xFFC860, 20), Rgb(0xFFD070, static_cast<uint8_t>(90 + 50 * pulse)));
-			gfx::EllipseArc(Vector2{ iso.x, iso.y - height * 0.45f }, 34.f, height * 0.62f, 0.f, kPi * 2.f, 2.f, Rgb(0xFFE8A0, 160));
+			gfx::EllipseGrad(Vector2{ iso.x, iso.y - height * 0.45f }, 34.f, height * 0.62f, Rgb(0xF2C47C, 16), Rgb(0xF2C47C, static_cast<uint8_t>(70 + 40 * pulse)));
+			gfx::EllipseArc(Vector2{ iso.x, iso.y - height * 0.45f }, 34.f, height * 0.62f, 0.f, kPi * 2.f, 1.5f, Rgb(0xFFF0C8, 150));
+			// 막 위를 도는 새김 획
+			for (int i = 0; i < 6; ++i)
+			{
+				const float a0 = now * 1.4f + i * kPi / 3.f;
+				gfx::EllipseArc(Vector2{ iso.x, iso.y - height * 0.45f }, 34.f, height * 0.62f, a0, a0 + 0.35f, 2.5f, Rgb(0xFFF0C8, 200));
+			}
+			// 발밑 도는 고리(방패 문장 여섯)
+			const float spin = -now * 1.1f;
+			gfx::EllipseArc(iso, 40.f, 20.f, 0.f, kPi * 2.f, 1.5f, Rgb(0xF2C47C, 150));
+			for (int i = 0; i < 6; ++i)
+			{
+				const float a = spin + i * kPi / 3.f;
+				const Vector2 p{ iso.x + std::cos(a) * 40.f, iso.y + std::sin(a) * 20.f };
+				gfx::Star(p, 1.5f, 4.5f, 4, a, Rgb(0xFFF0C8, 220));
+			}
 			gfx::Additive(false);
 		}
 		// 각인 표식: 머리 위 각인
@@ -832,6 +937,44 @@ namespace skillfx
 			gfx::Line(Vector2{ c.x - 5, c.y - 6 }, Vector2{ c.x + 5, c.y + 6 }, 2.f, Rgb(0xC8F8FF, 230));
 			gfx::Line(Vector2{ c.x + 5, c.y - 6 }, Vector2{ c.x - 5, c.y + 6 }, 2.f, Rgb(0xC8F8FF, 230));
 			gfx::Line(Vector2{ c.x, c.y - 8 }, Vector2{ c.x, c.y + 8 }, 2.f, Rgb(0xC8F8FF, 230));
+		}
+		// 서약 해방: 등 뒤에 새김 원이 돈다
+		if (e.Status(static_cast<uint8_t>(StatusId::Oath), now))
+		{
+			gfx::SetDepth(iso.y / gfx::kHalfH - 0.05f);
+			gfx::Additive(true);
+			const Vector2 c{ iso.x, iso.y - height * 0.55f };
+			const float spin = now * 1.6f;
+			gfx::EllipseArc(c, 30.f, 30.f, spin, spin + kPi * 1.5f, 2.f, Rgb(0xF2C47C, 170));
+			gfx::EllipseArc(c, 23.f, 23.f, -spin * 1.3f, -spin * 1.3f + kPi * 1.2f, 1.5f, Rgb(0xFFF0C8, 150));
+			for (int i = 0; i < 6; ++i)
+			{
+				const float a = spin + i * kPi / 3.f;
+				gfx::Line(Vector2{ c.x + std::cos(a) * 23.f, c.y + std::sin(a) * 23.f }, Vector2{ c.x + std::cos(a) * 30.f, c.y + std::sin(a) * 30.f }, 1.5f, Rgb(0xF2C47C, 150));
+			}
+			gfx::Additive(false);
+		}
+		// 도발: 머리 위 붉은 표식(이 몬스터는 기사를 쫓는다)
+		if (e.Status(static_cast<uint8_t>(StatusId::Taunt), now))
+		{
+			gfx::SetDepth(iso.y / gfx::kHalfH + 0.7f);
+			const Vector2 c{ iso.x + 14.f, iso.y - height - 12.f };
+			const float bob = std::sin(now * 8.f) * 1.5f;
+			gfx::Tri(Vector2{ c.x - 4.f, c.y - 12.f + bob }, Vector2{ c.x + 4.f, c.y - 12.f + bob }, Vector2{ c.x, c.y + bob }, Rgb(0xE0604E, 230));
+			gfx::Circle(Vector2{ c.x, c.y + 4.f + bob }, 2.2f, Rgb(0xE0604E, 230));
+		}
+		// 무력화(보스): 머리 위 금빛 고리 조각이 흔들린다
+		if (e.Status(static_cast<uint8_t>(StatusId::Broken), now))
+		{
+			gfx::SetDepth(iso.y / gfx::kHalfH + 0.7f);
+			gfx::Additive(true);
+			for (int i = 0; i < 5; ++i)
+			{
+				const float a = now * 4.f + i * kPi * 0.4f;
+				const Vector2 c{ iso.x + std::cos(a) * 22.f, iso.y - height - 10.f + std::sin(a) * 7.f };
+				gfx::Star(c, 2.f, 7.f, 4, a, Rgb(0xF2C47C, 230));
+			}
+			gfx::Additive(false);
 		}
 		// 중독 중첩: 발밑 초록 점
 		if (const auto* ps = e.Status(static_cast<uint8_t>(StatusId::Poison), now))
@@ -875,6 +1018,43 @@ namespace skillfx
 		const Vector2 c4[4] = { corner(-1, -1, 1), corner(1, -1, 1), corner(1, 1, 1), corner(-1, 1, 1) };
 		for (int i = 0; i < 4; ++i)
 			gfx::Line(c4[i], c4[(i + 1) % 4], 2.5f + pulse * 1.5f, util::MulA(util::Shade(red, 1.3f), 0.9f));
+	}
+
+	// 예고 테두리만 — 후처리(블룸) 뒤, 모든 연출 위에 한 번 더(공통 규칙 5: 적의 예고 장판은 어떤 연출보다 위에서 읽혀야 한다).
+	// 밝은 연출 위에서도 보이게 먹빛 바탕선 위에 붉은 선, 차오르는 앞선은 흰빛 섞인 붉은색
+	void DrawTelegraphEdge(const Entity& e)
+	{
+		const auto& t = e.tele;
+		if (!t.active)
+			return;
+		const float u = util::Clamp01(t.t / std::max(0.05f, t.dur));
+		const float pulse = 0.5f + 0.5f * std::sin(t.t * 22.f);
+		const Color dark = Rgb(0x0B0D10, 170), red = Rgb(0xFF4A32), hot = Rgb(0xFFD0C0);
+		auto edge = [&](Vector2 a, Vector2 b, float w, Color c)
+		{
+			DrawLineEx(a, b, w + 3.f, dark);
+			DrawLineEx(a, b, w, c);
+		};
+		if (t.shape == static_cast<uint8_t>(TelegraphShape::Line))
+		{
+			const Vector2 a = gfx::IsoPx(t.from.x, t.from.y), b = gfx::IsoPx(t.c.x, t.c.y);
+			const Vector2 d = util::Norm(util::Sub(b, a));
+			const Vector2 n{ -d.y * 22.f, d.x * 11.f };
+			edge(util::Add(a, n), util::Add(b, n), 2.f, util::MulA(red, 0.9f));
+			edge(util::Sub(a, n), util::Sub(b, n), 2.f, util::MulA(red, 0.9f));
+			const Vector2 mid = util::LerpV(a, b, u);
+			edge(util::Add(mid, n), util::Sub(mid, n), 2.f + pulse, util::MulA(hot, 0.95f));
+			return;
+		}
+		const float R = t.radius + 0.5f;
+		auto corner = [&](float dx, float dy, float k) { return gfx::IsoPx(t.c.x + dx * R * k, t.c.y + dy * R * k); };
+		for (int i = 0; i < 4; ++i)
+		{
+			static constexpr float kC[4][2] = { { -1, -1 }, { 1, -1 }, { 1, 1 }, { -1, 1 } };
+			const int j = (i + 1) % 4;
+			edge(corner(kC[i][0], kC[i][1], 1.f), corner(kC[j][0], kC[j][1], 1.f), 2.f + pulse, util::MulA(util::Shade(red, 1.2f), 0.95f));
+			if (u > 0.05f) edge(corner(kC[i][0], kC[i][1], u), corner(kC[j][0], kC[j][1], u), 1.5f, util::MulA(hot, 0.85f));
+		}
 	}
 
 	void MonsterImpact(uint8_t pattern, Vector2 fromIso, Vector2 toIso, int radius, Color bodyColor)

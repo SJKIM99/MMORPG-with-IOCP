@@ -47,6 +47,8 @@ namespace CombatHelper
 
 	// 넉백 — 몬스터를 (fromX, fromY) 반대쪽으로 tiles칸 민다. 벽에 막히면 outWall.
 	bool Knockback(const std::shared_ptr<Monster>& target, int fromX, int fromY, int tiles, bool& outWall);
+	// Phase 2-B 끌어당김 — 몬스터를 (toX, toY) 쪽으로 tiles칸(그 칸 바로 앞에서 멈춘다). 보스는 끌려오지 않는다.
+	bool Pull(const std::shared_ptr<Monster>& target, int toX, int toY, int tiles);
 	// 서버가 옮기는 플레이어 이동(돌진·도약·그늘 걸음). 걸음 시간 stepMs로 보간.
 	bool MovePlayerTo(const std::shared_ptr<User>& player, short x, short y, uint32_t stepMs);
 

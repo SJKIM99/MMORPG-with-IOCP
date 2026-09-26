@@ -97,6 +97,15 @@ struct DB_ITEM_INFO
 	uint64_t _extra     = 0;   // Inventory.extra (V2 희귀도·옵션 — Data/ItemRules.h ItemInstance)
 };
 
+// Phase 2-D 기술 성장 한 줄(PlayerSkills) — 레벨 1 · 갈래 없음은 행이 없다
+struct DB_SKILL_INFO
+{
+	uint16_t _skillId = 0;
+	uint8_t  _level   = 1;
+	uint8_t  _pick1   = 0;
+	uint8_t  _pick2   = 0;
+};
+
 // 슬롯 두 개를 한 SQL 트랜잭션으로 함께 반영하기 위한 단위 데이터(DBConnection::
 // SaveTwoInventorySlots가 파라미터로 받으므로 그 선언보다 먼저 와야 한다).
 // hasItem=false면 그 슬롯은 삭제 대상(itemId/count/equipped는 무시된다).
@@ -217,6 +226,19 @@ struct DB_PROGRESS_SAVE_EVENT : DB_EVENT_BASE
 {
 	int                  playerId = 0;
 	std::vector<uint8_t> data;
+};
+
+// Phase 2-D 기술 성장(PlayerSkills) — 인벤토리와 같은 playerId 샤드. 값은 절대값(바뀐 뒤 상태)이라
+// 같은 요청이 두 번 반영돼도 결과가 같다. 초기화는 행을 모두 지운다(레벨 1 · 갈래 없음 = 행 없음).
+struct DB_SKILL_SAVE_EVENT : DB_EVENT_BASE
+{
+	int           playerId = 0;
+	DB_SKILL_INFO skill;
+};
+
+struct DB_SKILL_RESET_EVENT : DB_EVENT_BASE
+{
+	int playerId = 0;
 };
 
 // ── Timer event types ────────────────────────────────────────────────────────

@@ -298,6 +298,10 @@ namespace kb
 				if (id == "swapMouse") g_opt.swapMouse = v != 0;
 				else if (id == "castMode") g_opt.castMode = v == 1 ? CastMode::ShowThenCast : CastMode::Quick;
 				else if (id == "showGrid") g_opt.showGrid = v != 0;
+				else if (id == "gfxQuality") g_opt.gfxQuality = static_cast<uint8_t>(std::clamp(v, 0, 2));
+				else if (id == "photoSafe") g_opt.photoSafe = v != 0;
+				else if (id == "otherFx") g_opt.otherFx = static_cast<uint8_t>(std::clamp(v, 0, 100));
+				else if (id == "shake") g_opt.shake = v != 0;
 			}
 		}
 	}
@@ -317,5 +321,9 @@ namespace kb
 		out << "opt swapMouse " << (g_opt.swapMouse ? 1 : 0) << '\n';
 		out << "opt castMode " << (g_opt.castMode == CastMode::ShowThenCast ? 1 : 0) << '\n';
 		out << "opt showGrid " << (g_opt.showGrid ? 1 : 0) << '\n';
+		out << "opt gfxQuality " << static_cast<int>(g_opt.gfxQuality) << '\n';
+		out << "opt photoSafe " << (g_opt.photoSafe ? 1 : 0) << '\n';
+		out << "opt otherFx " << static_cast<int>(g_opt.otherFx) << '\n';
+		out << "opt shake " << (g_opt.shake ? 1 : 0) << '\n';
 	}
 }

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <unordered_map>
 
 // stb_image(공개 도메인, v2.30) — 이 번역 단위 안에서 JPEG만 쓴다(STB_IMAGE_STATIC).
@@ -77,6 +78,7 @@ namespace art
 	}
 
 	const Texture2D* KeyArt() { return Load("key_art.jpg"); }
+	const Texture2D* Cutin(int classId) { return classId >= 0 && classId < 3 ? Load("cutin_" + std::to_string(classId) + ".jpg") : nullptr; }
 
 	const Texture2D* Chapter(int chapter)
 	{

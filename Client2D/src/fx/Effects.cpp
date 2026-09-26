@@ -1,4 +1,5 @@
 #include "fx/Effects.h"
+#include "fx/FxScale.h"
 #include "fx/Particles.h"
 #include "render/Draw.h"
 #include "render/Assets.h"
@@ -142,7 +143,11 @@ namespace fx
 		m_hitStop = std::max(0.f, m_hitStop - dt);
 		const float sdt = dt * TimeScale();
 		Age(m_damage, dt);
-		for (auto& d : m_damage) d.punch = std::max(0.f, d.punch - dt * 6.f);
+		for (auto& d : m_damage)
+		{
+			d.punch = std::max(0.f, d.punch - dt * 6.f);
+			d.stackShown = util::Damp(d.stackShown, d.stack, 18.f, dt);
+		}
 		Age(m_floats, dt);
 		Age(m_rings, sdt);
 		Age(m_beams, sdt);
@@ -155,7 +160,7 @@ namespace fx
 	}
 
 	// ── 기본 요소 ─────────────────────────────────────────────────────────────
-	void Effects::Damage(Vector2 iso, float height, int amount, DamageStyle style, uint64_t stackKey)
+	void Effects::Damage(Vector2 iso, float height, int amount, DamageStyle style, uint64_t stackKey, uint64_t victimKey, uint8_t tags)
 	{
 		const bool critLike = style == DamageStyle::Crit || style == DamageStyle::TakenCrit;
 		if (stackKey != 0)
@@ -183,7 +188,37 @@ namespace fx
 		DamageNum n{ iso, height, text, style, 0.f, life, RandF(-18.f, 18.f) };
 		n.key = stackKey;
 		n.total = amount;
+		n.tags = tags;
+		if (victimKey != 0 && stackKey == 0)
+		{
+			// 같은 대상의 최근 숫자는 한 줄씩 위로 — 새 숫자는 좌우를 번갈아(겹침 금지)
+			int recent = 0;
+			for (auto& d : m_damage)
+				if (d.victim == victimKey && d.t < 0.75f) { d.stack += 1.f; ++recent; }
+			const float side = (recent % 2 == 0) ? -1.f : 1.f;
+			n.vx = side * RandF(16.f, 28.f);
+			n.victim = victimKey;
+			if (recent > 0) n.life += 0.1f;
+		}
 		m_damage.push_back(n);
+	}
+
+	void Effects::TotalDamage(Vector2 iso, float height, int total)
+	{
+		char buf[32];
+		// 세 자리마다 쉼표(큰 숫자를 한눈에)
+		std::string digits = std::to_string(total), out;
+		const int n = static_cast<int>(digits.size());
+		for (int i = 0; i < n; ++i)
+		{
+			out += digits[static_cast<size_t>(i)];
+			if ((n - 1 - i) % 3 == 0 && i != n - 1) out += ',';
+		}
+		std::snprintf(buf, sizeof(buf), "%s", out.c_str());
+		DamageNum d{ iso, height, buf, DamageStyle::Total, 0.f, 2.1f, 0.f };
+		d.total = total;
+		d.punch = 1.f;
+		m_damage.push_back(d);
 	}
 
 	void Effects::FloatText(Vector2 iso, float height, const std::string& text, Color color, float size, float life, ui::Face face)
@@ -226,6 +261,8 @@ namespace fx
 
 	void Effects::Flash(Color color, float strength, float duration)
 	{
+		strength *= fxscale::Flash();
+		if (strength <= 0.005f) return;
 		m_flashColor = color;
 		m_flashColor.a = static_cast<unsigned char>(util::Clamp01(strength) * 255.f);
 		m_flash = duration;
@@ -844,20 +881,55 @@ namespace fx
 			case DamageStyle::DotBurn: size = 18.f; fill = Rgb(0xE8965A); line = Rgb(0x2E1204); break;
 			case DamageStyle::DotPoison: size = 18.f; fill = Rgb(0xA0D66E); line = Rgb(0x0E2408); break;
 			case DamageStyle::Guarded: size = 21.f; fill = Rgb(0xD6C496); line = Rgb(0x2A2006); break;
+			case DamageStyle::Total: size = 50.f; fill = Rgb(0xF2C47C); line = Rgb(0x2A1604); break;
 			}
 			// 합쳐진 숫자는 타수만큼 조금씩 커진다(최대 +45%) + 합쳐지는 순간 튄다
 			if (d.hits > 1) size *= 1.f + std::min(0.45f, (d.hits - 1) * 0.09f);
 			size *= 1.f + d.punch * 0.35f;
 			// 튀어나옴(오버슈트) → 위로 떠오르며 감속 → 사라짐
 			const float pop = u < 0.12f ? util::EaseOutBack(u / 0.12f, 3.f) : 1.f + 0.15f * (1.f - util::Clamp01((u - 0.12f) * 5.f));
-			const float rise = util::EaseOutCubic(u) * (d.style == DamageStyle::Crit ? 70.f : 55.f);
+			const bool total = d.style == DamageStyle::Total;
+			const float rise = total ? util::EaseOutCubic(util::Clamp01(u * 3.f)) * 36.f : util::EaseOutCubic(u) * (d.style == DamageStyle::Crit ? 70.f : 55.f);
 			const float a = u > 0.65f ? 1.f - (u - 0.65f) / 0.35f : 1.f;
 			const float x = d.iso.x + d.vx * util::EaseOutCubic(u);
-			const Vector2 s = GetWorldToScreen2D(Vector2{ x, d.iso.y - d.h - rise }, cam);
+			// 쌓인 줄: 한 줄 = 글자 크기의 0.9배(화면 px → 월드 px)
+			const float lineH = size * 0.9f / std::max(0.3f, cam.zoom);
+			const Vector2 s = GetWorldToScreen2D(Vector2{ x, d.iso.y - d.h - rise - d.stackShown * lineH }, cam);
+			if (total)
+			{
+				DrawNumber("총 피해", Vector2{ s.x, s.y - size * 0.95f }, 17.f * pop, Rgb(0xF6DCA8), line, a, ui::Face::Strong);
+				DrawNumber(d.text, s, size * pop, fill, line, a);
+				continue;
+			}
 			const float shake = (d.style == DamageStyle::Crit && u < 0.2f) ? std::sin(d.t * 90.f) * 3.f : 0.f;
 			DrawNumber(d.text, Vector2{ s.x + shake, s.y }, size * pop, fill, line, a);
-			if (d.style == DamageStyle::Crit || d.style == DamageStyle::TakenCrit)
-				DrawNumber("치명", Vector2{ s.x, s.y - size * 0.82f }, 14.f * pop, d.style == DamageStyle::Crit ? Rgb(0xF6DCA8) : Rgb(0xF0B0A4), line, a, ui::Face::Strong);
+			{
+				// 표지: 치명 · 급소 · 후방 · 반격 · 메아리 — 모양(색 · 크기)이 다르다
+				std::string tag;
+				Color tagCol = Rgb(0xF6DCA8);
+				auto add = [&](const char* t, Color c) { if (!tag.empty()) tag += " · "; else tagCol = c; tag += t; };
+				if (d.tags & TagWeak) add("급소", Rgb(0xFFE2A8));
+				if (d.style == DamageStyle::Crit || d.style == DamageStyle::TakenCrit) add("치명", d.style == DamageStyle::Crit ? Rgb(0xF6DCA8) : Rgb(0xF0B0A4));
+				if (d.tags & TagBack) add("후방", Rgb(0xD8E2EC));
+				if (d.tags & TagCounter) add("반격", Rgb(0x9FE0D6));
+				if (d.tags & TagEcho) add("잔향", Rgb(0xF2D8A0));
+				if (d.tags & TagClone) add("분신", Rgb(0xC8D2E0));
+				if (!tag.empty())
+				{
+					const float ts = (d.tags & TagWeak) ? 16.f : 14.f;
+					DrawNumber(tag, Vector2{ s.x, s.y - size * 0.82f }, ts * pop, tagCol, line, a, ui::Face::Strong);
+					if (d.tags & TagWeak)
+					{
+						// 급소: 숫자 양옆에 짧은 사선 두 줄(베인 자국)
+						const float w = size * 0.9f + static_cast<float>(d.text.size()) * size * 0.28f;
+						for (int k = -1; k <= 1; k += 2)
+						{
+							const float cx = s.x + k * w * 0.5f;
+							DrawLineEx(Vector2{ cx - 5.f, s.y + 6.f }, Vector2{ cx + 5.f, s.y - 8.f }, 2.5f, util::MulA(Rgb(0xFFE2A8), a));
+						}
+					}
+				}
+			}
 			if (d.hits > 1)
 				DrawNumber("×" + std::to_string(d.hits), Vector2{ s.x + size * 0.9f + 14.f, s.y + size * 0.3f }, 16.f * pop, Rgb(0xE8DCC4), line, a * 0.9f, ui::Face::Number);
 		}

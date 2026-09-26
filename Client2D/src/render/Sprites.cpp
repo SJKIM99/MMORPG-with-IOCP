@@ -188,4 +188,21 @@ void main()
 	}
 
 	bool ShaderActive() { return g_active; }
+
+	bool Suspend()
+	{
+		if (!g_active) return false;
+		rlDrawRenderBatchActive();
+		EndShaderMode();
+		g_active = false;
+		return true;
+	}
+
+	void Resume(bool wasOn)
+	{
+		if (!wasOn || g_shader.id == 0) return;
+		rlDrawRenderBatchActive();
+		BeginShaderMode(g_shader);   // 알파 테스트 값은 프로그램에 남아 있다
+		g_active = true;
+	}
 }

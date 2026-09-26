@@ -44,6 +44,12 @@ public:
 		bool pending = false;
 	};
 	PatternState m_pattern;
+	// Phase 2-B 보스 무력화(게이지가 비면 3초 무력화 + 받는 피해 +30%) · 반격
+	uint16_t m_stagger = 0;           // 남은 무력화 게이지(0이면 무력화 중 · 회복 대기)
+	uint16_t m_staggerMax = 0;
+	uint32_t m_staggerRefillAt = 0;   // 이 시각 이후 첫 타격 때 게이지를 다시 채운다
+	uint32_t m_staggerSentAt = 0;
+	bool     m_countered = false;     // 예고 중 반격 타격을 맞았다(판정 때 끊긴다)
 	uint32_t m_patternReadyAt = 0;   // 다음 패턴 가능 시각(GetNowTime)
 	uint32_t m_busyUntil = 0;        // 예고·후딜 동안 이동/평타를 멈춘다
 
@@ -85,6 +91,8 @@ public:
 
 	[[nodiscard]] const MonsterTableRow* GetSpecies() const noexcept { return m_species; }
 	[[nodiscard]] bool IsBoss() const noexcept { return m_species != nullptr && m_species->boss; }
+	// Phase 2-E 훈련장 허수아비: 깨어나지 않고(움직임 · 공격 없음) 죽지 않는다
+	[[nodiscard]] bool IsDummy() const noexcept { return m_species != nullptr && m_species->dummy; }
 	[[nodiscard]] uint16_t GetMoveIntervalMs() const noexcept { return m_species != nullptr ? m_species->moveIntervalMs : 500; }
 	[[nodiscard]] uint16_t GetAttackIntervalMs() const noexcept { return m_species != nullptr ? m_species->attackIntervalMs : 1000; }
 	[[nodiscard]] int GetLeash() const noexcept { return m_species != nullptr ? m_species->leash : 7; }

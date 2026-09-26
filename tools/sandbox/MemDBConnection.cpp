@@ -12,7 +12,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #include "pch.h"
 #include "DBConnection.h"
+#include "Data/WorldData.h"
 
+#include <cctype>
+#include <cstdlib>
+#include <functional>
 #include <map>
 #include <mutex>
 
@@ -46,6 +50,7 @@ namespace
 		std::map<int, std::string> nameOf;                           // playerId → name
 		std::map<int, std::map<uint16_t, InvRow>> inventory;         // playerId → slot → 행 (Inventory)
 		std::map<int, std::vector<uint8_t>> progress;                // PlayerProgress
+		std::map<int, std::map<uint16_t, DB_SKILL_INFO>> skills;     // PlayerSkills(playerId → skillId → 행)
 		int nextPlayerId = 1;
 	};
 
@@ -89,7 +94,27 @@ bool DBConnection::IsUserRegistered(const string& name)
 {
 	auto& db = Db();
 	std::scoped_lock g(db.lock);
-	return db.players.count(name) != 0;
+	if (db.players.count(name) != 0)
+		return true;
+	// 샌드박스 시험용: "lvNN_…" 이름은 처음 접속에서도 NN레벨로 들어오게, 마을 시작 칸에 미리 만들어 둔다
+	// (신규 캐릭터 경로는 레벨 1로 들어오므로). 실제 서버(MSSQL)에는 이런 규칙이 없다.
+	if (name.size() > 4 && name[0] == 'l' && name[1] == 'v' && std::isdigit(static_cast<unsigned char>(name[2])))
+	{
+		const int lv = std::atoi(name.c_str() + 2);
+		if (lv < 1 || lv > 60)
+			return false;
+		PlayerRow row;
+		row.playerId = db.nextPlayerId++;
+		const size_t pick = std::hash<string>{}(name) % WorldData::kTownSpawnPointCount;
+		row.x = WorldData::kTownSpawnPoints[pick].x;
+		row.y = WorldData::kTownSpawnPoints[pick].y;
+		row.level = static_cast<uint8_t>(lv);
+		row.exp = 0;
+		db.players.emplace(name, row);
+		db.nameOf[row.playerId] = name;
+		return true;
+	}
+	return false;
 }
 
 bool DBConnection::VerifyUserPassword(const string& name, const string& password)
@@ -115,6 +140,14 @@ bool DBConnection::AddUserInfoInDataBase(const string& name, const string& passw
 		row.y = y;
 		row.level = level;
 		row.exp = exp;
+		// 샌드박스 시험용: 이름이 "lvNN_…"이면 NN레벨로 만든다(기술 녹화 · 시험장 — 모든 기술을 쓸 수 있게).
+		// 이 파일은 샌드박스 빌드 전용이라 실제 서버(MSSQL)에는 이런 규칙이 없다.
+		if (name.size() > 4 && name[0] == 'l' && name[1] == 'v' && std::isdigit(static_cast<unsigned char>(name[2])))
+		{
+			const int lv = std::atoi(name.c_str() + 2);
+			if (lv >= 1 && lv <= 60)
+				row.level = static_cast<uint8_t>(lv);
+		}
 		it = db.players.emplace(name, row).first;
 		db.nameOf[row.playerId] = name;
 	}
@@ -262,5 +295,39 @@ bool DBConnection::SavePlayerProgress(int playerId, const std::vector<uint8_t>& 
 	auto& db = Db();
 	std::scoped_lock g(db.lock);
 	db.progress[playerId] = data;
+	return true;
+}
+
+// ── Phase 2-D 기술 성장(PlayerSkills) — setup.sql LoadPlayerSkills · SavePlayerSkill · ResetPlayerSkills와 같은 의미 ──
+bool DBConnection::LoadPlayerSkills(int playerId, std::vector<DB_SKILL_INFO>& out)
+{
+	auto& db = Db();
+	std::scoped_lock g(db.lock);
+	out.clear();
+	const auto it = db.skills.find(playerId);
+	if (it != db.skills.end())
+		for (const auto& [id, row] : it->second)
+			out.push_back(row);
+	return true;
+}
+
+bool DBConnection::SavePlayerSkill(int playerId, const DB_SKILL_INFO& skill)
+{
+	auto& db = Db();
+	std::scoped_lock g(db.lock);   // upsert(기본값이면 삭제) = 한 트랜잭션
+	if (skill._level < 1 || skill._level > 10 || skill._pick1 > 2 || skill._pick2 > 2)
+		return false;                 // CHECK 제약과 같다
+	if (skill._level <= 1 && skill._pick1 == 0 && skill._pick2 == 0)
+		db.skills[playerId].erase(skill._skillId);
+	else
+		db.skills[playerId][skill._skillId] = skill;
+	return true;
+}
+
+bool DBConnection::ResetPlayerSkills(int playerId)
+{
+	auto& db = Db();
+	std::scoped_lock g(db.lock);
+	db.skills.erase(playerId);
 	return true;
 }

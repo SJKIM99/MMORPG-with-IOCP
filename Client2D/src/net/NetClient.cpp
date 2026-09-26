@@ -201,6 +201,31 @@ namespace net
 		Queue(p, PacketType::SKILL_CAST_REQ);
 	}
 
+	void NetClient::SendSkillEx(uint16_t skillId, SkillPhase phase, uint8_t flags, const ObjID& target, int aimX, int aimY, uint8_t dir, uint16_t seq)
+	{
+		SKILL_EX_REQ_PACKET p{};
+		p.skillId = skillId;
+		p.phase = static_cast<uint8_t>(phase);
+		p.flags = flags;
+		p.targetId = target;
+		p.aimX = static_cast<short>(aimX);
+		p.aimY = static_cast<short>(aimY);
+		p.dir = dir;
+		p.seq = seq;
+		Queue(p, PacketType::SKILL_EX_REQ);
+	}
+
+	void NetClient::SendSkillGrow(SkillGrowOp op, uint16_t skillId, uint8_t tier, uint8_t choice, uint16_t seq)
+	{
+		SKILL_GROW_REQ_PACKET p{};
+		p.op = static_cast<uint8_t>(op);
+		p.skillId = skillId;
+		p.tier = tier;
+		p.choice = choice;
+		p.seq = seq;
+		Queue(p, PacketType::SKILL_GROW_REQ);
+	}
+
 	void NetClient::SendStatAlloc(uint8_t stat, uint8_t amount)
 	{
 		STAT_ALLOC_REQ_PACKET p{};

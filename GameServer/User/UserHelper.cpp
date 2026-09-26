@@ -2,6 +2,8 @@
 #include "Combat/CombatHelper.h"
 #include "Data/MoveRule.h"
 #include "UserHelper.h"
+#include "Combat/SkillEx.h"
+#include "Combat/SkillGrow.h"
 #include "GameObjectManager.h"
 #include "Subject.h"
 #include "User.h"
@@ -985,6 +987,7 @@ namespace UserHelper
 			SendUSER_INFO_EX_INF(player);
 			if (gained > 0)
 			{
+				SkillGrow::SendTree(player);   // 기술 점수 +2(레벨마다)
 				SendSystemEx(player, SystemMessageCode::LevelUp, player->GetStat()->GetLevel());
 				BroadcastEffect(player, player->GetObjID(), EffectId::LevelUp, player->GetX(), player->GetY(), player->GetStat()->GetLevel());
 			}
@@ -1006,6 +1009,13 @@ namespace UserHelper
 			return;
 
 		const uint16_t clamped = static_cast<uint16_t>(std::clamp(damage, 1, 65535));
+		// Phase 2-E 허수아비: 맞기만 하고 죽지 않는다(HP를 다시 채움) · 반격 · 경험치 · 전리품 없음
+		if (monster->IsDummy())
+		{
+			BroadcastDamage(monster, playerId, clamped, damageFlags, skillId, comboId, flags2, hitIndex);
+			monster->GetStat()->SetHp(monster->GetStat()->GetMaxHp());
+			return;
+		}
 		const uint16_t remaining = monster->GetStat()->TakeDamage(clamped);
 		if (remaining > 0)
 		{
@@ -1246,7 +1256,7 @@ namespace UserHelper
 	}
 
 	void HandleGetUserInfo(const shared_ptr<GameSession>& session, const DB_USER_INFO& userInfo, const vector<DB_ITEM_INFO>& items,
-		const std::vector<uint8_t>& progress)
+		const std::vector<uint8_t>& progress, const std::vector<DB_SKILL_INFO>& skills)
 	{
 		if (session == nullptr || session->m_state != SOCKET_STATE::ST_ALLOC)
 			return;
@@ -1290,6 +1300,8 @@ namespace UserHelper
 				SaveProgress(player);
 			}
 			player->RecomputeStats(true);
+			// Phase 2-D 기술 레벨 · 갈래(직업이 정해진 뒤 — 다른 직업의 기록은 버린다)
+			(void)SkillGrow::Load(player, skills);
 		}
 
 		ObjID objId = player->GetObjID();
@@ -1319,6 +1331,7 @@ namespace UserHelper
 			CombatHelper::SendStats(player);
 			CombatHelper::SendResource(player);
 			QuestHelper::SendList(player);
+			SkillGrow::SendTree(player);
 		}
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
@@ -1378,6 +1391,7 @@ namespace UserHelper
 			CombatHelper::SendStats(player);
 			CombatHelper::SendResource(player);
 			QuestHelper::SendList(player);
+			SkillGrow::SendTree(player);
 		}
 
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
@@ -1803,6 +1817,7 @@ namespace UserHelper
 		player->SetLastStepMs(cost);
 		SectorHelper::HandlePlayerMove(player, x, y, false);
 		SendUSER_MOVE_EX_ACK(player, seq, MoveResult::Ok, cost);
+		SkillEx::OnMoved(player);   // Phase 2-B: 걸으면 캐스팅 · 차지 · (움직일 수 없는) 홀딩이 끊긴다
 		// 탐험 목표(존을 넘어가는 걸음이면 새 Zone 스레드가 소유 — 다음 걸음에서 본다)
 		if (!player->IsTransferring())
 			QuestHelper::OnMoved(player);

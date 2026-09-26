@@ -38,6 +38,8 @@ namespace rec
 
 	// 게임 화면에 들어온 시각(녹화 시작 기준점). 한 번만 의미가 있다.
 	void Arm(double now);
+	// 첫 장을 뜨는 시각(Arm + after) — 스크립트가 "녹화 몇 초에 무엇"을 찍을 때(기술별 GIF 자르기). 아직이면 −1
+	[[nodiscard]] double StartAt();
 	// 매 프레임, 모든 그리기가 끝나고 EndDrawing 직전에. 필요한 만큼 장을 뜬다.
 	void Capture(double now);
 	void Finish();

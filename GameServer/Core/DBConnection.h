@@ -47,6 +47,10 @@ public:
 	// 읽고 쓴다(PlayerProgress 테이블). 기능이 늘 때마다 컬럼을 늘리지 않기 위함.
 	bool			LoadPlayerProgress(int playerId, std::vector<uint8_t>& out);
 	bool			SavePlayerProgress(int playerId, const std::vector<uint8_t>& data);
+	// Phase 2-D 기술 성장(PlayerSkills): 레벨 1 · 갈래 없음이 아닌 기술만 행이 있다
+	bool			LoadPlayerSkills(int playerId, std::vector<DB_SKILL_INFO>& out);
+	bool			SavePlayerSkill(int playerId, const DB_SKILL_INFO& skill);   // 한 기술 upsert(기본값이면 삭제) — 한 트랜잭션
+	bool			ResetPlayerSkills(int playerId);                             // 모두 초기화(행 삭제)
 
 	// a/b 두 슬롯을 하나의 SQL 트랜잭션으로 함께 반영한다(각 슬롯은 독립적으로
 	// upsert 또는 삭제될 수 있다 — DB_ITEM_SLOT_SAVE::hasItem 참고). 장착 시 이전

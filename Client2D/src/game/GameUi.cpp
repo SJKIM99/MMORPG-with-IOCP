@@ -180,7 +180,13 @@ namespace
 		case StatusId::Guard: return "받는 피해가 절반, 맞을 때마다 반격한다.";
 		case StatusId::Ambush: return "다음 공격이 확정 치명타가 된다.";
 		case StatusId::Evade: return "잠깐 모든 공격을 피한다.";
-		case StatusId::Marked: return "벼락 사슬이 이 대상을 거쳐 더 멀리 튄다.";
+		case StatusId::Marked: return "벼락 사슬이 이 대상을 거쳐 더 멀리 튄다. 새김 울림이 터뜨린다.";
+		case StatusId::Oath: return "흔들리지 않는다(경직 면역). 모든 타격에 금빛 잔향(30%)이 따른다.";
+		case StatusId::Rally: return "공격 +15%.";
+		case StatusId::Veil: return "몬스터가 놓친다. 이동 +30%, 다음 기술은 급소를 찌른다.";
+		case StatusId::Taunt: return "도발한 기사를 쫓는다.";
+		case StatusId::Broken: return "무력화 — 움직이지 못하고 받는 피해 +30%.";
+		case StatusId::Clone: return "분신 둘이 다음 공격을 40%로 따라 한다(남은 횟수).";
 		default: return "";
 		}
 	}
@@ -219,6 +225,21 @@ namespace
 		case StatusId::Marked:
 			DrawLineEx(Vector2{ c.x - r * 0.7f, c.y - r * 0.7f }, Vector2{ c.x + r * 0.7f, c.y + r * 0.7f }, 2.5f, col);
 			DrawLineEx(Vector2{ c.x + r * 0.7f, c.y - r * 0.7f }, Vector2{ c.x - r * 0.7f, c.y + r * 0.7f }, 2.5f, col);
+			break;
+		case StatusId::Oath:   // 새김 원
+			DrawRing(c, r * 0.55f, r * 0.8f, time * 90.f, time * 90.f + 270.f, 24, col);
+			DrawCircleV(c, r * 0.25f, col);
+			break;
+		case StatusId::Rally:  // 위로 솟는 빛살 셋
+			for (int i = -1; i <= 1; ++i) DrawLineEx(Vector2{ c.x + i * r * 0.5f, c.y + r * 0.7f }, Vector2{ c.x + i * r * 0.5f, c.y - r * (0.5f + 0.3f * (i == 0)) }, 2.5f, col);
+			break;
+		case StatusId::Veil:   // 초승달
+			DrawCircleV(c, r * 0.8f, col);
+			DrawCircleV(Vector2{ c.x + r * 0.35f, c.y - r * 0.2f }, r * 0.7f, ui::theme::kSurface1);
+			break;
+		case StatusId::Clone:  // 겹친 두 몸
+			DrawCircleV(Vector2{ c.x - r * 0.35f, c.y }, r * 0.45f, util::WithA(col, 0.5f));
+			DrawCircleV(Vector2{ c.x + r * 0.35f, c.y }, r * 0.45f, col);
 			break;
 		default: DrawCircleV(c, r * 0.5f, col); break;
 		}
@@ -491,7 +512,7 @@ void Game::DrawTargetFrame()
 		return;
 	const float W = static_cast<float>(m_screenW);
 	const bool boss = t->IsBoss();
-	const Rectangle r{ std::round(W * 0.5f - 180.f), 12.f, 360.f, boss ? 62.f : 56.f };
+	const Rectangle r{ std::round(W * 0.5f - 180.f), 12.f, 360.f, boss ? 78.f : 56.f };
 	ui::Panel(r, 0.95f, false);
 	if (boss)
 		DrawRectangleRec(Rectangle{ r.x + 5, r.y + 1, r.width - 10, 2 }, ui::theme::kEmber);
@@ -526,6 +547,30 @@ void Game::DrawTargetFrame()
 	const Rectangle bar{ r.x + 14, r.y + (boss ? 38.f : 33.f), r.width - 28, boss ? 14.f : 12.f };
 	const Color fill = t->kind == EntityKind::Player ? ui::theme::kGood : (boss ? ui::theme::kEmber : ui::theme::kHp);
 	ui::Bar(bar, t->hpShown, t->hpLag, fill, Color{ 30, 13, 13, 255 }, t->dead ? "쓰러짐" : Fmt("%d / %d", std::max(0, t->hp), t->maxhp), boss ? 13.f : 12.f);
+
+	// 보스 무력화 게이지(Phase 2-B, MONSTER_GAUGE_NFY): 깎인 몫이 잠깐 남았다 따라온다. 비면 3초 무력화
+	if (boss && !t->dead)
+	{
+		const Rectangle sb{ bar.x + 64.f, bar.y + bar.height + 5.f, bar.width - 64.f, 6.f };
+		const bool broken = t->brokenUntil > m_now;
+		if (m_now - t->staggerAt > 0.35 && t->staggerLag > t->stagger)
+			t->staggerLag = static_cast<uint16_t>(std::max<int>(t->stagger, t->staggerLag - static_cast<int>(900.f * GetFrameTime())));
+		ui::TextStyle ls; ls.size = 11.f; ls.color = broken ? ui::theme::kDawn : ui::theme::kTextDim; ls.face = ui::Face::Strong;
+		ui::Fonts().Draw(broken ? "무력화!" : "무력화", Vector2{ bar.x, sb.y - 3.f }, ls);
+		DrawRectangleRec(sb, Color{ 24, 22, 18, 255 });
+		if (broken)
+		{
+			const float left = static_cast<float>((t->brokenUntil - m_now) / 3.0);
+			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 14.f);
+			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * util::Clamp01(left), sb.height }, util::Mix(ui::theme::kDawn, WHITE, 0.35f * pulse));
+		}
+		else
+		{
+			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * (t->staggerLag / 1000.f), sb.height }, Color{ 236, 226, 200, 200 });
+			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * (t->stagger / 1000.f), sb.height }, util::Mix(ui::theme::kDawn, Rgb(0xC89A50), 0.3f));
+		}
+		DrawRectangleLinesEx(Rectangle{ sb.x - 1, sb.y - 1, sb.width + 2, sb.height + 2 }, 1.f, ui::theme::kLine);
+	}
 }
 
 void Game::DrawMinimap()
@@ -1564,10 +1609,15 @@ void Game::DrawSkillTooltip(const SkillRow& row)
 {
 	std::vector<ui::TooltipLine> lines;
 	const Color cc = Rgb(row.color);
-	lines.push_back({ row.name, util::Mix(cc, ui::theme::kTextHi, 0.35f), 17.f, ui::Face::Strong });
+	const SkillDef* def = MyDef(row.id);   // Phase 2-D: 켜진 갈래를 입힌 값(재사용 대기 · 준비)
+	const SkillGrowth::State grow = MyGrow(row.id);
+	const bool basicRow = def ? def->kind == SkillKind::Basic : row.slot == 0;
+	lines.push_back({ SkillGrowth::Growable(row.id) ? Fmt("%s  Lv.%d", row.name, grow.level) : std::string(row.name), util::Mix(cc, ui::theme::kTextHi, 0.35f), 17.f, ui::Face::Strong });
+	if (def && def->kindText[0])
+		lines.push_back({ def->kindText, util::Mix(cc, ui::theme::kText, 0.5f), 12.f });
 	{
 		std::string keyLine;
-		if (row.slot == 0)
+		if (basicRow)
 			keyLine = "기본 공격 · " + kb::Label(kb::Act::BasicAttack) + " · 우클릭 (누르고 있으면 가까운 적을 이어서)";
 		else if (const int hot = HotOfSkill(row.id); hot > 0)
 			keyLine = "단축키 " + kb::Label(kb::HotAct(hot)) + " · 커서 쪽으로";
@@ -1579,21 +1629,32 @@ void Game::DrawSkillTooltip(const SkillRow& row)
 	const int power = magic ? m_stats.magicAttack : m_stats.attack;
 	std::string cost;
 	if (row.mp > 0) cost += Fmt("MP %d · ", row.mp);
-	if (row.slot == 0) cost += Fmt("간격 %.2f초", SkillTable::BasicIntervalMs(m_classId, m_stats.attackSpeed) / 1000.f);
-	else cost += Fmt("재사용 %.1f초", SkillTable::CooldownMs(row, m_stats.cooldownReduction) / 1000.f);
-	if (row.range > 0) cost += Fmt(" · 사거리 %d칸", row.range);
-	if (row.castMs > 0) cost += Fmt(" · 예고 %.1f초", row.castMs / 1000.f);
+	if (basicRow) cost += Fmt("간격 %.2f초", SkillTable::BasicIntervalMs(m_classId, m_stats.attackSpeed) / 1000.f);
+	else
+	{
+		cost += Fmt("재사용 %.1f초", (def ? SkillDefTable::CooldownMs(*def, row, m_stats.cooldownReduction) : SkillTable::CooldownMs(row, m_stats.cooldownReduction)) / 1000.f);
+	}
+	const int range = def && def->range > 0 ? def->range : row.range;
+	if (range > 0) cost += Fmt(" · 사거리 %d칸", range);
+	if (def && def->castMs > 0 && def->kind == SkillKind::Cast) cost += Fmt(" · 준비 %.1f초", def->castMs / 1000.f);
+	else if (row.castMs > 0) cost += Fmt(" · 예고 %.1f초", row.castMs / 1000.f);
+	if (def && def->kind == SkillKind::Identity) cost += Fmt(" · %s 가득 필요", m_classId == ClassId::Knight ? "서약" : (m_classId == ClassId::Engraver ? "새김" : "그늘"));
 	lines.push_back({ "---", WHITE });
 	lines.push_back({ cost, ui::theme::kInfo, 13.f });
 	const GearExtras gx = MyGearExtras();
 	const int boost = row.id < sizeof(gx.skillBoost) ? gx.skillBoost[row.id] : 0;
 	if (row.coeff > 0)
 	{
-		const int each = power * row.coeff / 100 * (100 + boost) / 100;
+		const int each = static_cast<int>(power * row.coeff / 100 * (100 + boost) / 100 * SkillGrowth::DamagePercent(grow.level) / 100u);
 		lines.push_back({ row.hits > 1 ? Fmt("피해 약 %d × %d회 (%s)", each, row.hits, magic ? "마법" : "물리") : Fmt("피해 약 %d (%s)", each, magic ? "마법" : "물리"), ui::theme::kTextHi, 13.f });
 	}
 	if (boost > 0)
 		lines.push_back({ Fmt("◈ 장비 기술 강화 +%d%%", boost), ui::theme::kDawn, 13.f });
+	if (grow.level > 1)
+		lines.push_back({ Fmt("기술 레벨 %d · 피해 +%u%%", grow.level, SkillGrowth::DamagePercent(grow.level) - 100u), ui::theme::kDawnHi, 13.f });
+	for (int tier = 0; tier < 2; ++tier)
+		if (const SkillGrowth::Variant* v = SkillGrowth::ActiveVariant(row.id, grow, tier))
+			lines.push_back({ Fmt("%s · %s — %s", SkillGrowth::TierName(tier), v->name, v->desc), v->color ? util::Mix(Rgb(v->color), ui::theme::kTextHi, 0.4f) : ui::theme::kOldway, 13.f });
 	lines.push_back({ row.desc, ui::theme::kText, 13.f });
 	if (row.combo && row.combo[0])
 		lines.push_back({ std::string("연계 · ") + row.combo, ui::theme::kDawn, 13.f });

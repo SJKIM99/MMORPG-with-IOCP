@@ -309,6 +309,7 @@ namespace
 
 		st.pending = true;
 		monster->m_pattern = st;
+		monster->m_countered = false;
 		monster->m_busyUntil = now + windup + 350;
 		monster->m_patternReadyAt = now + windup + 4500 + static_cast<uint32_t>(LRng() % 2500);
 		monster->UpdateFacing(tx - mx);
@@ -430,6 +431,7 @@ namespace MonsterHelper
 		if (monster == nullptr || waker == nullptr)
 			return;
 		if (monster->GetStat()->IsDead()) return;
+		if (monster->IsDummy()) return;   // 허수아비는 깨어나지 않는다(AI 루프가 없다)
 
 		// Aggro monsters only wake up when the player is within WAKE_RANGE tiles
 		// (skipped on forced wake, e.g. player respawn)
@@ -463,6 +465,8 @@ namespace MonsterHelper
 	{
 		if (monster == nullptr || attacker == nullptr || monster->GetStat()->IsDead())
 			return;
+		if (monster->IsDummy())
+			return;   // 허수아비는 반격하지 않는다
 
 		// 이미 누군가를 쫓고 있으면(선공 몬스터의 추격 / 이미 도발됨) 대상을 바꾸지 않는다.
 		if (monster->IsProvoked())
@@ -509,7 +513,8 @@ namespace MonsterHelper
 			if (!SubjectHelper::CanSee(monster, user)) return;
 
 			hasNearbyPlayer = true;
-			if (CombatHelper::MonsterCanReach(monster, user) && !WorldData::IsSafeZone(user->GetX(), user->GetY()))
+			if (CombatHelper::MonsterCanReach(monster, user) && !WorldData::IsSafeZone(user->GetX(), user->GetY())
+				&& !user->Status().Has(StatusId::Veil, GetNowTime()))
 				attackTargetId = id;
 		});
 
@@ -592,6 +597,18 @@ namespace MonsterHelper
 			return;
 		}
 
+		// ── Phase 2-B 도발: 도발한 사람을 쫓는다 ──────────────────────────────
+		{
+			const uint32_t now = GetNowTime();
+			if (const StatusSlot* taunt = monster->Status().Get(StatusId::Taunt, now); taunt && taunt->source != targetId)
+				if (auto taunter = ::GetGameObject<User>(taunt->source); taunter && !taunter->GetStat()->IsDead() && taunter->GetZoneId() == monster->GetZoneId())
+				{
+					monster->SetProvoked(taunter->GetObjID());
+					GTimerThread->ScheduleAfter(monsterId, MoveDelay(monster), TIMER_EVENT_TYPE::EV_AGGRO_MOVE, taunter->GetObjID());
+					return;
+				}
+		}
+
 		// ── Target validation ─────────────────────────────────────────────────
 		auto target = ::GetGameObject<User>(targetId);
 		if (!target)
@@ -642,7 +659,8 @@ namespace MonsterHelper
 		// ── 대상이 죽었거나 마을(안전지대)로 들어갔으면 추격 포기 ─────────────────
 		// (마을 칸은 몬스터에게 막힌 칸이라, 그대로 A*를 돌리면 도달 불가능한 목표를
 		//  찾느라 Zone 전체를 탐색하게 된다 — 경로 탐색 전에 먼저 걸러낸다.)
-		if (target->GetStat()->IsDead() || WorldData::IsSafeZone(target->GetX(), target->GetY()))
+		// Phase 2-B: 밤 장막(은신) 중인 대상은 놓친다.
+		if (target->GetStat()->IsDead() || WorldData::IsSafeZone(target->GetX(), target->GetY()) || target->Status().Has(StatusId::Veil, GetNowTime()))
 		{
 			returnToSpawn();
 			return;
@@ -901,6 +919,23 @@ namespace MonsterHelper
 				boss->SetSpawn(region->bossX, region->bossY);
 		}
 
+		// Phase 2-E: 마을 훈련장 허수아비 — 보스 구간 뒤(MAX_MONSTER + 10000 + k)의 id. 봇 · 레거시 세션에도
+		// 여느 몬스터처럼 보이지만(SUBJECT_ADD_NFY) 움직이지 않고, 마을 안이라 봇은 공격할 수 없다.
+		if (zoneId == static_cast<ZoneId>(WorldData::kTownZoneId))
+			for (int k = 0; k < WorldData::kDummyCount; ++k)
+			{
+				ObjID dummyId(EnumCategory::eMonster, MONSTER_ID_START + static_cast<uint64_t>(MAX_MONSTER) + 10000u + static_cast<uint64_t>(k));
+				dummyId.SetKIND(MonsterTable::Id::TrainingDummy);
+				auto dummy = MakeNewSubject(dummyId, ObjID::npos);
+				ASSERT_CRASH(GGameObjectManager->Insert(dummyId, dummy));
+				SectorHelper::UpdatePosition(dummyId, WorldData::kDummySpots[k].x, WorldData::kDummySpots[k].y);
+				if (auto m = ::GetGameObject<Monster>(dummyId))
+				{
+					m->SetSpawn(WorldData::kDummySpots[k].x, WorldData::kDummySpots[k].y);
+					m->UpdateFacing(-1);   // 광장 쪽(서쪽)을 본다
+				}
+			}
+
 		cout << "[Zone " << zoneId << "] Monster Init Success ("
 		     << (MAX_MONSTER / stride) << " monsters"
 		     << ((region != nullptr && region->bossSpecies != 0) ? " + boss" : "") << ")\n";
@@ -918,8 +953,10 @@ namespace MonsterHelper
 		monster->m_pattern.pending = false;
 		const uint32_t now = GetNowTime();
 		// 예고 중에 기절/빙결시키면 끊긴다 — 방패 강타·서리 각인으로 받아칠 수 있다.
-		if (monster->Status().BlocksAttack(now) || monster->Status().BlocksMove(now))
+		// Phase 2-B: 반격 타격(HF_Counter)을 맞았어도 끊긴다.
+		if (monster->Status().BlocksAttack(now) || monster->Status().BlocksMove(now) || monster->m_countered)
 		{
+			monster->m_countered = false;
 			SendTelegraph(monster, TelegraphShape::Circle, st.cx, st.cy, st.fromX, st.fromY, 0, 0, st.type);   // 취소
 			monster->m_busyUntil = now;
 			return;

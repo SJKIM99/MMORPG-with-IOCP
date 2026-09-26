@@ -8,6 +8,7 @@
 #include "Data/CombatData.h"
 #include "Data/ItemRules.h"
 #include "Data/QuestData.h"
+#include "Data/SkillGrowth.h"
 
 class User : public Subject
 {
@@ -45,9 +46,51 @@ public:
 	std::array<uint32_t, 6> m_skillReadyAt{};   // 슬롯별 다시 쓸 수 있는 시각(GetNowTime)
 	uint32_t     m_lastCounterAt = 0;           // 철벽 태세 반격 간격
 	uint32_t     m_lastCombatAt  = 0;           // 마지막 전투 시각(비전투 회복)
-	struct PendingImpact { uint32_t seq; uint16_t skillId; ObjID target; short x, y; };
-	std::vector<PendingImpact> m_pendingImpacts; // 예고 뒤 판정할 스킬(낙성·처형·각인 폭발)
+	// 예약된 기술 사건. kind 0 = 예전 판정(낙성·처형·각인 폭발), 나머지는 Phase 2-B 확장(SkillEx — ExEvent)
+	struct PendingImpact
+	{
+		uint32_t seq; uint16_t skillId; ObjID target; short x, y;
+		uint8_t  kind = 0;       // SkillEx::ExEvent
+		uint8_t  hit = 0;        // 타격표 번호
+		uint8_t  stage = 0;      // 콤보 타 · 차지 단계 · 체인 단
+		uint8_t  flags = 0;      // 완벽 · 강제 공격
+		uint32_t castSeq = 0;    // 이 시전의 번호(끊기면 버린다)
+		short    ox = 0, oy = 0; // 시전 위치
+		float    dx = 1.f, dy = 0.f;   // 조준 방향(칸 공간 단위 벡터)
+		uint32_t extra = 0;
+		uint8_t  grow = 0;       // 시전 때의 기술 성장 상태(SkillGrowth::Pack) — 갈래를 도중에 바꿔도 이 시전은 그대로
+	};
+	std::vector<PendingImpact> m_pendingImpacts;
 	uint32_t     m_impactSeq     = 0;
+
+	// ── Phase 2-B 기술 구조 V3(Data/SkillData.h, Combat/SkillEx) — 소유 Zone 스레드 ──
+	std::array<uint32_t, 12> m_keyReadyAt{};   // 칸별(SkillKey) 재사용 대기(확장 요청)
+	struct SkillExState
+	{
+		uint32_t castSeq = 0;                       // 시전마다 증가 — 끊긴 시전의 예약은 버린다
+		uint16_t chargeSkill = 0; uint32_t chargeStart = 0; uint32_t chargeCast = 0;
+		uint16_t holdSkill = 0;   uint32_t holdStart = 0;   uint32_t holdCast = 0;
+		uint16_t toggleSkill = 0; uint32_t toggleCast = 0;
+		uint16_t chainSkill = 0;  uint8_t chainStage = 0;   uint32_t chainUntil = 0;
+		uint8_t  comboStage = 0;  uint32_t comboAt = 0;     // 기본 공격 콤보
+		uint32_t castingUntil = 0; uint32_t castingSeq = 0; // 캐스팅(이동하면 끊긴다)
+		uint32_t lastCloneCast = 0;                         // 먹물 분신: 시전마다 한 번만 줄인다
+		uint32_t dodgeAt = 0;                               // 잔상 회피 시각(완벽 회피 판정)
+		std::vector<ObjID> marks;                           // 방패 투척 · 그믐 베기 · 달 가르기가 기억한 대상
+	} m_skx;
+	uint16_t     m_identity      = 0;           // 고유 기술 게이지 0~1000(서약 · 새김 · 그늘)
+	uint16_t     m_identitySent  = 0xFFFF;
+	uint32_t     m_superArmorUntil = 0;         // 경직 면역(몬스터의 기절 · 빙결을 받지 않는다)
+	uint32_t     m_invulnUntil   = 0;           // 무적(이동기 · 각성기)
+
+	// ── Phase 2-D 기술 성장(Data/SkillGrowth.h, SkillEx::HandleGrow) — DB PlayerSkills ──
+	std::array<uint8_t, SkillGrowth::kIdSpan> m_skillGrow{};   // 기술 id → SkillGrowth::Pack(0 = 레벨 1 · 갈래 없음)
+	uint16_t     m_lastGrowSeq   = 0;
+	bool         m_growSeqSeen   = false;       // 첫 요청 전에는 seq 비교를 하지 않는다
+	[[nodiscard]] SkillGrowth::State GrowState(uint16_t skillId) const noexcept
+	{
+		return skillId < SkillGrowth::kIdSpan ? SkillGrowth::Unpack(m_skillGrow[skillId]) : SkillGrowth::State{};
+	}
 
 	// ── V2 아이템 성장(Data/ItemRules.h) ───────────────────────────────────────
 	GearExtras   m_gearEx{};                // 착용 장비의 특수 효과·기술 강화·획득 보너스(RecomputeStats가 채움)

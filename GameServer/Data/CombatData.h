@@ -35,6 +35,13 @@ enum class StatusId : uint8_t
 	Ambush,      // 기습: 다음 공격 확정 치명타
 	Evade,       // 잔상: 잠깐 모든 공격을 피함
 	Marked,      // 각인 표식(벼락 사슬 연쇄 대상)
+	// ── Phase 2-B(끝에만 추가) ──
+	Oath,        // 서약 해방: 슈퍼아머 + 잔향 타격(30%)
+	Rally,       // 함성: 공격 +15%
+	Veil,        // 밤 장막: 은신(몬스터가 놓친다) · 이동 +30%
+	Taunt,       // 도발: 이 몬스터는 건 사람을 쫓는다
+	Broken,      // 무력화: 보스 무력화 게이지가 비었다 — 기절 + 받는 피해 +30%
+	Clone,       // 먹물 분신: 남은 따라 하기 횟수(중첩)
 	Count
 };
 
@@ -61,11 +68,17 @@ namespace StatusTable
 		{ StatusId::Freeze, "빙결",    true,  true,  false, 1,    0,   0,  0, 0x8AD8FF },
 		{ StatusId::Burn,   "화상",    true,  false, false, 1, 1000,  18,  0, 0xFF7A2A },
 		{ StatusId::Poison, "중독",    true,  false, false, 5, 1000,   8,  0, 0x7ADF4A },
-		{ StatusId::Slow,   "둔화",    true,  false, false, 1,    0,   0, 40, 0x9A9AFF },
+		{ StatusId::Slow,   "둔화",    true,  false, false, 1,    0,   0, 40, 0x9AB4D0 },
 		{ StatusId::Guard,  "철벽 태세", false, false, false, 1,  0,   0, 30, 0xFFC860 },
-		{ StatusId::Ambush, "기습",    false, false, false, 1,    0,   0,  0, 0xC08AFF },
-		{ StatusId::Evade,  "잔상",    false, false, false, 1,    0,   0,  0, 0xB0A0FF },
+		{ StatusId::Ambush, "기습",    false, false, false, 1,    0,   0,  0, 0xE8EEF6 },
+		{ StatusId::Evade,  "잔상",    false, false, false, 1,    0,   0,  0, 0xC8D2E0 },
 		{ StatusId::Marked, "각인 표식", true,  false, false, 1,    0,   0,  0, 0x6AE8FF },
+		{ StatusId::Oath,   "서약 해방", false, false, false, 1,    0,   0,  0, 0xF2C47C },
+		{ StatusId::Rally,  "함성",    false, false, false, 1,    0,   0,  0, 0xF2C47C },
+		{ StatusId::Veil,   "밤 장막", false, false, false, 1,    0,   0,  0, 0x8A96A8 },
+		{ StatusId::Taunt,  "도발",    true,  false, false, 1,    0,   0,  0, 0xE0604E },
+		{ StatusId::Broken, "무력화",  true,  true,  true,  1,    0,   0,  0, 0xF2C47C },
+		{ StatusId::Clone,  "먹물 분신", false, false, false, 3,  0,   0,  0, 0x8A96A8 },
 	};
 	static_assert(sizeof(kRows) / sizeof(kRows[0]) == static_cast<size_t>(StatusId::Count));
 
@@ -336,7 +349,7 @@ namespace SkillTable
 		{ 9, ClassId::Engraver, 2, "화염 고리", "자신을 중심으로 불꽃의 고리를 터뜨린다.", "빙결된 적은 증발 폭발(+80%, 주변 폭발)",
 		  2, 20, 7000, 0, 0, T::Self, S::Around, 2, K::Magic, 130, 1, St::Burn, 3000, 1, St::Freeze, 80, 3, true, 1, 0, 0, 0xFF8A3A },
 		{ 10, ClassId::Engraver, 3, "옛길 도약", "커서 쪽으로 옛길을 밟아 최대 4칸 건너뛰고, 떠난 자리에 각인 폭발을 남긴다.", "위험할 때 거리를 벌린다",
-		  4, 12, 10000, 0, 4, T::Ground, S::Circle, 1, K::Magic, 60, 1, St::Slow, 2000, 1, St::None, 0, 0, false, 0, 4, 0, 0xB08AFF },
+		  4, 12, 10000, 0, 4, T::Ground, S::Circle, 1, K::Magic, 60, 1, St::Slow, 2000, 1, St::None, 0, 0, false, 0, 4, 0, 0x7FD0C4 },
 		{ 11, ClassId::Engraver, 4, "벼락 사슬", "대상에게 벼락을 떨어뜨리고 주변 적으로 튄다.", "화상·표식·빙결 대상으로 더 멀리 튄다(전도 +40%)",
 		  6, 22, 9000, 0, 7, T::Enemy, S::Chain, 3, K::Magic, 120, 1, St::Marked, 3000, 1, St::Burn, 40, 4, false, 0, 0, 0, 0xE8F0FF },
 		{ 12, ClassId::Engraver, 5, "낙성", "지점에 별똥을 불러 내린다(0.8초 뒤 떨어짐).", "빙결된 적은 산산조각 ×1.5",
@@ -344,17 +357,58 @@ namespace SkillTable
 
 		// ── 밤사냥꾼 ── 뒤를 잡고, 독을 쌓고, 터뜨린다
 		{ 13, ClassId::NightHunter, 0, "연속 찌르기", "단검으로 두 번 빠르게 찌른다.", "중독된 적에게 +20%",
-		  1, 0, 0, 0, 1, T::Enemy, S::Single, 0, K::Physical, 58, 2, St::None, 0, 0, St::Poison, 20, 0, false, 0, 0, 0, 0xD8C8FF },
+		  1, 0, 0, 0, 1, T::Enemy, S::Single, 0, K::Physical, 58, 2, St::None, 0, 0, St::Poison, 20, 0, false, 0, 0, 0, 0xE8EEF6 },
 		{ 14, ClassId::NightHunter, 1, "그늘 걸음", "그늘을 밟아 대상의 등 뒤로 돌아간다. 다음 공격은 확정 치명타.", "그늘 걸음 → 후방 습격(급소)·연속 찌르기(기습)",
-		  1, 12, 7000, 0, 5, T::Enemy, S::Single, 0, K::Physical, 40, 1, St::Ambush, 2500, 1, St::None, 0, 0, false, 0, 0, 0, 0xB88AFF },
+		  1, 12, 7000, 0, 5, T::Enemy, S::Single, 0, K::Physical, 40, 1, St::Ambush, 2500, 1, St::None, 0, 0, false, 0, 0, 0, 0x9AA4B4 },
 		{ 15, ClassId::NightHunter, 2, "독 칼날", "독을 바른 칼날로 벤다. 중독이 최대 5번 쌓인다.", "중독 → 그믐 베기(독 폭발)",
 		  2, 8, 3500, 0, 1, T::Enemy, S::Single, 0, K::Physical, 110, 1, St::Poison, 6000, 1, St::None, 0, 0, false, 0, 0, 0, 0x8AE85A },
 		{ 16, ClassId::NightHunter, 3, "잔상 회피", "커서 쪽으로 3칸 미끄러지며 잠깐 모든 공격을 피한다.", "위험한 예고를 보고 쓰면 된다",
-		  4, 10, 9000, 0, 3, T::Direction, S::Line, 3, K::Physical, 0, 0, St::Evade, 900, 1, St::None, 0, 0, false, 0, 3, 0, 0xB0A0FF },
+		  4, 10, 9000, 0, 3, T::Direction, S::Line, 3, K::Physical, 0, 0, St::Evade, 900, 1, St::None, 0, 0, false, 0, 3, 0, 0xC8D2E0 },
 		{ 17, ClassId::NightHunter, 4, "후방 습격", "등 뒤에서 급소를 찌른다.", "대상 뒤(또는 기습 중)면 확정 치명타 ×1.5 (급소)",
-		  6, 15, 6000, 0, 1, T::Enemy, S::Single, 0, K::Physical, 170, 1, St::None, 0, 0, St::Ambush, 50, 10, true, 0, 0, 0, 0xE06AFF },
+		  6, 15, 6000, 0, 1, T::Enemy, S::Single, 0, K::Physical, 170, 1, St::None, 0, 0, St::Ambush, 50, 10, true, 0, 0, 0, 0xD8E2EC },
 		{ 18, ClassId::NightHunter, 5, "그믐 베기", "달 없는 밤처럼 소리 없이, 주변 적을 다섯 번 벤다.", "중독 중첩마다 +30%, 독을 터뜨린다 (독 폭발)",
-		  8, 35, 16000, 0, 0, T::Self, S::Around, 1, K::Physical, 48, 5, St::None, 0, 0, St::Poison, 30, 7, true, 0, 0, 0, 0xC8B8FF },
+		  8, 35, 16000, 0, 0, T::Self, S::Around, 1, K::Physical, 48, 5, St::None, 0, 0, St::Poison, 30, 7, true, 0, 0, 0, 0xC8D2E0 },
+
+		// ── Phase 2-B 새 기술(확장 요청 SKILL_EX_REQ 전용 — slot 6 = 예전 슬롯 밖). 칸 · 유형 · 타격 시각은 Data/SkillData.h ──
+		// 서약기사
+		{ 19, ClassId::Knight, 6, "땅 가르기", "힘을 모았다가 내리쳐, 빛 균열이 땅을 달리게 한다.", "완벽 구간에서 놓으면 끝에서 한 번 더 터진다",
+		  10, 22, 9000, 0, 5, T::Direction, S::Line, 5, K::Physical, 100, 5, St::None, 0, 0, St::Stun, 30, 1, false, 0, 0, 0, 0xF2C47C },
+		{ 20, ClassId::Knight, 6, "방패 투척", "방패를 던져 적 사이를 세 번 튕긴다. 다시 누르면 되돌아오며 끌어당긴다.", "끌려온 적은 무너뜨리기 좋은 자리에 선다",
+		  12, 16, 11000, 0, 5, T::Enemy, S::Chain, 3, K::Physical, 110, 1, St::None, 0, 0, St::Stun, 30, 1, false, 0, 0, 0, 0xE8DCC4 },
+		{ 21, ClassId::Knight, 6, "맹세 함성", "종소리 같은 함성으로 주변 적을 도발하고 나를 북돋운다.", "8초 동안 공격 +15%",
+		  14, 18, 16000, 0, 0, T::Self, S::Around, 2, K::Physical, 60, 1, St::Taunt, 4000, 1, St::None, 0, 0, false, 0, 0, 0, 0xF2C47C },
+		{ 22, ClassId::Knight, 6, "심판의 종", "지점에 거대한 종을 내려 세 번 울린다. 셋째 울림에 기절.", "기절 → 검격 · 회전 베기 · 단죄",
+		  16, 30, 15000, 600, 6, T::Ground, S::Circle, 2, K::Physical, 90, 3, St::Stun, 1500, 1, St::None, 0, 0, false, 0, 0, 0, 0xF2C47C },
+		{ 23, ClassId::Knight, 6, "몸 굴리기", "커서 쪽으로 세 칸 구르며 잠깐 모든 공격을 피한다.", "모든 기술의 후딜을 끊는다",
+		  1, 0, 9000, 0, 3, T::Direction, S::Line, 3, K::Physical, 0, 0, St::Evade, 260, 1, St::None, 0, 0, false, 0, 3, 0, 0xD8C8A8 },
+		{ 24, ClassId::Knight, 6, "서약 해방", "쌓인 서약을 풀어 12초 동안 흔들리지 않고, 모든 타격에 금빛 잔향이 따른다.", "막거나 때리면 서약이 찬다 · 단죄 재사용 대기 절반",
+		  18, 0, 1000, 0, 0, T::Self, S::Around, 2, K::Physical, 80, 1, St::Oath, 12000, 1, St::None, 0, 0, false, 1, 0, 0, 0xF2C47C },
+		// 각인술사
+		{ 25, ClassId::Engraver, 6, "얼음 창", "각인에서 얼음 창을 길러 쏜다. 끝까지 모으면 세 갈래.", "빙결된 적에게 +30%",
+		  10, 20, 8000, 0, 6, T::Direction, S::Line, 6, K::Magic, 140, 1, St::Slow, 2000, 1, St::Freeze, 30, 0, false, 1, 0, 0, 0xBFE6FF },
+		{ 26, ClassId::Engraver, 6, "불꽃 각인", "땅에 거대한 원형 각인을 새겨 둘레에서 불기둥을 차례로 솟게 한다.", "빙결된 적은 증발 폭발(+80%)",
+		  12, 34, 16000, 800, 6, T::Ground, S::Circle, 3, K::Magic, 90, 6, St::Burn, 3000, 1, St::Freeze, 80, 3, true, 0, 0, 0, 0xFF9A3C },
+		{ 27, ClassId::Engraver, 6, "결계 고리", "글자 고리를 벽처럼 세워 안의 적을 느리게 하고 표식을 남긴다.", "표식 → 벼락 사슬 전도 · 새김 울림",
+		  14, 22, 14000, 0, 6, T::Ground, S::Circle, 2, K::Magic, 50, 1, St::Slow, 5000, 1, St::None, 0, 0, false, 0, 0, 0, 0x7FD0C4 },
+		{ 28, ClassId::Engraver, 6, "낙뢰 각인", "머리 위에 벼락 글자를 새기면 1.2초 뒤 하늘이 갈라진다.", "표식 대상에게 +40% (전도)",
+		  16, 26, 12000, 0, 7, T::Ground, S::Circle, 1, K::Magic, 260, 1, St::Stun, 800, 1, St::Marked, 40, 4, false, 0, 0, 0, 0xB8FFF2 },
+		{ 29, ClassId::Engraver, 6, "눈보라", "누르는 동안 얼음 파편과 서리 안개를 앞으로 뿜는다.", "둔화된 적은 화염 고리로 증발시키기 좋다",
+		  18, 30, 18000, 0, 4, T::Direction, S::Line, 4, K::Magic, 38, 8, St::Slow, 1800, 1, St::None, 0, 0, false, 1, 0, 0, 0xBFE6FF },
+		{ 30, ClassId::Engraver, 6, "새김 울림", "주변 8칸 안의 모든 각인 표식이 함께 울리다 차례로 터진다.", "시전할수록 새김이 찬다",
+		  20, 0, 1000, 0, 8, T::Self, S::Around, 8, K::Magic, 150, 1, St::None, 0, 0, St::Marked, 0, 0, true, 0, 0, 0, 0x7FD0C4 },
+		// 밤사냥꾼
+		{ 31, ClassId::NightHunter, 6, "칼날 폭풍", "누르는 동안 은빛 초승달 칼날이 몸 주위를 돌며 벤다.", "중독된 적에게 +20%",
+		  10, 24, 12000, 0, 1, T::Self, S::Around, 1, K::Physical, 22, 10, St::None, 0, 0, St::Poison, 20, 0, false, 0, 0, 0, 0xD8E2EC },
+		{ 32, ClassId::NightHunter, 6, "먹물 분신", "먹빛 분신 둘을 세운다. 다음 세 번의 공격을 분신이 40%로 따라 한다.", "후방 습격 · 그믐 베기와 함께",
+		  12, 20, 18000, 0, 0, T::Self, S::Around, 0, K::Physical, 40, 0, St::Clone, 8000, 3, St::None, 0, 0, false, 0, 0, 0, 0x8A96A8 },
+		{ 33, ClassId::NightHunter, 6, "비수 투척", "빛 꼬리를 단 단검 다섯 자루를 부채꼴로 던진다. 세 번까지 이어 던진다.", "셋째 투척은 관통",
+		  14, 16, 10000, 0, 5, T::Direction, S::Line, 5, K::Physical, 60, 5, St::None, 0, 0, St::Poison, 20, 0, false, 0, 0, 0, 0xD8E2EC },
+		{ 34, ClassId::NightHunter, 6, "맹독 안개", "지점에 녹흑색 독 안개를 4초 동안 깐다.", "중독 → 그믐 베기(독 폭발)",
+		  16, 26, 15000, 0, 6, T::Ground, S::Circle, 2, K::Physical, 25, 8, St::Poison, 6000, 1, St::None, 0, 0, false, 0, 0, 0, 0x8DCE5A },
+		{ 35, ClassId::NightHunter, 6, "달 가르기", "힘을 모았다가 앞으로 꿰뚫고 지나간다. 베인 선은 0.3초 늦게 한꺼번에 터진다.", "완벽 구간이면 한 번 더",
+		  18, 28, 12000, 0, 4, T::Direction, S::Line, 4, K::Physical, 180, 1, St::None, 0, 0, St::Ambush, 50, 10, false, 0, 4, 0, 0xEDE7DB },
+		{ 36, ClassId::NightHunter, 6, "밤 장막", "3초 동안 밤에 녹아든다. 적이 놓치고, 발이 빨라지며, 다음 기술은 급소를 찌른다.", "뒤를 잡을수록 그늘이 찬다",
+		  20, 0, 1000, 0, 0, T::Self, S::Around, 0, K::Physical, 0, 0, St::Veil, 3000, 1, St::None, 0, 0, false, 0, 0, 0, 0x8A96A8 },
 	};
 	inline constexpr uint16_t kCount = static_cast<uint16_t>(sizeof(kRows) / sizeof(kRows[0]));
 

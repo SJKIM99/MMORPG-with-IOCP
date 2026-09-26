@@ -55,6 +55,10 @@ namespace net
 		void SendMove(int direction);
 		void SendMoveEx(int direction, uint16_t seq);   // V2 순번 이동(예측/보정)
 		void SendSkillCast(uint16_t skillId, const ObjID& target, int x, int y, uint16_t seq);
+		// Phase 2-B: 누름 · 뗌 · 취소(SkillPhase) — 칸 · 유형은 SkillDefTable
+		void SendSkillEx(uint16_t skillId, SkillPhase phase, uint8_t flags, const ObjID& target, int aimX, int aimY, uint8_t dir, uint16_t seq);
+		// Phase 2-D: 기술 레벨 올림 · 내림 · 갈래 · 초기화(seq가 같으면 서버가 다시 처리하지 않는다)
+		void SendSkillGrow(SkillGrowOp op, uint16_t skillId, uint8_t tier, uint8_t choice, uint16_t seq);
 		void SendStatAlloc(uint8_t stat, uint8_t amount);
 		void SendNpcTalk(uint16_t npcId);
 		void SendNpcService(uint16_t npcId, uint8_t service);

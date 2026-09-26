@@ -130,6 +130,13 @@ enum class EffectId : uint16_t
 	ProcGuardian,     // 서약의 방패(주인)
 	ProcEmber,        // 잔불(x/y=대상)
 	ProcVenom,        // 맹독(x/y=대상)
+	// Phase 2-B(끝에만 추가)
+	StaggerBreak,     // subject=보스, x/y=보스 — 무력화(게이지가 비었다)
+	OathRelease,      // subject=기사 — 서약 해방
+	Resonance,        // subject=각인술사, x/y=폭발 칸, param=순서 — 새김 울림 연쇄 폭발
+	PerfectDodge,     // subject=밤사냥꾼 — 완벽 회피(무적 중 공격을 피했다)
+	CloneStrike,      // subject=밤사냥꾼, x/y=대상 — 분신이 따라 벤다
+	Taunted,          // subject=기사, param=도발한 수
 };
 
 // WORLD_NOTICE_INF의 code — 전 서버(확장 세션)에 띄우는 공지.
@@ -248,6 +255,16 @@ enum class PacketType : uint16_t
 	QUEST_COMPLETE_REQ,       // C→S 퀘스트 보고(보고할 NPC 곁에서)
 	QUEST_ABANDON_REQ,        // C→S 퀘스트 포기
 	QUEST_RESULT_ACK,         // S→C 받기 · 보고 · 포기 요청의 결과(요청마다 하나)
+	// ── Phase 2-B: 기술 구조 V3(Data/SkillData.h) — 확장 세션 전용. 여기도 끝에만 추가한다 ──
+	SKILL_EX_REQ,             // C→S 기술 누름 · 뗌(차지 · 홀딩) · 취소 — 칸 · 유형은 SkillDefTable
+	SKILL_EX_NFY,             // S→C 시전 알림(단계 · 조준 · 서버 시각) — 주변 확장 세션에
+	SUBJECT_FORCED_MOVE_NFY,  // S→C 서버가 옮긴 이동(돌진 · 순간이동 · 넉백 · 끌어당김 · 구르기) — 곡선으로 미끄러뜨린다
+	COMBAT_GAUGE_INF,         // S→C 내 고유 기술 게이지(서약 · 새김 · 그늘)
+	MONSTER_GAUGE_NFY,        // S→C 보스 무력화 게이지 · 무력화 상태 — 주변에
+	// ── Phase 2-D: 기술 성장(Data/SkillGrowth.h) — 확장 세션 전용 ──
+	SKILL_TREE_INF,           // S→C 내 기술 레벨 · 갈래 · 남은 점수(로그인 · 레벨 업 · 초기화 때)
+	SKILL_GROW_REQ,           // C→S 기술 레벨 올림 · 내림 · 갈래 고르기 · 모두 초기화
+	SKILL_GROW_ACK,           // S→C 요청 결과(요청마다 하나) + 바뀐 기술 하나
 };
 
 #pragma pack (push, 1)
@@ -857,6 +874,7 @@ enum SubjectDamageFlag2 : uint8_t
 	DAMAGE2_BACKSTAB  = 1 << 4,   // 급소/기습
 	DAMAGE2_HEAVY     = 1 << 5,   // 강타(큰 히트스톱)
 	DAMAGE2_PROC      = 1 << 6,   // 장비 특수 효과로 생긴 피해(벼락·메아리)
+	DAMAGE2_BACK      = 1 << 7,   // Phase 2-B: 후방 타격(기습 · 급소가 아닌 등 뒤 보너스)
 };
 
 // 레거시 USER_ATTACK_ACK(공격자에게만)/SUBJECT_ATTACK_NFY(피해 수치 없음)를 대신해

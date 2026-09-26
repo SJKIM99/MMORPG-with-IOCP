@@ -61,6 +61,11 @@ namespace gfx
 	void DepthWrite(bool on);
 	[[nodiscard]] bool DepthWriteOn();
 	void Additive(bool on);
+	[[nodiscard]] bool AdditiveOn();
+	// 빛 전용 모드(Phase 2-A 블룸 빛 버퍼): 켜 두면 더하기 혼합으로 그리는 것만 남고 나머지는 투명해진다.
+	// 효과 그리기 함수를 그대로 한 번 더 불러 "빛나는 것"만 모으는 데 쓴다(post::Apply).
+	void EmissiveOnly(bool on);
+	[[nodiscard]] bool EmissiveOnlyOn();
 	// 깊이 비교를 GREATER로(가려진 부분에만 그리기 — 실루엣). GlExtra.cpp
 	void DepthGreater(bool on);
 

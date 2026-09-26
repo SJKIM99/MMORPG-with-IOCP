@@ -85,6 +85,8 @@ enum class SkillResult : uint8_t
 	Stunned,         // 기절 중
 	Blocked,         // 이동/도약할 칸이 없음
 	WrongClass,
+	// Phase 2-B(끝에만 추가)
+	NoGauge,         // 고유 기술 게이지가 모자람
 };
 
 struct SKILL_RESULT_ACK_PACKET
@@ -382,6 +384,160 @@ struct QUEST_RESULT_ACK_PACKET
 	uint32_t       param;
 };
 
+// ── Phase 2-B: 기술 구조 V3 ────────────────────────────────────────────────
+enum class SkillPhase : uint8_t { Press, Release, Cancel };
+enum SkillReqFlag : uint8_t { SKILLREQ_FORCE = 1 << 0 };   // 강제 공격(Ctrl) — 다른 플레이어도 맞힌다
+
+// C→S. 칸 · 유형 · 타격 시각은 SkillDefTable(Data/SkillData.h) — 서버가 판정한다.
+struct SKILL_EX_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       skillId;
+	uint8_t        phase;        // SkillPhase
+	uint8_t        flags;        // SkillReqFlag
+	ObjID          targetId;     // 커서에 가장 가까운 적(대상형 · 조준 보조, 없으면 비움)
+	short          aimX, aimY;   // 커서 칸(서버가 사거리로 자른다)
+	uint8_t        dir;          // 화면 각 0~255(표시용 — 판정 방향은 서버가 aim에서 다시 계산)
+	uint16_t       seq;
+};
+
+enum class SkillExPhase : uint8_t
+{
+	Start,        // 일반 · 캐스팅 · 각성기 · 이동기 · 콤보 한 타(stage = 몇 타)
+	ChargeBegin,  // 차지 시작(모으는 자세)
+	ChargeRelease,// 차지 놓음(stage = 단계, flags 완벽)
+	HoldBegin,    // 홀딩 시작
+	HoldEnd,      // 홀딩 끝(놓음 · 최대 시간)
+	ChainStep,    // 체인 단(stage = 몇 단)
+	ToggleOn,
+	ToggleOff,
+	Cancel,       // 끊김(이동기 · 기절)
+	Identity,     // 고유 기술 발동
+};
+// 비트 1~2 = 켜진 갈래 Ⅰ(0 없음 · 1 · 2), 3~4 = 갈래 Ⅱ — SkillGrowth::NfyBits · FromNfy(Phase 2-D)
+enum SkillExFlag : uint8_t { SKILLEX_PERFECT = 1 << 0, SKILLEX_VARIANT_MASK = 0x1E };
+
+// S→C 주변 시전 알림 — 같은 타격 시각표로 연출을 재생한다
+struct SKILL_EX_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	ObjID          casterId;
+	uint16_t       skillId;
+	uint8_t        phase;        // SkillExPhase
+	uint8_t        stage;
+	uint8_t        flags;        // SkillExFlag
+	uint8_t        dir;          // 서버가 정한 방향(화면 각 0~255)
+	short          fromX, fromY; // 시전 위치
+	short          aimX, aimY;   // 조준 칸(돌진 · 도약이면 도착 칸)
+	ObjID          targetId;
+	uint16_t       castMs;
+	uint32_t       serverTime;   // GetNowTime(ms) — 연출 시각표 기준
+};
+
+enum class ForcedMoveKind : uint8_t { Dash, Blink, Knockback, Pull, Roll, Launch };
+struct SUBJECT_FORCED_MOVE_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	ObjID          id;
+	short          fromX, fromY;
+	short          toX, toY;
+	uint16_t       durationMs;
+	uint8_t        kind;         // ForcedMoveKind
+};
+
+enum CombatGaugeFlag : uint8_t { GAUGE_FULL = 1 << 0, GAUGE_ACTIVE = 1 << 1 };
+struct COMBAT_GAUGE_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       identity;     // 0~1000
+	uint8_t        flags;        // CombatGaugeFlag
+	uint32_t       activeMs;     // 고유 기술이 켜져 있으면 남은 시간
+};
+
+struct MONSTER_GAUGE_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	ObjID          monsterId;
+	uint16_t       stagger;      // 남은 무력화 게이지 ‰(1000 = 가득)
+	uint8_t        state;        // 0 보통 · 1 무력화 중
+	uint16_t       brokenMs;     // 무력화 남은 시간
+};
+
+// ── Phase 2-D: 기술 성장(Data/SkillGrowth.h) ─────────────────────────────────
+// 기술 하나 = id + 상태 한 바이트(SkillGrowth::Pack — 레벨-1 · 갈래 Ⅰ · 갈래 Ⅱ)
+struct SkillGrowEntry
+{
+	uint16_t skillId;
+	uint8_t  state;
+};
+
+// S→C 본인. 직업의 자라는 기술 여덟 개 전부(QWERASDF 기본 배치 순서) — 로그인 · 레벨 업 · 초기화 때
+struct SKILL_TREE_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       points;       // 남은 기술 점수
+	uint16_t       total;        // 캐릭터 레벨로 받은 점수 전체
+	uint8_t        count;
+	SkillGrowEntry skills[8];
+};
+
+enum class SkillGrowOp : uint8_t { LevelUp, LevelDown, Pick, ResetAll };
+enum class SkillGrowResult : uint8_t
+{
+	Ok,
+	Unknown,       // 이 직업의 자라는 기술이 아니다
+	Locked,        // 아직 배우지 않은 기술(param = 필요 레벨)
+	MaxLevel,
+	MinLevel,
+	NoPoints,      // param = 필요한 점수
+	TierLocked,    // 갈래를 고를 레벨이 아니다(param = 필요한 기술 레벨)
+	InCombat,      // 싸우는 중(마지막 공격 · 피격 5초 안) · 시전 중에는 바꿀 수 없다
+	Busy,          // 사망 · 존 이동 중
+};
+
+// C→S. seq가 직전과 같으면 다시 처리하지 않고 결과만 다시 보낸다(재전송 멱등)
+struct SKILL_GROW_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        op;           // SkillGrowOp
+	uint16_t       skillId;
+	uint8_t        tier;         // Pick: 0 = 갈래 Ⅰ(레벨 4) · 1 = 갈래 Ⅱ(레벨 7)
+	uint8_t        choice;       // Pick: 0 = 끄기 · 1 · 2
+	uint16_t       seq;
+};
+
+struct SKILL_GROW_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint16_t       seq;
+	uint8_t        op;           // SkillGrowOp
+	uint8_t        result;       // SkillGrowResult
+	uint16_t       param;
+	SkillGrowEntry skill;        // 바뀐 뒤 상태(초기화면 skillId 0 — SKILL_TREE_INF가 뒤따른다)
+	uint16_t       points;       // 남은 점수
+};
+
+static_assert(sizeof(SKILL_TREE_INF_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(SKILL_GROW_REQ_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(SKILL_GROW_ACK_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(static_cast<int>(PacketType::SKILL_GROW_ACK) == 87, "Phase 2-D 뒤 PacketType은 88개(0~87)");
+static_assert(static_cast<int>(PacketType::SKILL_GROW_ACK) < 127, "패킷 헤더 type은 char — 127 안에서");
+
+static_assert(sizeof(SKILL_EX_REQ_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(SKILL_EX_NFY_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(SUBJECT_FORCED_MOVE_NFY_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(COMBAT_GAUGE_INF_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(MONSTER_GAUGE_NFY_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(static_cast<int>(PacketType::MONSTER_GAUGE_NFY) < 127, "패킷 헤더 type은 char — 127 안에서");
+
 static_assert(sizeof(USER_STATS_INF_PACKET) <= 255, "STRESS_TEST 수신 버퍼(255)를 넘으면 안 된다");
 static_assert(sizeof(QUEST_LIST_INF_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 static_assert(sizeof(PLAYER_LOOK_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
@@ -401,5 +557,7 @@ namespace ClientPacketSizeDetailV2
 	constexpr size_t v07 = ProtocolConstMaxSize(v06, sizeof(QUEST_ACCEPT_REQ_PACKET));
 	constexpr size_t v08 = ProtocolConstMaxSize(v07, sizeof(QUEST_COMPLETE_REQ_PACKET));
 	constexpr size_t v09 = ProtocolConstMaxSize(v08, sizeof(QUEST_ABANDON_REQ_PACKET));
+	constexpr size_t v10 = ProtocolConstMaxSize(v09, sizeof(SKILL_EX_REQ_PACKET));
+	constexpr size_t v11 = ProtocolConstMaxSize(v10, sizeof(SKILL_GROW_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v09;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v11;

@@ -20,7 +20,11 @@ CASES = [
     ('quest', 60, 1), ('questlog', 24, 0), ('questdone', 10, 0), ('discover', 10, 0), ('ending', 12, 0), ('chapter1', 7, 0),
     ('wasd', 10, 0), ('watch', 6, 0), ('runline', 9, 0), ('runcircle', 14, 0), ('behind', 16, 0), ('chat', 6, 0),
     ('aimcombat', 40, 2), ('bigmap', 5, 0), ('keysui', 4, 0), ('keysconflict', 5, 0), ('menu', 4, 0), ('skillwin', 4, 0),
-    ('castpreview', 4, 1),
+    ('castpreview', 4, 1), ('skills', 45, 0),
+    # Phase 2-D · 2-E: 기술 창(레벨 · 갈래 · 시연) · 훈련장 허수아비(서약기사 · 밤사냥꾼)
+    ('skillgrow', 24, 1), ('training', 45, 0), ('skills:2', 45, 2),
+    # 기술 성장 서버 규칙(레벨 3 캐릭터 — 점수 4): 15단계 기대값 비교, 로그의 [growcheck] done pass=15 fail=0
+    ('growcheck', 55, 0, 'lv3_rg_gc'), ('awaken3', 16, 0, 'lv50_rg_aw'),
 ]
 
 
@@ -31,17 +35,18 @@ def main():
     env = dict(os.environ, DISPLAY=':99')
     summary = open(os.path.join(out, 'summary.txt'), 'a')
     shots = []
-    for name, after, cls in CASES:
+    for case in CASES:
+        name, after, cls = case[0], case[1], case[2]
         if only and name not in only:
             continue
-        who = 'rg_' + name.replace(':', '_')[:12]
+        who = case[3] if len(case) > 3 else 'rg_' + name.replace(':', '_')[:12]
         shot = 'rg_%s.png' % name.replace(':', '_')
         cmd = ['./Client2D', '--mute', '--no-msaa', '--size', '1280x720', '--name', who, '--class', str(cls),
                '--script', name, '--screenshot', shot, '--after', str(after)]
         try:
             r = subprocess.run(cmd, cwd=client, env=env, capture_output=True, text=True, timeout=after * 5 + 120)   # 소프트웨어 렌더링(5fps 안팎)에서도 넉넉히
             code = r.returncode
-            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]')]
+            lines = [l for l in r.stdout.splitlines() if l.startswith('[perf]') or l.startswith('[move-stats]') or l.startswith('[growcheck] done') or l.startswith('[bench]')]
         except subprocess.TimeoutExpired:
             code, lines = 'TIMEOUT', []
         src = os.path.join(client, shot)

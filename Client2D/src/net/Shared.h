@@ -26,6 +26,8 @@ using USHORT = unsigned short;
 #include "Data/WorldData.h"           // 지역/마을/NPC/상점/충돌
 #include "Data/LevelTable.h"          // 레벨/강화/성향치 규칙
 #include "Data/ItemRules.h"           // 희귀도·옵션·세트(아이템 성장)
+#include "Data/SkillData.h"           // Phase 2-B 기술 구조 V3(칸 · 유형 · 타격 시각표)
+#include "Data/SkillGrowth.h"         // Phase 2-D 기술 성장(레벨 · 점수 · 갈래)
 #include "Zone/ZoneLayout.h"          // Zone(=지역) 좌표 계산
 
 namespace net

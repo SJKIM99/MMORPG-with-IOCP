@@ -764,6 +764,89 @@ END
 GO
 
 -- ============================================================
+-- 4-2. Phase 2-D 기술 성장 (Data/SkillGrowth.h)
+--   기술 레벨 1~10 · 갈래(레벨 4 · 7에서 둘 중 하나). 레벨 1 · 갈래 없음은 행이 없다(기본값).
+--   남은 기술 점수는 저장하지 않는다 — 캐릭터 레벨과 기술 레벨들에서 서버가 다시 계산한다.
+--   새 테이블만 만든다(IF 없으면) — 기존 테이블 · 데이터는 건드리지 않는다.
+-- ============================================================
+IF OBJECT_ID(N'PlayerSkills', N'U') IS NULL
+BEGIN
+    CREATE TABLE PlayerSkills (
+        playerId  INT       NOT NULL,
+        skillId   SMALLINT  NOT NULL,
+        level     TINYINT   NOT NULL CONSTRAINT DF_PlayerSkills_level DEFAULT 1,
+        pick1     TINYINT   NOT NULL CONSTRAINT DF_PlayerSkills_pick1 DEFAULT 0,
+        pick2     TINYINT   NOT NULL CONSTRAINT DF_PlayerSkills_pick2 DEFAULT 0,
+        updatedAt DATETIME2 NOT NULL CONSTRAINT DF_PlayerSkills_updatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT PK_PlayerSkills PRIMARY KEY (playerId, skillId),
+        CONSTRAINT CK_PlayerSkills_level CHECK (level BETWEEN 1 AND 10),
+        CONSTRAINT CK_PlayerSkills_pick CHECK (pick1 BETWEEN 0 AND 2 AND pick2 BETWEEN 0 AND 2),
+        CONSTRAINT FK_PlayerSkills_Players FOREIGN KEY (playerId) REFERENCES Players(playerId) ON DELETE CASCADE
+    );
+END
+GO
+
+IF OBJECT_ID(N'LoadPlayerSkills', N'P') IS NOT NULL
+    DROP PROCEDURE LoadPlayerSkills;
+GO
+
+CREATE PROCEDURE LoadPlayerSkills
+    @playerId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT skillId, level, pick1, pick2 FROM PlayerSkills WHERE playerId = @playerId;
+END
+GO
+
+IF OBJECT_ID(N'SavePlayerSkill', N'P') IS NOT NULL
+    DROP PROCEDURE SavePlayerSkill;
+GO
+
+-- 기술 하나의 바뀐 뒤 상태(절대값) — 같은 값이 두 번 와도 결과가 같다. 기본값(레벨 1 · 갈래 없음)이면 행을 지운다.
+CREATE PROCEDURE SavePlayerSkill
+    @playerId INT,
+    @skillId  SMALLINT,
+    @level    TINYINT,
+    @pick1    TINYINT,
+    @pick2    TINYINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    BEGIN TRAN;
+    IF @level <= 1 AND @pick1 = 0 AND @pick2 = 0
+    BEGIN
+        DELETE FROM PlayerSkills WHERE playerId = @playerId AND skillId = @skillId;
+    END
+    ELSE
+    BEGIN
+        UPDATE PlayerSkills WITH (UPDLOCK, HOLDLOCK)
+        SET level = @level, pick1 = @pick1, pick2 = @pick2, updatedAt = SYSUTCDATETIME()
+        WHERE playerId = @playerId AND skillId = @skillId;
+        IF @@ROWCOUNT = 0
+            INSERT INTO PlayerSkills (playerId, skillId, level, pick1, pick2)
+            VALUES (@playerId, @skillId, @level, @pick1, @pick2);
+    END
+    COMMIT TRAN;
+END
+GO
+
+IF OBJECT_ID(N'ResetPlayerSkills', N'P') IS NOT NULL
+    DROP PROCEDURE ResetPlayerSkills;
+GO
+
+-- 모두 초기화(점수를 돌려받는다) — 한 문장이라 그대로 원자적이다
+CREATE PROCEDURE ResetPlayerSkills
+    @playerId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE FROM PlayerSkills WHERE playerId = @playerId;
+END
+GO
+
+-- ============================================================
 -- 5. ODBC System DSN 설정 안내 (64비트 빌드 기준)
 -- ============================================================
 -- 관리자 권한 PowerShell에서 아래 명령어 실행:

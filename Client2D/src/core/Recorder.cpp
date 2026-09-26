@@ -120,6 +120,8 @@ namespace rec
 	bool FixedStep() { return Enabled() && g_opt.fixedStep; }
 	float StepSeconds() { return 1.f / static_cast<float>(std::max(1, g_opt.fps)); }
 
+	double StartAt() { return g_armed ? g_startAt : -1.0; }
+
 	void Arm(double now)
 	{
 		if (!Enabled() || g_armed) return;
