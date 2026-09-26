@@ -76,7 +76,7 @@
 | S→C | `SUBJECT_DAMAGE_NFY` | 누가 누구에게 얼마를(치명타·스킬·사망 플래그) |
 | S→C | `EFFECT_NFY` | 이펙트 트리거(기술·레벨업·물약·옛길 이동·강화·보스 내려찍기·PK·부활·보스 출현) |
 | S→C | `WORLD_NOTICE_INF` | 전 서버 공지(보스 출현/처치, 고강화 성공, PK) |
-| S→C | `SC_CHAT_EX` | 채널 채팅(일반/전체/시스템, 보낸 사람 이름 포함) |
+| S→C | `SC_CHAT_EX` | 채널 채팅(일반/전체/시스템, 보낸 사람 이름 포함 — Phase 3에서 채널 값 · 최근 대화 비트를 끝에 추가, 아래) |
 
 확장 패킷도 `STRESS_TEST`의 수신 버퍼(255바이트)를 넘지 않도록 `static_assert`로 크기를 묶었습니다.
 
@@ -101,6 +101,23 @@
   단일 작성자: 요청은 그 플레이어의 소유 Zone 스레드에서만 처리하고, 저장은 DBThread 샤드로 보낸다(절대값 저장이라 재전송 · 순서 뒤집힘에도 결과가 같다).
 - **훈련장(Phase 2-E)**: 마을(안전지대) 동쪽 12×5칸(`WorldData::kYardX0~X1 · kYardY0~Y1`)은 기술을 쓸 수 있는 예외 구역 — 맞는 것은 허수아비(`MonsterTable` 35)뿐이다.
   허수아비는 AI · 이동 · 반격이 없고 피해를 받으면 바로 가득 찬다(죽지 않음 · 경험치 · 떨굼 없음). 넉백 · 끌어당김을 받지 않는다. 다른 플레이어는 여기서도 맞지 않는다(PK 규칙 그대로).
+
+### Phase 3 — 채팅 채널(`docs/upgrade/PHASE_3.md` 2장) · 확장 세션 전용, 끝에만 추가
+
+| 방향 | 패킷 | 크기 | 내용 |
+|---|---|---|---|
+| C→S | `CS_CHAT_EX` (= 88) | 152B | `channel`(일반 · 전체 · 거래 · 결사 · 귓속말) · `targetName[20]`(귓속말 받는 이) · `mess[128]` |
+| S→C | `SC_CHAT_EX` (그대로 168B) | — | `ChatChannel` 값만 끝에 추가: `Trade` · `Guild` · `WhisperIn` · `WhisperOut`. `channel`의 최상위 비트 `kChatHistoryBit`(0x80) = 접속 직후 보내는 최근 대화 |
+| S→C | `SYSTEM_MESSAGE_INF`(기존) | — | `SystemMessageCode` 끝에 `ChatTooFast(채널, 기다릴 ms)` · `ChatRepeated` · `ChatBadText` · `ChatNoTarget` · `ChatNoGuild` |
+
+- **`PacketType` 89개(0~88)** — 127까지 38개 남음. 기존 `CS_CHAT` · `SC_CHAT` · `SC_CHAT_EX` 구조체는 한 바이트도 바꾸지 않았다. 레거시 세션(STRESS_TEST 봇 · 옛 클라)은 예전과 똑같이 `CS_CHAT` → 시야 안 `SC_CHAT`.
+- **채널 범위**: 일반 = **같은 지역(Zone) 전체**의 확장 세션(보낸 사람의 Zone 스레드가 자기 섹터 표를 한 번 훑는다 — `Sector::ForEachUserInZone`) + 시야 안 레거시 세션에는 예전 `SC_CHAT` /
+  전체 · 거래 = 서버 전체 확장 세션(월드 공지와 같은 경로, 사람마다 10초 · 5초에 한 번) / 결사 = Phase 5(지금은 `ChatNoGuild`) /
+  귓속말 = **이름 → 세션 색인**(`GameSessionManager::RegisterName/FindByName`, 소문자 키, `shared_mutex` — 세션 표와 다른 락). 받는 이 `WhisperIn`, 보낸 이에게 `WhisperOut`(이름 = 받는 이의 실제 이름), 없으면 `ChatNoTarget`.
+- **단일 작성자**: `CS_CHAT_EX`는 Route가 보낸 사람의 Zone 큐로 넘긴다 — 도배 상태(토큰 버킷 · 같은 말 · 채널 대기)는 `User` 안에 있고 그 Zone 스레드만 바꾼다. 다른 Zone의 받는 이에게는 세션 송신(`PostSend`)만.
+- **도배 막기**(거절은 토큰을 쓰지 않는다): UTF-8 검사(제어 문자 · 너무 긴 표현 · 서로게이트 거부) → 토큰 버킷 **5줄 / 5초**(1초에 1줄씩 참) → **30초 안의 같은 말 세 번째** → 전체 10초 · 거래 5초 → 결사 → 귓속말 상대.
+- **최근 대화**: 전체 · 거래 · 일반(지역 표시) 줄을 뮤텍스 아래 160줄까지 — 확장 세션이 게임에 들어오면 전체 · 거래 + 그 지역 일반에서 마지막 20줄(`kChatHistoryBit`).
+- **DB 변경 없음**(채팅은 저장하지 않는다). 차단 목록 · 탭 · 창 배치는 클라 설정(`config/ui_<캐릭터>.json`).
 
 ## DB 마이그레이션
 
