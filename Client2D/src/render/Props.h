@@ -3,6 +3,7 @@
 #include "raylib.h"
 #include "net/Shared.h"
 
+#include <string>
 #include <vector>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,13 +26,22 @@ namespace props
 	void PushLight(Light l);
 	// 0 = 낮, 1 = 한밤(창문 불빛 등)
 	void SetNight(float night);
+	[[nodiscard]] float NightLevel();
 
 	// 필드(마을 밖)의 막힌 칸 하나
 	void DrawFieldObstacle(int x, int y, WorldData::Biome biome, float time);
 
 	// 마을 칸(여러 칸짜리 구조물은 좌상단 칸에서 한 번만 그린다)
 	void DrawTownCell(int x, int y, char cell, float time);
+	// 건물 키트(render/Buildings.cpp — Phase 4-C): 종류 · 변형 · 구획 규칙으로 짓는다
 	void DrawBuilding(const WorldData::BuildingRow& b, float time);
+	// 건물을 다 그린 뒤 한 번: 모아 둔 굴뚝 연기(깊이 쓰기 끔) · 등불 빛(더하기)
+	void DrawBuildingFx();
+	// 그린 건물(assets/buildings — Phase 4-C): 폴더와 켜기(끄면 모두 키트 — 비교 캡처 · --kit-buildings)
+	void SetBuildingArt(const std::string& dir, bool on);
+	// 소품(props.txt — Phase 4-C): 막히는 소품 칸 하나(없으면 false) · 화면 칸 범위 안의 줄 소품(빨랫줄 · 줄깃발)
+	bool DrawTownProp(int x, int y, float time);
+	void DrawLineProps(int x0, int y0, int x1, int y1, float time);
 	// 막힌 마을 칸 문자가 화면에 무언가로 그려지는가(보이지 않는 벽 검사 — --script terraincheck)
 	[[nodiscard]] bool TownCellVisible(char cell);
 

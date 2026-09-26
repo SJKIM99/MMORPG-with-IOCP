@@ -38,6 +38,42 @@ STYLE_FX = (
     "no characters, no text, no border, no grid lines, each element centered in its own cell with empty black margin."
 )
 
+# 건물(Phase 4-C): 키트 건물을 단색 바탕에 찍은 그림(buildings.py prep)을 "설계도" 참고 그림으로 넘기고 다시 그리게 한다.
+# 구도 · 발자국 · 위치 · 크기를 설계도 그대로 두게 해야 게임 좌표(buildings.py fit)에 맞는다. {what} = 건물 설명
+BUILDING_BLUEPRINT = (
+    "Use the reference image ONLY as the blueprint: keep EXACTLY the same camera angle (2:1 isometric, seen from the south-east corner "
+    "so the left-front and right-front walls are visible and the far walls are hidden), the same footprint proportions, the same position "
+    "and size in the frame, and the same silhouette and parts. "
+)
+STYLE_BUILDING = (
+    "Style: hand-painted digital painting for a premium 2.5D isometric dark-fantasy MMORPG, crisp readable silhouette, "
+    "subtle dark ink outline, soft warm key light from the top-left, restrained natural palette, slightly stylized but believable. "
+    "Transparent background, no ground plane, no grass, no cast shadow, no people, no text, no letters, no border, no grid lines, "
+    "no purple, no neon."
+)
+# 건물 주문(gpt_image_2_5 · quality medium · 1k · background transparent · 참고 그림 = <이름>_ref.png). 결과 job은 ASSETS.md
+BUILDINGS = {
+    'auction': "the town's auction hall, an old church meeting hall that the church left behind and townsfolk repurposed as a market house "
+               "- weathered pale limestone ashlar walls with a darker plinth, tall round-arched windows with dark leaded glass, terracotta tiles "
+               "with moss, a small open empty belfry with a pointed cap on the ridge, an entrance porch with two white columns, a hanging sign "
+               "with golden balance scales, two long cloth banners (deep red and dark teal) with a golden key emblem",
+    'tower': "the Morning Star tower in the town plaza - a tall octagonal pale limestone watchtower on a square stone base narrowing as it "
+             "rises, arched door, slit windows, a stone balcony ring with a dark wooden railing, a glass lantern room with iron mullions and a "
+             "warm golden flame, a dark slate conical roof with a small golden star finial",
+    'store': "the general store - a two-storey half-timbered house over a stone plinth, red clay tile gable roof with a brick chimney, "
+             "red-and-cream striped awnings on both visible walls, shuttered upper windows with flower boxes, crates and a barrel, a small "
+             "hanging sign with a red potion flask",
+    'smithy': "the blacksmith's forge - rough fieldstone walls, dark grey slate gable roof, tall stone chimney, an open timber lean-to on the "
+              "right sheltering a glowing forge and an anvil, round-arched wooden door, a hanging sign with two crossed swords",
+    'inn': "the inn seen from its garden side - a large two-storey half-timbered inn with a jettied upper floor, a long wooden balcony, a "
+           "brown wooden-shingle hipped roof with two brick chimneys, shuttered windows with flower boxes, an iron lantern on the corner",
+    'guildhall': "the hall of the sworn company, the former barracks of an old order of oath-knights - dressed grey stone, blue-grey slate "
+                 "gable roof, four square crenellated corner towers, a round-arched double door, long cloth banners with golden emblems",
+    'temple': "the hilltop chapel - white limestone, blue-grey slate roof, a classical portico of white columns under a pediment with a "
+              "rose window, buttresses and tall arched windows, a white bell tower with an open belfry and a slender slate spire with a "
+              "small golden sun symbol",
+}
+
 ISO = "isometric three-quarter view from above (about 35 degrees)"
 
 LAYOUT_4 = (

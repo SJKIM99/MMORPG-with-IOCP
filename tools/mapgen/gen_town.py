@@ -53,6 +53,11 @@ BUILDING_KINDS = {
 }
 PROP_KINDS = []
 AMBIENT_KINDS = ['fountain', 'market', 'smithy', 'bell', 'river', 'wind']
+# 소품(props.txt) — 막히는 소품: ground.txt의 'P' 칸 하나에 하나. 줄 소품: 두 끝(x y x2 y2) 사이에 매단다(막지 않는다)
+PROP_BLOCK = {'grave': 'Grave', 'board': 'Board', 'bench': 'Bench', 'statue': 'Statue', 'flagpole': 'Flagpole', 'well': 'Well',
+              'cart': 'Cart', 'hay': 'Hay', 'barrels': 'Barrels', 'crates': 'Crates', 'signpost': 'Signpost', 'target': 'Target',
+              'rack': 'Rack'}
+PROP_LINE = {'laundry': 'Laundry', 'bunting': 'Bunting'}
 
 
 def die(msg):
@@ -260,6 +265,34 @@ def main():
             die('ambient.txt: 모르는 소리 %r' % parts[0])
         ambient.append((parts[0], float(parts[1]), float(parts[2]), float(parts[3])))
 
+    props = []
+    pown = {}
+    props_path = os.path.join(town_dir, 'props.txt')
+    for l in (read_lines(props_path) if os.path.exists(props_path) else []):
+        parts = l.split()
+        kind = parts[0]
+        if kind in PROP_BLOCK:
+            px, py = int(parts[1]), int(parts[2])
+            if not inside(px, py) or ground[py][px] != 'P':
+                errors.append('소품 %s (%d, %d): ground.txt의 P 칸이어야 한다(%r)' % (kind, px, py, ground[py][px] if inside(px, py) else '밖'))
+            if (px, py) in pown:
+                errors.append('소품 %s (%d, %d): 한 칸에 둘' % (kind, px, py))
+            pown[(px, py)] = kind
+            props.append((kind, px, py, px, py))
+        elif kind in PROP_LINE:
+            ax, ay, bx, by = (int(v) for v in parts[1:5])
+            if not (inside(ax, ay) and inside(bx, by)):
+                errors.append('줄 소품 %s (%d %d %d %d): 마을 밖' % (kind, ax, ay, bx, by))
+            if level[ay][ax] != level[by][bx]:
+                errors.append('줄 소품 %s (%d %d %d %d): 두 끝의 층이 같아야 한다' % (kind, ax, ay, bx, by))
+            props.append((kind, ax, ay, bx, by))
+        else:
+            die('props.txt: 모르는 소품 %r' % kind)
+    for y in range(H):
+        for x in range(W):
+            if ground[y][x] == 'P' and (x, y) not in pown:
+                errors.append('(%d, %d): P 칸에 소품이 없다(props.txt)' % (x, y))
+
     # ── 이어짐: 첫 부활 자리에서 걸어서 닿지 못하는 걷는 칸(서버 대각 규칙 — 두 옆이 다 막히면 못 간다) ──
     from collections import deque
     unreach = []
@@ -369,6 +402,15 @@ def main():
     if not ambient:
         out.append('\t\t{ AmbientKind::eWind, 0.f, 0.f, 0.f },   // (없음 — 자리 채우기)')
     out.append('\t};')
+    out.append('')
+    out.append('\t// 소품(props.txt) — 막히는 소품은 kGround의 P 칸(서버 충돌), 줄 소품(빨랫줄 · 줄깃발)은 두 끝 사이(막지 않는다)')
+    out.append('\tinline constexpr PropRow kProps[] =')
+    out.append('\t{')
+    for kind, ax, ay, bx, by in props:
+        out.append('\t\t{ PropKind::e%s, %d, %d, %d, %d },' % (PROP_BLOCK.get(kind) or PROP_LINE[kind], x0 + ax, y0 + ay, x0 + bx, y0 + by))
+    if not props:
+        out.append('\t\t{ PropKind::eBench, -1, -1, -1, -1 },   // (없음 — 자리 채우기, x < 0은 건너뛴다)')
+    out.append('\t};')
     out.append('}')
     header = '\n'.join(out) + '\n'
     path = os.path.join(ROOT, 'GameServer', 'Data', 'TownMap.h')
@@ -384,8 +426,8 @@ def main():
 
     walkable = sum(1 for y in range(H) for x in range(W) if walk(x, y))
     hist = [sum(1 for y in range(H) for x in range(W) if level[y][x] == k and walk(x, y)) for k in range(5)]
-    print('[gen_town] %s %dx%d — 걷기 %d · 막힘 %d · 가장자리 %d · 건물 %d · 층별 걷기 %s' % (
-        cfg['name'], W, H, walkable, W * H - walkable, rims, len(buildings), hist))
+    print('[gen_town] %s %dx%d — 걷기 %d · 막힘 %d · 가장자리 %d · 건물 %d · 소품 %d · 층별 걷기 %s' % (
+        cfg['name'], W, H, walkable, W * H - walkable, rims, len(buildings), len(props), hist))
 
 
 def write_preview(town_dir, ground, level, buildings, districts, W, H):

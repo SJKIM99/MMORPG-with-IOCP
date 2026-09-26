@@ -795,6 +795,9 @@ private:
 	// Phase 4: 카메라 투어(--script tour) — 캐릭터 대신 정해진 길을 따라가며 구획 이름을 띄운다(HUD 숨김 · 안개 끔)
 	struct TourCam { bool on = false; Vector2 tile{}; float zoom = 1.f; std::string caption; std::string sub; double captionAt = -10.0; };
 	TourCam          m_tourCam;
+	// 도착 연출(Phase 4-B 첫인상): 남문으로 마을에 들어서는 순간 카메라가 샛별 탑 · 광장 쪽으로 잠깐 물러나 보여 준다
+	struct ArrivalCam { double at = -10.0; float zoomFrom = 1.45f; bool wasOutside = false; bool seen = false; };
+	ArrivalCam       m_arrival;
 	// --script terraincheck 탐침: 가장자리(R)를 사이에 둔 낮은 칸 A · 높은 칸 B — A에서 B로 걸어가며 화면 위치의 지면 끊김을 잰다
 	struct TerrainProbe
 	{

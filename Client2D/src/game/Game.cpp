@@ -620,7 +620,36 @@ void Game::UpdateGame(float dt)
 	}
 	else if (Entity* me = Self())
 	{
-		m_cam.Follow(SurfaceIso(me->pos, 0.6f));
+		// 도착 연출: 마을 밖(남문 아래)에서 남문 칸으로 들어서면 3.4초 동안 카메라가 샛별 탑 쪽으로 55% 옮겨 가고 조금 넓게 본다.
+		// 쿼터뷰에서 북쪽은 화면 오른쪽 위라, 남문에서 곧장 올려다보면 광장 · 탑이 화면 밖이다(LEVEL_DENICA 6장).
+		{
+			const bool inTown = WorldData::IsInTown(m_predX, m_predY);
+			const bool atGate = inTown && std::abs(m_predX - static_cast<int>(TownMap::kSouthGate.x)) <= 3
+				&& m_predY >= WorldData::kTownY0 + WorldData::kTownH - 4;
+			if (atGate && m_arrival.wasOutside && m_now - m_arrival.at > 20.0)
+			{
+				m_arrival.at = m_now;
+				m_arrival.zoomFrom = m_cam.ZoomGoal();
+			}
+			m_arrival.wasOutside = !inTown;
+		}
+		Vector2 follow = SurfaceIso(me->pos, 0.6f);
+		const float at = static_cast<float>(m_now - m_arrival.at);
+		if (at >= 0.f && at < 3.4f)
+		{
+			auto smooth = [](float a, float b, float x) { const float t = util::Clamp01((x - a) / (b - a)); return t * t * (3.f - 2.f * t); };
+			const float w = at < 2.4f ? smooth(0.f, 0.7f, at) : 1.f - smooth(2.4f, 3.4f, at);
+			for (const auto& b : WorldData::kBuildings)
+				if (b.kind == WorldData::BuildingKind::eStarTower)
+				{
+					const Vector2 tower = gfx::IsoPx((b.x0 + b.x1) * 0.5f, (b.y0 + b.y1) * 0.5f, 3.2f + b.level * hgt::kLevelZ);
+					follow = util::LerpV(follow, tower, 0.55f * w);
+					break;
+				}
+			m_cam.SetZoomFree(util::Lerp(m_arrival.zoomFrom, std::min(m_arrival.zoomFrom, 1.05f), w));
+			if (at > 3.3f) m_cam.SetZoomFree(m_arrival.zoomFrom);
+		}
+		m_cam.Follow(follow);
 		// 진행 방향으로 앞서기: 스프링이 늦는 만큼(2τ·속도) + 달릴 때 약 1칸 더 — 가는 쪽이 더 보인다
 		const Vector2 v = m_mover.Velocity();
 		const Vector2 isoV{ (v.x - v.y) * gfx::kHalfW, (v.x + v.y) * gfx::kHalfH };

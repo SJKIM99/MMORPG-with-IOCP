@@ -87,6 +87,7 @@ public:
 
 	[[nodiscard]] Vector2 Target() const { return m_target; }
 	[[nodiscard]] float Zoom() const { return m_zoom; }
+	[[nodiscard]] float ZoomGoal() const { return m_zoomGoal; }
 	[[nodiscard]] float Trauma() const { return m_trauma; }
 
 	static constexpr float kMinZoom = 0.9f;

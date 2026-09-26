@@ -307,10 +307,13 @@ void Game::DrawWorld(const Camera2D& cam)
 	// ── 2) 불투명: 깊이 쓰기 ──
 	gfx::DepthWrite(true);
 	m_terrain.DrawProps(cam, m_screenW, m_screenH, pt, t, !m_tourCam.on);
-	DrawNpcs();
-	for (auto& [id, e] : m_ents)
-		if (!IsTranslucent(e, static_cast<float>(m_now)))
-			DrawEntity(e, false);
+	if (Terrain::Solo() < 0)
+	{
+		DrawNpcs();
+		for (auto& [id, e] : m_ents)
+			if (!IsTranslucent(e, static_cast<float>(m_now)))
+				DrawEntity(e, false);
+	}
 
 	// ── 2.5) 가려진 내 캐릭터 실루엣(나무/건물/큰 보스 뒤에서도 위치가 보이게) ──
 	// 깊이 쓰기를 켠 채로 GREATER 테스트: 먼저 그린 부위가 깊이를 차지하므로

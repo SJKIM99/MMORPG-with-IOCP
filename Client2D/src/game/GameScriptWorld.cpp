@@ -6,6 +6,8 @@
 #include "Data/WorldData.h"
 #include "render/Height.h"
 #include "render/Props.h"
+#include "render/Draw.h"
+#include "render/Terrain.h"
 #include "Data/TownRules.h"
 
 #include <algorithm>
@@ -88,6 +90,152 @@ bool Game::RunScriptWorld(float dt)
 	}
 	if (s == "terraincheck")
 		return RunTerrainCheck(dt);
+	// arrive — 남문 밖 들판으로 걸어 나갔다가 다시 남문으로 들어온다(도착 연출 · 첫인상 녹화). [arrive] 줄
+	if (s == "arrive")
+	{
+		static double leg2At = 1e18;
+		if (m_scriptStep == 0 && m_scriptT > 4.0f && Self())
+		{
+			std::printf("[arrive] start t=%.2f at %d,%d\n", m_scriptT, m_predX - WorldData::kTownX0, m_predY - WorldData::kTownY0);
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kSouthGateOut.x), static_cast<int>(TownMap::kSouthGateOut.y) + 2 });
+			m_scriptStep = 1;
+			m_scriptMark = m_scriptT;
+		}
+		else if (m_scriptStep == 1 && ((m_goal.kind == GoalKind::None && !WorldData::IsInTown(m_predX, m_predY) && m_scriptT - m_scriptMark > 1.f) || m_scriptT - m_scriptMark > 80.f))
+		{
+			std::printf("[arrive] outside t=%.2f at %d,%d\n", m_scriptT, m_predX - WorldData::kTownX0, m_predY - WorldData::kTownY0);
+			SetGoal(Goal{ GoalKind::Move, ObjID{}, static_cast<int>(TownMap::kSouthGate.x), static_cast<int>(TownMap::kSouthGate.y) - 8 });
+			m_scriptStep = 2;
+			m_scriptMark = m_scriptT;
+			leg2At = m_now;
+		}
+		else if (m_scriptStep == 2 && m_arrival.at >= leg2At)
+		{
+			std::printf("[arrive] camera t=%.2f at %d,%d\n", m_scriptT, m_predX - WorldData::kTownX0, m_predY - WorldData::kTownY0);
+			std::fflush(stdout);
+			m_scriptStep = 3;
+			// --screenshot을 주었으면 연출이 가장 멀리 간 때(0.9초 뒤)를 찍는다
+			if (!m_opts.screenshot.empty()) m_opts.screenshotAfter = std::min(m_opts.screenshotAfter, m_runTime + 0.9f);
+		}
+		else if (m_scriptStep >= 2 && m_scriptStep < 4 && (m_goal.kind == GoalKind::None || m_scriptT - m_scriptMark > 60.f))
+		{
+			std::printf("[arrive] done t=%.2f at %d,%d%s\n", m_scriptT, m_predX - WorldData::kTownX0, m_predY - WorldData::kTownY0, m_scriptStep == 3 ? "" : " (연출 없음)");
+			std::fflush(stdout);
+			m_scriptStep = 4;
+		}
+		return true;
+	}
+	// look:x,y[,zoom] — 마을 기준 칸에 카메라를 세워 둔다(HUD 없이 풍경만 — 첫인상 구도 · 문서 그림). 캐릭터는 제자리
+	if (s.rfind("look:", 0) == 0)
+	{
+		if (m_scriptStep == 0 && m_scriptT > 1.0f)
+		{
+			float lx = 0.f, ly = 0.f, lz = 1.45f;
+			std::sscanf(s.c_str() + 5, "%f,%f,%f", &lx, &ly, &lz);
+			m_tourCam.on = true;
+			m_tourCam.tile = Vector2{ WorldData::kTownX0 + lx, WorldData::kTownY0 + ly };
+			m_tourCam.zoom = lz;
+			m_cam.SnapTo(TileToIso(m_tourCam.tile, 0.f));
+			m_cam.SetZoomFree(lz);
+			m_scriptStep = 1;
+		}
+		return true;
+	}
+	// bldsolo:N — 건물 N 하나만 자홍 바탕에(HUD · 캐릭터 · 지형 없이) 찍는다: bldsolo_N.png. Higgsfield 참고 그림 · 비교용(Phase 4-C)
+	if (s.rfind("bldsolo:", 0) == 0)
+	{
+		const int n = std::atoi(s.c_str() + 8);
+		if (n < 0 || n >= static_cast<int>(std::size(WorldData::kBuildings))) return true;
+		const auto& b = WorldData::kBuildings[n];
+		if (m_scriptStep == 0 && m_scriptT > 1.0f)
+		{
+			Terrain::SetSolo(n);
+			m_tourCam.on = true;
+			const float span = static_cast<float>(std::max(b.x1 - b.x0, b.y1 - b.y0) + 1);
+			m_tourCam.tile = Vector2{ (b.x0 + b.x1) * 0.5f + 1.1f, (b.y0 + b.y1) * 0.5f + 1.1f };
+			m_tourCam.zoom = std::clamp(12.f / (span + 4.f), 0.5f, 1.2f);   // 탑 · 첨탑처럼 높은 건물도 꼭대기가 잘리지 않게
+			m_cam.SnapTo(TileToIso(m_tourCam.tile, 0.f));
+			m_cam.SetZoomFree(m_tourCam.zoom);
+			m_scriptStep = 1;
+			m_scriptMark = m_scriptT;
+		}
+		if (m_scriptStep == 1 && m_scriptT - m_scriptMark > 2.5f)
+		{
+			char name[64];
+			std::snprintf(name, sizeof(name), "bldsolo_%d.png", n);
+			TakeScreenshot(name);
+			std::printf("[bldsolo] %d kind=%d zoom=%.2f cam=%.2f,%.2f\n", n, static_cast<int>(b.kind), m_tourCam.zoom, m_tourCam.tile.x, m_tourCam.tile.y);
+			std::fflush(stdout);
+			// 곁 파일: 화면 px ↔ 아이소 px 변환 값(tools/assetgen/buildings.py가 읽는다)
+			//   iso.x = (sx − offX) / zoom + targetX,  iso.y = (sy − offY) / zoom + targetY + lift
+			std::snprintf(name, sizeof(name), "bldsolo_%d.txt", n);
+			if (FILE* fp = std::fopen(name, "w"))
+			{
+				std::fprintf(fp, "target %.3f %.3f\noffset %.3f %.3f\nzoom %.5f\nlift %.3f\nbuilding %d %d %d %d %d\nrotation %.3f\n",
+					m_cam2d.target.x, m_cam2d.target.y, m_cam2d.offset.x, m_cam2d.offset.y, m_cam2d.zoom,
+					static_cast<float>(b.level) * 0.75f * gfx::kUnitZ, b.x0, b.y0, b.x1, b.y1, b.level, m_cam2d.rotation);
+				std::fclose(fp);
+			}
+			m_scriptStep = 2;
+			m_quit = true;   // 한 장이면 끝(도구가 여러 건물을 차례로 부른다)
+		}
+		return true;
+	}
+	// bldgallery — 건물 종류마다(주택은 변형마다) 한 채씩 카메라를 옮겨 찍는다(Phase 4-C 점검 · README 그림)
+	//   bld_NN.png(실행 폴더) + [bld] 줄. --hour로 낮 · 밤을 고른다.
+	if (s == "bldgallery" || s.rfind("bldgallery:", 0) == 0)
+	{
+		static std::vector<int> picks;
+		static int lastShot = -1;
+		if (picks.empty() && s.size() > 11)
+			picks.push_back(std::atoi(s.c_str() + 11));   // bldgallery:N — 건물 N 하나만(마을 속에서)
+		if (picks.empty())
+		{
+			std::vector<int> seen;
+			for (int i = 0; i < static_cast<int>(std::size(WorldData::kBuildings)); ++i)
+			{
+				const auto& b = WorldData::kBuildings[i];
+				const int key = static_cast<int>(b.kind) * 16 + (b.kind == WorldData::BuildingKind::eHouse ? b.variant % 10 : 0);
+				if (std::find(seen.begin(), seen.end(), key) != seen.end()) continue;
+				seen.push_back(key);
+				picks.push_back(i);
+			}
+		}
+		constexpr float kHold = 2.8f;
+		if (m_scriptStep == 0)
+		{
+			if (m_scriptT > 1.0f) { m_tourCam.on = true; m_scriptStep = 1; m_scriptMark = m_scriptT; std::printf("[bld] start %zu\n", picks.size()); }
+			return true;
+		}
+		const int i = static_cast<int>((m_scriptT - m_scriptMark) / kHold);
+		if (i >= static_cast<int>(picks.size()))
+		{
+			if (m_scriptStep == 1) { std::printf("[bld] done\n"); std::fflush(stdout); m_scriptStep = 2; }
+			return true;
+		}
+		const auto& b = WorldData::kBuildings[picks[static_cast<size_t>(i)]];
+		const float h = static_cast<float>(std::max(b.x1 - b.x0, b.y1 - b.y0));
+		const Vector2 tile{ (b.x0 + b.x1) * 0.5f + 0.6f + h * 0.08f, (b.y0 + b.y1) * 0.5f + 0.6f + h * 0.08f };
+		const float t = m_scriptT - m_scriptMark - static_cast<float>(i) * kHold;
+		if (t < 0.2f || m_tourCam.tile.x != tile.x || m_tourCam.tile.y != tile.y)
+		{
+			m_tourCam.tile = tile;
+			m_tourCam.zoom = std::clamp(12.f / (h + 6.f), 0.62f, 1.3f);
+			m_cam.SnapTo(TileToIso(tile, 0.f));
+			m_cam.SetZoomFree(m_tourCam.zoom);
+		}
+		if (t > 1.9f && lastShot != i)
+		{
+			lastShot = i;
+			char name[64];
+			std::snprintf(name, sizeof(name), "bld_%02d.png", i);
+			TakeScreenshot(name);
+			std::printf("[bld] %d kind=%d variant=%d at %d,%d sign=%s\n", i, static_cast<int>(b.kind), b.variant,
+				b.x0 - WorldData::kTownX0, b.y0 - WorldData::kTownY0, b.sign);
+			std::fflush(stdout);
+		}
+		return true;
+	}
 	if (s == "tour")
 	{
 		static const Stops kStops = BuildStops();
@@ -241,6 +389,9 @@ bool Game::RunTerrainCheck(float dt)
 					if (!WorldData::IsInTown(ax, ay) || !WorldData::IsInTown(bx, by)) continue;
 					if (WorldData::IsBlocked(ax, ay) || WorldData::IsBlocked(bx, by)) continue;
 					if (WorldData::TownLevel(ax, ay) >= WorldData::TownLevel(bx, by)) continue;
+					// 계단 칸은 짝이 될 수 없다(계단 자체가 층을 잇는다 — 곧게 올라가도 맞는 길이다)
+					auto stair = [](char c) { return c == '^' || c == 'v' || c == '<' || c == '>'; };
+					if (stair(WorldData::TownCell(ax, ay)) || stair(WorldData::TownCell(bx, by))) continue;
 					const int da = dist[static_cast<size_t>(idx(ax, ay))], db = dist[static_cast<size_t>(idx(bx, by))];
 					if (da < 0 || db < 0 || da >= best) continue;
 					best = da;

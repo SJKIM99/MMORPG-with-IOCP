@@ -598,41 +598,6 @@ namespace props
 			PushLight({ gfx::IsoPx(cx, cy), 160.f, Rgb(0x90D0FF), 0.45f });
 		}
 
-		// 창문(밤에 불이 켜진다)
-		void Window(P3 a, P3 b, float z0, float z1, bool eastFace)
-		{
-			const Color glass = util::Mix(Rgb(0x3A4A5A), Rgb(0xFFD27A), g_night);
-			const Color frame = Rgb(0x4A3624);
-			const float e = 0.012f;
-			if (eastFace)
-			{
-				gfx::Face({ a.x + e, a.y - 0.04f, z0 - 0.04f }, { a.x + e, b.y + 0.04f, z0 - 0.04f }, { a.x + e, b.y + 0.04f, z1 + 0.04f }, { a.x + e, a.y - 0.04f, z1 + 0.04f }, frame);
-				gfx::Face({ a.x + 2 * e, a.y, z0 }, { a.x + 2 * e, b.y, z0 }, { a.x + 2 * e, b.y, z1 }, { a.x + 2 * e, a.y, z1 }, glass);
-				gfx::Face({ a.x + 3 * e, (a.y + b.y) * 0.5f - 0.02f, z0 }, { a.x + 3 * e, (a.y + b.y) * 0.5f + 0.02f, z0 }, { a.x + 3 * e, (a.y + b.y) * 0.5f + 0.02f, z1 }, { a.x + 3 * e, (a.y + b.y) * 0.5f - 0.02f, z1 }, frame);
-				if (g_night > 0.05f) PushLight({ gfx::IsoPx(a.x + 0.4f, (a.y + b.y) * 0.5f), 70.f, Rgb(0xFFC870), 0.7f * g_night });
-			}
-			else
-			{
-				gfx::Face({ a.x - 0.04f, a.y + e, z0 - 0.04f }, { b.x + 0.04f, a.y + e, z0 - 0.04f }, { b.x + 0.04f, a.y + e, z1 + 0.04f }, { a.x - 0.04f, a.y + e, z1 + 0.04f }, frame);
-				gfx::Face({ a.x, a.y + 2 * e, z0 }, { b.x, a.y + 2 * e, z0 }, { b.x, a.y + 2 * e, z1 }, { a.x, a.y + 2 * e, z1 }, glass);
-				gfx::Face({ (a.x + b.x) * 0.5f - 0.02f, a.y + 3 * e, z0 }, { (a.x + b.x) * 0.5f + 0.02f, a.y + 3 * e, z0 }, { (a.x + b.x) * 0.5f + 0.02f, a.y + 3 * e, z1 }, { (a.x + b.x) * 0.5f - 0.02f, a.y + 3 * e, z1 }, frame);
-				if (g_night > 0.05f) PushLight({ gfx::IsoPx((a.x + b.x) * 0.5f, a.y + 0.4f), 70.f, Rgb(0xFFC870), 0.7f * g_night });
-			}
-		}
-
-		void Door(float xa, float xb, float y, float h)
-		{
-			gfx::Face({ xa - 0.06f, y + 0.01f, 0 }, { xb + 0.06f, y + 0.01f, 0 }, { xb + 0.06f, y + 0.01f, h + 0.06f }, { xa - 0.06f, y + 0.01f, h + 0.06f }, Rgb(0x3A2A1C));
-			gfx::Face({ xa, y + 0.02f, 0 }, { xb, y + 0.02f, 0 }, { xb, y + 0.02f, h }, { xa, y + 0.02f, h }, Rgb(0x7A5232));
-			for (int i = 1; i < 4; ++i)
-			{
-				const float x = util::Lerp(xa, xb, i / 4.f);
-				gfx::Face({ x - 0.01f, y + 0.03f, 0.05f }, { x + 0.01f, y + 0.03f, 0.05f }, { x + 0.01f, y + 0.03f, h - 0.05f }, { x - 0.01f, y + 0.03f, h - 0.05f }, Rgb(0x5A3A22));
-			}
-			const Vector2 knob = gfx::IsoPx(xb - 0.12f, y + 0.04f, h * 0.5f);
-			gfx::SetDepth(xb + y);
-			gfx::Circle(knob, 1.8f, Rgb(0xE0C060));
-		}
 	}
 
 	std::vector<Light>& FrameLights() { return g_lights; }
@@ -910,8 +875,9 @@ namespace props
 				}
 			break;
 		}
-		case 'P':   // 막히는 소품 자리(props.txt가 채운다) — 그림이 없으면 나무 상자
+		case 'P':   // 막히는 소품 자리(props.txt → TownMap::kProps — render/Buildings.cpp) — 표에 없으면 나무 상자
 		{
+			if (DrawTownProp(x, y, time)) break;
 			const Texture2D* wood = envart::Get(envart::Tex::Wood);
 			if (wood) gfx::BoxTex(*wood, X - 0.32f, Y - 0.32f, X + 0.32f, Y + 0.32f, 0.f, 0.6f, 0.6f, WHITE, Rgb(0xC8C0B4), Rgb(0x968E84));
 			else gfx::Box(X - 0.32f, Y - 0.32f, X + 0.32f, Y + 0.32f, 0.f, 0.6f, Rgb(0xA07A50), Rgb(0x7A5A3A), Rgb(0x5E4630));
@@ -960,186 +926,8 @@ namespace props
 		}
 	}
 
-	void DrawBuilding(const WorldData::BuildingRow& b, float time)
-	{
-		using WorldData::BuildingKind;
-		const float x0 = b.x0 - 0.5f, y0 = b.y0 - 0.5f, x1 = b.x1 + 0.5f, y1 = b.y1 + 0.5f;
-		Color wall, roof, trim;
-		float h = 2.1f, roofH = 1.5f;
-		switch (b.kind)
-		{
-		case BuildingKind::eStore:      wall = Rgb(0xE8D8B8); roof = Rgb(0xB8483A); trim = Rgb(0x6A4A2E); break;
-		case BuildingKind::eWeaponShop: wall = Rgb(0x8A8278); roof = Rgb(0x3A3E48); trim = Rgb(0x4A3A2E); h = 2.0f; break;
-		case BuildingKind::eTemple:     wall = Rgb(0xF2EEE6); roof = Rgb(0x3A6AB0); trim = Rgb(0xC8B070); h = 2.6f; roofH = 1.9f; break;
-		case BuildingKind::eInn:        wall = Rgb(0xB08A5A); roof = Rgb(0x3E7A4A); trim = Rgb(0x5A3E26); h = 2.3f; break;
-		default:
-		{
-			const int v = (b.x0 * 3 + b.y0) % 3;
-			wall = v == 0 ? Rgb(0xE0D0B0) : (v == 1 ? Rgb(0xD8C8A8) : Rgb(0xC8B898));
-			roof = v == 0 ? Rgb(0xA8583A) : (v == 1 ? Rgb(0x6A5A8A) : Rgb(0x8A6A3A));
-			trim = Rgb(0x6A4A2E);
-			h = 1.5f; roofH = 1.1f;
-			break;
-		}
-		}
-
-		// 그린 텍스처(있으면): 벽 = 회칠 목조 · 돌, 지붕 = 붉은 기와 · 청석판(건물마다 색을 곱한다)
-		const Texture2D* plaster = envart::Get(envart::Tex::Plaster);
-		const Texture2D* stoneTex = envart::Get(envart::Tex::Stone);
-		const Texture2D* wallTex = nullptr;
-		const Texture2D* roofTex = nullptr;
-		Color wallMul = WHITE, roofMul = WHITE;
-		switch (b.kind)
-		{
-		case BuildingKind::eStore:      wallTex = plaster; roofTex = envart::Get(envart::Tex::RoofRed); break;
-		case BuildingKind::eWeaponShop: wallTex = stoneTex; wallMul = Rgb(0xD8D4CC); roofTex = envart::Get(envart::Tex::RoofSlate); break;
-		case BuildingKind::eTemple:     wallTex = stoneTex; wallMul = Rgb(0xFFFCF4); roofTex = envart::Get(envart::Tex::RoofSlate); roofMul = Rgb(0xB0C8FF); break;
-		case BuildingKind::eInn:        wallTex = plaster; wallMul = Rgb(0xF2E4CC); roofTex = envart::Get(envart::Tex::RoofSlate); roofMul = Rgb(0xB8E0B0); break;
-		default:
-		{
-			const int v = (b.x0 * 3 + b.y0) % 3;
-			wallTex = plaster;
-			wallMul = v == 0 ? WHITE : (v == 1 ? Rgb(0xF4EEE4) : Rgb(0xE8DCC8));
-			roofTex = envart::Get(v == 1 ? envart::Tex::RoofSlate : envart::Tex::RoofRed);
-			roofMul = v == 1 ? Rgb(0xD0C4F0) : (v == 2 ? Rgb(0xF0D8B8) : WHITE);
-			break;
-		}
-		}
-
-		// 기초
-		if (stoneTex)
-			gfx::BoxTex(*stoneTex, x0 - 0.05f, y0 - 0.05f, x1 + 0.05f, y1 + 0.05f, 0.f, 0.18f, 1.0f, Rgb(0xC8C4BC), Rgb(0x9A968E), Rgb(0x7A766E));
-		else
-			gfx::Box(x0 - 0.05f, y0 - 0.05f, x1 + 0.05f, y1 + 0.05f, 0.f, 0.18f, Rgb(0x8A857A), Rgb(0x6E6A62), Rgb(0x5A564E));
-		// 벽
-		if (wallTex)
-			gfx::BoxTex(*wallTex, x0, y0, x1, y1, 0.18f, h, 2.0f, wallMul, Shade(wallMul, 0.96f), Shade(wallMul, 0.72f));
-		else
-			gfx::Box(x0, y0, x1, y1, 0.18f, h, util::Shade(wall, 1.1f), wall, util::Shade(wall, 0.78f));
-
-		// 목조 뼈대(잡화점/집/여관) — 회칠 목조 텍스처에는 이미 그려져 있다
-		if (!wallTex && (b.kind == BuildingKind::eStore || b.kind == BuildingKind::eHouse || b.kind == BuildingKind::eInn))
-		{
-			const Color beam = trim;
-			for (float x = x0; x <= x1 + 0.01f; x += 2.f)
-				gfx::Face({ x - 0.05f, y1 + 0.01f, 0.18f }, { x + 0.05f, y1 + 0.01f, 0.18f }, { x + 0.05f, y1 + 0.01f, h }, { x - 0.05f, y1 + 0.01f, h }, beam);
-			for (float y = y0; y <= y1 + 0.01f; y += 2.f)
-				gfx::Face({ x1 + 0.01f, y - 0.05f, 0.18f }, { x1 + 0.01f, y + 0.05f, 0.18f }, { x1 + 0.01f, y + 0.05f, h }, { x1 + 0.01f, y - 0.05f, h }, util::Shade(beam, 0.8f));
-			gfx::Face({ x0, y1 + 0.01f, h * 0.55f }, { x1, y1 + 0.01f, h * 0.55f }, { x1, y1 + 0.01f, h * 0.55f + 0.1f }, { x0, y1 + 0.01f, h * 0.55f + 0.1f }, beam);
-			gfx::Face({ x1 + 0.01f, y0, h * 0.55f }, { x1 + 0.01f, y1, h * 0.55f }, { x1 + 0.01f, y1, h * 0.55f + 0.1f }, { x1 + 0.01f, y0, h * 0.55f + 0.1f }, util::Shade(beam, 0.8f));
-		}
-		// 예배당 기둥
-		if (b.kind == BuildingKind::eTemple)
-		{
-			for (float x = x0 + 0.6f; x < x1 - 0.3f; x += 1.2f)
-				gfx::Box(x - 0.15f, y1 + 0.05f, x + 0.15f, y1 + 0.35f, 0.18f, h, Rgb(0xFFFFFF), Rgb(0xE8E4DC), Rgb(0xC8C4BC));
-			gfx::Box(x0 - 0.1f, y1 - 0.1f, x1 + 0.1f, y1 + 0.45f, h, h + 0.2f, Rgb(0xFFFFFF), Rgb(0xE6E0D6), Rgb(0xC8C2B8));
-		}
-
-		// 문과 창문(남쪽 면 = 광장 쪽이 아닐 수도 있지만 보이는 면에 둔다)
-		const float midX = (x0 + x1) * 0.5f;
-		const float doorH = std::min(1.25f, h - 0.4f);
-		Door(midX - 0.4f, midX + 0.4f, y1, doorH + 0.18f);
-		const float wz0 = h * 0.5f, wz1 = h * 0.5f + 0.5f;
-		if (x1 - x0 >= 5.f)
-		{
-			Window({ x0 + 0.8f, y1, 0 }, { x0 + 1.6f, y1, 0 }, wz0, wz1, false);
-			Window({ x1 - 1.6f, y1, 0 }, { x1 - 0.8f, y1, 0 }, wz0, wz1, false);
-		}
-		else
-			Window({ x0 + 0.5f, y1, 0 }, { x0 + 1.1f, y1, 0 }, wz0, wz1, false);
-		for (float y = y0 + 0.9f; y + 0.8f < y1; y += 2.2f)
-			Window({ x1, y, 0 }, { x1, y + 0.7f, 0 }, wz0, wz1, true);
-
-		// 박공지붕(용마루는 긴 축 방향)
-		const float o = 0.28f;
-		const float top = h + roofH;
-		const Color rs = roof, rn = util::Shade(roof, 0.75f), re = util::Shade(roof, 0.9f);
-		if (roofTex)
-		{
-			// 기와 줄은 용마루와 나란히(u = 용마루 방향, v = 용마루 → 처마)
-			constexpr float kRoofUnit = 1.4f;
-			if ((x1 - x0) >= (y1 - y0))
-			{
-				const float yc = (y0 + y1) * 0.5f;
-				const float slope = std::sqrt((yc - y0 + o) * (yc - y0 + o) + roofH * roofH);
-				const float len = x1 - x0 + 2.f * o;
-				gfx::FaceTex(*roofTex, { x0 - o, y0 - o, h }, { x1 + o, y0 - o, h }, { x1 + o, yc, top }, { x0 - o, yc, top }, len / kRoofUnit, slope / kRoofUnit, Shade(roofMul, 0.7f));
-				gfx::FaceTri({ x1, y0, h }, { x1, y1, h }, { x1, yc, top }, util::Shade(wall, 0.72f));
-				gfx::FaceTex(*roofTex, { x0 - o, y1 + o, h }, { x1 + o, y1 + o, h }, { x1 + o, yc, top }, { x0 - o, yc, top }, len / kRoofUnit, slope / kRoofUnit, roofMul);
-				gfx::Face({ x1 + o, yc, top }, { x1 + o, y1 + o, h }, { x1 + o + 0.02f, y1 + o, h - 0.08f }, { x1 + o + 0.02f, yc, top - 0.08f }, Shade(roofMul, 0.45f));
-			}
-			else
-			{
-				const float xc = (x0 + x1) * 0.5f;
-				const float slope = std::sqrt((xc - x0 + o) * (xc - x0 + o) + roofH * roofH);
-				const float len = y1 - y0 + 2.f * o;
-				gfx::FaceTex(*roofTex, { x0 - o, y1 + o, h }, { x0 - o, y0 - o, h }, { xc, y0 - o, top }, { xc, y1 + o, top }, len / kRoofUnit, slope / kRoofUnit, Shade(roofMul, 0.78f));
-				gfx::FaceTri({ x0, y1, h }, { x1, y1, h }, { xc, y1, top }, util::Shade(wall, 0.95f));
-				gfx::FaceTex(*roofTex, { x1 + o, y0 - o, h }, { x1 + o, y1 + o, h }, { xc, y1 + o, top }, { xc, y0 - o, top }, len / kRoofUnit, slope / kRoofUnit, Shade(roofMul, 0.86f));
-			}
-		}
-		else if ((x1 - x0) >= (y1 - y0))
-		{
-			const float yc = (y0 + y1) * 0.5f;
-			gfx::Face({ x0 - o, y0 - o, h }, { x1 + o, y0 - o, h }, { x1 + o, yc, top }, { x0 - o, yc, top }, rn);        // 북사면
-			gfx::FaceTri({ x1, y0, h }, { x1, y1, h }, { x1, yc, top }, util::Shade(wall, 0.72f));                       // 동쪽 박공
-			gfx::Face({ x0 - o, yc, top }, { x1 + o, yc, top }, { x1 + o, y1 + o, h }, { x0 - o, y1 + o, h }, rs);        // 남사면
-			// 기와 줄
-			for (int i = 1; i < 5; ++i)
-			{
-				const float t = i / 5.f;
-				const float yy = util::Lerp(yc, y1 + o, t), zz = util::Lerp(top, h, t);
-				gfx::Face({ x0 - o, yy - 0.03f, zz + 0.02f }, { x1 + o, yy - 0.03f, zz + 0.02f }, { x1 + o, yy + 0.03f, zz - 0.02f }, { x0 - o, yy + 0.03f, zz - 0.02f }, util::Shade(rs, 0.8f));
-			}
-			gfx::Face({ x1 + o, yc, top }, { x1 + o, y1 + o, h }, { x1 + o + 0.02f, y1 + o, h - 0.08f }, { x1 + o + 0.02f, yc, top - 0.08f }, util::Shade(re, 0.7f));
-		}
-		else
-		{
-			const float xc = (x0 + x1) * 0.5f;
-			gfx::Face({ x0 - o, y0 - o, h }, { x0 - o, y1 + o, h }, { xc, y1 + o, top }, { xc, y0 - o, top }, rn);
-			gfx::FaceTri({ x0, y1, h }, { x1, y1, h }, { xc, y1, top }, util::Shade(wall, 0.95f));
-			gfx::Face({ xc, y0 - o, top }, { xc, y1 + o, top }, { x1 + o, y1 + o, h }, { x1 + o, y0 - o, h }, util::Shade(rs, 0.85f));
-			for (int i = 1; i < 5; ++i)
-			{
-				const float t = i / 5.f;
-				const float xx = util::Lerp(xc, x1 + o, t), zz = util::Lerp(top, h, t);
-				gfx::Face({ xx - 0.03f, y0 - o, zz + 0.02f }, { xx - 0.03f, y1 + o, zz + 0.02f }, { xx + 0.03f, y1 + o, zz - 0.02f }, { xx + 0.03f, y0 - o, zz - 0.02f }, util::Shade(rs, 0.7f));
-			}
-		}
-
-		// 굴뚝(대장간은 연기, 집/여관은 장식)
-		if (b.kind == BuildingKind::eWeaponShop || b.kind == BuildingKind::eInn || b.kind == BuildingKind::eHouse)
-		{
-			const float cx = x0 + (x1 - x0) * 0.75f, cy = y0 + (y1 - y0) * 0.3f;
-			if (stoneTex)
-				gfx::BoxTex(*stoneTex, cx - 0.25f, cy - 0.25f, cx + 0.25f, cy + 0.25f, h, top + 0.5f, 0.8f, Rgb(0xC0A090), Rgb(0xA08070), Rgb(0x786052));
-			else
-				gfx::Box(cx - 0.25f, cy - 0.25f, cx + 0.25f, cy + 0.25f, h, top + 0.5f, Rgb(0x8A5A4A), Rgb(0x7A4A3A), Rgb(0x5A3A2E));
-			if (b.kind == BuildingKind::eWeaponShop)
-				PushLight({ gfx::IsoPx(x1 + 0.5f, y1 + 0.5f), 140.f, Rgb(0xFF8A30), 0.8f });
-		}
-		// 예배당 종탑
-		if (b.kind == BuildingKind::eTemple)
-		{
-			const float cx = x0 + 1.2f, cy = (y0 + y1) * 0.5f;
-			gfx::Box(cx - 0.6f, cy - 0.6f, cx + 0.6f, cy + 0.6f, h, top + 1.4f, Rgb(0xFFFFFF), Rgb(0xE8E4DC), Rgb(0xC8C4BC));
-			const P3 apex{ cx, cy, top + 3.0f };
-			const float t2 = top + 1.4f;
-			gfx::FaceTri({ cx - 0.75f, cy - 0.75f, t2 }, { cx + 0.75f, cy - 0.75f, t2 }, apex, util::Shade(roof, 0.8f));
-			gfx::FaceTri({ cx - 0.75f, cy - 0.75f, t2 }, { cx - 0.75f, cy + 0.75f, t2 }, apex, util::Shade(roof, 0.9f));
-			gfx::FaceTri({ cx - 0.75f, cy + 0.75f, t2 }, { cx + 0.75f, cy + 0.75f, t2 }, apex, util::Shade(roof, 1.1f));
-			gfx::FaceTri({ cx + 0.75f, cy - 0.75f, t2 }, { cx + 0.75f, cy + 0.75f, t2 }, apex, util::Shade(roof, 0.75f));
-			const Vector2 sym = gfx::IsoPx(apex.x, apex.y, apex.z);
-			gfx::SetDepth(cx + cy + 1.f);
-			gfx::Line(sym, Off(sym, 0, -16), 2.5f, Rgb(0xF2D060));
-			gfx::Line(Off(sym, -6, -10), Off(sym, 6, -10), 2.5f, Rgb(0xF2D060));
-			PushLight({ gfx::IsoPx(midX, y1 + 0.8f), 180.f, Rgb(0xFFF0C0), 0.7f });
-		}
-		(void)time;
-	}
-
 	void SetNight(float night) { g_night = util::Clamp01(night); }
+	float NightLevel() { return g_night; }
 
 	Palette PaletteFor(int regionId)
 	{

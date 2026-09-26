@@ -17,7 +17,10 @@
 
 | 2026-09-26 | 2-C | 각인술사 · 밤사냥꾼 각성기 컷인 | `gpt_image_2_5` · 21:9 · quality medium · 참고 그림 둘(서약기사 컷인 = 그림체 · 구도, 게임 속 직업 그림 = 옷 · 무기) | 1.0(0.5 × 2) | 13.75 → 12.75 | `a8862c58-bae7-4725-8736-cc2575024046` · `0e7268f5-67c6-4a92-9a20-2c674a5a8837` | `cutin_1.jpg` · `cutin_2.jpg` — **게임에 넣음**(서약기사 컷인을 게임 녹화로 확인한 뒤 생성) |
 
-합계 14.0크레딧(1-D 11.5 + 2-C 2.5). 잔액 **12.75**(2026-09-26). 올린 시작 그림(media): 서약기사 `d5a4b2e3-c2f7-4fd7-bf4b-96bdb82204f4`, 각인술사 `0192b00a-20da-435f-bed0-16dfe462de1c`.
+| 2026-09-26 | 4-C 비교 | 경매장 한 채(키트 그림 = 설계도 참고 그림) | `gpt_image_2_5` · 4:3 · quality medium · 1k · background transparent · 참고 그림 `989547e8-539e-488d-98d4-ae4bb14c19ff` | 0.5 | 12.75 → 12.25 | `aca5056b-0f32-46e9-a127-8c19f323b527` | `assets/buildings/auction.png` — **게임에 넣음**(비교 캡처 → 채택, PHASE_4 4-C) |
+| 2026-09-26 | 4-C | 랜드마크 · 큰 가게 6채: 샛별 탑 · 잡화점 · 대장간 · 여관 · 결사 회관 · 예배당 | 같은 조건(비율만 2:3 · 5:4 · 4:3 · 5:4 · 3:2 · 9:8) — `generate_image_batch` 한 번 | 3.0(0.5 × 6) | 12.25 → 9.25 | `d9f386b0-d693-4a49-bd17-dfa321af81b7` · `9939af38-2aab-4fc1-9b72-db260fa2e761` · `5452c447-cdde-4df2-b5a1-27b1577a1516` · `bf3cd2fc-5b94-4c05-953f-74a794a36dd7` · `26a1f071-bb71-4a5b-9ce7-14ad1b65c79a` · `c4ed197b-35c6-48b8-91ac-364c68930d97` | `assets/buildings/*.png` — **게임에 넣음**. 실루엣 겹침(IoU) 0.93~0.98, 대장간만 0.83(헛간 기둥을 조금 더 밖에 그렸다) |
+
+합계 17.5크레딧(1-D 11.5 + 2-C 2.5 + 4-C 3.5). 잔액 **9.25**(2026-09-26). 4-C는 한 번에 3.0(잔액의 24%) — 30% 안이라 묻지 않고 진행했다. 올린 시작 그림(media): 서약기사 `d5a4b2e3-c2f7-4fd7-bf4b-96bdb82204f4`, 각인술사 `0192b00a-20da-435f-bed0-16dfe462de1c`.
 컷인 주문 문구(서약기사 원래 문구는 남지 않아 둘은 그 그림을 참고 그림으로 넘겼다): "Wide cinematic banner illustration for a game ultimate-skill cut-in, 21:9. Use the FIRST reference image only for painting style, lighting,
 brushwork and banner composition(왼쪽 3분의 1에 인물 · 오른쪽 절반은 어두운 하늘로) … Use the SECOND reference image for the character design … No text, no letters, no logo, no watermark, no purple, no neon."
 + 직업마다 자세 · 배경(각인술사: 하늘에 겹겹의 청록 각인 원을 쓰고 운석이 떨어진다 / 밤사냥꾼: 쌍단검이 달빛 초승 궤적을 남기며 파고든다 · 가는 초승달 · 먹물 연기).
@@ -88,3 +91,25 @@ python3 motion.py build                     # 전부 → Client2D/assets/sprites
 | **합계** | | | **약 357** |
 
 지금 잔액으로 할 수 있는 가장 효과 큰 묶음: 뒷모습 ↗ 달리기 서약기사 1개(7.5, 49%) — 위쪽으로 달릴 때도 12장이 된다. 이것도 30%를 넘어 먼저 묻는다.
+
+## 4-C 건물 — 키트 그림을 설계도로 다시 그리기
+
+`tools/assetgen/buildings.py` (원본은 저장소 밖 `~/.cache/harven-assetgen/raw/buildings`)
+
+```bash
+Client2D --kit-buildings --script bldsolo:N            # 건물 N 하나만 자홍 바탕에 → bldsolo_N.png + bldsolo_N.txt(카메라 값)
+python3 buildings.py prep <이름> N <클라 폴더>          # → <이름>_ref.png(건물만) + _ref.json
+#   → Higgsfield: media_upload → PUT → media_confirm → generate_image(참고 그림 = _ref, background transparent)
+#     문구 = BUILDING_BLUEPRINT + BUILDINGS[이름] 설명 + STYLE_BUILDING (catalog.py)
+python3 buildings.py fit <이름>                         # → Client2D/assets/buildings/<이름>.png + buildings.txt 한 줄
+```
+
+| 단계 | 어떻게 | 왜 |
+|---|---|---|
+| 설계도 | 키트 건물을 게임 카메라 그대로 단색 바탕에 찍어 참고 그림으로 | 생성 그림이 게임의 쿼터뷰 각도 · 발자국 · 비율을 그대로 따른다(글로만 "2:1 아이소"라고 하면 각도 · 비율이 제각각) |
+| 맞추기 | 참고 그림 실루엣 ↔ 생성 그림 알파의 겹침(IoU)이 가장 큰 가로 · 세로 배율 · 이동(1/4 크기에서 찾고 좁혀 간다) | 끝점만 맞추면 한쪽에만 있는 차양 · 상자 · 굴뚝이 끝점을 바꿔 세로 배율이 45%까지 틀어졌다(잡화점) |
+| 자리 | 그림 사각형을 "건물 기초의 남동 모서리" 기준 아이소 px로 적는다(`buildings.txt`) | 층 높이 · 원점과 무관 — 마을을 옮겨도 그대로 |
+| 깊이 | 두 벽면의 천막꼴: 열마다 min(남쪽 면 X+Y1, 동쪽 면 X1+Y) — 사각형 둘(앞 모서리에서 나눔) | 캐릭터가 건물 뒤(북 · 서)면 가려지고 앞(남 · 동)이면 위에 — 상자꼴 건물에서 정확하다 |
+| 가장자리 | 투명 여백 6px · 텍스처 좌표를 0.4% 안쪽으로 | 월드 셰이더가 좌표 정수부로 알파 시험을 고르므로, 테두리 밖 보조 픽셀이 경계를 넘으면 가장 작은 밉(평균색)이 선으로 그려졌다 |
+| 움직이는 것 | 연기 · 화덕 불 · 등불 · 샛별 탑 불 · 밤 창빛은 키트 자리에 덧그린다 | 그림은 멈춰 있다 — 바람 · 밤이 살아 있게 |
+

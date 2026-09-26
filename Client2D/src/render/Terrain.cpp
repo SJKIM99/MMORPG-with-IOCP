@@ -181,6 +181,7 @@ Color Terrain::FogTint(float tileX, float tileY, Vector2 playerTile, bool fog)
 
 void Terrain::DrawGround(const Camera2D& cam, int screenW, int screenH, Vector2 playerTile, float time, bool fog, float grid)
 {
+	if (s_solo >= 0) { ClearBackground(Color{ 255, 0, 255, 255 }); return; }   // 건물 하나만(자홍 바탕 — 키잉용)
 	if (m_shader.id == 0)
 	{
 		DrawRectangle(0, 0, screenW, screenH, Color{ 70, 110, 60, 255 });
@@ -249,6 +250,7 @@ void Terrain::VisibleTiles(const Camera2D& cam, int screenW, int screenH, int& x
 
 void Terrain::DrawRelief(const Camera2D& cam, int screenW, int screenH, Vector2 playerTile, float time, bool fog)
 {
+	if (s_solo >= 0) return;
 	(void)time;
 	if (!hgt::Any())
 		return;
@@ -374,6 +376,15 @@ void Terrain::DrawRelief(const Camera2D& cam, int screenW, int screenH, Vector2 
 
 void Terrain::DrawProps(const Camera2D& cam, int screenW, int screenH, Vector2 playerTile, float time, bool fog)
 {
+	if (s_solo >= 0 && s_solo < static_cast<int>(std::size(WorldData::kBuildings)))
+	{
+		const auto& b = WorldData::kBuildings[s_solo];
+		gfx::SetLift(static_cast<float>(b.level) * hgt::kLevelZ * gfx::kUnitZ);
+		props::DrawBuilding(b, time);
+		gfx::SetLift(0.f);
+		props::DrawBuildingFx();
+		return;
+	}
 	int x0, y0, x1, y1;
 	VisibleTiles(cam, screenW, screenH, x0, y0, x1, y1);
 	if (hgt::Any()) { x1 += 4; y1 += 4; }   // 높은 칸의 소품은 화면에서 위로 올라간다
@@ -429,4 +440,6 @@ void Terrain::DrawProps(const Camera2D& cam, int screenW, int screenH, Vector2 p
 		gfx::SetLift(0.f);
 	}
 	gfx::ResetMod();
+	props::DrawLineProps(x0, y0, x1, y1, time);   // 빨랫줄 · 줄깃발(칸 위에 매단다 — 막지 않는다)
+	props::DrawBuildingFx();
 }

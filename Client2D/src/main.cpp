@@ -369,6 +369,7 @@ int main(int argc, char** argv)
 	bool gallery = false;
 	std::string vfxSheet;
 	bool noMsaa = false;
+	bool kitBuildings = false;
 	std::string sandboxClock;
 	for (int i = 1; i < argc; ++i)
 	{
@@ -398,6 +399,7 @@ int main(int argc, char** argv)
 		else if (a == "--otherfx") opts.otherFx = std::clamp(std::atoi(next("50").c_str()), 0, 100);
 		else if (a == "--f3") opts.debugOverlay = true;
 		else if (a == "--no-msaa") noMsaa = true;
+		else if (a == "--kit-buildings") kitBuildings = true;   // 그린 건물을 끄고 모두 키트로(Phase 4-C 비교)
 		else if (a == "--record") recOpts.dir = next("record");
 		else if (a == "--seconds") recOpts.seconds = static_cast<float>(std::atof(next("10").c_str()));
 		else if (a == "--fps") recOpts.fps = std::clamp(std::atoi(next("30").c_str()), 1, 120);
@@ -490,6 +492,7 @@ int main(int argc, char** argv)
 	art::Init(FindAssetDir("assets/art", "key_art.jpg"));
 	sprites::Init(FindAssetDir("assets/sprites", "actors.txt"));
 	envart::Init(FindAssetDir("assets/terrain", "ground_atlas.jpg"));
+	props::SetBuildingArt(FindAssetDir("assets/buildings", "buildings.txt"), !kitBuildings);
 	fxart::Init(FindAssetDir("assets/fx", "hit_star.png"));
 	uiart::Init(FindAssetDir("assets/ui", "panel_tex.png"));
 	assets::Load();

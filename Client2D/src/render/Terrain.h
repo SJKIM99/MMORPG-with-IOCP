@@ -22,6 +22,9 @@ public:
 	static Color FogTint(float tileX, float tileY, Vector2 playerTile, bool fog);
 	// 서버 시야(체비셰프 칸)에 맞춰 안개 시작/끝을 정한다(SERVER_CONFIG_INF).
 	static void SetViewRange(float range);
+	// 개발용(Phase 4-C 건물 비교): 건물 하나만 단색 바탕에 그린다(-1 = 끔) — --script bldsolo:N
+	static void SetSolo(int buildingIndex) { s_solo = buildingIndex; }
+	[[nodiscard]] static int Solo() { return s_solo; }
 	static float FogStart() { return s_fogStart; }
 
 	[[nodiscard]] bool Ready() const { return m_shader.id != 0; }
@@ -32,6 +35,7 @@ private:
 	int m_locScreen = -1, m_locCamTarget = -1, m_locCamOffset = -1, m_locZoom = -1, m_locRot = -1;
 	int m_locTime = -1, m_locPlayer = -1, m_locFog = -1, m_locGrid = -1, m_locFogRange = -1;
 	static inline float s_fogStart = 5.8f, s_fogEnd = 10.5f;
+	static inline int s_solo = -1;
 	int m_locPalA = -1, m_locPalB = -1, m_locPalC = -1;
 	int m_locTown = -1, m_locNoise = -1, m_locTownOrigin = -1, m_locTownSize = -1;
 	int m_locGround = -1, m_locGroundOn = -1, m_locGroundSize = -1;

@@ -1,0 +1,69 @@
+# 소품: 종류 x y [x2 y2](마을 기준 칸)
+# 막히는 소품(grave board bench statue flagpole well cart hay barrels crates signpost target rack)은 ground.txt의 P 칸 하나에 하나.
+# 줄 소품(laundry 빨랫줄 · bunting 줄깃발)은 두 끝 사이에 매단다 — 막지 않는다(두 끝은 같은 층).
+
+# 예배당 언덕 묘지
+grave 67 4
+grave 69 4
+grave 73 4
+grave 75 4
+grave 67 6
+grave 69 6
+grave 73 6
+grave 75 6
+grave 67 8
+grave 69 8
+grave 73 8
+grave 75 8
+grave 67 14
+grave 69 14
+grave 73 14
+grave 75 14
+
+# 남문 광장: 게시판 · 이정표 · 짐
+board 31 68
+signpost 42 62
+crates 52 63
+barrels 55 62
+
+# 분수 광장: 벤치 · 줄깃발
+bench 38 47
+bench 45 50
+bunting 36 45 46 45
+
+# 결사 회관 단: 깃대 둘 · 조각상 둘(서약 기사)
+flagpole 36 26
+flagpole 43 26
+statue 35 28
+statue 44 28
+
+# 시장 거리 · 강가: 수레 · 이정표 · 줄깃발 · 빨래터
+cart 27 47
+signpost 28 51
+bunting 17 47 24 47
+laundry 15 58 15 62
+
+# 서쪽 들: 건초 · 수레
+hay 2 58
+hay 3 58
+cart 4 57
+
+# 장인 거리: 상자 · 이정표
+crates 55 49
+signpost 64 49
+
+# 훈련장: 과녁 · 무기 걸이
+target 80 40
+target 80 43
+rack 68 35
+
+# 여관 골목: 술통 · 벤치 · 줄깃발 · 마구간 건초
+barrels 73 63
+bench 77 63
+bunting 63 61 79 61
+hay 73 55
+hay 73 56
+
+# 윗마을: 우물 · 빨랫줄
+well 70 31
+laundry 62 26 62 31

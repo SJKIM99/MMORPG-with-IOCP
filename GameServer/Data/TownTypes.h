@@ -48,4 +48,17 @@ namespace TownMap
 		float x, y;               // 월드 칸
 		float radius;             // 이 거리 안에서 들린다(칸)
 	};
+
+	// 소품(props.txt — Phase 4-C). 막히는 소품은 kGround의 'P' 칸(서버 충돌), 줄 소품은 두 끝 사이에 매단다(클라 그림만)
+	enum class PropKind : uint8_t
+	{
+		eGrave, eBoard, eBench, eStatue, eFlagpole, eWell, eCart, eHay, eBarrels, eCrates, eSignpost, eTarget, eRack,
+		eLaundry, eBunting,
+	};
+	struct PropRow
+	{
+		PropKind kind;
+		int16_t x, y;             // 월드 칸
+		int16_t x2, y2;           // 줄 소품의 다른 끝(나머지는 x, y와 같다)
+	};
 }
