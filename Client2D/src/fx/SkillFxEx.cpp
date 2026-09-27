@@ -1885,19 +1885,24 @@ namespace skillfx
 				const Vector2 top{ b.iso.x + std::sin(swing) * 20.f, b.iso.y - z - 70.f };
 				const Vector2 mouth{ b.iso.x - std::sin(swing) * 10.f, b.iso.y - z + 40.f };
 				gfx::SetDepth(b.iso.y / gfx::kHalfH + 0.8f);
-				const Color body = util::MulA(Rgb(0xF2C47C), 0.28f * fade), rim = util::MulA(Rgb(0xFFF0C8), 0.85f * fade);
-				// 종 몸통(사다리꼴 + 둥근 머리)
+				const Color rim = util::MulA(Rgb(0xFFF0C8), 0.85f * fade);
+				// 종 몸통(사다리꼴 + 둥근 머리) — 보통 혼합의 옅은 먹금빛 껍데기. 예전에는 몸통을 더하기(금빛 28~45%)로 칠해
+				// 밝은 바닥(눈밭 · 모래)에서 종 안이 하얗게 타 그 안의 적(보스)이 2초 동안 보이지 않았다(Phase 6 자기 검토 1).
+				// 이제 모양은 빛나는 테두리가 말하고, 안은 비친다.
 				const Vector2 tl{ top.x - 34.f, top.y + 16.f }, tr{ top.x + 34.f, top.y + 16.f };
 				const Vector2 bl{ mouth.x - 66.f, mouth.y }, br{ mouth.x + 66.f, mouth.y };
-				gfx::Quad4(tl, tr, br, bl, body, body, util::MulA(body, 1.6f), util::MulA(body, 1.6f));
-				gfx::Ellipse(Vector2{ top.x, top.y + 16.f }, 34.f, 22.f, body);
+				gfx::Additive(false);
+				const Color shell = util::MulA(Rgb(0x8A6A3A), 0.16f * fade);
+				gfx::Quad4(tl, tr, br, bl, shell, shell, util::MulA(shell, 0.55f), util::MulA(shell, 0.55f));
+				gfx::Ellipse(Vector2{ top.x, top.y + 16.f }, 34.f, 22.f, shell);
+				gfx::Additive(true);
 				gfx::Line(tl, bl, 3.f, rim);
 				gfx::Line(tr, br, 3.f, rim);
 				gfx::EllipseArc(mouth, 66.f, 16.f, 0.f, kPi, 4.f, rim);
 				gfx::EllipseArc(Vector2{ top.x, top.y + 16.f }, 34.f, 22.f, kPi, kPi * 2.f, 2.f, rim);
 				gfx::EllipseArc(Vector2{ (top.x + mouth.x) * 0.5f, (top.y + mouth.y) * 0.5f + 12.f }, 52.f, 12.f, 0.f, kPi, 2.f, util::MulA(rim, 0.6f));
 				if (b.swing > 0.f)
-					gfx::CircleGrad(mouth, 90.f * b.swing, util::MulA(kGoldHot, 0.35f * b.swing * fade), util::WithA(kGold, 0.f));
+					gfx::CircleGrad(mouth, 90.f * b.swing, util::MulA(kGoldHot, 0.2f * b.swing * fade), util::WithA(kGold, 0.f));
 			}
 			gfx::Additive(false);
 		}

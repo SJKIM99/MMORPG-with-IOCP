@@ -274,8 +274,8 @@ namespace trail
 				if (f.s.additive == additive) DrawFollow(f);
 		}
 		rlDrawRenderBatchActive();
+		sprites::Resume(spritesOn);   // 월드 셰이더를 먼저(밝은 바닥 섞기는 월드 셰이더가 켜져 있어야 고른다)
 		gfx::Additive(wasAdditive);
-		sprites::Resume(spritesOn);
 	}
 
 	void Clear() { g_arcs.clear(); g_follow.clear(); }

@@ -811,6 +811,8 @@ private:
 	bool             m_questDestValid = false;
 	bool             m_chapterBellPlayed = false;
 	float            m_bannersBottom = 84.f;          // 알림 띠 아래 끝(가운데 알림이 그 아래로)
+	double           m_selfCombatAt = -10.0;          // 내가 때리거나 맞은 마지막 시각(싸우는 중이면 내 이름표를 감춘다 — Phase 6)
+	float            m_brightGround = 0.f;            // 밝은 바닥 k(0 보통 … 0.75 눈밭 — gfx::SetBrightGround, Phase 6 자기 검토 1)
 	uint16_t         m_dialogAutoQuest = 0;           // 보고 직후 이어서 펼칠 다음 이야기(완료 연출이 지나간 뒤)
 	double           m_dialogAutoAt = 0.0;
 	int              m_endingStage = 0;

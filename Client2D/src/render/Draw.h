@@ -87,6 +87,11 @@ namespace gfx
 	[[nodiscard]] bool DepthWriteOn();
 	void Additive(bool on);
 	[[nodiscard]] bool AdditiveOn();
+	// 밝은 바닥(Phase 6 자기 검토 1): k = 0(보통 — 더하기 그대로) … 0.75(눈밭). k > 0이면 월드 셰이더로 그리는 더하기 연출을
+	// "미리 곱한 알파 + 바닥 덮기 k"로 섞는다: 결과 = 색 × a + 바닥 × (1 − a·k). 8비트 화면에서 밝은 바닥(여유 0.1~0.15)에
+	// 빛을 더하면 곧장 흰색으로 타 버렸다 — 이제 빛이 제 색(금빛 · 청록)으로 남는다. 빛 버퍼(블룸)에는 그대로 더한다.
+	void SetBrightGround(float k);
+	[[nodiscard]] float BrightGround();
 	// 빛 전용 모드(Phase 2-A 블룸 빛 버퍼): 켜 두면 더하기 혼합으로 그리는 것만 남고 나머지는 투명해진다.
 	// 효과 그리기 함수를 그대로 한 번 더 불러 "빛나는 것"만 모으는 데 쓴다(post::Apply).
 	void EmissiveOnly(bool on);

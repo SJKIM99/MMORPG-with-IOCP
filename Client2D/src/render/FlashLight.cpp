@@ -126,14 +126,16 @@ namespace flashlight
 		// ② 곱-더하기 한 번: 결과 = 목적색 + 모은 빛 × 목적색 × kCap(겹쳐도 최대 1.85배)
 		rlSetBlendFactors(0x0306 /*GL_DST_COLOR*/, 1 /*GL_ONE*/, 0x8006 /*GL_FUNC_ADD*/);
 		rlSetBlendMode(RL_BLEND_CUSTOM);
-		const unsigned char cap = static_cast<unsigned char>(255.f * kCap);
+		// 밝은 바닥(gfx::SetBrightGround — 눈밭 · 모래)은 곱-더하기 여유가 없다(0.85 × 1.85 = 1.57 → 흰색): 그만큼 덜 밝힌다
+		const float bright = gfx::BrightGround();
+		const unsigned char cap = static_cast<unsigned char>(255.f * kCap * (1.f - 0.6f * bright));
 		DrawTexturePro(g_acc.texture, Rectangle{ 0, 0, (float)aw, -(float)ah }, Rectangle{ 0, 0, (float)screenW, (float)screenH }, Vector2{ 0, 0 }, 0.f, Color{ cap, cap, cap, 255 });
 		rlDrawRenderBatchActive();
 		// 약한 더하기(검은 바닥도 조금 밝게)
 		rlSetBlendMode(RL_BLEND_ADDITIVE);
 		for (const auto& l : g_lights)
 		{
-			const float e = Env(l) * l.k * 0.22f;
+			const float e = Env(l) * l.k * 0.22f * (1.f - 0.7f * bright);
 			if (e <= 0.01f) continue;
 			const Vector2 s = GetWorldToScreen2D(l.iso, cam);
 			const float r = l.r * cam.zoom * 0.7f;

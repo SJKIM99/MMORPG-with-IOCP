@@ -321,6 +321,7 @@ void Game::Frame()
 void Game::UpdateLogin(float dt)
 {
 	m_time += dt;
+	gfx::SetBrightGround(0.f);   // 로그인 배경(마을)
 	TickLoginDemo(dt);
 	// 로그인 배경: 마을 위를 천천히 도는 카메라
 	const float a = m_time * 0.05f;
@@ -720,6 +721,22 @@ void Game::UpdateGame(float dt)
 	const auto* region = WorldData::FindRegion(Region());
 	const WorldData::Biome biome = region ? region->biome : WorldData::Biome::eMeadow;
 	fx::Fx().Ambient(biome, m_cam.Target(), m_screenW / m_cam.Zoom(), m_screenH / m_cam.Zoom(), dt, m_light.Night(), InTown());
+	// 밝은 바닥(Phase 6 자기 검토 1): 바이옴 바닥색(팔레트 a · b)이 밝을수록 더하기 연출을 "제 색으로 덮기" 쪽으로(gfx::SetBrightGround).
+	// 눈밭 0.75 · 바닷가 약 0.67 · 사막 약 0.49 · 풀밭 · 숲 · 마을 0. 밤에는 바닥이 어두워 거의 0. 지역을 넘을 때 0.5초쯤에 걸쳐 바뀐다
+	{
+		float target = 0.f;
+		if (!InTown() && region)
+		{
+			const props::Palette pal = props::PaletteFor(Region());
+			auto luma = [](const float* c) { return c[0] * 0.299f + c[1] * 0.587f + c[2] * 0.114f; };
+			const float lum = 0.5f * (luma(pal.a) + luma(pal.b));
+			const float u = util::Clamp01((lum - 0.55f) / 0.3f);
+			target = 0.75f * u * u * (3.f - 2.f * u);
+		}
+		target *= 1.f - 0.85f * m_light.Night();
+		m_brightGround += (target - m_brightGround) * std::min(1.f, dt * 2.f);
+		gfx::SetBrightGround(m_brightGround);
+	}
 	// 소리 구역: 듣는 자리는 내 캐릭터(투어 중에는 카메라가 보는 곳)
 	{
 		const Vector2 ear = m_tourCam.on ? m_tourCam.tile : Vector2{ static_cast<float>(m_predX), static_cast<float>(m_predY) };

@@ -32,6 +32,8 @@ uniform vec3 uCool;
 uniform float uInt;
 uniform float uAspect;
 uniform vec2 uRot;
+uniform vec2 uAdd;
+vec4 outColor(vec4 o) { return uAdd.x > 0.5 ? vec4(o.rgb * o.a, o.a * uAdd.y) : o; }
 const float PI = 3.14159265;
 const float TAU = 6.2831853;
 float h21(vec2 p)
@@ -358,7 +360,7 @@ void main()
     else if (uKind == 10) c = kFlare(p, uAge);
     else if (uKind == 11) c = kBeam(p, uAge);
     else c = kGlyph(p, uAge);
-    finalColor = vec4(c.rgb * uInt * fragColor.rgb, clamp(c.a, 0.0, 1.0) * fragColor.a);
+    finalColor = outColor(vec4(c.rgb * uInt * fragColor.rgb, clamp(c.a, 0.0, 1.0) * fragColor.a));
 }
 )GLSL";
 
@@ -541,11 +543,11 @@ void main()
     else if (uKind == 5) c = gInkStain(p, uAge);
     else c = gRing(p, uAge);
     c.a *= step(length(p0), 1.0);
-    finalColor = vec4(c.rgb * uInt * fragColor.rgb, clamp(c.a, 0.0, 1.0) * fragColor.a);
+    finalColor = outColor(vec4(c.rgb * uInt * fragColor.rgb, clamp(c.a, 0.0, 1.0) * fragColor.a));
 }
 )GLSL";
 
-		struct Locs { int kind = -1, age = -1, seed = -1, time = -1, hot = -1, mid = -1, cool = -1, inten = -1, aspect = -1, rot = -1; };
+		struct Locs { int kind = -1, age = -1, seed = -1, time = -1, hot = -1, mid = -1, cool = -1, inten = -1, aspect = -1, rot = -1, add = -1; };
 		struct Prog { Shader sh{}; Locs loc; bool ok = false; };
 		Prog g_air, g_ground;
 		bool g_tried = false;
@@ -574,7 +576,7 @@ void main()
 			auto L = [&](const char* n) { return GetShaderLocation(p.sh, n); };
 			p.loc.kind = L("uKind"); p.loc.age = L("uAge"); p.loc.seed = L("uSeed"); p.loc.time = L("uTime");
 			p.loc.hot = L("uHot"); p.loc.mid = L("uMid"); p.loc.cool = L("uCool"); p.loc.inten = L("uInt");
-			p.loc.aspect = L("uAspect"); p.loc.rot = L("uRot");
+			p.loc.aspect = L("uAspect"); p.loc.rot = L("uRot"); p.loc.add = L("uAdd");
 			p.ok = true;
 			return true;
 		}
@@ -643,7 +645,21 @@ void main()
 			{
 				const bool additivePass = pass == 1;
 				if (!additivePass && emis) continue;
-				rlSetBlendMode(additivePass || emis ? RL_BLEND_ADDITIVE : RL_BLEND_ALPHA);
+				// 밝은 바닥(gfx::SetBrightGround): 빛 패스를 미리 곱한 알파 + 바닥 덮기 k로 — 눈밭에서 하얗게 타지 않게(빛 버퍼는 그대로 더하기)
+				const float k = emis ? 0.f : gfx::BrightGround();
+				const bool premul = additivePass && !emis && k > 0.02f && p.loc.add >= 0;
+				if (p.loc.add >= 0)
+				{
+					const float add[2] = { premul ? 1.f : 0.f, premul ? k : 0.f };
+					SetShaderValue(p.sh, p.loc.add, add, SHADER_UNIFORM_VEC2);
+				}
+				if (premul)
+				{
+					rlSetBlendFactors(RL_ONE, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD);
+					rlSetBlendMode(RL_BLEND_CUSTOM);
+				}
+				else
+					rlSetBlendMode(additivePass || emis ? RL_BLEND_ADDITIVE : RL_BLEND_ALPHA);
 				bool overOn = false;
 				for (const Inst& in : g_list)
 				{
@@ -689,9 +705,9 @@ void main()
 			}
 			rlDrawRenderBatchActive();
 			EndShaderMode();
-			// 혼합 · 셰이더 상태 되돌리기
-			gfx::Additive(wasAdditive);
+			// 혼합 · 셰이더 상태 되돌리기(월드 셰이더를 먼저 — 밝은 바닥 섞기는 월드 셰이더가 켜져 있어야 고른다)
 			sprites::Resume(spritesOn);
+			gfx::Additive(wasAdditive);
 		}
 	}
 

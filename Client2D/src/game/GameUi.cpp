@@ -463,8 +463,15 @@ void Game::DrawHud()
 	}
 	// 버프 · 약화는 전투 판 위(Phase 3-C, DrawCombatPanel → DrawStatusRow)
 
-	// 가운데 알림(위쪽 알림 띠가 길어지면 그 아래로)
-	float y = std::max(H * 0.27f, m_bannersBottom + 18.f);
+	// 가운데 알림 — 싸움 자리(화면 가운데 · 큰 적의 머리 위) 밖, 화면 위쪽에 모은다: 알림 띠 아래 · 대상 판 아래 중 낮은 쪽.
+	// 예전(화면 높이 27%)에는 보스 머리 위 피해 숫자 · 이름 · 체력바와 한 자리에 겹쳤다(Phase 6 자기 검토 1)
+	float y = std::max(H * 0.16f, m_bannersBottom + 18.f);
+	if (const Entity* ct = Find(m_target); ct && ct->kind != EntityKind::Item && !ct->removing)
+	{
+		const Rectangle tr = wm::HudRect("hud.target", Rectangle{ std::round(W * 0.5f - 180.f), 12.f, 360.f, 78.f });
+		const float k = tr.height / 78.f;
+		y = std::max(y, tr.y + (ct->IsBoss() ? 78.f : 56.f) * k + 24.f);
+	}
 	for (const auto& c : m_center)
 	{
 		const float age = static_cast<float>(m_now - c.start);

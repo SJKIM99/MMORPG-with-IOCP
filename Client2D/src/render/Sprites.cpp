@@ -22,6 +22,7 @@ uniform sampler2D texture0;
 uniform vec4 colDiffuse;
 uniform float uAlphaTest;
 uniform vec3 uFlashPal[8];
+uniform vec2 uAdd;
 void main()
 {
     vec2 tc = fragTexCoord;
@@ -38,6 +39,7 @@ void main()
         int idx = int(clamp(pal, 0.0, 7.0));
         c.rgb = mix(c.rgb, uFlashPal[idx], min(fl / 16.0, 1.0));
     }
+    if (uAdd.x > 0.5) c = vec4(c.rgb * c.a, c.a * uAdd.y);
     finalColor = c;
 }
 )GLSL";
@@ -46,6 +48,8 @@ void main()
 		std::deque<Texture2D> g_pages;   // 주소가 바뀌지 않게(Sprite가 포인터를 든다)
 		Shader g_shader{};
 		int g_locAlpha = -1;
+		int g_locAdd = -1;
+		float g_addSet[2] = { 0.f, 0.f };   // 프로그램에 들어 있는 uAdd(같은 값이면 다시 보내지 않는다)
 		bool g_active = false;
 		bool g_ready = false;
 
@@ -117,6 +121,9 @@ void main()
 		else
 		{
 			g_locAlpha = GetShaderLocation(g_shader, "uAlphaTest");
+			g_locAdd = GetShaderLocation(g_shader, "uAdd");
+			if (g_locAdd >= 0) { const float off[2] = { 0.f, 0.f }; SetShaderValue(g_shader, g_locAdd, off, SHADER_UNIFORM_VEC2); }
+			g_addSet[0] = g_addSet[1] = 0.f;
 			int locPal = GetShaderLocation(g_shader, "uFlashPal");
 			if (locPal < 0) locPal = GetShaderLocation(g_shader, "uFlashPal[0]");
 			if (locPal >= 0)
@@ -182,12 +189,27 @@ void main()
 	void EndWorld()
 	{
 		if (!g_active) return;
+		(void)SetAddMode(false, 0.f);   // 밝은 바닥 섞기는 월드 안에서만
 		rlDrawRenderBatchActive();
 		EndShaderMode();
 		g_active = false;
 	}
 
 	bool ShaderActive() { return g_active; }
+
+	bool SetAddMode(bool on, float k)
+	{
+		if (g_shader.id == 0 || g_locAdd < 0) return false;
+		const bool use = on && g_active;
+		const float v[2] = { use ? 1.f : 0.f, use ? k : 0.f };
+		if (v[0] != g_addSet[0] || v[1] != g_addSet[1])
+		{
+			rlDrawRenderBatchActive();   // 이미 쌓인 도형은 예전 값으로
+			SetShaderValue(g_shader, g_locAdd, v, SHADER_UNIFORM_VEC2);
+			g_addSet[0] = v[0]; g_addSet[1] = v[1];
+		}
+		return use;
+	}
 
 	bool Suspend()
 	{

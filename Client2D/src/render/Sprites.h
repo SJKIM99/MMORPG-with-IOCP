@@ -47,4 +47,7 @@ namespace sprites
 	// 다른 셰이더로 그리는 동안 월드 셰이더를 잠시 내렸다가(Suspend → 켜져 있었으면 true) 다시 올린다(Resume)
 	[[nodiscard]] bool Suspend();
 	void Resume(bool wasOn);
+	// 밝은 바닥 섞기(gfx::SetBrightGround): 켜면 셰이더가 (색 × a, a × k)를 내보낸다 — 혼합은 (ONE, ONE_MINUS_SRC_ALPHA).
+	// 월드 셰이더가 켜져 있어야 true(아니면 끄고 false — 부르는 쪽은 보통 더하기로)
+	[[nodiscard]] bool SetAddMode(bool on, float k);
 }

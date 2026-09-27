@@ -446,8 +446,10 @@ namespace skillfx
 			return 0.f;
 		}
 		case 5:   // 철벽 태세
-			Tx(fxart::Dome, c.casterIso, 38.f, 60.f, 120.f, 0.55f, Rgb(0xFFE8B0, 200), Rgb(0xFFC040, 0), true, 0.f, 0.f, 0.1f);
-			TxGround(fxart::Halo, c.casterIso, 20.f, 60.f, 0.5f, Rgb(0xFFE08A, 220), Rgb(0xFFB030, 0), true);
+			// 막은 크림빛(FFE8B0 · 알파 200)이던 것을 금빛 · 150으로 — 몸 둘레 큰 막이 크림빛이면 어느 바닥에서나 흰 덩어리가 되어
+			// 그 안의 기사와 적이 사라졌다(Phase 6 자기 검토 1: 보스전 흰 장면 8개 중 5개). 흰빛은 테두리 · 획에만 둔다(DESIGN_SYSTEM 10장)
+			Tx(fxart::Dome, c.casterIso, 38.f, 60.f, 120.f, 0.55f, Rgb(0xF2C47C, 150), Rgb(0xE8A040, 0), true, 0.f, 0.f, 0.1f);
+			TxGround(fxart::Halo, c.casterIso, 20.f, 60.f, 0.5f, Rgb(0xFFE08A, 190), Rgb(0xFFB030, 0), true);
 			fxs.Ring(c.casterIso, 10.f, 70.f, 0.45f, Rgb(0xFFD070, 230), 5.f);
 			Glow(c.casterIso, 34.f, 40.f, 110.f, Rgb(0xFFC860, 170), 0.35f);
 			return 0.f;

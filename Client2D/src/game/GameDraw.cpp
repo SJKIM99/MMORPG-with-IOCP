@@ -892,13 +892,19 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		{
 		case EntityKind::Player:
 			// 대화 중에는 내 이름을 감춘다 — 바로 옆 NPC 이름표와 겹쳐 "경매인 로렌초"가 읽히지 않았다(자기 검토)
-			showName = !(id == m_selfId && m_dialogNpc != 0);
+			// 싸우는 중(내가 때리거나 맞은 지 5초 안)에도 — 큰 적 머리 위의 글자 더미를 줄인다(Phase 6 자기 검토 1)
+			showName = !(id == m_selfId && (m_dialogNpc != 0 || m_now - m_selfCombatAt < 5.0));
 			showBar = id != m_selfId && (e.hp < e.maxhp || targeted) && !e.dead;
 			break;
 		case EntityKind::Monster:
-			showName = e.IsBoss() || hovered || targeted || recentHit || alt || (e.row && e.row->dummy);
-			showBar = !e.dead && (e.hp < e.maxhp || hovered || targeted) && !(e.row && e.row->dummy);   // 허수아비는 체력 대신 계측(DrawDummyMeters)
+		{
+			// 지금 대상인 보스는 이름 · 체력을 화면 위 대상 판(여러 줄 체력바 · 무력화)에만 — 머리 위에 겹쳐 그리지 않는다.
+			// 보통 몬스터는 맞은 뒤 체력바만, 이름은 가리키거나 · 대상이거나 · Alt일 때(Phase 6 자기 검토 1 — 예전에는 맞은 적마다 이름이 떴다)
+			const bool bossOnTop = e.IsBoss() && targeted;
+			showName = !bossOnTop && (e.IsBoss() || hovered || targeted || alt || (e.row && e.row->dummy));
+			showBar = !bossOnTop && !e.dead && (e.hp < e.maxhp || hovered || targeted || recentHit) && !(e.row && e.row->dummy);   // 허수아비는 체력 대신 계측(DrawDummyMeters)
 			break;
+		}
 		case EntityKind::Item: showName = hovered || alt || FieldRarity(e) >= Rarity::Rare; break;
 		}
 		if (e.dead && e.kind == EntityKind::Monster) showName = false;

@@ -1054,6 +1054,7 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 	const bool guard = (p.flags2 & DAMAGE2_GUARD) != 0;
 	const bool heavy = (p.flags2 & (DAMAGE2_HEAVY | DAMAGE2_WALL)) != 0;
 
+	if ((selfAttacker || selfVictim) && !dot && !evade) m_selfCombatAt = m_now;   // 싸우는 중(내 이름표를 감춘다)
 	if (v)
 	{
 		v->hp = std::max(0, p.hp);
@@ -1190,7 +1191,9 @@ void Game::HandleDamage(const SUBJECT_DAMAGE_NFY_PACKET& p)
 		{
 			m_comboShownAt[cid % m_comboShownAt.size()] = m_now;
 			const std::string name = std::string(ComboTable::Name(cid)) + "!";
-			fx::Fx().FloatText(iso, h + 36.f, name, Rgb(0xF2C47C), (selfAttacker || selfVictim) ? 25.f : 18.f, 1.3f, ui::Face::Display);
+			// 내 연계는 오른쪽 연속 타격 판(이름 · 소리 · 번쩍임)에서 알린다 — 적 머리 위에는 남의 연계만(Phase 6 자기 검토 1)
+			if (!selfAttacker)
+				fx::Fx().FloatText(iso, h + 36.f, name, Rgb(0xF2C47C), selfVictim ? 25.f : 18.f, 1.3f, ui::Face::Display);
 			if (selfAttacker)
 			{
 				m_comboName = ComboTable::Name(cid);

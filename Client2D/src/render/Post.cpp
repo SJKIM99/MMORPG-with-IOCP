@@ -23,6 +23,7 @@ out vec4 finalColor;
 uniform sampler2D texture0;
 uniform sampler2D uBloom;
 uniform float uBloomK;
+uniform float uBright;
 uniform float uHasScene;
 uniform vec4 uShock[8];
 uniform float uShockW[8];
@@ -87,7 +88,7 @@ void main()
             col.b = texture(texture0, suv - cd).b;
         }
     }
-    col += texture(uBloom, uv).rgb * uBloomK;
+    col += texture(uBloom, uv).rgb * uBloomK * (1.0 - uBright * clamp(col, 0.0, 1.0));
     if (uDesat > 0.0)
     {
         float l = dot(col, vec3(0.299, 0.587, 0.114));
@@ -145,7 +146,7 @@ void main()
 		int L(const char* n) { return GetShaderLocation(g_comp, n); }
 		struct Locs
 		{
-			int bloom = -1, bloomK = -1, hasScene = -1, shock = -1, shockW = -1, shockN = -1, heat = -1, heatN = -1, warp = -1, warpN = -1,
+			int bloom = -1, bloomK = -1, bright = -1, hasScene = -1, shock = -1, shockW = -1, shockN = -1, heat = -1, heatN = -1, warp = -1, warpN = -1,
 				radial = -1, chroma = -1, desat = -1, dark = -1, aspect = -1, time = -1, blurDir = -1;
 		} g_loc;
 
@@ -169,7 +170,7 @@ void main()
 				TraceLog(LOG_WARNING, "POST: shader failed - post effects off");
 				return false;
 			}
-			g_loc.bloom = L("uBloom"); g_loc.bloomK = L("uBloomK"); g_loc.hasScene = L("uHasScene");
+			g_loc.bloom = L("uBloom"); g_loc.bloomK = L("uBloomK"); g_loc.bright = L("uBright"); g_loc.hasScene = L("uHasScene");
 			g_loc.shock = L("uShock"); g_loc.shockW = L("uShockW"); g_loc.shockN = L("uShockN");
 			g_loc.heat = L("uHeat"); g_loc.heatN = L("uHeatN"); g_loc.warp = L("uWarp"); g_loc.warpN = L("uWarpN");
 			g_loc.radial = L("uRadial"); g_loc.chroma = L("uChroma"); g_loc.desat = L("uDesat"); g_loc.dark = L("uDark");
@@ -408,6 +409,8 @@ void main()
 			EndTextureMode();
 		}
 		const float bloomK = 1.25f;
+		// 밝은 바닥(gfx::SetBrightGround): 번짐을 밝은 곳일수록 덜 더한다(눈밭이 번짐으로 하얗게 뜨지 않게)
+		const float bright = gfx::BrightGround();
 
 		// ── 2) 합성 ──
 		if (grab)
@@ -422,6 +425,7 @@ void main()
 			const float one = 1.f, aspect = W / H;
 			SetShaderValue(g_comp, g_loc.hasScene, &one, SHADER_UNIFORM_FLOAT);
 			SetShaderValue(g_comp, g_loc.bloomK, &bloomK, SHADER_UNIFORM_FLOAT);
+			if (g_loc.bright >= 0) SetShaderValue(g_comp, g_loc.bright, &bright, SHADER_UNIFORM_FLOAT);
 			SetShaderValueTexture(g_comp, g_loc.bloom, g_blurB.texture);
 			if (g_loc.shock >= 0) SetShaderValueV(g_comp, g_loc.shock, shock, SHADER_UNIFORM_VEC4, 8);
 			if (g_loc.shockW >= 0) SetShaderValueV(g_comp, g_loc.shockW, shockW, SHADER_UNIFORM_FLOAT, 8);
@@ -441,7 +445,14 @@ void main()
 		}
 		else
 		{
-			BeginBlendMode(BLEND_ADDITIVE);
+			// 셰이더 없이 더할 때: 밝은 바닥이면 스크린 혼합(바닥 + 번짐 × (1 − 바닥)) — 합성 셰이더의 식과 비슷하게
+			if (bright > 0.3f)
+			{
+				rlSetBlendFactors(RL_ONE_MINUS_DST_COLOR, RL_ONE, RL_FUNC_ADD);
+				BeginBlendMode(BLEND_CUSTOM);
+			}
+			else
+				BeginBlendMode(BLEND_ADDITIVE);
 			const unsigned char k = static_cast<unsigned char>(std::min(255.f, 255.f * bloomK * 0.8f));
 			DrawTexturePro(g_blurB.texture, Rectangle{ 0, 0, (float)g_ew, -(float)g_eh }, Rectangle{ 0, 0, W, H }, Vector2{ 0, 0 }, 0.f, Color{ k, k, k, 255 });
 			EndBlendMode();

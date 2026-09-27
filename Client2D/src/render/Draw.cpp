@@ -1,4 +1,5 @@
 #include "render/Draw.h"
+#include "render/Sprites.h"
 
 #include "rlgl.h"
 
@@ -20,6 +21,7 @@ namespace gfx
 		bool g_depthWrite = true;
 		bool g_additive = false;
 		bool g_emissiveOnly = false;
+		float g_bright = 0.f;   // 밝은 바닥 k(SetBrightGround)
 		// Phase 4-A 지형 높이
 		GroundLiftFn g_liftFn = nullptr;
 		float g_lift = 0.f;
@@ -139,20 +141,39 @@ namespace gfx
 	Color Tint() { return g_tint; }
 	float Flash() { return g_flash; }
 	Color FlashColor() { return g_flashColor; }
+	namespace
+	{
+		// 지금 상태에 맞는 혼합. 밝은 바닥 섞기는 월드 셰이더가 켜져 있을 때만(셰이더가 색에 알파를 미리 곱해 내보낸다 —
+		// 기본 셰이더로 같은 혼합을 쓰면 텍스처 가장자리가 네모로 드러난다)
+		void ApplyBlend()
+		{
+			const bool premul = g_additive && !g_emissiveOnly && g_bright > 0.02f && sprites::SetAddMode(true, g_bright);
+			if (!premul) (void)sprites::SetAddMode(false, 0.f);
+			if (premul)
+			{
+				rlSetBlendFactors(RL_ONE, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD);
+				rlSetBlendMode(RL_BLEND_CUSTOM);
+			}
+			else if (g_additive || g_emissiveOnly) rlSetBlendMode(RL_BLEND_ADDITIVE);
+			else rlSetBlendMode(RL_BLEND_ALPHA);
+		}
+	}
+
 	void Additive(bool on)
 	{
 		rlDrawRenderBatchActive();
 		g_additive = on;
-		if (on || g_emissiveOnly) rlSetBlendMode(RL_BLEND_ADDITIVE);
-		else rlSetBlendMode(RL_BLEND_ALPHA);
+		ApplyBlend();
 	}
 	bool AdditiveOn() { return g_additive; }
+	void SetBrightGround(float k) { g_bright = std::clamp(k, 0.f, 1.f); }
+	float BrightGround() { return g_bright; }
 	void EmissiveOnly(bool on)
 	{
 		rlDrawRenderBatchActive();
 		g_emissiveOnly = on;
 		g_additive = false;
-		rlSetBlendMode(on ? RL_BLEND_ADDITIVE : RL_BLEND_ALPHA);
+		ApplyBlend();
 	}
 	bool EmissiveOnlyOn() { return g_emissiveOnly; }
 
