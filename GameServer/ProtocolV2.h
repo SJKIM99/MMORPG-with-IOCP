@@ -579,6 +579,7 @@ enum class GuildOp : uint8_t
 	Disband,       // 해산(결사장 혼자 남았을 때)
 	Name,          // 결사 이름 묻기 arg32 = 결사 번호(머리 위 표시 캐시)
 	Emblem,        // 문장 바꾸기 arg8 — 결사 회관지기 곁에서
+	Top,           // 결사 회관 깃발 뜰에 걸 결사(GUILD_INF Top — 인원 많은 순 · 먼저 세운 순). Phase 5 자기 검토
 };
 enum class GuildResult : uint8_t
 {
@@ -606,7 +607,7 @@ struct GUILD_ACK_PACKET
 	uint32_t       param;                   // 세우기: 결사 번호 · 그로시 부족: 필요한 값
 };
 
-enum class GuildInfKind : uint8_t { Info, Members, Name };
+enum class GuildInfKind : uint8_t { Info, Members, Name, Top };
 struct GUILD_INFO_INF_PACKET                // GUILD_INF, kind = Info — 결사가 없으면 guildId 0
 {
 	unsigned short size;
@@ -648,6 +649,21 @@ struct GUILD_NAME_INF_PACKET                // GUILD_INF, kind = Name — 머리
 	uint32_t       guildId;
 	uint8_t        emblem;
 	char           name[25];
+};
+struct GuildTopRow
+{
+	uint32_t guildId;
+	uint8_t  emblem;
+	uint8_t  members;
+	char     name[25];
+};
+struct GUILD_TOP_INF_PACKET                 // GUILD_INF, kind = Top — 결사 회관 깃발 뜰(인원 많은 순 · 같으면 먼저 세운 순)
+{
+	unsigned short size;
+	char           type;
+	uint8_t        kind;
+	uint8_t        count;
+	GuildTopRow    rows[3];
 };
 
 enum class GuildEvent : uint8_t
@@ -769,6 +785,7 @@ static_assert(sizeof(GUILD_ACK_PACKET) <= 255, "모든 패킷 255바이트 이�
 static_assert(sizeof(GUILD_INFO_INF_PACKET) <= 255, "모든 패킷 255바이트 이하");
 static_assert(sizeof(GUILD_MEMBERS_INF_PACKET) <= 255, "모든 패킷 255바이트 이하 — 구성원 8명씩");
 static_assert(sizeof(GUILD_NAME_INF_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(GUILD_TOP_INF_PACKET) <= 255, "모든 패킷 255바이트 이하 — 깃발 뜰 3줄");
 static_assert(sizeof(GUILD_NFY_PACKET) <= 255, "모든 패킷 255바이트 이하");
 static_assert(sizeof(AUCTION_REQ_PACKET) <= 255, "모든 패킷 255바이트 이하");
 static_assert(sizeof(AUCTION_ACK_PACKET) <= 255, "모든 패킷 255바이트 이하");

@@ -44,6 +44,9 @@ namespace props
 	// 소품(props.txt — Phase 4-C): 막히는 소품 칸 하나(없으면 false) · 화면 칸 범위 안의 줄 소품(빨랫줄 · 줄깃발)
 	bool DrawTownProp(int x, int y, float time);
 	void DrawLineProps(int x0, int y0, int x1, int y1, float time);
+	// 결사 회관 깃발 뜰(Phase 5 자기 검토): 회관지기 곁 깃대(서 → 동)마다 걸 결사 문장(emblem::PrepareCloth를 먼저). 0개 = 기본 천
+	void SetHallFlags(const uint8_t* emblems, int count);
+	[[nodiscard]] bool HallFlagTile(int index, int& x, int& y);   // 깃대 index의 칸(이름 표시용)
 	// 막힌 마을 칸 문자가 화면에 무언가로 그려지는가(보이지 않는 벽 검사 — --script terraincheck)
 	[[nodiscard]] bool TownCellVisible(char cell);
 

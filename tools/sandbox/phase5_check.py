@@ -62,6 +62,11 @@ for tag in ('guild3', 'guild3rec'):
     if c is not None:
         check(len(re.findall(r'\[g3\] invite #\d+', c)) >= 2 and 'decline' in c and 'accept' in c, 'c: 첫 초대 거절 → 두 번째 수락')
         check('[guild] nfy ev=3 who=lv20_gc' in c and '[g3] c kicked id=0' in c, 'c: 추방 알림 → 결사 없음')
+        # 자기 검토: 금칙어 이름은 서버가 거른다(NameInvalid 5) → 「서리매」를 세운다
+        check(re.search(r'\[guild\] ack op=2 result=5 ', c) is not None, 'c: 금칙어 이름(운영자모임) → NameInvalid(5)')
+        check(re.search(r'\[g3\] c founded id=[1-9]\d* name=서리매', c) is not None, 'c: 「서리매」를 세움')
+    # 자기 검토: 결사 회관 깃발 뜰 — 인원 많은 순(새벽서약 2 · 서리매 1)
+    check(re.search(r'\[g3\] flags n=2 first=새벽서약 second=서리매', a) is not None, 'a: 깃발 뜰 순위(GUILD_INF Top) — 새벽서약 · 서리매')
     # 결사 채팅: 셋 모두 a의 말을 받았다(SC_CHAT_EX 결사 채널 — 클라 채팅 기록은 로그에 없으니 서버 · 흐름으로)
     check('[g3] c joined members=3' in a, 'a: c까지 들어온 뒤 구성원 3')
 

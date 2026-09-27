@@ -10,11 +10,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #include "render/Props.h"
 #include "render/Draw.h"
+#include "render/Emblem.h"
 #include "render/EnvArt.h"
 #include "render/Wind.h"
 #include "core/Util.h"
 #include "Data/TownMap.h"
 #include "Data/WorldData.h"
+#include "net/Shared.h"
+#include "Data/GuildAuction.h"
 #include "rlgl.h"
 
 #include <algorithm>
@@ -655,7 +658,7 @@ namespace props
 		}
 
 		// 깃발: 장대 + 바람 쪽으로 뻗어 펄럭이는 천(가운데에 문장 띠)
-		void Flag(P3 base, float poleH, Color cloth, Color emblem, float seed, float len = 1.1f, float clothH = 0.62f)
+		void Flag(P3 base, float poleH, Color cloth, Color emblem, float seed, float len = 1.1f, float clothH = 0.62f, const Texture2D* tex = nullptr)
 		{
 			const Color pole = Rgb(0x5A4632);
 			gfx::Box(base.x - 0.04f, base.y - 0.04f, base.x + 0.04f, base.y + 0.04f, base.z, base.z + poleH, Shade(pole, 1.1f), pole, Shade(pole, 0.7f));
@@ -678,8 +681,16 @@ namespace props
 				{
 					const float slope = (t.x - prevT.x) * -0.7f + (t.y - prevT.y) * 0.7f;   // 물결 기울기로 명암
 					const float sh = std::clamp(0.86f + slope * 3.f, 0.6f, 1.08f);
-					const Color c = (i == n / 2 || i == n / 2 + 1) ? emblem : cloth;
-					gfx::Face(prevB, b, t, prevT, Shade(c, sh));
+					if (tex != nullptr)
+					{
+						// 그림 천(결사 문장): 한 장을 여덟 조각에 이어 입힌다 — 렌더 텍스처라 v = 1이 위
+						gfx::FaceTexUV(*tex, prevB, b, t, prevT, static_cast<float>(i - 1) / n, u, 1.f, 0.f, Shade(WHITE, sh));
+					}
+					else
+					{
+						const Color c = (i == n / 2 || i == n / 2 + 1) ? emblem : cloth;
+						gfx::Face(prevB, b, t, prevT, Shade(c, sh));
+					}
 				}
 				prevT = t;
 				prevB = b;
@@ -1899,6 +1910,42 @@ namespace props
 		}
 	}
 
+	namespace
+	{
+		// 결사 회관 깃발 뜰(Phase 5 자기 검토): 회관지기 곁 깃대(서 → 동)마다 걸 결사 문장. 비었으면 기본 천
+		std::vector<uint8_t> g_hallEmblems;
+
+		const std::vector<std::pair<int, int>>& HallPoles()
+		{
+			static const std::vector<std::pair<int, int>> poles = []
+			{
+				std::vector<std::pair<int, int>> v;
+				// 회관지기 즈데노의 집에서 10칸 안의 깃대
+				const int hx = WorldData::HomeX(GuildRule::kHallNpcId), hy = WorldData::HomeY(GuildRule::kHallNpcId);
+				for (const auto& p : TownMap::kProps)
+					if (p.kind == TownMap::PropKind::eFlagpole && std::max(std::abs(p.x - hx), std::abs(p.y - hy)) <= 10)
+						v.emplace_back(p.x, p.y);
+				std::sort(v.begin(), v.end());
+				return v;
+			}();
+			return poles;
+		}
+	}
+
+	void SetHallFlags(const uint8_t* emblems, int count)
+	{
+		g_hallEmblems.assign(emblems, emblems + std::max(0, count));
+	}
+
+	bool HallFlagTile(int index, int& x, int& y)
+	{
+		const auto& poles = HallPoles();
+		if (index < 0 || index >= static_cast<int>(poles.size())) return false;
+		x = poles[static_cast<size_t>(index)].first;
+		y = poles[static_cast<size_t>(index)].second;
+		return true;
+	}
+
 	bool DrawTownProp(int x, int y, float time)
 	{
 		const TownMap::PropRow* p = PropAt(x, y);
@@ -1917,7 +1964,12 @@ namespace props
 		{
 			constexpr uint32_t kCloth[] = { 0x2E4A7A, 0x7A2E2A, 0x2E6A4A };
 			gfx::Box(X - 0.22f, Y - 0.22f, X + 0.22f, Y + 0.22f, 0.f, 0.25f, Rgb(0xC8C4BC), Rgb(0xA8A49C), Rgb(0x88847C));
-			Flag({ X, Y, 0.25f }, 4.2f, Rgb(kCloth[h % 3]), Rgb(0xE8C860), static_cast<float>(h % 7), 1.35f, 0.72f);
+			// 결사 회관 깃발 뜰: 인원 많은 결사부터 서쪽 깃대에(없으면 기본 천)
+			const Texture2D* guildCloth = nullptr;
+			const auto& poles = HallPoles();
+			for (size_t i = 0; i < poles.size() && i < g_hallEmblems.size(); ++i)
+				if (poles[i].first == x && poles[i].second == y) guildCloth = emblem::ClothTexture(g_hallEmblems[i]);
+			Flag({ X, Y, 0.25f }, 4.2f, Rgb(kCloth[h % 3]), Rgb(0xE8C860), static_cast<float>(h % 7), 1.35f, 0.72f, guildCloth);
 			break;
 		}
 		case PropKind::eWell: Well(X, Y, time); break;

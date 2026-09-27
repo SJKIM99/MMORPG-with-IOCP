@@ -460,6 +460,26 @@ namespace gfx
 		rlSetTexture(0);
 	}
 
+	void FaceTexUV(const Texture2D& tex, P3 bl, P3 br, P3 tr, P3 tl, float u0, float u1, float vTop, float vBottom, Color col)
+	{
+		col = Mod(col);
+		if (col.a == 0 || tex.id == 0) return;
+		// 텍스처 좌표의 정수부는 월드 셰이더의 표시(번쩍임 · 알파 시험)라 0~1 안에 둔다
+		u0 = std::clamp(u0, 0.f, 1.f); u1 = std::clamp(u1, 0.f, 1.f);
+		vTop = std::clamp(vTop, 0.f, 1.f); vBottom = std::clamp(vBottom, 0.f, 1.f);
+		rlSetTexture(tex.id);
+		rlBegin(RL_QUADS);
+		C(col);
+		rlNormal3f(0.f, 0.f, 1.f);
+		rlTexCoord2f(u0, vTop); V(Iso(tl), Zof(tl));
+		rlTexCoord2f(u0, vBottom); V(Iso(bl), Zof(bl));
+		rlTexCoord2f(u1, vBottom); V(Iso(br), Zof(br));
+		rlTexCoord2f(u1, vTop); V(Iso(tr), Zof(tr));
+		rlEnd();
+		rlTexCoord2f(0.f, 0.f);
+		rlSetTexture(0);
+	}
+
 	void BoxTex(const Texture2D& tex, float x0, float y0, float x1, float y1, float z0, float z1, float texUnit, Color top, Color south, Color east)
 	{
 		const float k = 1.f / std::max(0.05f, texUnit);

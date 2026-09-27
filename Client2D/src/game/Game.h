@@ -369,6 +369,8 @@ private:
 	void DrawGuildTag(const Entity& e, Vector2 head, float& y, float nameW);   // 이름표: 이름 왼쪽 문장 + 위 줄 결사 이름
 	void DrawGuildCelebration();                        // 세우기 · 들어옴: 화면 위에서 깃발이 펼쳐지고 문장 · 이름
 	[[nodiscard]] std::string GuildNameOf(uint32_t guildId) const;
+	void TickHallTop();                                 // 결사 회관 깃발 뜰: 회관 가까이 있으면 20초마다 · 결사 사건 뒤에 순위를 묻는다
+	void DrawHallFlagLabels(const Camera2D& cam);       // 깃발 아래 ‹결사 이름›(가까이 있을 때)
 	void HandleAuctionAck(const AUCTION_ACK_PACKET& p);
 	void HandleAuctionList(const AUCTION_LIST_INF_PACKET& p);
 	void HandleAuctionNfy(const AUCTION_NFY_PACKET& p);
@@ -844,6 +846,10 @@ private:
 	std::unordered_map<uint32_t, std::pair<std::string, uint8_t>> m_guildNames;   // 머리 위 표시: 결사 번호 → 이름 · 문장
 	std::unordered_map<ObjID, std::pair<uint32_t, uint8_t>> m_guildTags;          // 사람 → 결사 번호 · 문장(시야 입장 뒤 GUILD_NFY Tag)
 	std::unordered_map<uint32_t, double> m_guildNameAsked;                        // 이름을 물어본 결사(한 번만 — 10초 뒤 다시)
+	struct HallFlag { uint32_t id = 0; uint8_t emblem = 0; uint8_t members = 0; std::string name; };
+	std::vector<HallFlag> m_hallTop;                    // 깃발 뜰 순위(GUILD_INF Top — 인원 많은 순)
+	double           m_hallTopAskAt = -100.0;           // 마지막으로 물은 때
+	double           m_hallTopDirtyAt = -1.0;           // 결사 사건 — 이때 뒤로 한 번 더 묻는다(0.8초 모아서)
 	// ── Phase 5 경매장(game/GameAuction.cpp) ──
 	struct AuctionView
 	{
@@ -881,6 +887,9 @@ private:
 		double      soldFlashAt = -10.0;        // 내 물건이 팔린 순간(정산함 탭 반짝)
 		uint32_t    lastBoughtId = 0;           // 방금 산 줄(도장 연출)
 		double      lastBoughtAt = -10.0;
+		double      refreshAt = -1.0;           // 산 뒤 다시 찾기 — 도장이 다 찍힌 뒤(자기 검토: 바로 다시 찾으면 줄이 0.3초 만에 사라졌다)
+		double      askAt[3] = { -10.0, -10.0, -10.0 };   // 목록 요청(검색 · 내 경매 · 정산함) — 답이 오기 전에는 "비어 있다" 대신 "불러오는 중"
+		double      gotAt[3] = { -10.0, -10.0, -10.0 };
 		int         lastResult = -1;            // 마지막 결과(시험 로그)
 	};
 	AuctionView      m_auction;

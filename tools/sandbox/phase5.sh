@@ -3,10 +3,11 @@
 # Phase 5 시험 — 결사 · 경매장. 시험마다 서버를 새로 띄운다(인메모리 DB가 비어 있게 — crash만 일지를 이어 쓴다).
 #
 #   tools/sandbox/phase5.sh <클라 폴더> <서버 빌드 폴더> <출력 폴더> <시험…>
-#     guild3        클라 셋: 세우기 · 초대(거절 뒤 수락) · 같은 순번 두 번 · 결사 채팅 · 직위           → [g3] 줄
+#     guild3        클라 셋: 세우기 · 초대(거절 뒤 수락) · 같은 순번 두 번 · 결사 채팅 · 직위 · 추방 →
+#                   추방된 c가 금칙어 이름(거절) 뒤 「서리매」를 세움 → 깃발 뜰 순위(새벽서약 · 서리매)   → [g3] 줄
 #     guild3rec     같은 시험을 공유 시계로 녹화(a가 시계를 올리고 녹화, b · c는 따라가기)
 #     auction       판매자(lv20_ak_s) 셋 올림 → 구매자(lv20_ab) 철검 구매 → 둘 다 정산함 받기            → [auc] 줄
-#     auctionrec    같은 시험 녹화(구매자 화면 · 판매자 화면 두 번)
+#     auctionrec    같은 시험 녹화(구매자 화면 · 판매자 화면 두 번) — auctionrecb · auctionrecs는 한쪽만
 #     race          한 목록을 두 사람이 같은 순간에 산다 — 한 명만 · 진 쪽 그로시 그대로
 #     dup           같은 순번의 구매 요청 두 번 — 두 번째는 Duplicate, 한 번만 팔린다
 #     expire        한 시간 = 2초(HARVEN_AUCTION_HOUR_SEC) — 24시간 목록이 48초 뒤 만료 → 정산함
@@ -83,9 +84,9 @@ for t in "$@"; do
 	case "$t" in
 	guild3)
 		server_up real
-		client lv20_ga guild3:a 50; sleep 0.8
-		client lv20_gb guild3:b 50; sleep 0.8
-		client lv20_gc guild3:c 50
+		client lv20_ga guild3:a 65; sleep 0.8
+		client lv20_gb guild3:b 65; sleep 0.8
+		client lv20_gc guild3:c 65
 		wait
 		server_log guild3_server.log
 		;;
@@ -104,21 +105,26 @@ for t in "$@"; do
 		wait
 		server_log auction_server.log
 		;;
-	auctionrec)
+	auctionrec|auctionrecb|auctionrecs)
 		# 한 시간 = 2초(물약 12시간 목록이 24초 뒤 만료 → 정산함으로 돌아오는 것까지 한 영상에). 클라도 이 값을 보고 기다린다
+		# auctionrecb = 구매자 화면만 · auctionrecs = 판매자 화면만
 		export HARVEN_AUCTION_HOUR_SEC=2
-		# 구매자 화면: 구매자가 시계를 올리고 녹화, 판매자는 따라가기
-		server_up shared
-		client lv20_ak_s auction:sell 110 --sandbox-clock-follow "$CLOCK"; sleep 1
-		VIEW="--size 1280x720" client lv20_ab auction:buy 80 --sandbox-clock "$CLOCK" --record "$OUT/rec_buyer" --record-after 2 --seconds 72 --fps 15
-		wait
-		server_log auctionrec_buyer_server.log
-		# 판매자 화면
-		server_up shared
-		VIEW="--size 1280x720" client lv20_ak_s auction:sell 110 --sandbox-clock "$CLOCK" --record "$OUT/rec_seller" --record-after 2 --seconds 100 --fps 15; sleep 1
-		client lv20_ab auction:buy 90 --sandbox-clock-follow "$CLOCK"
-		wait
-		server_log auctionrec_seller_server.log
+		if [ "$t" != auctionrecs ]; then
+			# 구매자 화면: 구매자가 시계를 올리고 녹화, 판매자는 따라가기
+			server_up shared
+			client lv20_ak_s auction:sell 110 --sandbox-clock-follow "$CLOCK"; sleep 1
+			VIEW="--size 1280x720" client lv20_ab auction:buy 80 --sandbox-clock "$CLOCK" --record "$OUT/rec_buyer" --record-after 2 --seconds 72 --fps 15
+			wait
+			server_log auctionrec_buyer_server.log
+		fi
+		if [ "$t" != auctionrecb ]; then
+			# 판매자 화면
+			server_up shared
+			VIEW="--size 1280x720" client lv20_ak_s auction:sell 110 --sandbox-clock "$CLOCK" --record "$OUT/rec_seller" --record-after 2 --seconds 100 --fps 15; sleep 1
+			client lv20_ab auction:buy 90 --sandbox-clock-follow "$CLOCK"
+			wait
+			server_log auctionrec_seller_server.log
+		fi
 		unset HARVEN_AUCTION_HOUR_SEC
 		;;
 	race)

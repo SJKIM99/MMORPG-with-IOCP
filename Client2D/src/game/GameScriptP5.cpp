@@ -64,6 +64,7 @@ bool Game::RunScriptPhase5(float dt)
 			case 1:
 				if ((m_dialogNpc == GuildRule::kHallNpcId && elapsed() > 1.2f) || elapsed() > 40.f)
 				{
+					CloseNpcWindows();   // 대화창의 "결사 세우기"와 같은 길
 					OpenGuildCreate(false);
 					m_guild.createName.text = "새벽서약";
 					m_guild.shape = 3;   // 늑대
@@ -88,10 +89,11 @@ bool Game::RunScriptPhase5(float dt)
 				else if (elapsed() > 10.f) { std::printf("[g3] FAIL create timeout\n"); next(99); }
 				break;
 			case 4:
+				// 초대는 창 없이(/초대와 같은 요청) — 결사 창은 구성원을 다룰 때(10단계) 연다. 그 사이 화면에는 b · c 머리 위에 문장이 붙는 것이 보인다
 				if (elapsed() > 2.f)
 				{
-					OpenGuildWindow();
 					SendGuildReq(GuildOp::Invite, 0, 0, nameB);
+					m_p5.seqA = m_guild.seq;   // 이 초대의 순번 — 사이에 다른 요청(깃발 뜰 순위 등)이 끼어도 같은 순번으로 되풀이하게
 					next(5);
 				}
 				break;
@@ -101,7 +103,7 @@ bool Game::RunScriptPhase5(float dt)
 				{
 					GUILD_REQ_PACKET p{};
 					p.op = static_cast<uint8_t>(GuildOp::Invite);
-					p.seq = m_guild.seq;   // 방금 보낸 초대와 같은 순번
+					p.seq = m_p5.seqA;     // 방금 보낸 초대와 같은 순번
 					std::memcpy(p.target, nameB.data(), std::min(nameB.size(), static_cast<size_t>(NAME_SIZE - 1)));
 					m_net.SendGuild(p);
 					std::printf("[g3] dup-sent seq=%u\n", p.seq);
@@ -129,8 +131,9 @@ bool Game::RunScriptPhase5(float dt)
 			case 10:
 				if (elapsed() > 2.5f)
 				{
-					SendGuildReq(GuildOp::SetRank, static_cast<uint8_t>(GuildRule::Rank::Elite), 0, nameB);
 					m_guild.tab = 1;
+					OpenGuildWindow();
+					SendGuildReq(GuildOp::SetRank, static_cast<uint8_t>(GuildRule::Rank::Elite), 0, nameB);
 					SendGuildReq(GuildOp::Members, 0);
 					next(11);
 				}
@@ -157,6 +160,21 @@ bool Game::RunScriptPhase5(float dt)
 					const bool ok = m_guild.members == 2 && (m_p5.results & 1);
 					std::printf("[g3] done %s members=%d bElite=%d kicked=%d\n", ok ? "PASS" : "FAIL", m_guild.members, (m_p5.results & 1) ? 1 : 0, m_guild.members == 2 ? 1 : 0);
 					next(14);
+				}
+				break;
+			case 14:
+				// 창을 닫고 마당을 본다 — a · b 머리 위에는 문장과 ‹새벽서약›. 추방된 c는 따로 「서리매」를 세운다
+				if (elapsed() > 2.5f) { m_guildOpen = false; next(15); }
+				break;
+			case 15:
+				// 결사 회관 깃발 뜰(자기 검토): 인원 많은 순 — 새벽서약(2) · 서리매(1)가 서 · 동 깃대에
+				if (m_hallTop.size() >= 2 || elapsed() > 20.f)
+				{
+					std::printf("[g3] flags n=%zu first=%s second=%s\n", m_hallTop.size(), m_hallTop.empty() ? "-" : m_hallTop[0].name.c_str(),
+						m_hallTop.size() > 1 ? m_hallTop[1].name.c_str() : "-");
+					// 녹화: 카메라를 조금 물려 깃발 뜰 전체(깃대 둘 · 문장 천 · 이름)가 화면에 들어오게
+					m_cam.SetZoomFree(0.8f);
+					next(16);
 				}
 				break;
 			default:
@@ -213,6 +231,34 @@ bool Game::RunScriptPhase5(float dt)
 					std::printf("[g3] c kicked id=0\n");
 					next(6);
 				}
+				break;
+			case 6:
+				// c: 쫓겨난 김에 제 결사를 세운다 — 먼저 금칙어 이름(서버가 NameInvalid로 거른다), 다음에 「서리매」(매 · 청록)
+				if (elapsed() > 1.5f)
+				{
+					CloseNpcWindows();
+					OpenGuildCreate(false);
+					m_guild.createName.text = "서리매";
+					m_guild.shape = 4;   // 매
+					m_guild.color = 5;   // 청록
+					SendGuildReq(GuildOp::Create, GuildRule::Emblem(4, 5), 0, std::string(), "운영자모임");
+					next(7);
+				}
+				break;
+			case 7:
+				if (elapsed() > 2.f)
+				{
+					SendGuildReq(GuildOp::Create, GuildRule::Emblem(m_guild.shape, m_guild.color), 0, std::string(), m_guild.createName.text);
+					next(8);
+				}
+				break;
+			case 8:
+				if (m_guild.id != 0)
+				{
+					std::printf("[g3] c founded id=%u name=%s emblem=%d\n", m_guild.id, m_guild.name.c_str(), m_guild.emblem);
+					next(9);
+				}
+				else if (elapsed() > 12.f) { std::printf("[g3] FAIL c found timeout\n"); next(99); }
 				break;
 			default:
 				break;

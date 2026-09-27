@@ -90,6 +90,8 @@ private:
 	void SendInfo(const std::weak_ptr<GameSession>& session, const Guild* g, int playerId) const;
 	void SendMembers(const Service::Ctx& ctx, const Guild& g, uint8_t page, uint8_t sort) const;   // sort: 0 접속·직위 · 1 레벨 · 2 이름 · 3 최근 접속
 	void SendName(const Service::Ctx& ctx, uint32_t guildId) const;
+	// 깃발 뜰: 인원 많은 순(같으면 번호가 작은 = 먼저 세운) 결사 kHallTop개 — 메모리만 읽는다(DB 없음)
+	void SendTop(const Service::Ctx& ctx) const;
 	// 온라인 결사원 모두에게(except = 빼고 보낼 사람)
 	void NotifyMembers(const Guild& g, GuildEvent ev, const std::string& who, const std::string& by, uint8_t rank = 0, int except = 0) const;
 	// 그 사람의 Zone에서 머리 위 표시를 바꾸고 주변에 알린다(guildId 0 = 결사 없음)

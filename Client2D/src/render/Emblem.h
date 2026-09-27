@@ -18,4 +18,10 @@ namespace emblem
 	void Draw(Vector2 center, float size, uint8_t emblem, float alpha = 1.f, float glow = 0.f);
 	// 모양만 따로(고르기 칸에서 바탕 없이) — ink = 글자 색
 	void DrawShape(Vector2 center, float size, int shape, Color ink, Color hole);
+
+	// 깃발 천(결사 회관 깃발 뜰 — Phase 5 자기 검토): 바탕색 천 + 문장 모양을 렌더 텍스처(128×72)에 한 번 그려 둔다.
+	// 다른 렌더 텍스처 안(장면 그리기 도중)에서는 만들 수 없으니 PrepareCloth는 프레임을 그리기 전에 부른다.
+	// 텍스처는 렌더 텍스처라 위아래가 뒤집혀 있다(v = 1이 천의 위).
+	void PrepareCloth(uint8_t emblem);
+	[[nodiscard]] const Texture2D* ClothTexture(uint8_t emblem);   // 아직 없으면 nullptr
 }

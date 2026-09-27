@@ -8,6 +8,7 @@
 #include "game/Game.h"
 #include "game/KeyBinds.h"
 #include "render/Emblem.h"
+#include "render/Props.h"
 #include "ui/Wm.h"
 #include "ui/Font.h"
 #include "audio/Sfx.h"
@@ -54,7 +55,7 @@ namespace
 		case GuildResult::AlreadyInGuild:     return "이미 결사에 들어 있습니다.";
 		case GuildResult::NoPermission:       return "그 일을 할 수 있는 직위가 아닙니다.";
 		case GuildResult::NameTaken:          return "이미 있는 결사 이름입니다.";
-		case GuildResult::NameInvalid:        return "결사 이름은 한글 · 영문 · 숫자 2~8자입니다.";
+		case GuildResult::NameInvalid:        return "쓸 수 없는 결사 이름입니다(한글 · 영문 · 숫자 2~8자, 금칙어 없이).";
 		case GuildResult::NoAdena:            return "그로시가 모자랍니다.";
 		case GuildResult::LevelTooLow:        return "레벨 15부터 결사를 세울 수 있습니다.";
 		case GuildResult::Full:               return "결사원이 가득 찼습니다(30명).";
@@ -71,7 +72,7 @@ namespace
 		return "요청을 처리하지 못했습니다.";
 	}
 
-	[[nodiscard]] bool Mutating(GuildOp op) { return op != GuildOp::Info && op != GuildOp::Members && op != GuildOp::Name; }
+	[[nodiscard]] bool Mutating(GuildOp op) { return op != GuildOp::Info && op != GuildOp::Members && op != GuildOp::Name && op != GuildOp::Top; }
 
 	// "3시간 전" · "2일 전"(유닉스 분)
 	std::string SeenText(uint32_t lastSeenMin)
@@ -224,6 +225,27 @@ void Game::HandleGuildInf(const char* data, uint16_t size)
 		if (p.guildId != 0) m_guildNames[p.guildId] = { Fixed(p.name, sizeof(p.name)), p.emblem };
 		break;
 	}
+	case GuildInfKind::Top:
+	{
+		// 결사 회관 깃발 뜰: 깃발 천(렌더 텍스처)은 여기서 만든다 — 패킷 처리는 화면 그리기 전(Frame의 m_net.Update)
+		GUILD_TOP_INF_PACKET p{};
+		if (size < sizeof(p)) return;
+		std::memcpy(&p, data, sizeof(p));
+		m_hallTop.clear();
+		uint8_t emblems[GuildRule::kHallTop]{};
+		const int n = std::min<int>(p.count, GuildRule::kHallTop);
+		for (int i = 0; i < n; ++i)
+		{
+			const GuildTopRow& r = p.rows[i];
+			m_hallTop.push_back(HallFlag{ r.guildId, r.emblem, r.members, Fixed(r.name, sizeof(r.name)) });
+			m_guildNames[r.guildId] = { m_hallTop.back().name, r.emblem };
+			emblem::PrepareCloth(r.emblem);
+			emblems[i] = r.emblem;
+		}
+		props::SetHallFlags(emblems, n);
+		std::printf("[guild] top n=%d%s%s\n", n, n > 0 ? " first=" : "", n > 0 ? m_hallTop.front().name.c_str() : "");
+		break;
+	}
 	}
 }
 
@@ -237,6 +259,9 @@ void Game::HandleGuildNfy(const GUILD_NFY_PACKET& p)
 	const bool me = who == m_playerName;
 	auto line = [&](const std::string& text, Color c = ui::theme::kChatGuild) { AddChatMsg(chat::Ch::Guild, "", 0, text, c); };
 	auto refreshMembers = [&]() { if (m_guildOpen && m_guild.tab == 1 && m_guild.id != 0) SendGuildReq(GuildOp::Members, static_cast<uint8_t>(m_guild.page), static_cast<uint32_t>(m_guild.memberSort)); };
+	if (ev == GuildEvent::Created || ev == GuildEvent::Joined || ev == GuildEvent::Left || ev == GuildEvent::Kicked
+		|| ev == GuildEvent::Disbanded || ev == GuildEvent::EmblemChanged)
+		m_hallTopDirtyAt = m_now;   // 깃발 뜰 순위가 바뀌었을 수 있다 — 0.8초 모아서 다시 묻는다(TickHallTop)
 
 	switch (ev)
 	{
@@ -641,6 +666,7 @@ void Game::DrawGuildCreate()
 		const char* msg = chk == GuildRule::NameCheck::Ok ? "쓸 수 있는 모양이다(겹치는지는 세울 때 확인)"
 			: chk == GuildRule::NameCheck::TooShort ? "2자 이상"
 			: chk == GuildRule::NameCheck::TooLong ? "8자까지"
+			: chk == GuildRule::NameCheck::Banned ? "쓸 수 없는 말이 들어 있다(운영 사칭 · 욕설)"
 			: "한글 음절 · 영문 · 숫자만(띄어쓰기 · 기호 없이)";
 		ui::Text(msg, Vector2{ x0 + 2.f, y + 64.f }, ui::type::kCaption, nameOk ? ui::theme::kGood : (m_guild.createName.text.empty() ? ui::theme::kTextMute : ui::theme::kWarn));
 		y += 90.f;
@@ -768,6 +794,52 @@ void Game::DrawGuildTag(const Entity& e, Vector2 head, float& y, float nameW)
 	st.outlineColor = Color{ 0, 0, 0, 210 };
 	ui::Fonts().DrawCentered("‹" + gname + "›", Vector2{ head.x, y - 5.f }, st);
 	y -= 14.f;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 결사 회관 깃발 뜰(Phase 5 자기 검토): 인원 많은 결사의 문장이 회관 앞 깃대에 걸린다 — 결사가 창 밖 마을에도 보이게.
+// 순위는 서버 메모리(GuildOp::Top · GUILD_INF Top). 회관 30칸 안에 있을 때만 20초마다 묻고, 결사 사건 뒤에는 0.8초 모아서 한 번 더.
+// ─────────────────────────────────────────────────────────────────────────────
+void Game::TickHallTop()
+{
+	if (!m_hasSelf || !InTown()) return;
+	const int hx = WorldData::HomeX(GuildRule::kHallNpcId), hy = WorldData::HomeY(GuildRule::kHallNpcId);
+	if (std::max(std::abs(m_predX - hx), std::abs(m_predY - hy)) > 30) return;
+	const bool dirty = m_hallTopDirtyAt >= 0.0 && m_now - m_hallTopDirtyAt > 0.8;
+	const bool allowed = m_now - m_hallTopAskAt > GuildRule::kTopQueryMs / 1000.0 + 0.1;   // 서버는 2초 안의 두 번째 요청을 버린다
+	if ((dirty && allowed) || m_now - m_hallTopAskAt > 20.0)
+	{
+		m_hallTopAskAt = m_now;
+		m_hallTopDirtyAt = -1.0;
+		SendGuildReq(GuildOp::Top);
+	}
+}
+
+void Game::DrawHallFlagLabels(const Camera2D& cam)
+{
+	if (m_hallTop.empty() || !InTown()) return;
+	for (size_t i = 0; i < m_hallTop.size(); ++i)
+	{
+		int x = 0, y = 0;
+		if (!props::HallFlagTile(static_cast<int>(i), x, y)) break;
+		if (std::max(std::abs(m_predX - x), std::abs(m_predY - y)) > 14) continue;   // 가까이 왔을 때만(마을 이름표 규칙)
+		// 깃대 밑에서 3.3칸 위(천의 아랫단 바로 밑) — 깃발 천은 깃대 꼭대기 4.2칸에서 0.72칸 드리운다
+		const Vector2 at = GetWorldToScreen2D(SurfaceIso(Vector2{ static_cast<float>(x), static_cast<float>(y) }, 3.3f), cam);
+		if (at.x < -80.f || at.y < -40.f || at.x > m_screenW + 80.f || at.y > m_screenH + 40.f) continue;
+		const HallFlag& f = m_hallTop[i];
+		ui::TextStyle st;
+		st.size = 12.5f;
+		st.face = ui::Face::Strong;
+		st.color = f.id == m_guild.id ? ui::theme::kChatGuild : Rgb(0xD8CFB8);
+		st.outline = 1.3f;
+		st.outlineColor = Color{ 0, 0, 0, 210 };
+		ui::Fonts().DrawCentered("‹" + f.name + "›", Vector2{ std::round(at.x + 16.f), std::round(at.y) }, st);
+		ui::TextStyle sub = st;
+		sub.size = 10.5f;
+		sub.face = ui::Face::Body;
+		sub.color = util::WithA(Rgb(0xB9B09A), 0.95f);
+		ui::Fonts().DrawCentered(Fmt("결사원 %d", f.members), Vector2{ std::round(at.x + 16.f), std::round(at.y + 13.f) }, sub);
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

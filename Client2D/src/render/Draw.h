@@ -124,6 +124,8 @@ namespace gfx
 	// repU · repV = 면 전체에 텍스처가 몇 번 반복되는가. 반복마다 작은 면으로 나눠 텍스처 좌표를 0~1에 둔다
 	// (월드 셰이더가 텍스처 좌표의 정수부를 번쩍임 · 알파 테스트 표시로 쓰기 때문).
 	void FaceTex(const Texture2D& tex, P3 bl, P3 br, P3 tr, P3 tl, float repU, float repV, Color col);
+	// 텍스처의 한 조각(u0~u1 · v0~v1, 모두 0~1)을 면 하나에 — 여러 면으로 나눈 천(깃발)에 그림 한 장을 이어 입힐 때
+	void FaceTexUV(const Texture2D& tex, P3 bl, P3 br, P3 tr, P3 tl, float u0, float u1, float vTop, float vBottom, Color col);
 	// 텍스처 상자(윗면 · 남면 · 동면). 음영은 면마다 곱하는 색으로.
 	void BoxTex(const Texture2D& tex, float x0, float y0, float x1, float y1, float z0, float z1, float texUnit, Color top, Color south, Color east);
 	// 바닥 타일 마름모(데칼용, 현재 깊이)

@@ -791,6 +791,8 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 		ui::TextWrapped(text, Rectangle{ b.x + 10, b.y + 5, maxW, bh }, size, util::MulA(ui::theme::kTextHi, a), 5.f);
 	};
 
+	DrawHallFlagLabels(cam);   // Phase 5: 결사 회관 깃발 아래 ‹결사 이름›(사람 이름표보다 먼저 — 겹치면 사람이 위)
+
 	// NPC — 이름(가까이·가리킬 때), 역할, 말풍선. [G]는 G를 누르면 상호작용할 대상 하나에만(NPC 또는 물건).
 	uint16_t interactNpc = 0;
 	ObjID interactItem{};

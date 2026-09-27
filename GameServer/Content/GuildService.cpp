@@ -241,6 +241,33 @@ void GuildService::SendName(const Service::Ctx& ctx, uint32_t guildId) const
 	Service::SendTo(ctx.session, p);
 }
 
+void GuildService::SendTop(const Service::Ctx& ctx) const
+{
+	// 결사 수는 많아야 수백 — 요청마다 부분 정렬해도 싸다(요청은 사람마다 2초에 한 번, 소유 Zone이 거른다)
+	std::vector<const Guild*> all;
+	all.reserve(_guilds.size());
+	for (const auto& [id, g] : _guilds)
+		all.push_back(&g);
+	const size_t n = std::min(all.size(), static_cast<size_t>(GuildRule::kHallTop));
+	std::partial_sort(all.begin(), all.begin() + static_cast<std::ptrdiff_t>(n), all.end(), [](const Guild* a, const Guild* b)
+	{
+		if (a->members.size() != b->members.size()) return a->members.size() > b->members.size();
+		return a->id < b->id;
+	});
+	GUILD_TOP_INF_PACKET p;
+	Service::Init(p, PacketType::GUILD_INF);
+	p.kind = static_cast<uint8_t>(GuildInfKind::Top);
+	p.count = static_cast<uint8_t>(n);
+	for (size_t i = 0; i < n; ++i)
+	{
+		p.rows[i].guildId = all[i]->id;
+		p.rows[i].emblem = all[i]->emblem;
+		p.rows[i].members = static_cast<uint8_t>(std::min<size_t>(all[i]->members.size(), 255));
+		CopyStr(p.rows[i].name, sizeof(p.rows[i].name), all[i]->name);
+	}
+	Service::SendTo(ctx.session, p);
+}
+
 void GuildService::NotifyMembers(const Guild& g, GuildEvent ev, const std::string& who, const std::string& by, uint8_t rank, int except) const
 {
 	GUILD_NFY_PACKET p;
@@ -370,6 +397,7 @@ void GuildService::Handle(const Service::Ctx& ctx, const GUILD_REQ_PACKET& p)
 		else Ack(ctx, GuildOp::Members, GuildResult::NotInGuild, p.seq);
 		break;
 	case GuildOp::Name:        SendName(ctx, p.arg32); break;
+	case GuildOp::Top:         SendTop(ctx); break;
 	case GuildOp::Create:      Create(ctx, p.seq, text, p.arg8); break;
 	case GuildOp::Invite:      DoInvite(ctx, p.seq, target); break;
 	case GuildOp::InviteReply: Reply(ctx, p.seq, p.arg8 != 0, p.arg32); break;
@@ -896,7 +924,7 @@ namespace GuildHelper
 	{
 		[[nodiscard]] bool IsMutating(GuildOp op) noexcept
 		{
-			return op != GuildOp::Info && op != GuildOp::Members && op != GuildOp::Name;
+			return op != GuildOp::Info && op != GuildOp::Members && op != GuildOp::Name && op != GuildOp::Top;
 		}
 
 		void ZoneAck(const std::shared_ptr<User>& user, GuildOp op, GuildResult r, uint32_t seq, uint32_t param = 0)
@@ -975,6 +1003,15 @@ namespace GuildHelper
 			if (p.target[0] == '\0')
 				return ZoneAck(user, op, GuildResult::TargetNotFound, p.seq);
 			break;
+		case GuildOp::Top:
+		{
+			// 깃발 뜰 순위 — 사람마다 2초에 한 번(넘치면 버린다. 클라는 마을에 있을 때 20초마다 · 결사 사건 뒤에 묻는다)
+			const uint32_t now = static_cast<uint32_t>(GetNowTime());
+			if (user->m_lastGuildTopAt != 0 && now - user->m_lastGuildTopAt < GuildRule::kTopQueryMs)
+				return;
+			user->m_lastGuildTopAt = now;
+			break;
+		}
 		case GuildOp::Info: case GuildOp::Members: case GuildOp::Name:
 		case GuildOp::InviteReply: case GuildOp::Leave: case GuildOp::Disband:
 			break;

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 using util::Rgb;
 
@@ -263,5 +264,40 @@ namespace emblem
 		}
 		const Color ink = Rgb(0xEFE6D0);
 		Glyph(Pen{ center, size / 32.f * 0.86f, alpha }, shape, ink, field);
+	}
+
+	namespace
+	{
+		std::unordered_map<uint8_t, RenderTexture2D> g_cloth;
+	}
+
+	void PrepareCloth(uint8_t e)
+	{
+		if (g_cloth.count(e) != 0) return;
+		constexpr int W = 128, H = 72;
+		RenderTexture2D rt = LoadRenderTexture(W, H);
+		if (rt.id == 0) return;
+		SetTextureFilter(rt.texture, TEXTURE_FILTER_BILINEAR);
+		const int shape = (e / kColors) % kShapes;
+		const Color field = util::Shade(Field(e % kColors), 0.92f);
+		const Color seam = util::Shade(field, 0.7f);
+		BeginTextureMode(rt);
+		ClearBackground(field);
+		// 깃대 쪽 솔기(어둡게) · 위아래 단 — 천이 두 겹으로 접힌 곳
+		DrawRectangleGradientH(0, 0, 22, H, seam, field);
+		DrawRectangle(0, 0, W, 4, seam);
+		DrawRectangle(0, H - 4, W, 4, seam);
+		DrawRectangle(0, 6, W, 1, util::WithA(Rgb(0xE8C860), 0.55f));        // 금실 한 줄(위)
+		DrawRectangle(0, H - 7, W, 1, util::WithA(Rgb(0xE8C860), 0.55f));    // (아래)
+		// 문장 모양 — 가운데보다 조금 깃대 쪽(펄럭이는 끝은 물결에 흐려진다)
+		DrawShape(Vector2{ W * 0.47f, H * 0.52f }, 50.f, shape, Rgb(0xEFE6D0), field);
+		EndTextureMode();
+		g_cloth.emplace(e, rt);
+	}
+
+	const Texture2D* ClothTexture(uint8_t e)
+	{
+		const auto it = g_cloth.find(e);
+		return it == g_cloth.end() ? nullptr : &it->second.texture;
 	}
 }

@@ -125,6 +125,13 @@ void Game::SendAuctionReq(AUCTION_REQ_PACKET p)
 {
 	p.seq = ++m_auction.seq;
 	m_net.SendAuction(p);
+	switch (static_cast<AuctionOp>(p.op))
+	{
+	case AuctionOp::Search:      m_auction.askAt[0] = m_now; break;
+	case AuctionOp::Mine:        m_auction.askAt[1] = m_now; break;
+	case AuctionOp::Settlements: m_auction.askAt[2] = m_now; break;
+	default: break;
+	}
 	if (Mutating(static_cast<AuctionOp>(p.op)))
 	{
 		m_auction.pendingSeq = p.seq;
@@ -212,7 +219,9 @@ void Game::HandleAuctionAck(const AUCTION_ACK_PACKET& p)
 		m_auction.lastBoughtId = p.id;
 		m_auction.lastBoughtAt = m_now;
 		m_auction.confirmId = 0;
-		if (m_auctionOpen) AuctionSearch(m_auction.page);
+		// 산 줄은 1.35초 남겨 "낙찰" 도장을 다 보여 준 뒤 다시 찾는다(바로 찾으면 팔린 줄이 목록에서 빠져 도장이 0.3초 만에 사라졌다)
+		for (auto& row : m_auction.rows) if (row.id == p.id) row.flags |= 4;
+		m_auction.refreshAt = m_now + 1.35;
 		break;
 	case AuctionOp::Cancel:
 		AddCenter(Fmt("「%s」을(를) 내렸습니다 — 물건은 정산함으로", item.c_str()), ui::theme::kTextDim);
@@ -236,6 +245,7 @@ void Game::HandleAuctionList(const AUCTION_LIST_INF_PACKET& p)
 {
 	const auto kind = static_cast<AuctionListKind>(p.kind);
 	const int n = std::min<int>(p.count, AuctionRule::kPageRows);
+	if (p.kind < 3) m_auction.gotAt[p.kind] = m_now;
 	switch (kind)
 	{
 	case AuctionListKind::Search:
@@ -277,6 +287,15 @@ void Game::HandleAuctionList(const AUCTION_LIST_INF_PACKET& p)
 
 void Game::HandleAuctionNfy(const AUCTION_NFY_PACKET& p)
 {
+	// 정산함 수가 바뀌었는데 창이 그 탭을 보고 있으면 목록도 다시(자기 검토: 판매자가 정산함 탭을 보는 동안 목걸이가 만료되어
+	// 탭에는 "정산함 (1)", 목록에는 "비어 있다"가 1분 넘게 함께 보였다). 모두 받기 · 거래 중에는 그 흐름이 목록을 다시 받는다
+	auto refreshOpenTab = [&]()
+	{
+		if (!m_auctionOpen || m_auction.claimAll || m_auction.pendingSeq != 0) return;
+		AUCTION_REQ_PACKET q{};
+		if (m_auction.tab == 3) { q.op = static_cast<uint8_t>(AuctionOp::Settlements); q.page = m_auction.settlePage; SendAuctionReq(q); }
+		else if (m_auction.tab == 2) { q.op = static_cast<uint8_t>(AuctionOp::Mine); q.page = m_auction.minePage; SendAuctionReq(q); }
+	};
 	switch (static_cast<AuctionEvent>(p.event))
 	{
 	case AuctionEvent::Sold:
@@ -286,19 +305,15 @@ void Game::HandleAuctionNfy(const AUCTION_NFY_PACKET& p)
 		AddChatMsg(chat::Ch::System, "", 0, Fmt("경매 — 「%s」이(가) 팔렸습니다. 대금 %s 그로시는 정산함에서 받으세요.", texts::ItemName(p.itemId).c_str(), texts::Number(p.price).c_str()), ui::theme::kChatNotice);
 		sfx::Play(sfx::Id::CoinPour, 0.7f);
 		sfx::Play(sfx::Id::Gavel, 0.45f);
-		if (m_auctionOpen && m_auction.tab == 2)
-		{
-			AUCTION_REQ_PACKET q{};
-			q.op = static_cast<uint8_t>(AuctionOp::Mine);
-			q.page = m_auction.minePage;
-			SendAuctionReq(q);
-		}
+		refreshOpenTab();
 		break;
 	case AuctionEvent::Expired:
 		m_auction.settleCount = p.settleCount;
 		AddChatMsg(chat::Ch::System, "", 0, "경매 기간이 끝난 「" + texts::ItemName(p.itemId) + "」이(가) 정산함으로 돌아왔습니다.", ui::theme::kChatSystem);
+		refreshOpenTab();
 		break;
 	case AuctionEvent::SettleCount:
+		if (p.settleCount != m_auction.settleCount && m_auction.tab == 3) { m_auction.settleCount = p.settleCount; refreshOpenTab(); }
 		m_auction.settleCount = p.settleCount;
 		break;
 	case AuctionEvent::PriceHint:
@@ -327,6 +342,13 @@ void Game::DrawAuctionWindow()
 	ui::Window(r, "경매장", &m_auctionOpen);
 	if (!m_auctionOpen) { sfx::Play(sfx::Id::Close, 0.5f); m_auction.claimAll = false; return; }
 	const bool busy = m_auction.pendingSeq != 0 && m_now - m_auction.pendingAt < 4.0;
+	if (m_auction.refreshAt > 0.0 && m_now >= m_auction.refreshAt)
+	{
+		m_auction.refreshAt = -1.0;
+		if (m_auction.tab == 0) AuctionSearch(m_auction.page);
+	}
+	// 답이 오기 전(탭을 막 바꿨다)에는 "비어 있다" 대신 "불러오는 중" — 빈 말이 번쩍였다가 줄이 들어오지 않게
+	auto loading = [&](int k) { return m_auction.askAt[k] > m_auction.gotAt[k] && m_now - m_auction.askAt[k] < 2.0; };
 	// 거래(올리기 · 사기 · 내리기 · 받기)는 경매인 로렌초 곁에서 — 서버와 같은 거리(상점 규칙). 검색은 어디서나
 	bool inTown = false;
 	if (const Entity* self = Self())
@@ -487,7 +509,7 @@ void Game::DrawAuctionWindow()
 			const float appear = util::EaseOutCubic(static_cast<float>((m_now - m_auction.rowsAt - 0.03 * static_cast<double>(i)) / 0.18));
 			const Rectangle rr{ fx, ry0 + static_cast<float>(i) * rowH + (1.f - appear) * 8.f, fw, rowH - 4.f };
 			const bool hover = ui::Hovered(rr);
-			const bool mine = (row.flags & 1) != 0, locked = (row.flags & 2) != 0;
+			const bool mine = (row.flags & 1) != 0, locked = (row.flags & 2) != 0, won = (row.flags & 4) != 0;
 			const float stamp = std::max(0.f, 1.f - static_cast<float>(m_now - m_auction.lastBoughtAt) / 1.4f);
 			ui::Plate(rr, util::MulA(hover ? ui::theme::kSurface2 : ui::theme::kSurface1, appear), mine ? util::WithA(ui::theme::kDawn, 0.45f) : ui::theme::kLine, 3.f, 1.f);
 			rowItem(row, rr, false);
@@ -498,7 +520,8 @@ void Game::DrawAuctionWindow()
 				ui::Text(Fmt("개당 %s", texts::Number(row.price / std::max<uint16_t>(1, row.count)).c_str()), Vector2{ px, rr.y + 28.f }, ui::type::kCaption, ui::theme::kTextDim, ui::Align::Right);
 			ui::Text(LeftText(row.minutesLeft), Vector2{ px - 124.f, rr.y + 9.f }, ui::type::kCaption, row.minutesLeft < 60 ? ui::theme::kWarn : ui::theme::kTextDim, ui::Align::Right);
 			const Rectangle buy{ rr.x + rr.width - 104.f, rr.y + 10.f, 96.f, 34.f };
-			if (mine) ui::Text("내 물건", Vector2{ buy.x + buy.width * 0.5f, buy.y + 9.f }, ui::type::kCaption, ui::theme::kDawn, ui::Align::Center);
+			if (won) ui::Text("낙찰", Vector2{ buy.x + buy.width * 0.5f, buy.y + 8.f }, ui::type::kBody, ui::theme::kEmber, ui::Align::Center);
+			else if (mine) ui::Text("내 물건", Vector2{ buy.x + buy.width * 0.5f, buy.y + 9.f }, ui::type::kCaption, ui::theme::kDawn, ui::Align::Center);
 			else if (locked) ui::Text("거래 중", Vector2{ buy.x + buy.width * 0.5f, buy.y + 9.f }, ui::type::kCaption, ui::theme::kWarn, ui::Align::Center);
 			else if (ui::Button(buy, "사기", ui::ButtonKind::Primary, inTown && !busy && m_inv.adena >= row.price, 14.f))
 			{
@@ -515,7 +538,7 @@ void Game::DrawAuctionWindow()
 			}
 		}
 		if (m_auction.searched && m_auction.rows.empty())
-			ui::Text("찾는 물건이 없다. 분류나 거르기를 바꿔 보자.", Vector2{ fx + fw * 0.5f, ry0 + 120.f }, ui::type::kBody, ui::theme::kTextMute, ui::Align::Center);
+			ui::Text(loading(0) ? "찾는 중…" : "찾는 물건이 없다. 분류나 거르기를 바꿔 보자.", Vector2{ fx + fw * 0.5f, ry0 + 120.f }, ui::type::kBody, ui::theme::kTextMute, ui::Align::Center);
 		// 페이지
 		const float py = content.y + content.height - 30.f;
 		ui::Text(Fmt("%s건", texts::Number(m_auction.total).c_str()), Vector2{ fx, py + 6.f }, ui::type::kCaption, ui::theme::kTextDim);
@@ -700,7 +723,7 @@ void Game::DrawAuctionWindow()
 			}
 		}
 		if (m_auction.mine.empty())
-			ui::Text("올린 물건이 없다.", Vector2{ content.x + content.width * 0.5f, content.y + 140.f }, ui::type::kBody, ui::theme::kTextMute, ui::Align::Center);
+			ui::Text(loading(1) ? "불러오는 중…" : "올린 물건이 없다.", Vector2{ content.x + content.width * 0.5f, content.y + 140.f }, ui::type::kBody, ui::theme::kTextMute, ui::Align::Center);
 		const float py = content.y + content.height - 30.f;
 		ui::Text(Fmt("올린 물건 %u / %d", m_auction.mineTotal, AuctionRule::kMaxListingsPerSeller), Vector2{ content.x, py + 6.f }, ui::type::kCaption, ui::theme::kTextDim);
 		if (m_auction.minePages > 1)
@@ -732,7 +755,7 @@ void Game::DrawAuctionWindow()
 			}
 		}
 		if (m_auction.settles.empty())
-			ui::Text("정산함이 비어 있다.", Vector2{ content.x + content.width * 0.5f, content.y + 140.f }, ui::type::kBody, ui::theme::kTextMute, ui::Align::Center);
+			ui::Text(loading(2) ? "불러오는 중…" : "정산함이 비어 있다.", Vector2{ content.x + content.width * 0.5f, content.y + 140.f }, ui::type::kBody, ui::theme::kTextMute, ui::Align::Center);
 		const float py = content.y + content.height - 34.f;
 		ui::Text(Fmt("받지 않은 것 %u줄", m_auction.settleTotal), Vector2{ content.x, py + 9.f }, ui::type::kCaption, ui::theme::kTextDim);
 		if (ui::Button(Rectangle{ content.x + content.width - 150.f, py, 150.f, 34.f }, m_auction.claimAll ? "받는 중…" : "모두 받기", ui::ButtonKind::Primary,

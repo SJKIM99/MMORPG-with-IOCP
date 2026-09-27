@@ -1048,15 +1048,16 @@ void Game::DrawNpcDialog()
 		}
 		else if (npc->id == GuildRule::kHallNpcId)
 		{
+			// 창을 열면 대화창은 닫는다(로렌초와 같다) — 열어 둔 대화창이 세우기 창의 문장 고르기를 가렸다(Phase 5 자기 검토)
 			if (m_guild.id == 0)
 			{
-				if (button(120, "결사 세우기", ButtonKind::Primary)) OpenGuildCreate(false);
+				if (button(120, "결사 세우기", ButtonKind::Primary)) { CloseNpcWindows(); OpenGuildCreate(false); }
 			}
 			else if (m_guild.myRank == static_cast<uint8_t>(GuildRule::Rank::Leader))
 			{
-				if (button(120, "문장 바꾸기", ButtonKind::Primary)) OpenGuildCreate(true);
+				if (button(120, "문장 바꾸기", ButtonKind::Primary)) { CloseNpcWindows(); OpenGuildCreate(true); }
 			}
-			if (m_guild.id != 0 && button(96, "결사 창")) OpenGuildWindow();
+			if (m_guild.id != 0 && button(96, "결사 창")) { CloseNpcWindows(); OpenGuildWindow(); }
 		}
 		break;
 	}

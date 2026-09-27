@@ -27,6 +27,8 @@ namespace GuildRule
 	inline constexpr int      kEmblemColors = 6;        // 문장 바탕색
 	inline constexpr int      kMembersPerPage = 8;      // 구성원 목록 한 패킷
 	inline constexpr uint16_t kHallNpcId    = 22;       // 결사 회관지기 즈데노 — 세우기 · 문장은 그의 곁에서(WorldData kNpcs)
+	inline constexpr int      kHallTop      = 3;        // 깃발 뜰 순위(GUILD_INF Top) — 깃대 둘(props.txt 결사 회관 단)에 1 · 2위, 3위는 회관지기의 말로
+	inline constexpr uint32_t kTopQueryMs   = 2000;     // Top 요청 간격(사람마다, 소유 Zone이 거른다)
 
 	enum class Rank : uint8_t { Leader = 0, Officer = 1, Elite = 2, Member = 3, Count };
 	inline constexpr const char* kRankName[] = { "결사장", "부관", "정예", "결사원" };
@@ -54,9 +56,35 @@ namespace GuildRule
 	[[nodiscard]] constexpr int EmblemColor(uint8_t e) noexcept { return e % kEmblemColors; }
 	[[nodiscard]] constexpr bool ValidEmblem(uint8_t e) noexcept { return e < kEmblemShapes * kEmblemColors; }
 
+	// 금칙어(결사 이름) — 운영 사칭 · 욕설. 영문은 대소문자를 가리지 않고, 숫자를 끼워 넣어도(씨8발) 걸리게 숫자는 건너뛰고 본다.
+	// 이름은 한글 음절 · 영문 · 숫자만 되므로(띄어쓰기 · 기호 없음) 바이트 부분 문자열로 충분하다(UTF-8 첫 바이트와 이음 바이트는 겹치지 않는다).
+	inline constexpr const char* kBannedWords[] = {
+		"운영자", "운영진", "관리자", "개발자", "공식", "시스템", "gm", "admin", "operator",
+		"시발", "씨발", "씨바", "병신", "븅신", "개새", "새끼", "좆", "존나", "지랄", "엿먹", "니미", "느금",
+		"fuck", "shit", "bitch",
+	};
+	[[nodiscard]] constexpr char LowerAscii(char c) noexcept { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; }
+	[[nodiscard]] constexpr bool HasBannedWord(const char* s) noexcept
+	{
+		for (const char* w : kBannedWords)
+			for (size_t i = 0; s[i] != '\0'; ++i)
+			{
+				size_t a = i, b = 0;
+				while (w[b] != '\0' && s[a] != '\0')
+				{
+					if (s[a] >= '0' && s[a] <= '9' && a != i) { ++a; continue; }   // 사이에 끼운 숫자는 건너뛴다
+					if (LowerAscii(s[a]) != w[b]) break;
+					++a;
+					++b;
+				}
+				if (w[b] == '\0') return true;
+			}
+		return false;
+	}
+
 	// 이름 검사(서버가 판정 — 클라는 입력 중 안내에 같은 함수를 쓴다). UTF-8을 읽어 글자 수 · 문자 종류를 본다.
-	// 허용: 한글 음절(가~힣) · 영문 · 숫자. 띄어쓰기 · 기호 · 자모만 있는 글자는 안 된다.
-	enum class NameCheck : uint8_t { Ok, TooShort, TooLong, BadChar };
+	// 허용: 한글 음절(가~힣) · 영문 · 숫자. 띄어쓰기 · 기호 · 자모만 있는 글자 · 금칙어는 안 된다.
+	enum class NameCheck : uint8_t { Ok, TooShort, TooLong, BadChar, Banned };   // 끝에만 추가
 	[[nodiscard]] constexpr NameCheck CheckName(const char* s) noexcept
 	{
 		int chars = 0;
@@ -83,8 +111,11 @@ namespace GuildRule
 				return NameCheck::BadChar;
 			if (++chars > kNameMaxChars) return NameCheck::TooLong;
 		}
-		return chars < kNameMinChars ? NameCheck::TooShort : NameCheck::Ok;
+		if (chars < kNameMinChars) return NameCheck::TooShort;
+		return HasBannedWord(s) ? NameCheck::Banned : NameCheck::Ok;
 	}
+	static_assert(CheckName("새벽서약") == NameCheck::Ok && CheckName("Dawn7") == NameCheck::Ok && CheckName("시바견모임") == NameCheck::Ok);
+	static_assert(CheckName("운영자모임") == NameCheck::Banned && CheckName("GM결사") == NameCheck::Banned && CheckName("씨8발") == NameCheck::Banned);
 }
 
 namespace AuctionRule

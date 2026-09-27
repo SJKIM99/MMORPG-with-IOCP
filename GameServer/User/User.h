@@ -133,6 +133,7 @@ public:
 	uint32_t     m_lastGuildSeq  = 0;
 	uint32_t     m_lastAuctionSeq = 0;
 	uint32_t     m_lastAuctionQueryAt = 0; // 검색 · 목록 요청 간격
+	uint32_t     m_lastGuildTopAt = 0;     // 깃발 뜰 순위(GuildOp::Top) 요청 간격
 
 private:
 	shared_ptr<GameSession> m_session;

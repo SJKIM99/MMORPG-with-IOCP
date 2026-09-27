@@ -483,6 +483,7 @@ void Game::UpdateGame(float dt)
 	TickLoot();
 	UpdateNpcs(netDt);
 	UpdateQuests(dt);
+	TickHallTop();   // Phase 5: 결사 회관 깃발 뜰 순위(회관 가까이 있을 때만)
 
 	// ── 이동(내 캐릭터: 선확정 예측 · 화면 추종자 / 다른 개체: 100ms 뒤 재생 시간표) ──
 	// 통신이 멈췄나(원격 외삽 판단) — 마지막 패킷을 받은 뒤 흐른 시간
