@@ -529,7 +529,7 @@ namespace wm
 			ui::TextStyle ts; ts.size = ui::type::kCaption; ts.color = hot ? ui::theme::kDawnHi : ui::theme::kText; ts.face = ui::Face::Strong;
 			const Vector2 tm = ui::Fonts().Measure(buf, ts.size, 0.f, ui::Face::Strong);
 			const Rectangle lb{ r.x + 4.f, r.y + 4.f, std::round(tm.x + 12.f), 18.f };
-			ui::Plate(lb, Color{ 16, 18, 22, 235 }, util::WithA(ui::theme::kDawn, 0.8f), 2.f, 1.f);
+			ui::Plate(lb, ui::theme::kSlot, util::WithA(ui::theme::kDawn, 0.8f), 2.f, 1.f);
 			ui::Fonts().Draw(buf, Vector2{ lb.x + 6.f, lb.y + 2.f }, ts);
 		}
 

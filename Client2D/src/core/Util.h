@@ -66,6 +66,7 @@ namespace util
 	// ── 색 ──
 	inline Color Rgb(uint32_t hex, uint8_t a = 255) { return Color{ (uint8_t)((hex >> 16) & 0xFF), (uint8_t)((hex >> 8) & 0xFF), (uint8_t)(hex & 0xFF), a }; }
 	inline Color WithA(Color c, float a) { c.a = (uint8_t)std::clamp(a * 255.f, 0.f, 255.f); return c; }
+	inline constexpr Color A8(Color c, uint8_t a) { return Color{ c.r, c.g, c.b, a }; }   // 토큰 색에 알파만 바이트로(Color{ r, g, b, a } 대신)
 	inline Color MulA(Color c, float a) { c.a = (uint8_t)std::clamp(c.a * a, 0.f, 255.f); return c; }
 	inline Color Mix(Color a, Color b, float t)
 	{

@@ -119,10 +119,10 @@ namespace
 	// 그로시(은화)
 	void Coin(Vector2 c, float r)
 	{
-		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, Color{ 0, 0, 0, 140 });
+		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, util::A8(ui::theme::kShadow, 140));
 		DrawCircleV(c, r, Color{ 128, 132, 138, 255 });
 		DrawCircleV(c, r - 1.2f, Color{ 196, 199, 202, 255 });
-		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, Color{ 232, 232, 226, 255 });
+		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, ui::theme::kTextHi);
 	}
 
 	void Section(const char* title, float x, float y, float w)
@@ -150,18 +150,18 @@ namespace
 		case ObjKind::Boss:
 			DrawCircleV(Vector2{ c.x, c.y - s * 0.1f }, s * 0.7f, tint);
 			DrawRectangleV(Vector2{ c.x - s * 0.4f, c.y + s * 0.3f }, Vector2{ s * 0.8f, s * 0.45f }, tint);
-			DrawCircleV(Vector2{ c.x - s * 0.28f, c.y - s * 0.15f }, s * 0.18f, Color{ 20, 12, 12, 255 });
-			DrawCircleV(Vector2{ c.x + s * 0.28f, c.y - s * 0.15f }, s * 0.18f, Color{ 20, 12, 12, 255 });
+			DrawCircleV(Vector2{ c.x - s * 0.28f, c.y - s * 0.15f }, s * 0.18f, ui::theme::kInk);
+			DrawCircleV(Vector2{ c.x + s * 0.28f, c.y - s * 0.15f }, s * 0.18f, ui::theme::kInk);
 			break;
 		case ObjKind::Talk:
 			DrawRectangleRounded(Rectangle{ c.x - s * 0.8f, c.y - s * 0.6f, s * 1.6f, s * 1.0f }, 0.5f, 6, tint);
 			DrawTriangle(Vector2{ c.x - s * 0.4f, c.y + s * 0.35f }, Vector2{ c.x - s * 0.55f, c.y + s * 0.8f }, Vector2{ c.x - s * 0.05f, c.y + s * 0.35f }, tint);
-			for (int i = -1; i <= 1; ++i) DrawCircleV(Vector2{ c.x + i * s * 0.4f, c.y - s * 0.1f }, s * 0.12f, Color{ 30, 24, 20, 255 });
+			for (int i = -1; i <= 1; ++i) DrawCircleV(Vector2{ c.x + i * s * 0.4f, c.y - s * 0.1f }, s * 0.12f, ui::theme::kHpBack);
 			break;
 		case ObjKind::Explore:
 			DrawCircleV(Vector2{ c.x, c.y - s * 0.25f }, s * 0.55f, tint);
 			DrawTriangle(Vector2{ c.x - s * 0.48f, c.y - s * 0.05f }, Vector2{ c.x, c.y + s * 0.85f }, Vector2{ c.x + s * 0.48f, c.y - s * 0.05f }, tint);
-			DrawCircleV(Vector2{ c.x, c.y - s * 0.25f }, s * 0.22f, Color{ 30, 24, 20, 255 });
+			DrawCircleV(Vector2{ c.x, c.y - s * 0.25f }, s * 0.22f, ui::theme::kHpBack);
 			break;
 		case ObjKind::Equip:
 		{
@@ -626,7 +626,7 @@ void Game::HandleQuestUpdate(const QUEST_UPDATE_INF_PACKET& p)
 	}
 	case QuestEvent::Abandoned:
 		m_quests.erase(std::remove_if(m_quests.begin(), m_quests.end(), [&](const QuestView& v) { return v.id == p.questId; }), m_quests.end());
-		AddCenter("퀘스트를 포기했습니다: " + std::string(q->name), Rgb(0xC8C0B0));
+		AddCenter("퀘스트를 포기했습니다: " + std::string(q->name), ui::theme::kText);
 		if (m_trackedQuest == p.questId) m_trackedQuest = 0;
 		break;
 	}
@@ -734,9 +734,9 @@ void Game::DrawQuestMark(Vector2 head, QuestMark mark, float scale)
 	if (mark == QuestMark::Talk)
 	{
 		const Rectangle b{ c.x - 15.f * scale, c.y - 10.f * scale, 30.f * scale, 20.f * scale };
-		ui::Plate(Rectangle{ b.x + 1, b.y + 2, b.width, b.height }, Color{ 0, 0, 0, 100 }, BLANK, 4.f * scale, 0.f);
-		ui::Plate(b, Color{ 16, 19, 23, 235 }, ui::theme::kDawn, 4.f * scale, 1.f);
-		DrawTriangle(Vector2{ c.x - 4.f * scale, b.y + b.height - 1 }, Vector2{ c.x - 7.f * scale, b.y + b.height + 6.f * scale }, Vector2{ c.x + 3.f * scale, b.y + b.height - 1 }, Color{ 16, 19, 23, 235 });
+		ui::Plate(Rectangle{ b.x + 1, b.y + 2, b.width, b.height }, util::A8(ui::theme::kShadow, 100), BLANK, 4.f * scale, 0.f);
+		ui::Plate(b, ui::theme::kSlot, ui::theme::kDawn, 4.f * scale, 1.f);
+		DrawTriangle(Vector2{ c.x - 4.f * scale, b.y + b.height - 1 }, Vector2{ c.x - 7.f * scale, b.y + b.height + 6.f * scale }, Vector2{ c.x + 3.f * scale, b.y + b.height - 1 }, ui::theme::kSlot);
 		for (int i = -1; i <= 1; ++i)
 		{
 			const float a = 0.5f + 0.5f * std::sin(m_time * 6.f - i * 0.9f);
@@ -798,7 +798,7 @@ float Game::DrawQuestObjectives(float x, float y, float w, const QuestRow& q, co
 		if (v && o.count > 1)
 		{
 			const Rectangle bar{ lx, y + size + 3.f, w - (lx - x), 2.f };
-			DrawRectangleRec(bar, Color{ 0, 0, 0, 130 });
+			DrawRectangleRec(bar, util::A8(ui::theme::kShadow, 130));
 			DrawRectangleRec(Rectangle{ bar.x, bar.y, std::round(bar.width * std::min(1.f, static_cast<float>(n) / o.count)), bar.height }, done ? ui::theme::kGood : util::Mix(ui::theme::kDawn, ui::theme::kDawnHi, bump));
 		}
 		y += size + (v && o.count > 1 ? 12.f : 8.f);
@@ -921,7 +921,7 @@ void Game::DrawQuestTracker()
 
 	// 머리글
 	{
-		ui::TextStyle hs; hs.size = 13.f; hs.color = ui::theme::kTextHi; hs.face = ui::Face::Strong; hs.spacing = 0.5f; hs.shadow = 1.f; hs.shadowColor = Color{ 0, 0, 0, 170 };
+		ui::TextStyle hs; hs.size = 13.f; hs.color = ui::theme::kTextHi; hs.face = ui::Face::Strong; hs.spacing = 0.5f; hs.shadow = 1.f; hs.shadowColor = util::A8(ui::theme::kShadow, 170);
 		const float hw = ui::Fonts().Draw("퀘스트", Vector2{ x + 2.f, y }, hs);
 		const std::string key = kb::Label(kb::Act::QuestLog);
 		const float kw = std::max(15.f, std::round(ui::Fonts().Measure(key, ui::type::kMicro, 0.f, ui::Face::Strong).x + 8.f));
@@ -952,7 +952,7 @@ void Game::DrawQuestTracker()
 		const float in = util::EaseOutCubic(util::Clamp01(static_cast<float>((m_now - v->acceptedAt) / 0.35)));
 		const float ox = (1.f - in) * 60.f;
 		const Rectangle bb{ b.x + ox, b.y, b.width, b.height };
-		ui::Plate(bb, Color{ 12, 15, 18, static_cast<unsigned char>(hover ? 205 : 160) }, BLANK, 3.f, 0.f);
+		ui::Plate(bb, util::A8(ui::theme::kInk, static_cast<unsigned char>(hover ? 205 : 160)), BLANK, 3.f, 0.f);
 		DrawRectangleRec(Rectangle{ std::round(bb.x), std::round(bb.y + 4), isFocus ? 2.f : 1.f, std::round(bb.height - 8) }, util::WithA(kc, isFocus ? 1.f : 0.6f));
 		if (ready)
 		{
@@ -1022,7 +1022,7 @@ void Game::DrawQuestTracker()
 	{
 		const Rectangle b{ x, y, w, 28.f };
 		const float pulse = hintBright ? 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 3.5f) : 0.f;
-		ui::Plate(b, Color{ 12, 15, 18, 170 }, hintBright ? util::WithA(ui::theme::kDawn, 0.3f + 0.5f * pulse) : BLANK, 3.f, 1.f);
+		ui::Plate(b, util::A8(ui::theme::kInk, 170), hintBright ? util::WithA(ui::theme::kDawn, 0.3f + 0.5f * pulse) : BLANK, 3.f, 1.f);
 		{
 			ui::TextStyle gs; gs.size = 15.f; gs.color = hintBright ? ui::theme::kDawnHi : ui::theme::kTextDim; gs.face = ui::Face::Bold;
 			ui::Fonts().DrawCentered(hintBright ? "!" : "…", Vector2{ b.x + 14.f, b.y + b.height * 0.5f }, gs);
@@ -1390,7 +1390,7 @@ void Game::DrawQuestCompass(const Camera2D& cam)
 		st.size = 13.5f;
 		st.color = ui::theme::kTextHi;
 		st.outline = 1.4f;
-		st.outlineColor = Color{ 0, 0, 0, 200 };
+		st.outlineColor = util::A8(ui::theme::kShadow, 200);
 		st.face = ui::Face::Strong;
 		ui::Fonts().DrawCentered(m_questDest.label, Vector2{ c.x, c.y - 20.f }, st);
 		return;
@@ -1418,7 +1418,7 @@ void Game::DrawQuestCompass(const Camera2D& cam)
 	Vector2 lp = util::Add(p, util::Mul(d, -34.f));
 	lp.x = std::clamp(lp.x, tw * 0.5f + 12.f, W - tw * 0.5f - 12.f);
 	const Rectangle lb{ std::round(lp.x - tw * 0.5f - 9.f), std::round(lp.y - 11.f), std::round(tw + 18.f), 22.f };
-	ui::Plate(lb, Color{ 14, 17, 20, 210 }, util::WithA(ui::theme::kDawn, 0.6f), 3.f, 1.f);
+	ui::Plate(lb, util::A8(ui::theme::kSlot, 210), util::WithA(ui::theme::kDawn, 0.6f), 3.f, 1.f);
 	ui::Text(label, Vector2{ lp.x, lb.y + 4.f }, 12.5f, ui::theme::kTextHi, Align::Center);
 }
 
@@ -1465,9 +1465,9 @@ float Game::DrawQuestStackCards(float y0)
 		st.size = size;
 		st.color = c;
 		st.outline = outline;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 200 }, c.a / 255.f);
+		st.outlineColor = util::MulA(util::A8(ui::theme::kShadow, 200), c.a / 255.f);
 		st.shadow = size >= 24.f ? 2.f : 1.f;
-		st.shadowColor = util::MulA(Color{ 0, 0, 0, 190 }, c.a / 255.f);
+		st.shadowColor = util::MulA(util::A8(ui::theme::kShadow, 190), c.a / 255.f);
 		st.face = face;
 		st.spacing = spacing;
 		ui::Fonts().DrawCentered(s, Vector2{ cx + spacing * 0.5f, cy }, st);
@@ -1483,8 +1483,8 @@ float Game::DrawQuestStackCards(float y0)
 	};
 	auto band = [&](float top, float h, float a)
 	{
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f - 360.f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(BLACK, 0.f), util::WithA(Color{ 10, 12, 15, 255 }, 0.82f * a));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(Color{ 10, 12, 15, 255 }, 0.82f * a), util::WithA(BLACK, 0.f));
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f - 360.f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(BLACK, 0.f), util::WithA(ui::theme::kInk, 0.82f * a));
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(top), 360, static_cast<int>(h), util::WithA(ui::theme::kInk, 0.82f * a), util::WithA(BLACK, 0.f));
 	};
 
 	// ── 새 장소(탐험) — 이야기책 한 줄 ──
@@ -1500,7 +1500,7 @@ float Game::DrawQuestStackCards(float y0)
 			band(y, h, a);
 			centered("새로운 장소", W * 0.5f, y + 14.f, 12.f, util::WithA(ui::theme::kTextDim, a), 0.f, ui::Face::Strong, 3.f);
 			const float rise = (1.f - util::EaseOutCubic(util::Clamp01(t / 0.8f))) * 10.f;
-			centered(poi->name, W * 0.5f, y + 42.f + rise, 30.f, util::WithA(Color{ 238, 229, 208, 255 }, a), 0.f, ui::Face::Display, 2.f);
+			centered(poi->name, W * 0.5f, y + 42.f + rise, 30.f, util::WithA(ui::theme::kTitle, a), 0.f, ui::Face::Display, 2.f);
 			ornament(W * 0.5f, y + 63.f, 220.f, util::WithA(ui::theme::kDawn, a));
 			centered(poi->flavor, W * 0.5f, y + 84.f, 15.f, util::WithA(ui::theme::kText, a * util::Clamp01((t - 0.7f) / 0.8f)), 0.f, ui::Face::Serif);
 			y += h + 8.f;
@@ -1522,7 +1522,7 @@ float Game::DrawQuestStackCards(float y0)
 			centered("퀘스트 완료", W * 0.5f, y + 14.f, 12.f, util::WithA(ui::theme::kDawn, a), 0.f, ui::Face::Strong, 3.f);
 			ornament(W * 0.5f, y + 27.f, 170.f, util::WithA(kc, a));
 			const float pop = util::EaseOutBack(util::Clamp01(t / 0.35f), 2.2f);
-			centered(q->name, W * 0.5f, y + 48.f, 25.f * (0.6f + 0.4f * pop), util::WithA(Color{ 238, 229, 208, 255 }, a), 0.f, ui::Face::Display, 1.f);
+			centered(q->name, W * 0.5f, y + 48.f, 25.f * (0.6f + 0.4f * pop), util::WithA(ui::theme::kTitle, a), 0.f, ui::Face::Display, 1.f);
 			struct Chip { std::string text; Color color; uint16_t item; };
 			std::vector<Chip> chips;
 			if (f.exp) chips.push_back(Chip{ "경험치 +" + texts::Number(f.exp), ui::theme::kExp, 0 });
@@ -1532,7 +1532,7 @@ float Game::DrawQuestStackCards(float y0)
 				const ItemTableRow* row = ItemTableData::Find(f.item);
 				const bool gear = row && row->type == ItemType::eEquipment;
 				chips.push_back(Chip{ texts::ItemName(f.item) + (f.count > 1 ? Fmt(" ×%d", f.count) : "") + (gear ? std::string(" · ") + ItemRules::RarityName(static_cast<Rarity>(std::min<int>(f.rarity, 5))) : std::string()),
-					gear ? icons::RarityColor(static_cast<Rarity>(std::min<int>(f.rarity, 5))) : Rgb(0xE8E4DA), f.item });
+					gear ? icons::RarityColor(static_cast<Rarity>(std::min<int>(f.rarity, 5))) : ui::theme::kTextHi, f.item });
 			}
 			float total = 0.f;
 			for (const auto& c : chips) total += ui::Fonts().Measure(c.text, 15.f).x + (c.item ? 40.f : 20.f) + 10.f;
@@ -1545,7 +1545,7 @@ float Game::DrawQuestStackCards(float y0)
 				const auto& c = chips[i];
 				const float cw = ui::Fonts().Measure(c.text, 15.f).x + (c.item ? 40.f : 20.f);
 				const Rectangle r{ cx, y + 70.f + (1.f - cp) * 8.f, cw, 28.f };
-				ui::Plate(r, util::WithA(Color{ 16, 19, 23, 255 }, 0.9f * a), util::WithA(c.item ? c.color : ui::theme::kLine, 0.8f * a), 3.f, 1.f);
+				ui::Plate(r, util::WithA(ui::theme::kSlot, 0.9f * a), util::WithA(c.item ? c.color : ui::theme::kLine, 0.8f * a), 3.f, 1.f);
 				float tx = r.x + 10.f;
 				if (c.item)
 				{
@@ -1572,9 +1572,9 @@ void Game::DrawQuestScreenFx()
 		st.size = size;
 		st.color = c;
 		st.outline = outline;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 200 }, c.a / 255.f);
+		st.outlineColor = util::MulA(util::A8(ui::theme::kShadow, 200), c.a / 255.f);
 		st.shadow = size >= 24.f ? 2.f : 1.f;
-		st.shadowColor = util::MulA(Color{ 0, 0, 0, 190 }, c.a / 255.f);
+		st.shadowColor = util::MulA(util::A8(ui::theme::kShadow, 190), c.a / 255.f);
 		st.face = face;
 		st.spacing = spacing;
 		ui::Fonts().DrawCentered(s, Vector2{ cx + spacing * 0.5f, cy }, st);
@@ -1642,7 +1642,7 @@ void Game::DrawQuestScreenFx()
 		const float rise = (1.f - util::EaseOutCubic(util::Clamp01(t / 1.2f))) * 16.f;
 		centered(Fmt("제%d장", m_chapterCard), W * 0.5f, cy - 60.f + rise * 0.5f, 17.f, util::WithA(ui::theme::kDawn, a), 0.f, ui::Face::Display, 6.f);
 		ornament(W * 0.5f, cy - 40.f, 200.f, util::WithA(ui::theme::kDawn, a * 0.9f));
-		centered(ch.title, W * 0.5f, cy - 4.f + rise, 46.f, util::WithA(Color{ 240, 231, 210, 255 }, a), 0.f, ui::Face::Display, 4.f);
+		centered(ch.title, W * 0.5f, cy - 4.f + rise, 46.f, util::WithA(ui::theme::kTextHi, a), 0.f, ui::Face::Display, 4.f);
 		centered(ch.place, W * 0.5f, cy + 40.f, 15.f, util::WithA(ui::theme::kTextDim, a * util::Clamp01((t - 0.5f) / 0.8f)), 0.f, ui::Face::Strong, 4.f);
 		centered(ch.line, W * 0.5f, cy + 76.f, 17.f, util::WithA(ui::theme::kText, a * util::Clamp01((t - 1.1f) / 0.9f)), 0.f, ui::Face::Serif);
 	}

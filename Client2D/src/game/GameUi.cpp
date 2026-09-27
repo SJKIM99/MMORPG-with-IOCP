@@ -41,10 +41,10 @@ namespace
 	// 그로시(두툼한 은화)
 	void CoinIcon(Vector2 c, float r)
 	{
-		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, Color{ 0, 0, 0, 140 });
+		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, util::A8(ui::theme::kShadow, 140));
 		DrawCircleV(c, r, Color{ 128, 132, 138, 255 });
 		DrawCircleV(c, r - 1.2f, Color{ 196, 199, 202, 255 });
-		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, Color{ 232, 232, 226, 255 });
+		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, ui::theme::kTextHi);
 		DrawRing(c, r * 0.55f, r * 0.68f, 20.f, 160.f, 10, Color{ 140, 144, 150, 200 });
 	}
 
@@ -85,9 +85,9 @@ namespace
 	void ClassEmblem(Vector2 c, float r, ClassId cls, float time)
 	{
 		const Color col = ClassColor(cls);
-		DrawCircleV(Vector2{ c.x, c.y + 2 }, r, Color{ 0, 0, 0, 110 });
+		DrawCircleV(Vector2{ c.x, c.y + 2 }, r, util::A8(ui::theme::kShadow, 110));
 		DrawCircleV(c, r, ui::theme::kSurface1);
-		DrawCircleGradient(static_cast<int>(c.x), static_cast<int>(c.y - r * 0.2f), r, util::WithA(util::Shade(col, 0.5f), 0.35f), Color{ 0, 0, 0, 0 });
+		DrawCircleGradient(static_cast<int>(c.x), static_cast<int>(c.y - r * 0.2f), r, util::WithA(util::Shade(col, 0.5f), 0.35f), BLANK);
 		DrawRing(c, r - 1.5f, r, 0.f, 360.f, 48, util::WithA(col, 0.75f));
 		const float k = r / 30.f;
 		const Color ink = util::Shade(col, 1.15f);
@@ -376,7 +376,7 @@ void Game::DrawLogin()
 
 void Game::DrawDisconnected()
 {
-	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 170 });
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, util::A8(ui::theme::kShadow, 170));
 	const Rectangle r{ m_uiW * 0.5f - 200.f, m_uiH * 0.5f - 90.f, 400.f, 180.f };
 	ui::Panel(r);
 	ui::TextShadow("서버와의 연결이 끊어졌습니다", Vector2{ r.x + r.width * 0.5f, r.y + 30 }, 21.f, ui::theme::kTitle, Align::Center);
@@ -405,7 +405,7 @@ void Game::DrawHud()
 		DrawRectangleRec(Rectangle{ 0, H - 5, fw, 5 }, ui::theme::kExp);
 		DrawRectangleRec(Rectangle{ 0, H - 5, fw, 1 }, util::WithA(util::Shade(ui::theme::kExp, 1.4f), 0.8f));
 		for (int i = 1; i < 10; ++i)
-			DrawRectangle(static_cast<int>(W * i / 10.f), static_cast<int>(H - 5), 1, 5, Color{ 0, 0, 0, 120 });
+			DrawRectangle(static_cast<int>(W * i / 10.f), static_cast<int>(H - 5), 1, 5, util::A8(ui::theme::kShadow, 120));
 		const Rectangle hit{ 0, H - 12, W, 12 };
 		if (ui::Hovered(hit))
 			ui::Tooltip({ { "경험치", ui::theme::kTextHi, 15.f, ui::Face::Strong },
@@ -453,7 +453,7 @@ void Game::DrawHud()
 		{
 			const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 4.f);
 			const Rectangle b{ r.x + r.width - 50.f, r.y + 32.f, 38.f, 19.f };
-			ui::Plate(b, util::Mix(Color{ 44, 34, 20, 240 }, Color{ 74, 56, 30, 240 }, pulse), ui::theme::kDawn, 2.f, 1.f);
+			ui::Plate(b, util::Mix(util::A8(ui::theme::kDawnWash, 240), util::A8(util::Mix(ui::theme::kDawnWash, ui::theme::kDawnDeep, 0.4f), 240), pulse), ui::theme::kDawn, 2.f, 1.f);
 			ui::TextStyle ps; ps.size = 13.f; ps.color = ui::theme::kDawnHi; ps.face = ui::Face::Number;
 			ui::Fonts().DrawCentered(Fmt("+%d", m_freePoints), Vector2{ b.x + b.width * 0.5f, b.y + b.height * 0.5f }, ps);
 			ui::Block(b);
@@ -474,9 +474,9 @@ void Game::DrawHud()
 		st.size = 18.f * pop;
 		st.color = util::MulA(c.color, a);
 		st.outline = 1.5f;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 200 }, a);
+		st.outlineColor = util::MulA(util::A8(ui::theme::kShadow, 200), a);
 		st.shadow = 2.f;
-		st.shadowColor = util::MulA(Color{ 0, 0, 0, 120 }, a);
+		st.shadowColor = util::MulA(util::A8(ui::theme::kShadow, 120), a);
 		st.face = ui::Face::Strong;
 		ui::Fonts().DrawCentered(c.text, Vector2{ W * 0.5f, y }, st);
 		y += 27.f;
@@ -538,7 +538,7 @@ void Game::DrawTargetFrame()
 	if (boss)
 		DrawBossBars(Rectangle{ bar.x, bar.y, bar.width - 46.f, bar.height }, *t);   // Phase 3-C: 여러 줄 체력바 + ×N
 	else
-		ui::Bar(bar, t->hpShown, t->hpLag, fill, Color{ 30, 13, 13, 255 }, t->dead ? "쓰러짐" : Fmt("%d / %d", std::max(0, t->hp), t->maxhp), 12.f);
+		ui::Bar(bar, t->hpShown, t->hpLag, fill, ui::theme::kHpBack, t->dead ? "쓰러짐" : Fmt("%d / %d", std::max(0, t->hp), t->maxhp), 12.f);
 
 	// 보스 무력화 게이지(Phase 2-B, MONSTER_GAUGE_NFY): 깎인 몫이 잠깐 남았다 따라온다. 비면 3초 무력화
 	if (boss && !t->dead)
@@ -549,7 +549,7 @@ void Game::DrawTargetFrame()
 			t->staggerLag = static_cast<uint16_t>(std::max<int>(t->stagger, t->staggerLag - static_cast<int>(900.f * GetFrameTime())));
 		ui::TextStyle ls; ls.size = 11.f; ls.color = broken ? ui::theme::kDawn : ui::theme::kTextDim; ls.face = ui::Face::Strong;
 		ui::Fonts().Draw(broken ? "무력화!" : "무력화", Vector2{ bar.x, sb.y - 3.f }, ls);
-		DrawRectangleRec(sb, Color{ 24, 22, 18, 255 });
+		DrawRectangleRec(sb, ui::theme::kSurface0);
 		if (broken)
 		{
 			const float left = static_cast<float>((t->brokenUntil - m_now) / 3.0);
@@ -558,8 +558,8 @@ void Game::DrawTargetFrame()
 		}
 		else
 		{
-			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * (t->staggerLag / 1000.f), sb.height }, Color{ 236, 226, 200, 200 });
-			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * (t->stagger / 1000.f), sb.height }, util::Mix(ui::theme::kDawn, Rgb(0xC89A50), 0.3f));
+			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * (t->staggerLag / 1000.f), sb.height }, util::A8(ui::theme::kTitle, 200));
+			DrawRectangleRec(Rectangle{ sb.x, sb.y, sb.width * (t->stagger / 1000.f), sb.height }, util::Mix(ui::theme::kDawn, ui::theme::kExp, 0.3f));
 		}
 		DrawRectangleLinesEx(Rectangle{ sb.x - 1, sb.y - 1, sb.width + 2, sb.height + 2 }, 1.f, ui::theme::kLine);
 	}
@@ -573,7 +573,7 @@ void Game::DrawTargetFrame()
 void Game::DrawBossBars(Rectangle bar, const Entity& t)
 {
 	constexpr float kPerLine = 1000.f;
-	static const Color kLine[] = { Rgb(0xB04632), Rgb(0xC47F2E), Rgb(0x7E8B3A), Rgb(0x3F8A82), Rgb(0x4A6FA5) };
+	static const Color kLine[] = { ui::theme::kHp, Rgb(0xC47F2E), Rgb(0x7E8B3A), Rgb(0x3F8A82), Rgb(0x4A6FA5) };
 	auto colorOf = [](int line) { return kLine[static_cast<size_t>((std::max(1, line) - 1) % 5)]; };
 	bar = ui::SnapRect(bar);
 	const float maxhp = static_cast<float>(std::max(1, t.maxhp));
@@ -582,15 +582,15 @@ void Game::DrawBossBars(Rectangle bar, const Entity& t)
 	const float cur = hpv / kPerLine;
 	const int curLine = t.dead ? 0 : std::max(0, static_cast<int>(std::ceil(cur - 1e-4f)));
 	const float frac = curLine > 0 ? std::clamp(cur - static_cast<float>(curLine - 1), 0.f, 1.f) : 0.f;
-	DrawRectangleRec(bar, Color{ 24, 12, 12, 255 });
-	DrawRectangleRec(Rectangle{ bar.x, bar.y, bar.width, 1.f }, Color{ 0, 0, 0, 90 });
+	DrawRectangleRec(bar, ui::theme::kHpBack);
+	DrawRectangleRec(Rectangle{ bar.x, bar.y, bar.width, 1.f }, util::A8(ui::theme::kShadow, 90));
 	if (curLine >= 2)
 		DrawRectangleRec(bar, util::Shade(colorOf(curLine - 1), 0.62f));   // 다음 줄(아래 줄) 색이 비친다
 	// 깎인 몫: 지난 줄들까지 깎였으면 이 줄 끝까지
 	const float lagLine = lagv / kPerLine;
 	const float lagFrac = curLine > 0 ? std::clamp(lagLine - static_cast<float>(curLine - 1), 0.f, 1.f) : 0.f;
 	if (lagFrac > frac)
-		DrawRectangleRec(Rectangle{ bar.x + std::round(bar.width * frac), bar.y, std::round(bar.width * (lagFrac - frac)), bar.height }, Color{ 236, 222, 200, 175 });
+		DrawRectangleRec(Rectangle{ bar.x + std::round(bar.width * frac), bar.y, std::round(bar.width * (lagFrac - frac)), bar.height }, util::A8(ui::theme::kTitle, 175));
 	if (curLine >= 1 && frac * bar.width >= 1.f)
 	{
 		const Color fill = colorOf(curLine);
@@ -601,9 +601,9 @@ void Game::DrawBossBars(Rectangle bar, const Entity& t)
 		if (frac < 0.999f)
 			DrawRectangleRec(Rectangle{ f.x + f.width - 1.f, f.y, 1.f, f.height }, util::WithA(util::Shade(fill, 1.7f), 0.95f));
 	}
-	DrawRectangleLinesEx(Rectangle{ bar.x - 1, bar.y - 1, bar.width + 2, bar.height + 2 }, 1.f, Color{ 0, 0, 0, 170 });
+	DrawRectangleLinesEx(Rectangle{ bar.x - 1, bar.y - 1, bar.width + 2, bar.height + 2 }, 1.f, util::A8(ui::theme::kShadow, 170));
 	{
-		ui::TextStyle st; st.size = 12.f; st.color = Color{ 244, 240, 232, 255 }; st.outline = 1.2f; st.outlineColor = Color{ 0, 0, 0, 200 }; st.face = ui::Face::Number;
+		ui::TextStyle st; st.size = 12.f; st.color = ui::theme::kTextHi; st.outline = 1.2f; st.outlineColor = util::A8(ui::theme::kShadow, 200); st.face = ui::Face::Number;
 		ui::Fonts().DrawCentered(t.dead ? std::string("쓰러짐") : texts::Number(std::max(0, t.hp)) + " / " + texts::Number(t.maxhp), Vector2{ bar.x + bar.width * 0.5f, bar.y + bar.height * 0.5f }, st);
 	}
 	// ×N: 남은 줄 — 지금 줄 색. 줄이 바뀐 순간 살짝 커졌다 돌아온다
@@ -611,7 +611,7 @@ void Game::DrawBossBars(Rectangle bar, const Entity& t)
 	{
 		const std::string xs = "×" + std::to_string(curLine);
 		ui::TextStyle xs2; xs2.size = 17.f; xs2.face = ui::Face::NumberBold; xs2.color = util::Mix(colorOf(curLine), WHITE, 0.25f);
-		xs2.outline = 1.4f; xs2.outlineColor = Color{ 0, 0, 0, 210 };
+		xs2.outline = 1.4f; xs2.outlineColor = util::A8(ui::theme::kShadow, 210);
 		ui::Fonts().Draw(xs, Vector2{ bar.x + bar.width + 8.f, bar.y + bar.height * 0.5f - 10.f }, xs2);
 	}
 }
@@ -649,7 +649,7 @@ void Game::DrawMinimap()
 	const Vector2 ic{ r.x + r.width - 62.f, r.y + size + 28.f };
 	if (night)
 	{
-		DrawCircleV(ic, 6.f, Rgb(0xE8E2D0));
+		DrawCircleV(ic, 6.f, ui::theme::kTitle);
 		DrawCircleV(Vector2{ ic.x + 3, ic.y - 2 }, 5.f, ui::theme::kSurface0);
 	}
 	else
@@ -701,7 +701,7 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 		cy0 = m_predY;
 		ui::SuspendXform();
 		BeginTextureMode(rt);
-		ClearBackground(bigMap ? Color{ 10, 12, 14, 0 } : Color{ 10, 12, 14, 255 });
+		ClearBackground(bigMap ? util::A8(ui::theme::kInk, 0) : ui::theme::kInk);
 		const Vector2 lc{ texW * 0.5f, texH * 0.5f };
 		const float k = std::max(1.f, ui::CurrentXform().k) * (bigMap ? m.width / ((kRange * 2.f + 1.f) * 2.f) : m.width / (kRange * 2.f + 1.f) * 0.72f);
 		const int R = kRange + redraw + 1;
@@ -719,8 +719,8 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 					const char surf = cell == 'R' ? TownMap::kSurface[y - WorldData::kTownY0][x - WorldData::kTownX0] : cell;
 					switch (surf)
 					{
-					case '=': case ',': case 'G': case 'N': case 'S': case 'L': col = Color{ 190, 180, 160, 255 }; break;
-					case '^': case 'v': case '<': case '>': col = Color{ 206, 198, 180, 255 }; break;
+					case '=': case ',': case 'G': case 'N': case 'S': case 'L': col = ui::theme::kParchment; break;
+					case '^': case 'v': case '<': case '>': col = ui::theme::kText; break;
 					case '#': case 'O': col = Color{ 110, 104, 96, 255 }; break;
 					case 'B': case 'H': col = Color{ 170, 90, 70, 255 }; break;
 					case 'F': col = Color{ 90, 160, 220, 255 }; break;
@@ -763,12 +763,12 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 	{
 		if (id == m_selfId || e.dead || e.removing) continue;
 		const Vector2 p = toMap(e.pos.x - m_predX, e.pos.y - m_predY);
-		Color col = Rgb(0xD8604F);
+		Color col = ui::theme::kBad;
 		float rad = 2.2f;
 		if (e.kind == EntityKind::Player) { col = NameColor(e); rad = 2.6f; }
 		else if (e.kind == EntityKind::Item) { col = ui::theme::kGold; rad = 1.6f; }
 		else if (e.IsBoss()) { col = ui::theme::kEmber; rad = 4.5f + std::sin(static_cast<float>(m_now) * 6.f); }
-		DrawCircleV(p, (rad + 0.8f) * mk, A(Color{ 0, 0, 0, 160 }));
+		DrawCircleV(p, (rad + 0.8f) * mk, A(util::A8(ui::theme::kShadow, 160)));
 		DrawCircleV(p, rad * mk, A(col));
 	}
 	for (const auto& [nid, v] : m_npcView)
@@ -791,12 +791,12 @@ void Game::DrawMinimapAt(Rectangle m, int range, float alpha, bool bigMap)
 		if (WorldData::IsAnimal(v.row->kind) && qm != QuestMark::Talk) continue;
 		const bool service = v.row->kind == WorldData::NpcKind::eMerchant || v.row->kind == WorldData::NpcKind::eWeaponSmith
 			|| v.row->kind == WorldData::NpcKind::eTeleporter || v.row->kind == WorldData::NpcKind::ePriest || v.row->kind == WorldData::NpcKind::eInnkeeper;
-		DrawCircleV(p, (service ? 3.2f : 2.4f) * mk, A(Color{ 0, 0, 0, 160 }));
-		DrawCircleV(p, (service ? 2.4f : 1.7f) * mk, A(qm == QuestMark::Talk ? ui::theme::kDawnHi : (service ? Rgb(0xE8D8B8) : Rgb(0x8DBF6E))));
+		DrawCircleV(p, (service ? 3.2f : 2.4f) * mk, A(util::A8(ui::theme::kShadow, 160)));
+		DrawCircleV(p, (service ? 2.4f : 1.7f) * mk, A(qm == QuestMark::Talk ? ui::theme::kDawnHi : (service ? Rgb(0xE8D8B8) : ui::theme::kGood)));
 		if (bigMap && service)
 		{
-			ui::TextStyle ns; ns.size = ui::type::kCaption; ns.color = A(Rgb(0xE8DDC4)); ns.face = ui::Face::Strong;
-			ns.outline = 1.3f; ns.outlineColor = A(Color{ 0, 0, 0, 200 });
+			ui::TextStyle ns; ns.size = ui::type::kCaption; ns.color = A(ui::theme::kTitle); ns.face = ui::Face::Strong;
+			ns.outline = 1.3f; ns.outlineColor = A(util::A8(ui::theme::kShadow, 200));
 			ui::Fonts().DrawCentered(v.row->name, Vector2{ p.x, p.y - 12.f }, ns);
 		}
 	}
@@ -868,11 +868,11 @@ void Game::DrawNpcPortrait(Rectangle pr, const WorldData::NpcRow& npc)
 		const int gh = static_cast<int>(pr.height * 0.3f);
 		DrawRectangleGradientV(static_cast<int>(pr.x + 1.f), static_cast<int>(pr.y + pr.height) - gh - 1, static_cast<int>(pr.width - 2.f), gh,
 			util::WithA(ui::theme::kSurface0, 0.f), util::WithA(ui::theme::kSurface0, 0.85f));
-		ui::Rule(pr.x + 5.f, pr.x + pr.width - 5.f, pr.y + 1.f, Color{ 255, 255, 255, 22 });
+		ui::Rule(pr.x + 5.f, pr.x + pr.width - 5.f, pr.y + 1.f, util::A8(ui::theme::kSheen, 22));
 	}
 	else
 	{
-		DrawRectangleGradientV(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height), Color{ 60, 66, 70, 90 }, Color{ 10, 12, 14, 0 });
+		DrawRectangleGradientV(static_cast<int>(pr.x), static_cast<int>(pr.y), static_cast<int>(pr.width), static_cast<int>(pr.height), Color{ 60, 66, 70, 90 }, util::A8(ui::theme::kInk, 0));
 		ui::BeginClip(Rectangle{ pr.x, pr.y, pr.width, pr.height });
 		{
 			actors::Pose pose;
@@ -1140,7 +1140,7 @@ void Game::DrawShop()
 	m_buyCount = std::clamp(m_buyCount, 1, maxCount);
 	ui::Text("수량", Vector2{ r.x + 16, fy + 11 }, ui::type::kBodyS, ui::theme::kTextDim);
 	if (ui::Button(Rectangle{ r.x + 60, fy + 4, 34, 32 }, "-", ButtonKind::Normal, sel != nullptr)) m_buyCount = std::max(1, m_buyCount - 1);
-	ui::Plate(Rectangle{ r.x + 98, fy + 4, 60, 32 }, Color{ 12, 15, 18, 235 }, ui::theme::kLine, 3.f, 1.f);
+	ui::Plate(Rectangle{ r.x + 98, fy + 4, 60, 32 }, util::A8(ui::theme::kInk, 235), ui::theme::kLine, 3.f, 1.f);
 	{
 		ui::TextStyle qs; qs.size = 17.f; qs.color = ui::theme::kTextHi; qs.face = ui::Face::Number;
 		ui::Fonts().DrawCentered(std::to_string(m_buyCount), Vector2{ r.x + 128, fy + 20 }, qs);
@@ -1199,7 +1199,7 @@ void Game::DrawSell()
 		const float fy = r.y + 136;
 		ui::Text("수량", Vector2{ r.x + 20, fy + 8 }, ui::type::kBodyS, ui::theme::kTextDim);
 		if (ui::Button(Rectangle{ r.x + 64, fy, 34, 32 }, "-")) m_sellCount = std::max(1, m_sellCount - 1);
-		ui::Plate(Rectangle{ r.x + 102, fy, 60, 32 }, Color{ 12, 15, 18, 235 }, ui::theme::kLine, 3.f, 1.f);
+		ui::Plate(Rectangle{ r.x + 102, fy, 60, 32 }, util::A8(ui::theme::kInk, 235), ui::theme::kLine, 3.f, 1.f);
 		{
 			ui::TextStyle qs; qs.size = 17.f; qs.color = ui::theme::kTextHi; qs.face = ui::Face::Number;
 			ui::Fonts().DrawCentered(std::to_string(m_sellCount), Vector2{ r.x + 132, fy + 16 }, qs);
@@ -1284,7 +1284,7 @@ void Game::DrawTeleport()
 void Game::DrawEnchant()
 {
 	const float W = m_uiW, H = m_uiH;
-	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 120 });
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, util::A8(ui::theme::kShadow, 120));
 	const Rectangle r{ W * 0.5f - 230.f, H * 0.5f - 190.f, 460.f, 360.f };
 	ui::Panel(r);
 	{
@@ -1367,7 +1367,7 @@ void Game::DrawEnchant()
 		st.size = 28.f * pop;
 		st.color = ui::theme::kDawnHi;
 		st.shadow = 2.f;
-		st.shadowColor = Color{ 0, 0, 0, 160 };
+		st.shadowColor = util::A8(ui::theme::kShadow, 160);
 		st.face = ui::Face::Display;
 		st.spacing = 2.f;
 		ui::Fonts().DrawCentered("각인 성공", Vector2{ c.x, c.y + 78 }, st);
@@ -1389,7 +1389,7 @@ void Game::DrawEnchant()
 		st.size = 26.f;
 		st.color = ui::theme::kBad;
 		st.shadow = 2.f;
-		st.shadowColor = Color{ 0, 0, 0, 160 };
+		st.shadowColor = util::A8(ui::theme::kShadow, 160);
 		st.face = ui::Face::Display;
 		st.spacing = 2.f;
 		ui::Fonts().DrawCentered("각인 실패", Vector2{ c.x, c.y + 60 }, st);
@@ -1438,7 +1438,7 @@ void Game::DrawDeath()
 	const float t = static_cast<float>(m_now - m_deadAt);
 	const float a = util::Clamp01(t / 1.2f);
 	// 화면이 먹빛으로 가라앉고, 가운데 띠에만 붉은 기운이 남는다
-	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 8, 6, 8, static_cast<unsigned char>(170 * a) });
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, util::A8(ui::theme::kInk, static_cast<unsigned char>(170 * a)));
 	const unsigned char band = static_cast<unsigned char>(90 * a);
 	DrawRectangleGradientV(0, static_cast<int>(H * 0.22f), static_cast<int>(std::ceil(m_uiW)), static_cast<int>(H * 0.14f), Color{ 70, 16, 12, 0 }, Color{ 70, 16, 12, band });
 	DrawRectangleGradientV(0, static_cast<int>(H * 0.36f), static_cast<int>(std::ceil(m_uiW)), static_cast<int>(H * 0.14f), Color{ 70, 16, 12, band }, Color{ 70, 16, 12, 0 });
@@ -1446,13 +1446,13 @@ void Game::DrawDeath()
 	const float k = util::EaseOutCubic(util::Clamp01((t - 0.6f) / 0.6f));
 	ui::TextStyle st;
 	st.size = 44.f;
-	st.color = util::MulA(Rgb(0xD0584A), k);
+	st.color = util::MulA(ui::theme::kBad, k);
 	st.shadow = 3.f;
-	st.shadowColor = util::MulA(Color{ 0, 0, 0, 200 }, k);
+	st.shadowColor = util::MulA(util::A8(ui::theme::kShadow, 200), k);
 	st.face = ui::Face::Display;
 	st.spacing = 4.f;
 	ui::Fonts().DrawCentered("쓰러졌습니다", Vector2{ W * 0.5f, H * 0.36f - (1.f - k) * 16.f }, st);
-	ui::Rule(W * 0.5f - 110.f, W * 0.5f + 110.f, H * 0.36f + 30.f, util::MulA(Color{ 208, 88, 74, 120 }, k));
+	ui::Rule(W * 0.5f - 110.f, W * 0.5f + 110.f, H * 0.36f + 30.f, util::MulA(util::A8(ui::theme::kBad, 120), k));
 	const int remain = std::max(0, 30 - static_cast<int>(t));
 	ui::Text(Fmt("%d초 뒤 %s에서 다시 눈을 뜹니다.", remain, WorldData::kTownName), Vector2{ W * 0.5f, H * 0.36f + 44.f }, 15.f, util::MulA(ui::theme::kText, k), Align::Center, true);
 	if (t > 1.2f)
@@ -1483,15 +1483,15 @@ void Game::DrawBanners()
 		const float yy = y - (1.f - in) * 30.f;
 		// 알림 띠: 가운데만 짙은 먹빛 + 아래 가는 선 한 줄(색은 알림 종류)
 		const float w = std::min(W - 40.f, ui::Fonts().Measure(b.text, 19.f, 1.f, ui::Face::Display).x + 200.f);
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, Color{ 10, 12, 15, 0 }, util::MulA(Color{ 10, 12, 15, 215 }, a));
-		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, util::MulA(Color{ 10, 12, 15, 215 }, a), Color{ 10, 12, 15, 0 });
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, util::A8(ui::theme::kInk, 0), util::MulA(util::A8(ui::theme::kInk, 215), a));
+		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy), static_cast<int>(w * 0.5f), 38, util::MulA(util::A8(ui::theme::kInk, 215), a), util::A8(ui::theme::kInk, 0));
 		DrawRectangleGradientH(static_cast<int>(W * 0.5f - w * 0.35f), static_cast<int>(yy + 37), static_cast<int>(w * 0.35f), 1, util::MulA(b.color, 0.f), util::MulA(b.color, a * 0.8f));
 		DrawRectangleGradientH(static_cast<int>(W * 0.5f), static_cast<int>(yy + 37), static_cast<int>(w * 0.35f), 1, util::MulA(b.color, a * 0.8f), util::MulA(b.color, 0.f));
 		ui::TextStyle st;
 		st.size = 19.f;
 		st.color = util::MulA(util::Mix(b.color, ui::theme::kTextHi, 0.35f), a);
 		st.shadow = 1.f;
-		st.shadowColor = util::MulA(Color{ 0, 0, 0, 200 }, a);
+		st.shadowColor = util::MulA(util::A8(ui::theme::kShadow, 200), a);
 		st.face = ui::Face::Display;
 		st.spacing = 1.f;
 		ui::Fonts().DrawCentered(b.text, Vector2{ W * 0.5f, yy + 19.f }, st);
@@ -1580,10 +1580,10 @@ void Game::DrawWorldMap()
 		DrawRectangleGradientEx(c, base, dark, util::Shade(dark, 0.8f), util::Shade(base, 0.9f));
 		const bool hover = ui::Hovered(c);
 		// 지역 칸: 위쪽을 조금 어둡게 눌러 이름이 읽히게
-		DrawRectangleGradientV(static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(c.width), 44, Color{ 8, 10, 12, 150 }, Color{ 8, 10, 12, 0 });
-		DrawRectangleLinesEx(c, hover ? 2.f : 1.f, hover ? ui::theme::kDawn : Color{ 0, 0, 0, 130 });
+		DrawRectangleGradientV(static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(c.width), 44, util::A8(ui::theme::kInk, 150), util::A8(ui::theme::kInk, 0));
+		DrawRectangleLinesEx(c, hover ? 2.f : 1.f, hover ? ui::theme::kDawn : util::A8(ui::theme::kShadow, 130));
 		{
-			ui::TextStyle ns; ns.size = 14.f; ns.color = ui::theme::kTextHi; ns.face = ui::Face::Display; ns.shadow = 1.f; ns.shadowColor = Color{ 0, 0, 0, 200 };
+			ui::TextStyle ns; ns.size = 14.f; ns.color = ui::theme::kTextHi; ns.face = ui::Face::Display; ns.shadow = 1.f; ns.shadowColor = util::A8(ui::theme::kShadow, 200);
 			ui::Fonts().Draw(reg.name, Vector2{ c.x + 8, c.y + 7 }, ns);
 		}
 		Stars(Vector2{ c.x + 13, c.y + 32 }, reg.tier, 7.f);
@@ -1625,7 +1625,7 @@ void Game::DrawWorldMap()
 		const Vector2 pp{ x0 + poi.x / 500.f * cell, y0 + poi.y / 500.f * cell };
 		const bool dest = m_questDestValid && m_questDest.poi && static_cast<int>(m_questDest.tile.x) == poi.x && static_cast<int>(m_questDest.tile.y) == poi.y;
 		const float s = dest ? 6.f + std::sin(static_cast<float>(m_now) * 5.f) * 1.5f : 4.f;
-		const Color col = dest ? ui::theme::kDawnHi : Rgb(0xE8DCC0, 200);
+		const Color col = dest ? ui::theme::kDawnHi : util::A8(ui::theme::kTitle, 200);
 		DrawTriangle(Vector2{ pp.x, pp.y - s }, Vector2{ pp.x - s, pp.y }, Vector2{ pp.x + s, pp.y }, col);
 		DrawTriangle(Vector2{ pp.x - s, pp.y }, Vector2{ pp.x, pp.y + s }, Vector2{ pp.x + s, pp.y }, col);
 		const Rectangle hit{ pp.x - 8.f, pp.y - 8.f, 16.f, 16.f };
@@ -1734,7 +1734,7 @@ void Game::DrawStatusRow(float x, float y, bool debuffs)
 		{
 			const float frac = util::Clamp01(1.f - remain / total);
 			ui::BeginClip(Rectangle{ b.x, b.y, b.width, b.height });
-			DrawCircleSector(Vector2{ b.x + S * 0.5f, b.y + S * 0.5f }, S * 0.75f, -90.f, -90.f + 360.f * frac, 24, Color{ 0, 0, 0, 120 });
+			DrawCircleSector(Vector2{ b.x + S * 0.5f, b.y + S * 0.5f }, S * 0.75f, -90.f, -90.f + 360.f * frac, 24, util::A8(ui::theme::kShadow, 120));
 			ui::EndClip();
 		}
 		// 곧 끝나면 깜빡인다
@@ -1772,7 +1772,7 @@ void Game::DrawStatusRow(float x, float y, bool debuffs)
 			});
 	}
 	if (!debuffs && m_hasteUntil > m_now)
-		icon(Rgb(0x8DBF6E), static_cast<float>(m_hasteUntil - m_now), 0.f, 0, "바람걸음", "이동 속도 증가",
+		icon(ui::theme::kGood, static_cast<float>(m_hasteUntil - m_now), 0.f, 0, "바람걸음", "이동 속도 증가",
 			[&](Vector2 c, float rr, Color cl)
 			{
 				DrawTriangle(Vector2{ c.x - rr, c.y - rr }, Vector2{ c.x - rr, c.y + rr }, Vector2{ c.x, c.y }, cl);
@@ -1814,7 +1814,7 @@ void Game::DrawComboCounter()
 		ui::Fonts().DrawCentered("연속", Vector2{ cx, cy + 30.f }, st);
 		// 남은 시간 막대(3초 안에 다시 때리면 이어진다)
 		const float left = util::Clamp01(1.f - static_cast<float>(age / 3.0));
-		DrawRectangle(static_cast<int>(cx - 40), static_cast<int>(cy + 44), 80, 3, util::MulA(Color{ 0, 0, 0, 160 }, a));
+		DrawRectangle(static_cast<int>(cx - 40), static_cast<int>(cy + 44), 80, 3, util::MulA(util::A8(ui::theme::kShadow, 160), a));
 		DrawRectangle(static_cast<int>(cx - 40), static_cast<int>(cy + 44), static_cast<int>(80 * left), 3, util::MulA(col, a));
 	}
 	const double nameAge = m_now - m_comboNameAt;
@@ -1867,7 +1867,7 @@ void Game::DrawCharacter()
 		const int base = m_baseStats.v[i], alloc = m_allocStats.v[i], gear = m_gearStats.v[i];
 		const Rectangle row{ r.x + 16.f, y - 4.f, 268.f, 30.f };
 		const bool hover = ui::Hovered(row);
-		if (hover) ui::Plate(row, Color{ 255, 255, 255, 10 }, BLANK, 2.f, 0.f);
+		if (hover) ui::Plate(row, util::A8(ui::theme::kSheen, 10), BLANK, 2.f, 0.f);
 		const bool main = IsMainStat(m_classId, i);
 		ui::Text(StatName(i), Vector2{ r.x + 24.f, y + 1.f }, ui::type::kBody, main ? ui::theme::kTextHi : ui::theme::kText);
 		if (main)
@@ -1919,7 +1919,7 @@ void Game::DrawCharacter()
 		{ "치명타 피해", Fmt("%d%%", d.critDamage), "치명타가 나면 이만큼(LUK)." },
 		{ "명중 / 회피", Fmt("%d / %d", d.accuracy, d.evasion), "회피는 몬스터 공격을 흘린다(최대 40%)." },
 		{ "관통", std::to_string(d.penetration), "대상의 방어를 이만큼 무시한다." },
-		{ "재사용 감소", Fmt("%d%%", d.cooldownReduction), "기술 쿨다운이 줄어든다(WIS, 최대 30%)." },
+		{ "재사용 감소", Fmt("%d%%", d.cooldownReduction), "기술 재사용 대기가 줄어든다(WIS, 최대 30%)." },
 		{ "상태이상 저항", Fmt("%d%%", d.statusResist), "기절·빙결 등이 짧아진다(VIT·WIS)." },
 		{ "회복(2.5초)", Fmt("HP %d · MP %d", d.hpRegen, d.mpRegen), "전투에서 벗어나면 세 배, 마을에선 네 배." },
 	};
@@ -1928,7 +1928,7 @@ void Game::DrawCharacter()
 	{
 		const Rectangle row{ x2 - 4.f, y - 3.f, r.x + r.width - x2 - 12.f, 24.f };
 		const bool hover = ui::Hovered(row);
-		if (hover) ui::Plate(row, Color{ 255, 255, 255, 10 }, BLANK, 2.f, 0.f);
+		if (hover) ui::Plate(row, util::A8(ui::theme::kSheen, 10), BLANK, 2.f, 0.f);
 		ui::Text(ln.name, Vector2{ x2, y }, ui::type::kBodyS, ui::theme::kTextDim);
 		{
 			ui::TextStyle vs; vs.size = 15.f; vs.color = ui::theme::kTextHi; vs.face = ui::Face::Number;
@@ -2025,7 +2025,7 @@ void Game::DrawClassSelect(Rectangle area)
 			gfx::BeginWorld(0.f, pose.scale);
 			gfx::ResetMod();
 			gfx::SetDepthRaw(-0.5f);
-			gfx::EllipseGrad(pose.base, 20.f, 7.f, Rgb(0x000000, 120), Rgb(0x000000, 0));
+			gfx::EllipseGrad(pose.base, 20.f, 7.f, util::A8(ui::theme::kShadow, 120), BLANK);
 			actors::DrawPlayer(pose, actors::LookForPlayer(0x5EEDu * (i + 3), cls.starterWeapon, 0, static_cast<uint8_t>(i)));
 			gfx::Flush();
 		}

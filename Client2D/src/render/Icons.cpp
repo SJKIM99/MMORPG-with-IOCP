@@ -79,13 +79,13 @@ namespace icons
 			case 17: s = { 48.f, 8.f, 12.f, 20.f, Rgb(0x2A2226), Rgb(0xFF6A20), Rgb(0x6A6A70), Rgb(0x1A1A1E), 5, Rgb(0xFF5A1A, 180) }; break;
 			case 18: s = { 52.f, 14.f, 14.f, 22.f, Rgb(0x8A929C), Rgb(0xE8ECF2), Rgb(0x3A3A40), Rgb(0x4A2020), 6, Rgb(0xB02030, 80) }; break;
 			case 19: s = { 46.f, 4.f, 16.f, 8.f, Rgb(0x7A5634), Rgb(0x6AD8FF), Rgb(0xC8A060), Rgb(0x5A3A22), 7, Rgb(0x6AD8FF, 90) }; break;
-			case 20: s = { 22.f, 5.5f, 9.f, 10.f, Rgb(0x9098A8), Rgb(0xE8E4F8), Rgb(0x3A3440), Rgb(0x2A2226), 2, Rgb(0xB88AFF, 40) }; break;
+			case 20: s = { 22.f, 5.5f, 9.f, 10.f, Rgb(0x9098A8), Rgb(0xE8E4F8), Rgb(0x3A3440), Rgb(0x2A2226), 2, Rgb(0x8AD8C8, 40) }; break;
 			// V2 직업 무기 — 지팡이(나무 자루 + 수정 색) · 단검
 			case 21: s = { 44.f, 4.5f, 16.f, 8.f, Rgb(0x8A6A3A), Rgb(0x8AE87A), Rgb(0xB89060), Rgb(0x5A3A22), 7, Rgb(0x8AE87A, 70) }; break;
-			case 22: s = { 48.f, 4.5f, 16.f, 9.f, Rgb(0x4A3A5A), Rgb(0x6AD8FF), Rgb(0xC8A060), Rgb(0x2A2030), 7, Rgb(0x6AD8FF, 110) }; break;
+			case 22: s = { 48.f, 4.5f, 16.f, 9.f, Rgb(0x3A4A5A), Rgb(0x6AD8FF), Rgb(0xC8A060), Rgb(0x2A2030), 7, Rgb(0x6AD8FF, 110) }; break;
 			case 23: s = { 48.f, 5.f, 16.f, 9.f, Rgb(0x2A2226), Rgb(0xFF7A2A), Rgb(0x8A6A4A), Rgb(0x1A1416), 7, Rgb(0xFF7A2A, 150) }; break;
-			case 24: s = { 52.f, 5.f, 17.f, 10.f, Rgb(0xE8E0D0), Rgb(0xC88AFF), Rgb(0xE8C060), Rgb(0x6A4A8A), 7, Rgb(0xC88AFF, 180) }; break;
-			case 25: s = { 24.f, 5.5f, 9.f, 10.f, Rgb(0x6A6A7A), Rgb(0xC8B8FF), Rgb(0x2A2230), Rgb(0x1A161A), 2, Rgb(0xB88AFF, 50) }; break;
+			case 24: s = { 52.f, 5.f, 17.f, 10.f, Rgb(0xE8E0D0), Rgb(0x8AD8C8), Rgb(0xE8C060), Rgb(0x3A6A64), 7, Rgb(0x8AD8C8, 180) }; break;
+			case 25: s = { 24.f, 5.5f, 9.f, 10.f, Rgb(0x6A6A7A), Rgb(0xC8B8FF), Rgb(0x2A2230), Rgb(0x1A161A), 2, Rgb(0x8AD8C8, 50) }; break;
 			case 26: s = { 27.f, 5.5f, 9.f, 11.f, Rgb(0xC8D8F0), Rgb(0xFFFFFF), Rgb(0x8AA0C8), Rgb(0x2A3040), 2, Rgb(0xB8D8FF, 80) }; break;
 			case 27: s = { 26.f, 6.f, 9.f, 11.f, Rgb(0x6A8A4A), Rgb(0xC8FF8A), Rgb(0x3A2A1E), Rgb(0x2A1E14), 2, Rgb(0x8AE85A, 110) }; break;
 			case 28: s = { 30.f, 6.5f, 10.f, 12.f, Rgb(0x2A2230), Rgb(0xFF4A6A), Rgb(0x6A6A70), Rgb(0x1A1016), 2, Rgb(0xFF3A5A, 150) }; break;
@@ -209,23 +209,23 @@ namespace icons
 			// 갑옷
 			{ 53, 0, 0xC8A878, 0x8A6A48, 0x5A4430 }, { 54, 1, 0xA8B0BC, 0x6A707A, 0x4A4E56 },
 			{ 55, 2, 0xC8D0DA, 0x8A929E, 0xD8B060 }, { 56, 3, 0x3A4A9A, 0xD8B060, 0x6AD8FF },
-			{ 57, 4, 0x3A3236, 0x8A6AC8, 0x5A4638 }, { 69, 5, 0xF2EAD8, 0xE8C060, 0xFFF0B0 },
+			{ 57, 4, 0x3A3236, 0x6A8AC8, 0x5A4638 }, { 69, 5, 0xF2EAD8, 0xE8C060, 0xFFF0B0 },
 			{ 73, 6, 0x1E2A5A, 0x8AB8FF, 0xFFFFFF },
 			// 장갑
 			{ 58, 0, 0x8A6038, 0x5A3A22, 0x3A2416 }, { 59, 1, 0xA8B0BC, 0x5A606A, 0x3A3E46 },
-			{ 70, 1, 0xF2EAD8, 0xE8C060, 0xFFF0B0 }, { 76, 2, 0x2E2830, 0xB88AFF, 0x1A161C },
+			{ 70, 1, 0xF2EAD8, 0xE8C060, 0xFFF0B0 }, { 76, 2, 0x2E2830, 0x8AD8C8, 0x1A161C },
 			// 신발
 			{ 60, 0, 0x7A5230, 0x4A301C, 0x2A1A10 }, { 61, 1, 0xA8B0BC, 0x5A606A, 0x3A3E46 },
-			{ 71, 1, 0xF2EAD8, 0xE8C060, 0xFFF0B0 }, { 77, 2, 0x2E2830, 0xB88AFF, 0x1A161C },
+			{ 71, 1, 0xF2EAD8, 0xE8C060, 0xFFF0B0 }, { 77, 2, 0x2E2830, 0x8AD8C8, 0x1A161C },
 			// 망토
-			{ 62, 0, 0x5A6A3A, 0x3A2A1E, 0xC8A060 }, { 63, 0, 0x1E2448, 0x4A2A6A, 0xB8C8E8 },
-			{ 78, 1, 0x2A1E3A, 0x6A4A9A, 0xE8E0FF },
+			{ 62, 0, 0x5A6A3A, 0x3A2A1E, 0xC8A060 }, { 63, 0, 0x1E2448, 0x2A4A6A, 0xB8C8E8 },
+			{ 78, 1, 0x2A2E3A, 0x4A6A9A, 0xE8E0FF },
 			// 목걸이
 			{ 64, 0, 0x6A4A2E, 0xE8E0C8, 0x8A6A4A }, { 65, 1, 0xC8CED8, 0x4AA8E8, 0xFFFFFF },
 			{ 74, 2, 0xD8B060, 0x8AB8FF, 0xFFFFFF },
 			// 반지
 			{ 66, 0, 0xC87A48, 0x8A4A28, 0xF0B080 }, { 67, 1, 0xC8CED8, 0x6AD8A8, 0xFFFFFF },
-			{ 75, 2, 0xD8B060, 0x8AB8FF, 0xFFFFFF }, { 79, 1, 0x3A3040, 0xB88AFF, 0xE8D8FF },
+			{ 75, 2, 0xD8B060, 0x8AB8FF, 0xFFFFFF }, { 79, 1, 0x3A3040, 0x8AD8C8, 0xE8D8FF },
 		};
 		const GearLook* FindGearLook(uint8_t icon)
 		{
@@ -574,7 +574,7 @@ namespace icons
 			case 3: Potion(o, Rgb(0xB8E8FF), true); break;
 			case 4: Potion(o, Rgb(0x3AC05A), false); break;
 			case 20: Scroll(o, Rgb(0x3A7AD8), 0); break;
-			case 21: Scroll(o, Rgb(0x9A4AD8), 1); break;
+			case 21: Scroll(o, Rgb(0x3A8A7A), 1); break;
 			case 22: Scroll(o, Rgb(0xD89A2A), 2); break;
 			case 23: Scroll(o, Rgb(0xF2D050), 3); break;
 			case 30: Coins(o); break;
@@ -1061,10 +1061,11 @@ namespace icons
 	{
 		switch (grade)
 		{
-		case ItemGrade::eRare:      return Rgb(0x4AA8FF);
-		case ItemGrade::eEpic:      return Rgb(0xB872FF);
-		case ItemGrade::eUnique:    return Rgb(0xFFC23A);
-		case ItemGrade::eLegendary: return Rgb(0xFF6A30);
+		// 예전 등급 → 그 등급이 바닥인 희귀도의 색(레어=고급 · 에픽=희귀 · 유니크=영웅 · 전설=전설 — ItemRules FloorRarity와 같은 대응)
+		case ItemGrade::eRare:      return RarityColor(Rarity::Uncommon);
+		case ItemGrade::eEpic:      return RarityColor(Rarity::Rare);
+		case ItemGrade::eUnique:    return RarityColor(Rarity::Heroic);
+		case ItemGrade::eLegendary: return RarityColor(Rarity::Legendary);
 		default:                    return Rgb(0xE8E4DA);
 		}
 	}
@@ -1113,7 +1114,7 @@ namespace icons
 		if (enchant <= 3) return Rgb(0x9AD8FF, 70);
 		if (enchant <= 6) return Rgb(0x6AB8FF, 120);
 		if (enchant <= 8) return Rgb(0x4A7AFF, 170);
-		if (enchant <= 10) return Rgb(0xB05AFF, 200);
+		if (enchant <= 10) return Rgb(0xF2C47C, 200);   // 새벽빛(보라 · 네온 금지)
 		return Rgb(0xFF4A3A, 220);
 	}
 }

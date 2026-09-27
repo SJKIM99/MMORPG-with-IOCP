@@ -402,7 +402,7 @@ void Game::DrawAuctionWindow()
 			const std::string nm = texts::ItemNameFull(row.itemId, row.enchant, row.extra);
 			ui::Text(nm, Vector2{ ic.x + ic.width + 10.f, rr.y + 8.f }, ui::type::kBody, icons::ItemNameColor(row.itemId, row.extra));
 			const std::string opt = OptionsLine(row.extra);
-			if (!opt.empty()) ui::Text(opt, Vector2{ ic.x + ic.width + 10.f, rr.y + 29.f }, ui::type::kCaption, Rgb(0x9DBBD8));
+			if (!opt.empty()) ui::Text(opt, Vector2{ ic.x + ic.width + 10.f, rr.y + 29.f }, ui::type::kCaption, ui::theme::kOption);
 		}
 		else
 		{
@@ -533,7 +533,7 @@ void Game::DrawAuctionWindow()
 			{
 				// 낙찰 도장: 줄 위에 붉은 "낙찰"이 찍혔다가 흐려진다
 				const float k = 1.f + 0.6f * util::EaseInCubic(stamp);
-				ui::TextStyle st; st.size = 24.f * k; st.color = util::WithA(ui::theme::kEmber, stamp); st.face = ui::Face::Display; st.outline = 1.5f; st.outlineColor = util::WithA(Color{ 30, 8, 4, 255 }, stamp * 0.8f);
+				ui::TextStyle st; st.size = 24.f * k; st.color = util::WithA(ui::theme::kEmber, stamp); st.face = ui::Face::Display; st.outline = 1.5f; st.outlineColor = util::WithA(ui::theme::kHpBack, stamp * 0.8f);
 				ui::Fonts().DrawCentered("낙찰", Vector2{ rr.x + rr.width * 0.55f, rr.y + rr.height * 0.5f }, st);
 			}
 		}

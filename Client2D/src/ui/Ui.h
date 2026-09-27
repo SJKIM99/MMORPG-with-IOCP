@@ -25,6 +25,8 @@ namespace ui
 	{
 		// ── 표면(먹빛 청회색) ──
 		inline constexpr Color kInk{ 11, 13, 16, 255 };          // 가장 깊은 바탕 · 어둡게 덮기
+		inline constexpr Color kShadow{ 0, 0, 0, 255 };          // 그림자 · 글자 테 · 화면 어둡게 덮기(세기는 알파로 — util::A8)
+		inline constexpr Color kSheen{ 255, 255, 255, 255 };     // 윗면 빛 · 호버 옅은 밝힘(알파 8~30으로만)
 		inline constexpr Color kSurface0{ 17, 21, 25, 255 };     // 창 바탕(불투명 — 뒤의 이름표가 비치지 않게. HUD는 Panel의 alpha로 조금 비친다)
 		inline constexpr Color kSurface1{ 23, 28, 33, 255 };     // 목록 줄 · 입력칸 · 칸
 		inline constexpr Color kSurface2{ 31, 37, 43, 255 };     // 버튼 · 호버
@@ -40,15 +42,19 @@ namespace ui
 		inline constexpr Color kDawn{ 217, 165, 91, 255 };       // 새벽빛: 초점 · 주 버튼 · 핵심 값 · 퀘스트
 		inline constexpr Color kDawnHi{ 242, 196, 124, 255 };
 		inline constexpr Color kDawnDeep{ 104, 77, 42, 255 };
+		inline constexpr Color kDawnWash{ 53, 40, 24, 255 };     // 새벽빛 바탕: 주 버튼 · 고른 탭 · 누르고 있는 칸
 		inline constexpr Color kOldway{ 111, 181, 172, 255 };    // 옛길: 이동 · 마법 · 연결
 		inline constexpr Color kEmber{ 201, 87, 63, 255 };       // 위험 · 적대
+		inline constexpr Color kEmberWash{ 54, 24, 20, 255 };    // 위험 바탕: 위험 단추 · 경고 판
 		// ── 의미 ──
 		inline constexpr Color kGood{ 141, 191, 110, 255 };
 		inline constexpr Color kBad{ 216, 96, 79, 255 };
+		inline constexpr Color kBadHi{ 240, 136, 120, 255 };     // 나쁨 밝게: 화면 가운데 · 떠오르는 경고 글자(어두운 땅 위에서 읽히게)
 		inline constexpr Color kWarn{ 224, 176, 74, 255 };
 		inline constexpr Color kInfo{ 127, 168, 214, 255 };
 		// ── 수치 막대 ──
 		inline constexpr Color kHp{ 176, 58, 50, 255 };
+		inline constexpr Color kHpBack{ 32, 14, 14, 255 };       // 체력 막대 바탕(빈 칸)
 		inline constexpr Color kMp{ 60, 104, 176, 255 };
 		inline constexpr Color kExp{ 196, 156, 82, 255 };
 		// ── 예전 이름(호환) ──
@@ -58,6 +64,8 @@ namespace ui
 		inline constexpr Color kBorderHi = kDawn;
 		inline constexpr Color kTitle{ 233, 223, 201, 255 };     // 창 안의 소제목 · 이름(따뜻한 흰색)
 		inline constexpr Color kGold{ 222, 184, 110, 255 };      // 값 강조(돈 · 보상) — 새벽빛보다 조금 밝게
+		inline constexpr Color kOption{ 157, 187, 216, 255 };    // 아이템 옵션 글자(청회색) — 툴팁 · 경매 줄
+		inline constexpr Color kParchment{ 185, 176, 154, 255 }; // 흐린 양피지: 남의 결사 이름 · 한발 물러선 이름표
 		inline constexpr Color kSlot{ 15, 18, 22, 235 };
 		// ── 채팅 채널(Phase 3-B, DESIGN_SYSTEM 3.4) — 글자 색. 이름은 한 단계 밝게 ──
 		inline constexpr Color kChatNormal{ 226, 221, 210, 255 };   // 일반(같은 지역) — 본문 색에 가깝게
@@ -177,7 +185,7 @@ namespace ui
 	// text가 "---"인 줄은 구분선으로 그린다.
 	struct TooltipLine { std::string text; Color color; float size = 15.f; Face face = Face::Inherit; };
 	// accent: 테두리·아이콘 칸 색(희귀도). a가 0이면 기본 테두리.
-	void Tooltip(std::vector<TooltipLine> lines, uint16_t iconItemId = 0, Color accent = Color{ 0, 0, 0, 0 });
+	void Tooltip(std::vector<TooltipLine> lines, uint16_t iconItemId = 0, Color accent = BLANK);
 	// 비교 툴팁(착용 중인 장비) — 같은 프레임의 Tooltip 옆에 붙여 그린다. header는 위에 작은 띠("착용 중").
 	void TooltipCompare(std::vector<TooltipLine> lines, uint16_t iconItemId, Color accent, std::string_view header);
 

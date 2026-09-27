@@ -322,7 +322,7 @@ void Game::HandleChat(const ObjID& sender, const std::string& senderName, const 
 	}
 	if (ch != chat::Ch::WhisperOut && ch != chat::Ch::System && sender != m_selfId && ChatBlocked(senderName))
 		return;   // 차단(클라만)
-	AddChatMsg(ch, senderName, sender.GetDatabaseID(), text, Color{ 0, 0, 0, 0 }, history);
+	AddChatMsg(ch, senderName, sender.GetDatabaseID(), text, BLANK, history);
 	if (history)
 		return;
 	if (ch == chat::Ch::WhisperIn)
@@ -493,19 +493,19 @@ void Game::DrawChat()
 		m_chatTextA += (wantT - m_chatTextA) * std::min(1.f, GetFrameTime() * (quiet ? 1.6f : 14.f));
 	}
 	const float fade = 0.4f + 0.6f * m_chatTextA;   // 판 · 탭 줄은 글자만큼 흐리지 않는다
-	ui::Plate(r, util::WithA(Color{ 10, 12, 15, 255 }, 0.92f * m_chatBgA * fade), util::WithA(ui::theme::kLineStrong, (0.35f + 0.65f * m_chatBgA) * fade), 4.f, 1.f);
+	ui::Plate(r, util::WithA(ui::theme::kInk, 0.92f * m_chatBgA * fade), util::WithA(ui::theme::kLineStrong, (0.35f + 0.65f * m_chatBgA) * fade), 4.f, 1.f);
 	ui::Block(r);
 
 	// ── 탭 줄 ──
 	const Rectangle strip{ r.x + 1.f, r.y + 1.f, r.width - 2.f, 24.f };
 	// 탭 줄은 평소에도 짙게(≥0.7) — 뒤로 비치는 이름표 · 불빛 위에서도 탭 이름이 읽혀야 한다
-	DrawRectangleRec(Rectangle{ strip.x, strip.y, strip.width, strip.height }, util::WithA(Color{ 8, 10, 12, 255 }, (0.62f + 0.3f * m_chatBgA) * fade));
+	DrawRectangleRec(Rectangle{ strip.x, strip.y, strip.width, strip.height }, util::WithA(ui::theme::kInk, (0.62f + 0.3f * m_chatBgA) * fade));
 	ui::Rule(r.x + 4.f, r.x + r.width - 4.f, strip.y + strip.height, util::WithA(ui::theme::kLine, (0.5f + 0.5f * m_chatBgA) * fade));
 	wm::DragHandle(strip);
 	float tx = strip.x + 6.f;
 	const Vector2 mouse = ui::Mouse();
 	const bool clickOk = !wm::JustDragged();
-	ui::TextStyle tsBase; tsBase.size = ui::type::kCaption + 0.5f; tsBase.face = ui::Face::Strong; tsBase.outline = 1.f; tsBase.outlineColor = util::MulA(Color{ 0, 0, 0, 170 }, fade);
+	ui::TextStyle tsBase; tsBase.size = ui::type::kCaption + 0.5f; tsBase.face = ui::Face::Strong; tsBase.outline = 1.f; tsBase.outlineColor = util::MulA(util::A8(ui::theme::kShadow, 170), fade);
 	int clickedTab = -1, menuTab = -1;
 	for (int i = 0; i < static_cast<int>(m_chatTabs.size()); ++i)
 	{
@@ -593,7 +593,7 @@ void Game::DrawChat()
 				DrawLineEx(Vector2{ c.x + std::cos(a) * 3.5f, c.y + std::sin(a) * 3.5f }, Vector2{ c.x + std::cos(a) * 6.5f, c.y + std::sin(a) * 6.5f }, 2.2f, gc);
 			}
 			DrawCircleV(c, 4.6f, gc);
-			DrawCircleV(c, 2.f, util::MulA(Color{ 12, 14, 17, 255 }, fade));
+			DrawCircleV(c, 2.f, util::MulA(ui::theme::kInk, fade));
 		}
 		if (clickOk && ui::Clicked(gear))
 		{
@@ -672,7 +672,7 @@ void Game::DrawChat()
 				ts.face = p.face;
 				ts.color = util::MulA(p.color, alpha);
 				ts.outline = 1.2f;
-				ts.outlineColor = util::MulA(Color{ 0, 0, 0, 185 }, alpha);
+				ts.outlineColor = util::MulA(util::A8(ui::theme::kShadow, 185), alpha);
 				const Vector2 pos{ std::round(area.x + p.x), std::round(ry + 1.f) };
 				ui::Fonts().Draw(p.text, pos, ts);
 				if (p.kind == kName || p.kind == kItem)
@@ -715,7 +715,7 @@ void Game::DrawChat()
 		const float bw = std::round(ui::Fonts().Measure(label, bs.size, 0.f, ui::Face::Strong).x + 20.f);
 		const Rectangle b{ std::round(area.x + area.width * 0.5f - bw * 0.5f), std::round(area.y + area.height - 22.f), bw, 20.f };
 		const bool hb = ui::Hovered(b);
-		ui::Plate(b, hb ? Color{ 44, 36, 24, 240 } : Color{ 20, 22, 26, 235 }, tab.newBelow > 0 ? ui::theme::kDawn : ui::theme::kLineStrong, 3.f, 1.f);
+		ui::Plate(b, hb ? util::A8(ui::theme::kDawnWash, 240) : util::A8(ui::theme::kSurface0, 235), tab.newBelow > 0 ? ui::theme::kDawn : ui::theme::kLineStrong, 3.f, 1.f);
 		ui::Fonts().DrawCentered(label, Vector2{ b.x + b.width * 0.5f, b.y + b.height * 0.5f }, bs);
 		if (ui::Clicked(b)) { tab.scroll = 0.f; tab.newBelow = 0; sfx::Play(sfx::Id::Click, 0.35f); }
 	}
@@ -785,7 +785,7 @@ void Game::DrawChat()
 	{
 		const float rowH = 22.f;
 		const Rectangle box{ field.x, in.y - 6.f - rowH * static_cast<float>(hints.size()) - 8.f, std::min(300.f, r.width - 20.f), rowH * static_cast<float>(hints.size()) + 8.f };
-		ui::Plate(box, Color{ 16, 19, 23, 245 }, ui::theme::kLineStrong, 3.f, 1.f);
+		ui::Plate(box, util::A8(ui::theme::kSlot, 245), ui::theme::kLineStrong, 3.f, 1.f);
 		float hy = box.y + 4.f;
 		for (size_t i = 0; i < hints.size(); ++i)
 		{
@@ -806,7 +806,7 @@ void Game::DrawChat()
 		const float rowH = 21.f;
 		const size_t shown = cycling ? std::min<size_t>(m_whisperCands.size(), 6) : 1;
 		const Rectangle box{ field.x, in.y - 6.f - rowH * static_cast<float>(shown) - 8.f, std::min(240.f, r.width - 20.f), rowH * static_cast<float>(shown) + 8.f };
-		ui::Plate(box, Color{ 16, 19, 23, 245 }, ui::theme::kLineStrong, 3.f, 1.f);
+		ui::Plate(box, util::A8(ui::theme::kSlot, 245), ui::theme::kLineStrong, 3.f, 1.f);
 		if (!cycling)
 			ui::Text("Tab — 이름 채우기(최근 상대 · 주변 사람)", Vector2{ box.x + 8.f, box.y + 7.f }, ui::type::kCaption, ui::theme::kTextDim);
 		else

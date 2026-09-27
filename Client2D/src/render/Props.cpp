@@ -533,7 +533,7 @@ namespace props
 			// 판매대
 			gfx::Box(x0 + 0.1f, y0 + 0.1f, x1 - 0.1f, y1 - 0.1f, 0.f, 0.75f, Rgb(0xB08A5A), Rgb(0x8A6A42), Rgb(0x6A5032));
 			// 물건
-			const Color goods[] = { Rgb(0xE05A3A), Rgb(0xF0C040), Rgb(0x6AB04A), Rgb(0xC06AE0), Rgb(0x4A9AE0) };
+			const Color goods[] = { Rgb(0xE05A3A), Rgb(0xF0C040), Rgb(0x6AB04A), Rgb(0x3A8A7A), Rgb(0x4A9AE0) };
 			for (int i = 0; i < 6; ++i)
 			{
 				const float gx = x0 + 0.35f + (i % 3) * 0.45f, gy = y0 + 0.4f + (i / 3) * 0.6f;
@@ -676,9 +676,10 @@ namespace props
 			}
 			else if (pick < 0.7f)
 			{
-				const bool cyan = pick < 0.55f;
-				if (thing(cyan ? "prop_crystal_cyan" : "prop_crystal_violet", 78.f)) glow(cyan ? Rgb(0x9AE8F0) : Rgb(0xE0A0F8), 70.f, 0.55f * pulse);
-				else Crystal(base, s, cyan ? Rgb(0x9AE8F0) : Rgb(0xE0A0F8), seed, time);
+				// 수정은 옛길 청록 하나(보라 수정 그림은 쓰지 않는다 — 보라 · 네온 금지). 셋 중 하나는 빛이 조금 따뜻하게
+				const bool warm = pick >= 0.55f;
+				if (thing("prop_crystal_cyan", warm ? 70.f : 78.f)) glow(warm ? Rgb(0xC8F0D8) : Rgb(0x9AE8F0), 70.f, 0.55f * pulse);
+				else Crystal(base, s, warm ? Rgb(0xB8E8D8) : Rgb(0x9AE8F0), seed, time);
 			}
 			else if (!tree("prop_tree_oak", 145.f, Rgb(0x9AE0D0))) RoundTree(base, s, Rgb(0x4ABFA0), Rgb(0x6A5A7A), sway, true, seed);
 			break;

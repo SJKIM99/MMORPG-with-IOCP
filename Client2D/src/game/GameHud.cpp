@@ -105,8 +105,8 @@ namespace
 			ui::Keycap(r, key, active);
 			return;
 		}
-		ui::Plate(r, Color{ 46, 16, 14, 235 }, ui::theme::kBad, 2.f, 1.f);
-		ui::TextStyle st; st.size = fs; st.color = Color{ 255, 150, 132, 255 }; st.face = ui::Face::Strong;
+		ui::Plate(r, util::A8(ui::theme::kEmberWash, 235), ui::theme::kBad, 2.f, 1.f);
+		ui::TextStyle st; st.size = fs; st.color = ui::theme::kBadHi; st.face = ui::Face::Strong;
 		const Vector2 m = ui::Fonts().Measure(key, st.size, 0.f, ui::Face::Strong);
 		ui::Fonts().Draw(key, Vector2{ std::round(r.x + (r.width - m.x) * 0.5f), std::round(r.y + (r.height - m.y) * 0.5f) }, st);
 	}
@@ -114,7 +114,7 @@ namespace
 	void CooldownSweep(Rectangle r, float frac, unsigned char alpha)
 	{
 		ui::BeginClip(Rectangle{ r.x, r.y, r.width, r.height });
-		DrawCircleSector(Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, r.width * 0.75f, -90.f, -90.f + 360.f * util::Clamp01(frac), 36, Color{ 0, 0, 0, alpha });
+		DrawCircleSector(Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, r.width * 0.75f, -90.f, -90.f + 360.f * util::Clamp01(frac), 36, util::A8(ui::theme::kShadow, alpha));
 		ui::EndClip();
 	}
 }
@@ -138,13 +138,13 @@ void Game::DrawCombatPanel()
 	wm::HudScope hs("hud.combat", "전투 판", CombatNatural(L));
 	ui::Panel(L.panel, 0.94f, false);
 	const float pulse = (m_maxhp > 0 && m_hp * 4 < m_maxhp) ? 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 8.f) : 0.f;
-	ui::Bar(L.hp, m_hpShown, m_hpLag, util::Mix(ui::theme::kHp, Rgb(0xE0705A), pulse), Color{ 34, 14, 14, 255 },
+	ui::Bar(L.hp, m_hpShown, m_hpLag, util::Mix(ui::theme::kHp, util::Shade(ui::theme::kBad, 1.1f), pulse), ui::theme::kHpBack,
 		Fmt("HP  %d / %d", m_hp, m_maxhp), 13.f);
 	const float mpFlash = static_cast<float>(std::max(0.0, 0.5 - (m_now - m_mpFlashAt)) * 2.0);
-	ui::Bar(L.mp, m_mpShown, m_mpShown, util::Mix(ui::theme::kMp, Rgb(0x9AC0F0), mpFlash), Color{ 14, 18, 34, 255 },
+	ui::Bar(L.mp, m_mpShown, m_mpShown, util::Mix(ui::theme::kMp, util::Shade(ui::theme::kInfo, 1.25f), mpFlash), ui::theme::kSurface0,
 		Fmt("MP  %d / %d", m_mp, m_maxmp), 11.f);
 	if (mpFlash > 0.f)
-		ui::Plate(Rectangle{ L.mp.x - 3, L.mp.y - 3, L.mp.width + 6, L.mp.height + 6 }, BLANK, util::WithA(Rgb(0x9AC0F0), mpFlash), 2.f, 1.5f);
+		ui::Plate(Rectangle{ L.mp.x - 3, L.mp.y - 3, L.mp.width + 6, L.mp.height + 6 }, BLANK, util::WithA(util::Shade(ui::theme::kInfo, 1.25f), mpFlash), 2.f, 1.5f);
 
 	// 능력치 한 줄(소모품 칸 위 — 라벨은 흐리게, 값은 숫자 글꼴)
 	const bool magic = m_classId == ClassId::Engraver;
@@ -225,7 +225,7 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	const bool cooling = remain > 0.02 && !locked;
 	const Color cc = Rgb(row->color);
 
-	ui::Plate(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, Color{ 10, 12, 15, 245 }, BLANK, 3.f, 0.f);
+	ui::Plate(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, util::A8(ui::theme::kInk, 245), BLANK, 3.f, 0.f);
 	skillfx::DrawSkillIcon(row->id, Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, r.width - 4.f, m_time, locked);
 	// 재사용 대기: 시계 방향으로 걷히는 그늘 + 남은 초
 	if (cooling)
@@ -234,12 +234,12 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 		// 1초 이상 남았을 때만 숫자(올림 정수) — 1초 아래는 부채꼴만(Phase 3-C)
 		if (!basic && remain >= 1.0)
 		{
-			ui::TextStyle cs; cs.size = std::round(S * 0.4f); cs.color = ui::theme::kTextHi; cs.outline = 1.5f; cs.outlineColor = Color{ 0, 0, 0, 210 }; cs.face = ui::Face::Number;
+			ui::TextStyle cs; cs.size = std::round(S * 0.4f); cs.color = ui::theme::kTextHi; cs.outline = 1.5f; cs.outlineColor = util::A8(ui::theme::kShadow, 210); cs.face = ui::Face::Number;
 			ui::Fonts().DrawCentered(Fmt("%.0f", std::ceil(remain)), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, cs);
 		}
 	}
 	if (noMana)
-		ui::Plate(r, Color{ 44, 56, 74, 165 }, BLANK, 2.f, 0.f);   // 자원 부족 = 푸른 회색
+		ui::Plate(r, util::A8(util::Mix(ui::theme::kLine, ui::theme::kMp, 0.15f), 165), BLANK, 2.f, 0.f);   // 자원 부족 = 푸른 회색
 	// 대기 · 자원 부족인데 눌렀다: 붉게 한 번 반짝
 	if (const double dn = m_now - m_cdDeniedAt[static_cast<size_t>(slot)]; dn >= 0.0 && dn < 0.35)
 	{
@@ -264,8 +264,8 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 		const float g = util::Clamp01(m_identity / 1000.f);
 		if (g < 1.f)
 		{
-			ui::Plate(Rectangle{ r.x, r.y, r.width, r.height * (1.f - g) }, Color{ 0, 0, 0, 150 }, BLANK, 2.f, 0.f);
-			ui::TextStyle gs; gs.size = std::round(S * 0.3f); gs.color = ui::theme::kTextHi; gs.outline = 1.5f; gs.outlineColor = Color{ 0, 0, 0, 210 }; gs.face = ui::Face::Number;
+			ui::Plate(Rectangle{ r.x, r.y, r.width, r.height * (1.f - g) }, util::A8(ui::theme::kShadow, 150), BLANK, 2.f, 0.f);
+			ui::TextStyle gs; gs.size = std::round(S * 0.3f); gs.color = ui::theme::kTextHi; gs.outline = 1.5f; gs.outlineColor = util::A8(ui::theme::kShadow, 210); gs.face = ui::Face::Number;
 			ui::Fonts().DrawCentered(Fmt("%d%%", static_cast<int>(g * 100.f)), Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, gs);
 		}
 	}
@@ -284,7 +284,7 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 			const float left = static_cast<float>((m_chainUntil - m_now) / std::max(0.1, def->stageMs / 1000.0));
 			ui::Plate(Rectangle{ r.x + 2.f, r.y + r.height - 5.f, (r.width - 4.f) * util::Clamp01(left), 3.f }, util::Mix(cc, WHITE, 0.4f), BLANK, 1.f, 0.f);
 			for (int k = 0; k < def->stages; ++k)
-				DrawCircleV(Vector2{ r.x + r.width - 7.f - k * 7.f, r.y + 7.f }, 2.5f, k < m_chainStage ? util::Mix(cc, WHITE, 0.5f) : Color{ 60, 64, 70, 230 });
+				DrawCircleV(Vector2{ r.x + r.width - 7.f - k * 7.f, r.y + 7.f }, 2.5f, k < m_chainStage ? util::Mix(cc, WHITE, 0.5f) : util::A8(ui::theme::kLineStrong, 230));
 		}
 	}
 	const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 12.f);
@@ -307,7 +307,7 @@ void Game::DrawHotSlot(Rectangle base, int hot, float keySize)
 	KeyTag(r, key, queued, keySize, far);
 	if (row->mp > 0 && !locked)
 	{
-		ui::TextStyle ms; ms.size = 12.f; ms.color = noMana ? Rgb(0xE08A80) : Rgb(0x9DB8E8); ms.outline = 1.2f; ms.face = ui::Face::Number;
+		ui::TextStyle ms; ms.size = 12.f; ms.color = noMana ? ui::theme::kBadHi : ui::theme::kOption; ms.outline = 1.2f; ms.face = ui::Face::Number;
 		const std::string mp = std::to_string(row->mp);
 		ui::Fonts().Draw(mp, Vector2{ r.x + r.width - 3.f - ui::Fonts().Measure(mp, ms.size, 0.f, ui::Face::Number).x, r.y + r.height - 14.f }, ms);
 	}
@@ -372,7 +372,7 @@ void Game::DrawQuickBar()
 		if (q.kind == 1 && q.itemId)
 		{
 			count = m_inv.CountOf(q.itemId);
-			icons::Draw(q.itemId, Rectangle{ r.x + 3, r.y + 3, r.width - 6, r.height - 6 }, count > 0 ? WHITE : Color{ 255, 255, 255, 90 });
+			icons::Draw(q.itemId, Rectangle{ r.x + 3, r.y + 3, r.width - 6, r.height - 6 }, count > 0 ? WHITE : util::A8(WHITE, 90));
 			const ItemTableRow* row = ItemTableData::Find(q.itemId);
 			if (row && row->effect == ItemEffect::eHeal) { cdEnd = m_lastPotionAt + CombatRule::kPotionCooldownMs / 1000.0; cdLen = CombatRule::kPotionCooldownMs / 1000.0; }
 			else if (row && row->type == ItemType::eConsumable) { cdEnd = m_lastScrollAt + CombatRule::kScrollCooldownMs / 1000.0; cdLen = CombatRule::kScrollCooldownMs / 1000.0; }
@@ -516,7 +516,7 @@ namespace
 				DrawLineEx(Vector2{ c.x + std::cos(a) * 4.f * k, c.y + std::sin(a) * 4.f * k }, Vector2{ c.x + std::cos(a) * 7.8f * k, c.y + std::sin(a) * 7.8f * k }, 2.6f, col);
 			}
 			DrawCircleV(c, 5.4f * k, col);
-			DrawCircleV(c, 2.4f * k, Color{ 14, 16, 20, 255 });
+			DrawCircleV(c, 2.4f * k, util::A8(ui::theme::kSlot, 255));
 			break;
 		}
 	}
@@ -563,14 +563,14 @@ void Game::DrawMenuBar()
 		default: break;
 		}
 		const bool down = hover && ui::BtnDown(MOUSE_BUTTON_LEFT);
-		ui::Plate(b, down ? ui::theme::kSurface3 : (hover ? ui::theme::kSurface2 : Color{ 14, 17, 21, 235 }), open ? ui::theme::kDawn : (hover ? ui::theme::kTextDim : ui::theme::kLine), 3.f, open ? 1.5f : 1.f);
+		ui::Plate(b, down ? ui::theme::kSurface3 : (hover ? ui::theme::kSurface2 : ui::theme::kSlot), open ? ui::theme::kDawn : (hover ? ui::theme::kTextDim : ui::theme::kLine), 3.f, open ? 1.5f : 1.f);
 		const Color ic = open ? ui::theme::kDawnHi : (hover ? ui::theme::kTextHi : ui::theme::kText);
 		DrawMenuIcon(it.icon, Vector2{ b.x + S * 0.5f, b.y + S * 0.5f + (down ? 1.f : 0.f) }, 1.f, ic);
 		const std::string key = it.act == kb::Act::Count ? std::string("Esc") : kb::Label(it.act);
 		// 칸 안에는 짧은 키만(P · I · F9) — "Alt+U" · "Esc"처럼 긴 키는 아이콘을 덮으므로 툴팁에만(Phase 3 자기 검토)
 		if (!key.empty() && key.size() <= 2)
 		{
-			ui::TextStyle ks; ks.size = ui::type::kMicro - 1.f; ks.color = ui::theme::kTextDim; ks.face = ui::Face::Strong; ks.outline = 1.f; ks.outlineColor = Color{ 0, 0, 0, 200 };
+			ui::TextStyle ks; ks.size = ui::type::kMicro - 1.f; ks.color = ui::theme::kTextDim; ks.face = ui::Face::Strong; ks.outline = 1.f; ks.outlineColor = util::A8(ui::theme::kShadow, 200);
 			ui::Fonts().Draw(key, Vector2{ b.x + 3.f, b.y + 1.f }, ks);
 		}
 		if (it.dot)
@@ -612,7 +612,7 @@ void Game::DrawMenuBar()
 void Game::DrawSystemMenu()
 {
 	const float W = m_uiW, H = m_uiH;
-	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 90 });
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, util::A8(ui::theme::kShadow, 90));
 	const Rectangle r{ std::round(W * 0.5f - 150.f), std::round(H * 0.5f - 199.f), 300.f, 386.f };
 	ui::Window(r, "메뉴", &m_menuOpen);
 	float y = r.y + 58.f;
@@ -675,7 +675,7 @@ void Game::ApplyKeyBind(int act, int key, uint8_t mods, bool swapIfTaken)
 void Game::DrawKeySettings()
 {
 	const float W = m_uiW, H = m_uiH;
-	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, Color{ 0, 0, 0, 110 });
+	DrawRectangleRec(Rectangle{ 0, 0, m_uiW, m_uiH }, util::A8(ui::theme::kShadow, 110));
 	const float ww = std::min(W - 32.f, 920.f), wh = std::min(H - 32.f, 628.f);
 	const Rectangle r{ std::round((W - ww) * 0.5f), std::round((H - wh) * 0.5f), ww, wh };
 	bool open = true;
@@ -740,12 +740,12 @@ void Game::DrawKeySettings()
 				const bool dup = kb::Conflict(a, kb::Get(a)) != kb::Act::Count;
 				const bool asked = m_keysConflict == i || m_keysConflictFor == i;
 				if (ui::Hovered(rowR))
-					ui::Plate(rowR, Color{ 255, 255, 255, 8 }, BLANK, 2.f, 0.f);
+					ui::Plate(rowR, util::A8(ui::theme::kSheen, 8), BLANK, 2.f, 0.f);
 				ui::Text(kb::Name(a), Vector2{ x + 4.f, y + 5.f }, ui::type::kBodyS, asked ? ui::theme::kWarn : ui::theme::kText);
 				// 키 칩
 				const bool hover = ui::Hovered(chip);
 				const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 7.f);
-				const Color fill = capturing ? Color{ 52, 40, 24, 240 } : (hover ? ui::theme::kSurface2 : ui::theme::kSurface1);
+				const Color fill = capturing ? util::A8(ui::theme::kDawnWash, 240) : (hover ? ui::theme::kSurface2 : ui::theme::kSurface1);
 				const Color line = capturing ? util::Mix(ui::theme::kDawn, WHITE, 0.3f * pulse) : (dup ? ui::theme::kBad : (hover ? ui::theme::kTextDim : ui::theme::kLineStrong));
 				ui::Plate(chip, fill, line, 3.f, capturing || dup ? 1.5f : 1.f);
 				ui::TextStyle ks; ks.size = ui::type::kBodyS; ks.face = ui::Face::Strong;
@@ -855,7 +855,7 @@ void Game::DrawKeySettings()
 	if (m_keysConflict >= 0 && m_keysConflictFor >= 0)
 	{
 		const Rectangle bar{ r.x + pad, by - 44.f, r.width - pad * 2.f, 34.f };
-		ui::Plate(bar, Color{ 58, 36, 20, 235 }, ui::theme::kWarn, 3.f, 1.f);
+		ui::Plate(bar, util::A8(ui::theme::kDawnWash, 235), ui::theme::kWarn, 3.f, 1.f);
 		const std::string what = Fmt("[%s] 키는 이미 ‘%s’에 쓰이고 있습니다. 두 동작의 키를 맞바꿀까요?",
 			kb::Label(kb::Chord{ m_keysConflictKey, m_keysConflictMods }).c_str(), kb::Name(static_cast<kb::Act>(m_keysConflict)));
 		ui::Text(what, Vector2{ bar.x + 12.f, bar.y + 9.f }, ui::type::kBodyS, ui::theme::kDawnHi);
@@ -926,7 +926,7 @@ void Game::DrawBigMap()
 	const auto* region = WorldData::FindRegion(Region());
 	const std::string place = InTown() ? std::string(WorldData::kTownName) : (region ? region->name : "");
 	ui::TextStyle ps; ps.size = ui::type::kDisplayS; ps.color = util::WithA(ui::theme::kTextHi, 0.9f); ps.face = ui::Face::Display; ps.spacing = 0.6f;
-	ps.outline = 1.5f; ps.outlineColor = Color{ 0, 0, 0, 160 };
+	ps.outline = 1.5f; ps.outlineColor = util::A8(ui::theme::kShadow, 160);
 	ui::Fonts().DrawCentered(place, Vector2{ W * 0.5f, m.y - 30.f }, ps);
 	ui::Text(Fmt("%s 닫기", kb::Label(kb::Act::BigMap).c_str()), Vector2{ W * 0.5f, m.y + m.height + 14.f }, ui::type::kCaption, util::WithA(ui::theme::kTextDim, 0.85f), Align::Center, true);
 }

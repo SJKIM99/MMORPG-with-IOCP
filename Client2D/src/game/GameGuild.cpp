@@ -789,9 +789,9 @@ void Game::DrawGuildTag(const Entity& e, Vector2 head, float& y, float nameW)
 	ui::TextStyle st;
 	st.size = 11.5f;
 	st.face = ui::Face::Strong;
-	st.color = gid == m_guild.id ? ui::theme::kChatGuild : Rgb(0xB9B09A);
+	st.color = gid == m_guild.id ? ui::theme::kChatGuild : ui::theme::kParchment;
 	st.outline = 1.3f;
-	st.outlineColor = Color{ 0, 0, 0, 210 };
+	st.outlineColor = util::A8(ui::theme::kShadow, 210);
 	ui::Fonts().DrawCentered("‹" + gname + "›", Vector2{ head.x, y - 5.f }, st);
 	y -= 14.f;
 }
@@ -830,14 +830,14 @@ void Game::DrawHallFlagLabels(const Camera2D& cam)
 		ui::TextStyle st;
 		st.size = 12.5f;
 		st.face = ui::Face::Strong;
-		st.color = f.id == m_guild.id ? ui::theme::kChatGuild : Rgb(0xD8CFB8);
+		st.color = f.id == m_guild.id ? ui::theme::kChatGuild : ui::theme::kText;
 		st.outline = 1.3f;
-		st.outlineColor = Color{ 0, 0, 0, 210 };
+		st.outlineColor = util::A8(ui::theme::kShadow, 210);
 		ui::Fonts().DrawCentered("‹" + f.name + "›", Vector2{ std::round(at.x + 16.f), std::round(at.y) }, st);
 		ui::TextStyle sub = st;
 		sub.size = 10.5f;
 		sub.face = ui::Face::Body;
-		sub.color = util::WithA(Rgb(0xB9B09A), 0.95f);
+		sub.color = util::WithA(ui::theme::kParchment, 0.95f);
 		ui::Fonts().DrawCentered(Fmt("결사원 %d", f.members), Vector2{ std::round(at.x + 16.f), std::round(at.y + 13.f) }, sub);
 	}
 }
@@ -856,7 +856,7 @@ void Game::DrawGuildCelebration()
 	const float cx = std::round(W * 0.5f), top = 70.f;
 	const Color edge = m_guild.celebrateFounded ? ui::theme::kDawn : ui::theme::kChatGuild;
 	// 깃대
-	DrawRectangleRec(Rectangle{ cx - bw * 0.5f - 14.f, top - 6.f, bw + 28.f, 6.f }, util::MulA(Rgb(0x6B5238), fade));
+	DrawRectangleRec(Rectangle{ cx - bw * 0.5f - 14.f, top - 6.f, bw + 28.f, 6.f }, util::MulA(ui::theme::kDawnDeep, fade));
 	DrawCircleV(Vector2{ cx - bw * 0.5f - 14.f, top - 3.f }, 5.f, util::MulA(ui::theme::kDawnDeep, fade));
 	DrawCircleV(Vector2{ cx + bw * 0.5f + 14.f, top - 3.f }, 5.f, util::MulA(ui::theme::kDawnDeep, fade));
 	// 천: 아래 끝이 물결치며 제비꼬리 — 문장 바탕색을 깊게
@@ -891,7 +891,7 @@ void Game::DrawGuildCelebration()
 		st.face = ui::Face::Display;
 		st.color = util::MulA(ui::theme::kTextHi, a);
 		st.outline = 1.5f;
-		st.outlineColor = util::MulA(Color{ 0, 0, 0, 200 }, a);
+		st.outlineColor = util::MulA(util::A8(ui::theme::kShadow, 200), a);
 		ui::Fonts().DrawCentered(m_guild.name, Vector2{ cx, top + 158.f }, st);
 		st.size = ui::type::kCaption;
 		st.face = ui::Face::Strong;

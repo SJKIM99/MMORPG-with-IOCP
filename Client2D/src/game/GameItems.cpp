@@ -45,10 +45,10 @@ namespace
 	// 그로시(은화)
 	void Coin(Vector2 c, float r)
 	{
-		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, Color{ 0, 0, 0, 140 });
+		DrawCircleV(Vector2{ c.x + 0.5f, c.y + 1.2f }, r, util::A8(ui::theme::kShadow, 140));
 		DrawCircleV(c, r, Color{ 128, 132, 138, 255 });
 		DrawCircleV(c, r - 1.2f, Color{ 196, 199, 202, 255 });
-		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, Color{ 232, 232, 226, 255 });
+		DrawCircleV(Vector2{ c.x - r * 0.18f, c.y - r * 0.2f }, r * 0.5f, ui::theme::kTextHi);
 	}
 
 	// 장비창 칸 배치: 왼쪽 위→아래(투구 · 갑옷 · 장갑 · 신발), 오른쪽(무기 · 망토 · 목걸이 · 반지)
@@ -283,7 +283,7 @@ void Game::TickLoot()
 	if (bestUpgrade >= 0)
 	{
 		const InvSlot& s = m_inv.slots[bestUpgrade];
-		AddChat(texts::ItemNameFull(s.itemId, s.enchant, s.extra) + " — 지금 장비보다 좋습니다. (I 소지품에서 ▲)", Rgb(0x8AE88A));
+		AddChat(texts::ItemNameFull(s.itemId, s.enchant, s.extra) + " — 지금 장비보다 좋습니다. (I 소지품에서 ▲)", ui::theme::kGood);
 	}
 }
 
@@ -352,14 +352,14 @@ void Game::TryEquipFromUi(int invSlot, EquipSlot target)
 	const EquipSlot part = ItemTableData::SlotOf(*row);
 	if (target != EquipSlot::None && part != target)
 	{
-		AddCenter(std::string(texts::SlotName(part)) + " — 그 칸에는 입을 수 없습니다.", Rgb(0xFF8A7A));
+		AddCenter(std::string(texts::SlotName(part)) + " — 그 칸에는 입을 수 없습니다.", ui::theme::kBadHi);
 		sfx::Play(sfx::Id::Error, 0.5f);
 		return;
 	}
 	std::string why;
 	if (!CanWear(*row, &why))
 	{
-		AddCenter(why, Rgb(0xFF8A7A));
+		AddCenter(why, ui::theme::kBadHi);
 		sfx::Play(sfx::Id::Error, 0.5f);
 		return;
 	}
@@ -413,7 +413,7 @@ void Game::BuildItemTip(std::vector<ui::TooltipLine>& out, const InvSlot& s, Tip
 			{
 				if (o.kind == ItemOption::None) continue;
 				const bool skill = o.kind == ItemOption::SkillBoost;
-				out.push_back({ std::string(skill ? "◈ " : "◇ ") + texts::OptionText(o), skill ? ui::theme::kDawn : Rgb(0x9DBBD8), 14.f });
+				out.push_back({ std::string(skill ? "◈ " : "◇ ") + texts::OptionText(o), skill ? ui::theme::kDawn : ui::theme::kOption, 14.f });
 			}
 		}
 		if (inst.proc != ItemProc::None)
@@ -548,7 +548,7 @@ void Game::DrawItemTooltip(const InvSlot& s, TipMode mode, int invSlot)
 	const ItemTableRow* row = ItemTableData::Find(s.itemId);
 	const bool equip = row && row->type == ItemType::eEquipment;
 	const Rarity r = equip ? SlotRarity(s) : Rarity::Common;
-	const Color accent = equip && r != Rarity::Common ? icons::RarityColor(r) : Color{ 0, 0, 0, 0 };
+	const Color accent = equip && r != Rarity::Common ? icons::RarityColor(r) : BLANK;
 	ui::Tooltip(std::move(lines), s.itemId, accent);
 
 	// 비교 툴팁: 같은 부위에 입고 있는 장비
@@ -560,7 +560,7 @@ void Game::DrawItemTooltip(const InvSlot& s, TipMode mode, int invSlot)
 			std::vector<ui::TooltipLine> cmp;
 			BuildItemTip(cmp, m_inv.slots[cur], TipMode::Equipped, -1);
 			const Rarity cr = SlotRarity(m_inv.slots[cur]);
-			ui::TooltipCompare(std::move(cmp), m_inv.slots[cur].itemId, cr != Rarity::Common ? icons::RarityColor(cr) : Color{ 0, 0, 0, 0 }, "착용 중");
+			ui::TooltipCompare(std::move(cmp), m_inv.slots[cur].itemId, cr != Rarity::Common ? icons::RarityColor(cr) : BLANK, "착용 중");
 		}
 	}
 }
@@ -588,7 +588,7 @@ void Game::DrawEquipPanel(Rectangle area)
 	const Rectangle pv{ area.x + slot + 14.f, area.y + 6.f, area.width - 2 * slot - 28.f, colH + 4.f };
 	{
 		const float cx = pv.x + pv.width * 0.5f, feet = pv.y + pv.height - 16.f;
-		DrawEllipse(static_cast<int>(cx), static_cast<int>(feet), 40, 12, Color{ 0, 0, 0, 90 });
+		DrawEllipse(static_cast<int>(cx), static_cast<int>(feet), 40, 12, util::A8(ui::theme::kShadow, 90));
 		const Color cc = Rgb(ClassTable::Get(m_classId).color);
 		DrawCircleGradient(static_cast<int>(cx), static_cast<int>(feet - 70), 70.f, util::MulA(cc, 0.12f), util::MulA(cc, 0.f));
 		Entity* me = Self();
@@ -636,7 +636,7 @@ void Game::DrawEquipPanel(Rectangle area)
 				DrawCircleGradient(static_cast<int>(r.x + r.width * 0.5f), static_cast<int>(r.y + r.height * 0.5f), r.width * 0.5f, util::MulA(icons::RarityColor(rar), 0.22f * pulse), util::MulA(icons::RarityColor(rar), 0.f));
 			}
 			const bool dragged = ui::Dragging() && ui::Drag().kind == 3 && ui::Drag().index == inv;
-			icons::Draw(s->itemId, Rectangle{ r.x + 4, r.y + 4, r.width - 8, r.height - 8 }, dragged ? Color{ 255, 255, 255, 80 } : WHITE);
+			icons::Draw(s->itemId, Rectangle{ r.x + 4, r.y + 4, r.width - 8, r.height - 8 }, dragged ? util::A8(WHITE, 80) : WHITE);
 			if (s->enchant > 0)
 			{
 				ui::TextStyle es; es.size = 13.f; es.color = s->enchant >= 7 ? ui::theme::kDawnHi : ui::theme::kOldway; es.outline = 1.2f; es.face = ui::Face::Number;
@@ -780,7 +780,7 @@ void Game::DrawInventory()
 		if (!it.Empty())
 		{
 			const bool dragged = ui::Dragging() && (ui::Drag().kind == 1 || ui::Drag().kind == 3) && ui::Drag().index == i;
-			const Color tint = (!selectable || dragged) ? Color{ 255, 255, 255, 80 } : (match ? WHITE : Color{ 255, 255, 255, 55 });
+			const Color tint = (!selectable || dragged) ? util::A8(WHITE, 80) : (match ? WHITE : util::A8(WHITE, 55));
 			// 희귀도 바탕 빛
 			// 희귀도: 바탕을 아주 옅게 물들인다(빛나게 하지 않는다). 전설 이상만 은은한 숨.
 			if (gear && rar >= Rarity::Rare && match)
@@ -874,7 +874,7 @@ void Game::DrawInventory()
 			{
 				const ItemTableRow* row = ItemTableData::Find(it.itemId);
 				if (row && row->sellPrice > 0 && !it.equipped) { m_sellSlot = i; m_sellCount = it.count; sfx::Play(sfx::Id::Click, 0.6f); }
-				else { AddCenter(it.equipped ? "착용 중인 장비는 팔 수 없습니다." : "그 물건은 팔 수 없습니다.", Rgb(0xFF8A7A)); sfx::Play(sfx::Id::Error, 0.5f); }
+				else { AddCenter(it.equipped ? "착용 중인 장비는 팔 수 없습니다." : "그 물건은 팔 수 없습니다.", ui::theme::kBadHi); sfx::Play(sfx::Id::Error, 0.5f); }
 			}
 			continue;
 		}

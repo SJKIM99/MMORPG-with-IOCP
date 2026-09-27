@@ -496,13 +496,13 @@ namespace fx
 		else
 		{
 			for (int i = 0; i < 3; ++i)
-				if (Particle* s = Tx(fxart::ShadowSmoke, iso, RandF(20.f, 60.f), 50.f, 130.f, RandF(0.8f, 1.2f), Rgb(0xC8A0E0, 200), Rgb(0x3A2050, 0), false, RandF(0.f, 6.f), RandF(-1.f, 1.f)))
+				if (Particle* s = Tx(fxart::ShadowSmoke, iso, RandF(20.f, 60.f), 50.f, 130.f, RandF(0.8f, 1.2f), Rgb(0xC8B8A8, 200), Rgb(0x2A2226, 0), false, RandF(0.f, 6.f), RandF(-1.f, 1.f)))
 					s->vz = RandF(20.f, 50.f);
 			for (int i = 0; i < 14; ++i)
-				Smoke(iso, RandF(20.f, 50.f), Rgb(0x5A3A6A), 16.f, 50.f, RandF(0.7f, 1.2f), Vector2{ RandF(-40.f, 40.f), RandF(-20.f, 20.f) }, RandF(20.f, 60.f));
+				Smoke(iso, RandF(20.f, 50.f), Rgb(0x4A4040), 16.f, 50.f, RandF(0.7f, 1.2f), Vector2{ RandF(-40.f, 40.f), RandF(-20.f, 20.f) }, RandF(20.f, 60.f));
 			for (int i = 0; i < 16; ++i)
 				Chunk(iso, 40.f, Rgb(0xB8C0CC), RandF(3.f, 6.f), RandF(60.f, 160.f));
-			Ring(iso, 10.f, 90.f, 0.5f, Rgb(0xA05AFF, 200), 4.f);
+			Ring(iso, 10.f, 90.f, 0.5f, Rgb(0xC9573F, 200), 4.f);   // 적대의 불씨색(보라 · 네온 금지)
 		}
 	}
 
@@ -730,7 +730,7 @@ namespace fx
 				p.vz = RandF(10.f, 30.f);
 				p.life = p.maxLife = RandF(2.f, 4.f);
 				p.size0 = RandF(5.f, 9.f); p.size1 = 1.f;
-				p.c0 = RandF() < 0.5f ? Rgb(0x9AF8FF) : Rgb(0xFFA8E8); p.c1 = WithA(p.c0, 0.f);
+				p.c0 = RandF() < 0.5f ? Rgb(0x9AF8FF) : Rgb(0xF6DCA0); p.c1 = WithA(p.c0, 0.f);
 				p.wobble = 25.f;
 				p.shape = Shape::Star;
 				p.additive = true;

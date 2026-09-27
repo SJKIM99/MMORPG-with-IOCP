@@ -111,7 +111,7 @@ namespace
 	{
 		switch (c)
 		{
-		case ClassId::Knight: return Rgb(0xF2C47C);
+		case ClassId::Knight: return ui::theme::kDawnHi;
 		case ClassId::Engraver: return Rgb(0x7FD0C4);
 		default: return Rgb(0xC8D2E0);
 		}
@@ -576,7 +576,7 @@ void Game::HandleSkillEx(const SKILL_EX_NFY_PACKET& p)
 			if (m_heldSkill != 0 && (p.skillId == 0 || p.skillId == m_heldSkill)) { m_heldSkill = 0; m_heldHot = -1; }
 			m_actionLockUntil = m_now;
 			if (c) { c->animT = -1.f; c->animSkill = 0; }
-			AddCenter("시전이 끊겼습니다.", Rgb(0xC8C0B0));
+			AddCenter("시전이 끊겼습니다.", ui::theme::kText);
 		}
 		if (c)
 		{
@@ -819,8 +819,8 @@ void Game::HandleMonsterGauge(const MONSTER_GAUGE_NFY_PACKET& p)
 		m->brokenUntil = m_now + p.brokenMs / 1000.0;
 		m->stunShake = 1.f;
 		const Vector2 iso = TileToIso(m->pos);
-		fx::Fx().FloatText(iso, EntityHeight(*m) + 40.f, "무력화!", Rgb(0xF2C47C), 30.f, 1.6f, ui::Face::Display);
-		AddCenter("무력화! 3초 동안 받는 피해 +30%", Rgb(0xF2C47C));
+		fx::Fx().FloatText(iso, EntityHeight(*m) + 40.f, "무력화!", ui::theme::kDawnHi, 30.f, 1.6f, ui::Face::Display);
+		AddCenter("무력화 — 3초 동안 받는 피해 +30%", ui::theme::kDawnHi);
 		{
 			impact::Ctx k;
 			k.iso = iso; k.z = EntityHeight(*m) * 0.5f; k.tier = fxgrade::Tier::T3; k.elem = impact::Element::Gold; k.heavy = true;
@@ -917,8 +917,8 @@ void Game::DrawCinematic()
 		const float bandH = std::round(H * 0.3f);
 		const float cy = H * 0.42f;
 		const float slide = (1.f - in) * W * 1.1f - out * W * 1.1f;
-		const Color base = m_cine.cls == 0 ? Rgb(0xF2C47C) : (m_cine.cls == 1 ? Rgb(0x7FD0C4) : Rgb(0xC8D2E0));
-		const Color deep = m_cine.cls == 0 ? Rgb(0x1E1A16) : (m_cine.cls == 1 ? Rgb(0x0E1E1E) : Rgb(0x0E1014));
+		const Color base = m_cine.cls == 0 ? ui::theme::kDawnHi : (m_cine.cls == 1 ? Rgb(0x7FD0C4) : Rgb(0xC8D2E0));
+		const Color deep = m_cine.cls == 0 ? Rgb(0x1E1A16) : (m_cine.cls == 1 ? ui::theme::kSurface1 : ui::theme::kInk);
 		const float skew = bandH * 0.18f;
 		const float left = -40.f + slide, right = W + 40.f + slide;
 		auto topY = [&](float x) { return cy - bandH * 0.5f + skew - 2.f * skew * (x - left) / (right - left); };
@@ -1001,7 +1001,7 @@ void Game::DrawCinematic()
 				const float full = static_cast<float>(d->stageMs * d->stages + d->perfectMs);
 				const float held = static_cast<float>((m_now - m_heldAt) * 1000.0);
 				const float u = util::Clamp01(held / full);
-				DrawRectangleRec(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, Color{ 10, 12, 15, 220 });
+				DrawRectangleRec(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, util::A8(ui::theme::kInk, 220));
 				const float pStart = static_cast<float>(d->stageMs * d->stages) / full;
 				DrawRectangleRec(Rectangle{ r.x + r.width * pStart, r.y, r.width * (1.f - pStart), r.height }, util::WithA(Rgb(0xFFF0C8), 0.25f));
 				const bool inPerfect = held >= d->stageMs * d->stages;
@@ -1010,7 +1010,7 @@ void Game::DrawCinematic()
 				for (int s = 1; s < d->stages; ++s)
 				{
 					const float x = r.x + r.width * (static_cast<float>(d->stageMs * s) / full);
-					DrawLineEx(Vector2{ x, r.y - 2 }, Vector2{ x, r.y + r.height + 2 }, 2.f, Color{ 10, 12, 15, 230 });
+					DrawLineEx(Vector2{ x, r.y - 2 }, Vector2{ x, r.y + r.height + 2 }, 2.f, util::A8(ui::theme::kInk, 230));
 				}
 				if (inPerfect)
 				{
@@ -1024,7 +1024,7 @@ void Game::DrawCinematic()
 	{
 		const auto& tex = assets::Get();
 		DrawTexturePro(tex.vignette, Rectangle{ 0, 0, (float)tex.vignette.width, (float)tex.vignette.height },
-			Rectangle{ -20, -20, (float)m_screenW + 40, (float)m_screenH + 40 }, Vector2{ 0, 0 }, 0.f, Color{ 8, 8, 14, 200 });
+			Rectangle{ -20, -20, (float)m_screenW + 40, (float)m_screenH + 40 }, Vector2{ 0, 0 }, 0.f, util::A8(ui::theme::kInk, 200));
 	}
 }
 
@@ -1034,7 +1034,7 @@ void Game::DrawIdentityGauge(Rectangle r)
 	const float u = util::Clamp01(m_identity / 1000.f);
 	const bool active = m_identityActiveUntil > m_now;
 	const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(m_now) * 5.f);
-	ui::Plate(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, Color{ 10, 12, 15, 220 }, BLANK, 3.f, 0.f);
+	ui::Plate(Rectangle{ r.x - 2, r.y - 2, r.width + 4, r.height + 4 }, util::A8(ui::theme::kInk, 220), BLANK, 3.f, 0.f);
 	// 칸 나눔(직업마다): 서약 = 4마디 · 새김 = 5글자 · 그늘 = 3달
 	const int seg = m_classId == ClassId::Knight ? 4 : (m_classId == ClassId::Engraver ? 5 : 3);
 	const float gap = 3.f;
@@ -1042,7 +1042,7 @@ void Game::DrawIdentityGauge(Rectangle r)
 	for (int i = 0; i < seg; ++i)
 	{
 		const Rectangle s{ r.x + i * (sw + gap), r.y, sw, r.height };
-		DrawRectangleRec(s, Color{ 28, 32, 38, 255 });
+		DrawRectangleRec(s, ui::theme::kSurface2);
 		const float fillU = util::Clamp01(u * seg - i);
 		if (fillU > 0.f)
 		{

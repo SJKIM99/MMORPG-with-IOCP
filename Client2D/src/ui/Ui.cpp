@@ -80,7 +80,7 @@ namespace ui
 		void DrawTip(const std::vector<TooltipLine>& lines, uint16_t icon, Color accent, Rectangle r, std::string_view header)
 		{
 			r.x = std::round(r.x); r.y = std::round(r.y);
-			Plate(Rectangle{ r.x + 2, r.y + 5, r.width, r.height }, Color{ 0, 0, 0, 100 }, BLANK, 5.f, 0.f);
+			Plate(Rectangle{ r.x + 2, r.y + 5, r.width, r.height }, util::A8(ui::theme::kShadow, 100), BLANK, 5.f, 0.f);
 			const bool rare = accent.a > 0;
 			Plate(r, Color{ 15, 18, 22, 250 }, rare ? util::MulA(accent, 0.75f) : theme::kLineStrong, 4.f, 1.f);
 			if (rare)
@@ -499,7 +499,7 @@ namespace ui
 
 	void Keycap(Rectangle r, std::string_view key, bool active)
 	{
-		Plate(r, active ? Color{ 52, 40, 24, 235 } : Color{ 10, 12, 15, 225 }, active ? theme::kDawn : theme::kLineStrong, 2.f, 1.f);
+		Plate(r, active ? util::A8(theme::kDawnWash, 235) : util::A8(ui::theme::kInk, 225), active ? theme::kDawn : theme::kLineStrong, 2.f, 1.f);
 		TextStyle st;
 		st.size = std::min(type::kMicro, r.height - 3.f);
 		st.color = active ? theme::kDawnHi : theme::kTextDim;
@@ -511,7 +511,7 @@ namespace ui
 	void Panel(Rectangle r, float alpha, bool fancy)
 	{
 		// 그림자(판 아래로 조금) → 판 → 안쪽 윗선(빛은 위에서)
-		Plate(Rectangle{ r.x + 2, r.y + 6, r.width, r.height }, util::MulA(Color{ 0, 0, 0, 110 }, alpha), BLANK, 6.f, 0.f);
+		Plate(Rectangle{ r.x + 2, r.y + 6, r.width, r.height }, util::MulA(util::A8(ui::theme::kShadow, 110), alpha), BLANK, 6.f, 0.f);
 		Plate(r, util::MulA(theme::kSurface0, alpha), util::MulA(theme::kLineStrong, alpha), 5.f, 1.f);
 		// 그린 돌결(있으면): 먹빛 판 위에 아주 옅게 — 글자가 읽히는 대비는 그대로
 		if (const Texture2D* tex = uiart::Get(uiart::PanelTex))
@@ -519,19 +519,19 @@ namespace ui
 			const Rectangle in{ r.x + 2.f, r.y + 2.f, r.width - 4.f, r.height - 4.f };
 			const float k = 1.4f;   // 돌결 크기(텍스처 1px = 화면 1/1.4px)
 			DrawTexturePro(*tex, Rectangle{ r.x * k, r.y * k, in.width * k, in.height * k }, in, Vector2{ 0, 0 }, 0.f,
-				util::MulA(Color{ 255, 255, 255, 255 }, 0.30f * alpha));
+				util::MulA(ui::theme::kSheen, 0.30f * alpha));
 		}
-		Rule(r.x + 6.f, r.x + r.width - 6.f, r.y + 1.f, util::MulA(Color{ 255, 255, 255, 16 }, alpha));
+		Rule(r.x + 6.f, r.x + r.width - 6.f, r.y + 1.f, util::MulA(util::A8(ui::theme::kSheen, 16), alpha));
 		if (fancy)
 		{
 			// 새김: 3px 안쪽의 두 번째 선 — 판에 판 홈처럼 아주 옅게
-			Plate(Rectangle{ r.x + 3, r.y + 3, r.width - 6, r.height - 6 }, BLANK, util::MulA(Color{ 255, 255, 255, 12 }, alpha), 3.f, 1.f);
+			Plate(Rectangle{ r.x + 3, r.y + 3, r.width - 6, r.height - 6 }, BLANK, util::MulA(util::A8(ui::theme::kSheen, 12), alpha), 3.f, 1.f);
 			// 청동 모서리 장식(그린 그림) — 네 모서리를 뒤집어 맞춘다
 			if (const Texture2D* c = uiart::Get(uiart::Corner); c && r.width > 120.f && r.height > 90.f)
 			{
 				const float s = 38.f;
 				const float w = static_cast<float>(c->width), h = static_cast<float>(c->height);
-				const Color tint = util::MulA(Color{ 255, 255, 255, 255 }, 0.9f * alpha);
+				const Color tint = util::MulA(WHITE, 0.9f * alpha);
 				const float o = 5.f;   // 판 바깥으로 살짝 걸친다(모서리를 감싸는 장식)
 				DrawTexturePro(*c, Rectangle{ 0, 0, w, h }, Rectangle{ r.x - o, r.y - o, s, s }, Vector2{ 0, 0 }, 0.f, tint);
 				DrawTexturePro(*c, Rectangle{ 0, 0, -w, h }, Rectangle{ r.x + r.width - s + o, r.y - o, s, s }, Vector2{ 0, 0 }, 0.f, tint);
@@ -547,11 +547,11 @@ namespace ui
 		// 글자: 고운바탕 굵게, 넓은 자간. 그림자는 아래로 부드럽게 한 번만.
 		TextStyle w;
 		w.size = 62.f * k;
-		w.color = util::MulA(Color{ 238, 229, 208, 255 }, alpha);
+		w.color = util::MulA(ui::theme::kTitle, alpha);
 		w.spacing = 16.f * k;
 		w.face = Face::Display;
 		w.shadow = 3.f * k;
-		w.shadowColor = util::MulA(Color{ 0, 0, 0, 170 }, alpha);
+		w.shadowColor = util::MulA(util::A8(ui::theme::kShadow, 170), alpha);
 		Fonts().DrawCentered("하르벤", c, w);
 
 		// 지평선과 샛별: 새벽 직전에 뜨는 별(데니차) — 이 게임의 표식
@@ -578,7 +578,7 @@ namespace ui
 			sub.spacing = 5.f * k;
 			sub.face = Face::Serif;
 			sub.shadow = 1.f;
-			sub.shadowColor = util::MulA(Color{ 0, 0, 0, 160 }, alpha);
+			sub.shadowColor = util::MulA(util::A8(ui::theme::kShadow, 160), alpha);
 			Fonts().DrawCentered("멈춘 심장", Vector2{ c.x + sub.spacing * 0.5f, hy + 48.f * k }, sub);
 		}
 	}
@@ -637,22 +637,22 @@ namespace ui
 		Color fill = theme::kSurface2, border = theme::kLineStrong, text = theme::kTextHi;
 		switch (kind)
 		{
-		case ButtonKind::Primary: fill = Color{ 54, 41, 24, 255 }; border = theme::kDawn; text = theme::kDawnHi; break;
-		case ButtonKind::Danger:  fill = Color{ 58, 27, 23, 255 }; border = Color{ 178, 76, 58, 255 }; text = Color{ 242, 198, 186, 255 }; break;
-		case ButtonKind::Ghost:   fill = Color{ 0, 0, 0, 0 }; border = theme::kLine; text = theme::kText; break;
+		case ButtonKind::Primary: fill = theme::kDawnWash; border = theme::kDawn; text = theme::kDawnHi; break;
+		case ButtonKind::Danger:  fill = theme::kEmberWash; border = util::Shade(theme::kEmber, 0.88f); text = util::Mix(theme::kEmber, theme::kTextHi, 0.8f); break;
+		case ButtonKind::Ghost:   fill = BLANK; border = theme::kLine; text = theme::kText; break;
 		default: break;
 		}
 		if (!enabled) { fill = theme::kSurface1; border = theme::kLine; text = theme::kTextMute; }
 		if (hover)
 		{
-			fill = kind == ButtonKind::Ghost ? Color{ 255, 255, 255, 12 } : util::Shade(fill, 1.22f);
+			fill = kind == ButtonKind::Ghost ? util::A8(ui::theme::kSheen, 12) : util::Shade(fill, 1.22f);
 			border = util::Shade(border, 1.2f);
 		}
 		Rectangle b = r;
 		if (down) { b.y += 1.f; fill = util::Shade(fill, 0.88f); }
 		Plate(b, fill, border, 3.f, 1.f);
 		if (enabled && kind != ButtonKind::Ghost)
-			Rule(b.x + 4.f, b.x + b.width - 4.f, b.y + 1.f, Color{ 255, 255, 255, static_cast<unsigned char>(hover ? 26 : 12) });
+			Rule(b.x + 4.f, b.x + b.width - 4.f, b.y + 1.f, util::A8(ui::theme::kSheen, static_cast<unsigned char>(hover ? 26 : 12)));
 		TextStyle st;
 		st.size = std::clamp(fontSize - 2.f, 12.f, 16.f);
 		st.color = text;
@@ -702,7 +702,7 @@ namespace ui
 		TextStyle st;
 		st.size = size;
 		st.color = color;
-		if (outline) { st.outline = 1.5f; st.outlineColor = Color{ 0, 0, 0, static_cast<unsigned char>(color.a * 0.8f) }; }
+		if (outline) { st.outline = 1.5f; st.outlineColor = util::A8(ui::theme::kShadow, static_cast<unsigned char>(color.a * 0.8f)); }
 		if (align != Align::Left)
 		{
 			const float w = Fonts().Measure(s, size).x;
@@ -717,7 +717,7 @@ namespace ui
 		st.size = size;
 		st.color = color;
 		st.shadow = size >= 24.f ? 2.f : 1.f;
-		st.shadowColor = Color{ 0, 0, 0, static_cast<unsigned char>(color.a * 0.65f) };
+		st.shadowColor = util::A8(ui::theme::kShadow, static_cast<unsigned char>(color.a * 0.65f));
 		if (align != Align::Left)
 		{
 			const float w = Fonts().Measure(s, size).x;
@@ -776,9 +776,9 @@ namespace ui
 		r = SnapRect(r);
 		DrawRectangleRec(r, back);
 		// 안쪽 윗그늘(홈에 담긴 느낌)
-		DrawRectangleRec(Rectangle{ r.x, r.y, r.width, 1.f }, Color{ 0, 0, 0, 90 });
+		DrawRectangleRec(Rectangle{ r.x, r.y, r.width, 1.f }, util::A8(ui::theme::kShadow, 90));
 		if (lag > value)
-			DrawRectangleRec(Rectangle{ r.x, r.y, std::round(r.width * lag), r.height }, Color{ 236, 222, 200, 150 });
+			DrawRectangleRec(Rectangle{ r.x, r.y, std::round(r.width * lag), r.height }, util::A8(ui::theme::kTitle, 150));
 		if (value * r.width >= 1.f)
 		{
 			const Rectangle f{ r.x, r.y, std::round(r.width * value), r.height };
@@ -790,14 +790,14 @@ namespace ui
 			if (value < 0.999f)
 				DrawRectangleRec(Rectangle{ f.x + f.width - 1.f, f.y, 1.f, f.height }, util::WithA(util::Shade(fill, 1.6f), 0.9f));
 		}
-		DrawRectangleLinesEx(Rectangle{ r.x - 1, r.y - 1, r.width + 2, r.height + 2 }, 1.f, Color{ 0, 0, 0, 170 });
+		DrawRectangleLinesEx(Rectangle{ r.x - 1, r.y - 1, r.width + 2, r.height + 2 }, 1.f, util::A8(ui::theme::kShadow, 170));
 		if (!label.empty())
 		{
 			TextStyle st;
 			st.size = labelSize;
-			st.color = Color{ 244, 240, 232, 255 };
+			st.color = theme::kTextHi;
 			st.outline = 1.2f;
-			st.outlineColor = Color{ 0, 0, 0, 190 };
+			st.outlineColor = util::A8(ui::theme::kShadow, 190);
 			st.face = Face::Number;
 			Fonts().DrawCentered(label, Vector2{ r.x + r.width * 0.5f, r.y + r.height * 0.5f }, st);
 		}
@@ -806,10 +806,10 @@ namespace ui
 	void SlotFrame(Rectangle r, bool hover, bool selected, Color accent)
 	{
 		Plate(r, theme::kSlot, BLANK, 2.f, 0.f);
-		DrawRectangleGradientV(static_cast<int>(std::round(r.x + 1)), static_cast<int>(std::round(r.y + 1)), static_cast<int>(std::round(r.width - 2)), static_cast<int>(r.height * 0.35f), Color{ 0, 0, 0, 80 }, Color{ 0, 0, 0, 0 });
+		DrawRectangleGradientV(static_cast<int>(std::round(r.x + 1)), static_cast<int>(std::round(r.y + 1)), static_cast<int>(std::round(r.width - 2)), static_cast<int>(r.height * 0.35f), util::A8(ui::theme::kShadow, 80), BLANK);
 		const bool tinted = !SameColor(accent, theme::kBorder);
 		if (hover)
-			Plate(r, Color{ 255, 255, 255, 14 }, BLANK, 2.f, 0.f);
+			Plate(r, util::A8(ui::theme::kSheen, 14), BLANK, 2.f, 0.f);
 		const Color border = selected ? theme::kDawn : (hover ? theme::kTextDim : (tinted ? util::MulA(accent, 0.7f) : theme::kLine));
 		Plate(r, BLANK, border, 2.f, selected ? 2.f : 1.f);
 		// 희귀도는 테두리 전체를 빛내지 않고 바닥 2px 띠로만 알린다
@@ -937,7 +937,7 @@ namespace ui
 		}
 
 		// 그리기
-		Plate(r, Color{ 12, 15, 18, 235 }, focused ? theme::kDawn : (hover ? theme::kTextDim : theme::kLineStrong), 3.f, 1.f);
+		Plate(r, util::A8(ui::theme::kInk, 235), focused ? theme::kDawn : (hover ? theme::kTextDim : theme::kLineStrong), 3.f, 1.f);
 		const float size = std::min(18.f, r.height - 10.f);
 		const float ty = r.y + (r.height - size) * 0.5f - 1.f;
 		std::string shown = f.password ? std::string(f.text.size(), '*') : f.text;

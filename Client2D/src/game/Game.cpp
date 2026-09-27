@@ -755,11 +755,11 @@ void Game::UpdateGame(float dt)
 		sfx::Play(ok ? sfx::Id::EnchantSuccess : sfx::Id::EnchantFail);
 		if (Entity* me = Self())
 			fx::Fx().EnchantResult(TileToIso(me->pos), ok);
-		fx::Fx().Flash(ok ? Rgb(0xD8F0FF) : Rgb(0x6A3A8A), ok ? 0.5f : 0.35f, 0.35f);
+		fx::Fx().Flash(ok ? Rgb(0xD8F0FF) : Rgb(0x6A2A20), ok ? 0.5f : 0.35f, 0.35f);
 		m_cam.AddTrauma(ok ? 0.25f : 0.4f);
 		const std::string name = texts::ItemNameEnchanted(m_enchant.itemId, ok ? m_enchant.after : m_enchant.before);
-		if (ok) AddChat(name + " 강화에 성공했습니다!", Rgb(0x9AD8FF));
-		else AddChat(texts::Josa(name, "이", "가") + " 강렬한 빛과 함께 증발했습니다...", Rgb(0xC08AFF));
+		if (ok) AddChat(name + " 강화에 성공했습니다.", Rgb(0x9AD8FF));
+		else AddChat(texts::Josa(name, "이", "가") + " 강렬한 빛과 함께 증발했습니다...", ui::theme::kBad);
 	}
 }
 

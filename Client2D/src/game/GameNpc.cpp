@@ -217,7 +217,7 @@ void Game::HandleNpcServiceAck(const NPC_SERVICE_ACK_PACKET& p)
 		}
 		else
 		{
-			AddCenter("든든한 수프 한 그릇! (HP·MP 40% 회복)", Rgb(0xFFD8A0));
+			AddCenter("든든한 수프 한 그릇 — HP·MP 40% 회복", Rgb(0xFFD8A0));
 			sfx::Play(sfx::Id::Potion, 0.8f);
 		}
 		break;

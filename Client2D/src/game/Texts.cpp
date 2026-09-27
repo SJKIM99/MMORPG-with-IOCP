@@ -268,7 +268,7 @@ namespace texts
 			return kind == ShopKind::Buy ? "구매했습니다." : (kind == ShopKind::Sell ? "판매했습니다." : "옛길로 이동합니다.");
 		case ShopResult::Duplicate:      return "이미 처리된 요청입니다.";
 		case ShopResult::NotEnoughAdena: return "그로시가 부족합니다.";
-		case ShopResult::InventoryFull:  return "인벤토리에 빈 칸이 없습니다.";
+		case ShopResult::InventoryFull:  return "가방에 빈 칸이 없습니다.";
 		case ShopResult::TooFar:         return "상인과 너무 멀리 떨어져 있습니다.";
 		case ShopResult::InvalidItem:    return kind == ShopKind::Sell ? "그 물건은 팔 수 없습니다." : "그 물건은 여기서 팔지 않습니다.";
 		case ShopResult::InvalidCount:   return "수량이 올바르지 않습니다.";

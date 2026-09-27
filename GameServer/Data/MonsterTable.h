@@ -122,12 +122,12 @@ namespace MonsterTable
 		{ 15, "얼음 석인",   false, 16,   480, 16,    70,   70,   160,  80, 3, 1, 1200, 650,  7, false, A::eGolem,     V::eIce,      0xA8D8F0, 0x5A8AB0, 125 },
 		{ 16, "진흙덩이",    true,  13,   400, 12,    56,   50,   130,  80, 3, 1, 1000, 550,  7, false, A::eBlob,      V::eNormal,   0x5A6B3A, 0x2F3A1F, 120 },
 		{ 17, "굴개미",      true,  15,   350, 15,    60,   55,   140,  80, 3, 1, 1000, 450,  7, false, A::eInsect,    V::eNormal,   0x8A2E1F, 0x3D140D, 100 },
-		{ 18, "떠도는 망령", true,  16,   330, 17,    66,   60,   150,  80, 3, 1, 1000, 500,  7, false, A::eGhost,     V::eNormal,   0xB08BE0, 0x5A3A8A, 105 },
+		{ 18, "떠도는 망령", true,  16,   330, 17,    66,   60,   150,  80, 3, 1, 1000, 500,  7, false, A::eGhost,     V::eNormal,   0xA8CCC8, 0x3A5A60, 105 },
 		// ── 4단계 ──
 		{ 19, "고대 석인",   true,  22,   800, 22,   115,  150,   300,  85, 4, 1, 1200, 650,  7, false, A::eGolem,     V::eNormal,   0x9A968C, 0x5C5850, 135 },
 		{ 20, "걷는 망자",   true,  20,   650, 20,   100,  130,   260,  85, 4, 1, 1100, 650,  7, false, A::eHumanoid,  V::eZombie,   0x8FA37A, 0x4A5A3A, 105 },
 		{ 21, "파약 기사",   true,  24,   760, 25,   130,  160,   320,  85, 4, 1, 1000, 500,  7, false, A::eSkeleton,  V::eArmored,  0x3A3F4A, 0x9FB0C8, 115 },
-		{ 22, "그늘거미",    true,  23,   700, 24,   125,  150,   300,  85, 4, 1, 1000, 450,  7, false, A::eInsect,    V::eSpider,   0x3A2A4A, 0x7A4AA0, 115 },
+		{ 22, "그늘거미",    true,  23,   700, 24,   125,  150,   300,  85, 4, 1, 1000, 450,  7, false, A::eInsect,    V::eSpider,   0x2E2A30, 0x5A7A4A, 115 },
 		{ 23, "붉은전갈",    true,  22,   720, 23,   120,  150,   300,  85, 4, 1, 1000, 500,  7, false, A::eInsect,    V::eScorpion, 0xC0392B, 0x6A1A12, 110 },
 		{ 24, "어린 비룡",   true,  25,  780, 26,   140,  170,   340,  85, 4, 1, 1000, 500,  7, false, A::eDragon,    V::eNormal,   0xD9642A, 0x7A2E12, 90 },
 		// ── 5단계 ──

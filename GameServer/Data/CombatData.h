@@ -447,5 +447,5 @@ namespace SkillTable
 			return true;
 		}
 	}
-	static_assert(Detail::Validate(), "SkillTable/ClassTable: 스킬 id·슬롯·직업이 서로 맞지 않습니다.");
+	static_assert(Detail::Validate(), "SkillTable/ClassTable: 기술 id·슬롯·직업이 서로 맞지 않습니다.");
 }

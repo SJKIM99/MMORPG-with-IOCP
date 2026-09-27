@@ -280,7 +280,7 @@ namespace actors
 		{
 		case 1:   // 각인술사: 짙은 로브 + 이름마다 다른 각인 빛
 		{
-			static const Color robes[] = { Rgb(0x2A3468), Rgb(0x3A2A5A), Rgb(0x1E3A4A), Rgb(0x2E2A3E), Rgb(0x3A3050) };
+			static const Color robes[] = { Rgb(0x2A3468), Rgb(0x2A4A52), Rgb(0x1E3A4A), Rgb(0x2E3238), Rgb(0x3A4A3A) };
 			static const Color runes[] = { Rgb(0x6AD8FF), Rgb(0xBFE6FF), Rgb(0x7AF0C8), Rgb(0xFFC870) };
 			look.cloth = robes[nameHash % 5];
 			look.trim = runes[(nameHash / 5) % 4];
@@ -289,7 +289,7 @@ namespace actors
 		}
 		case 2:   // 밤사냥꾼: 검은 가죽 + 스카프 색
 		{
-			static const Color scarves[] = { Rgb(0x9A2A3A), Rgb(0x5A3A9A), Rgb(0x2A6A5A), Rgb(0x7A6A2A), Rgb(0x3A4A8A) };
+			static const Color scarves[] = { Rgb(0x9A2A3A), Rgb(0x2A5A7A), Rgb(0x2A6A5A), Rgb(0x7A6A2A), Rgb(0x3A4A8A) };
 			look.cloth = scarves[nameHash % 5];
 			look.armor = Rgb(0x3A3236);
 			look.trim = Rgb(0xC8D2E0);
@@ -297,7 +297,7 @@ namespace actors
 		}
 		default:  // 서약기사: 강철 + 저녁노을 망토
 		{
-			static const Color cloths[] = { Rgb(0x8A3A2A), Rgb(0xA8582A), Rgb(0x6A2A3A), Rgb(0x3A4A8A), Rgb(0x7A5A2A), Rgb(0x4A2A5A) };
+			static const Color cloths[] = { Rgb(0x8A3A2A), Rgb(0xA8582A), Rgb(0x6A2A3A), Rgb(0x3A4A8A), Rgb(0x7A5A2A), Rgb(0x5A4A2A) };
 			static const Color armors[] = { Rgb(0xA0AABA), Rgb(0xB8A888), Rgb(0x8A96A8), Rgb(0xC0C4CC), Rgb(0x9A8A7A) };
 			look.cloth = cloths[nameHash % 6];
 			look.armor = armors[(nameHash / 6) % 5];
@@ -1389,7 +1389,7 @@ namespace actors
 				for (int i = 0; i < 3; ++i)
 					Seg(g, 16 + lunge * 6.f, y0 + 6, 21 + lunge * 6.f, y0 + 4.f + i * 2.5f, 1.f, WithA(Rgb(0xE8E0FF), alpha));
 			}
-			const Color eye = wraith ? Rgb(0xE040FF) : Rgb(0x1A4A2A);
+			const Color eye = wraith ? Rgb(0x9AF0E0) : Rgb(0x1A4A2A);   // 망령: 옛길 빛 도는 흰 눈(보라 · 네온 금지)
 			if (!p.faceBack)
 			{
 				Ell(g, 2, y0 - 5, 2.f, 3.f, eye);
