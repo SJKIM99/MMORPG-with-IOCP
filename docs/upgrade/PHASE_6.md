@@ -136,7 +136,7 @@
 도우미는 50,000 → 20,000(은 목걸이 30,000). 녹화 35분(샌드박스 실제 시간) 동안 클라 RSS 456 → 469MB에서 멈췄다가 경매 창 · 마지막 마을 전경에서 473MB(도우미 369 → 380MB) — 늘어나기만 하는 값은 없다.
 
 **영상 파일**: `Client2D/docs/fullplay.mp4`(854×480 · 15fps · 10.9MB — 저장소용) · 미리 보기 `Client2D/docs/fullplay_preview.webp`(장면 일곱에서 3초씩, 560px · 2.7MB).
-1280×720 · 20fps 판(43.6MB)은 저장소에 넣지 않고 따로 전달했다. 다시 뜨기: `tools/sandbox/phase6.sh <클라> <서버> <출력> fullplay` →
+1280×720 · 15fps · crf 30 판(24.8MB)은 저장소에 넣지 않고 따로 전달했다(대화 첨부 한도 30MB — 20fps · crf 26 판은 43.6MB였다). 다시 뜨기: `tools/sandbox/phase6.sh <클라> <서버> <출력> fullplay` →
 `python3 tools/record/fullplay_cut.py <출력>/lv50_fp.log <출력>/rec_fullplay/capture.mp4 fullplay.mp4 --width 854 --fps 15 --crf 31 --preview preview.webp`.
 
 ## 5. 완료 기준
