@@ -8,7 +8,8 @@ Windows IOCP 기반 대규모 분산 MMORPG 게임 서버 · C++20 · 3개월 1�
 - 세계관 · 이름 규칙 — [docs/WORLD.md](docs/WORLD.md) · 디자인 시스템 「새김」 — [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)
 - 고도화 기록 — 조작 · 이동 [PHASE_1](docs/upgrade/PHASE_1.md) · 기술 시스템 · 전투 연출 [PHASE_2](docs/upgrade/PHASE_2.md) · 직업 36기술 움직이는 그림 [docs/skills](docs/skills/README.md) ·
   창 시스템 · HUD · 상시 채팅창(서버 채널 채팅 `CS_CHAT_EX` — Zone 소유 스레드 도배 막기 · 이름 색인 귓속말) [PHASE_3](docs/upgrade/PHASE_3.md) ·
-  마을 3배 · 높낮이(층 0~4 — 서버 충돌 격자 그대로, 강제 이동 대각 규칙) · 레벨디자인 · 건물 19종 [PHASE_4](docs/upgrade/PHASE_4.md) · 설계도 [LEVEL_DENICA](docs/LEVEL_DENICA.md)
+  마을 3배 · 높낮이(층 0~4 — 서버 충돌 격자 그대로, 강제 이동 대각 규칙) · 레벨디자인 · 건물 19종 [PHASE_4](docs/upgrade/PHASE_4.md) · 설계도 [LEVEL_DENICA](docs/LEVEL_DENICA.md) ·
+  결사(길드) · 경매장 — 전용 단일 스레드 서비스(액터) + 정산함 · 거래 하나 = 샤드 하나 = 트랜잭션 하나 · 경합 · 멱등 · 장애(강제 종료 뒤 총량 보존) [PHASE_5](docs/upgrade/PHASE_5.md) · 결정 기록 [ADR 0001](docs/adr/0001-guild-auction-services.md)
 - 게임 그림 · 목소리 — 캐릭터 · 몬스터 · NPC · 배경 · 소품 · 아이콘 · 효과 · UI · 대사 음성을 Higgsfield로 생성 — [tools/assetgen](tools/assetgen/README.md) · 규칙 [디자인 시스템 9장](docs/DESIGN_SYSTEM.md#9-게임-그림--higgsfield)
 
 ---

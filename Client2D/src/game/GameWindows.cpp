@@ -87,9 +87,11 @@ void Game::DrawWindows()
 		e.push_back({ "skill", m_skillWinOpen, ghost(m_skillWinOpen, &Game::DrawSkillWindow) });
 		e.push_back({ "map", m_mapOpen, ghost(m_mapOpen, &Game::DrawWorldMap) });
 		e.push_back({ "help", m_helpOpen, ghost(m_helpOpen, &Game::DrawHelp) });
-		// Phase 5 결사
+		// Phase 5 결사 · 경매장
 		e.push_back({ "guild", m_guildOpen, ghost(m_guildOpen, &Game::DrawGuildWindow) });
 		e.push_back({ "guildnew", m_guild.createOpen, ghost(m_guild.createOpen, &Game::DrawGuildCreate) });
+		e.push_back({ "auction", m_auctionOpen, ghost(m_auctionOpen, &Game::DrawAuctionWindow) });
+		e.push_back({ "auctionbuy", m_auction.confirmId != 0, [this] { DrawAuctionBuyConfirm(); }, false });
 		e.push_back({ "guildinv", m_guild.inviteGuild != 0, [this] { DrawGuildInvite(); }, false });
 		// NPC 창들은 닫히면 상태(대화 상대)가 사라진다 — 닫기 애니메이션 없이
 		e.push_back({ "npc", m_dialogNpc != 0 && m_shopMode == ShopMode::None, [this] { DrawNpcDialog(); }, false });
@@ -114,6 +116,8 @@ void Game::CloseWindowById(const char* id)
 	else if (s == "help") closed(m_helpOpen);
 	else if (s == "guild") closed(m_guildOpen);
 	else if (s == "guildnew") closed(m_guild.createOpen);
+	else if (s == "auction") { closed(m_auctionOpen); m_auction.claimAll = false; }
+	else if (s == "auctionbuy") m_auction.confirmId = 0;
 	else if (s == "guildinv")
 	{
 		// Esc = 거절(초대한 사람에게 알린다)

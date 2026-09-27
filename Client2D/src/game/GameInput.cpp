@@ -267,7 +267,11 @@ void Game::HandleHotkeys()
 		if (m_guildOpen) { m_guildOpen = false; sfx::Play(sfx::Id::Close, 0.5f); }
 		else OpenGuildWindow();
 	}
-	if (kb::Pressed(kb::Act::Auction)) AddCenter("경매장은 아직 문을 열지 않았습니다.", ui::theme::kTextDim);
+	if (kb::Pressed(kb::Act::Auction))
+	{
+		if (m_auctionOpen) { m_auctionOpen = false; m_auction.claimAll = false; sfx::Play(sfx::Id::Close, 0.5f); }
+		else OpenAuction(m_auction.tab);
+	}
 	if (kb::Pressed(kb::Act::Interact)) Interact();
 	if (kb::Pressed(kb::Act::ZoomIn)) m_cam.AdjustZoom(0.15f);
 	if (kb::Pressed(kb::Act::ZoomOut)) m_cam.AdjustZoom(-0.15f);

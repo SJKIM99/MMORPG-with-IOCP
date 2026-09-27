@@ -525,7 +525,7 @@ void Game::BuildItemTip(std::vector<ui::TooltipLine>& out, const InvSlot& s, Tip
 
 	if (s.count > 1) out.push_back({ Fmt("수량 %d", s.count), ui::theme::kText, 13.f });
 	if (s.equipped && mode != TipMode::Equipped) out.push_back({ "착용 중", ui::theme::kDawn, 13.f });
-	if (row->sellPrice > 0 && mode != TipMode::Shop)
+	if (row->sellPrice > 0 && mode != TipMode::Shop && mode != TipMode::Auction)
 	{
 		const uint32_t unit = ItemRules::SellPrice(*row, s.extra, s.enchant);
 		out.push_back({ Fmt("상점 매입가 %s 그로시", texts::Number(unit).c_str()), mode == TipMode::Sell ? ui::theme::kTextHi : dim, 12.5f });
@@ -552,7 +552,7 @@ void Game::DrawItemTooltip(const InvSlot& s, TipMode mode, int invSlot)
 	ui::Tooltip(std::move(lines), s.itemId, accent);
 
 	// 비교 툴팁: 같은 부위에 입고 있는 장비
-	if (equip && mode == TipMode::Inventory && !s.equipped)
+	if (equip && (mode == TipMode::Inventory || mode == TipMode::Auction) && !s.equipped)
 	{
 		const int cur = m_inv.EquippedIn(ItemTableData::SlotOf(*row));
 		if (cur >= 0 && cur != invSlot)

@@ -395,6 +395,12 @@ namespace net
 		Queue(p, PacketType::GUILD_REQ);
 	}
 
+	void NetClient::SendAuction(const AUCTION_REQ_PACKET& body)
+	{
+		AUCTION_REQ_PACKET p = body;
+		Queue(p, PacketType::AUCTION_REQ);
+	}
+
 	void NetClient::SendChat(const std::string& utf8)
 	{
 		CS_CHAT_PACKET p{};

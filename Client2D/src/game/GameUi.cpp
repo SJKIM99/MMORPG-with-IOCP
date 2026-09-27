@@ -1039,8 +1039,14 @@ void Game::DrawNpcDialog()
 		break;
 	}
 	default:
-		// Phase 5: 회관지기 즈데노
-		if (npc->id == GuildRule::kHallNpcId)
+		// Phase 5: 경매인 로렌초 · 회관지기 즈데노
+		if (npc->id == AuctionRule::kAuctioneerNpcId)
+		{
+			if (button(96, "경매장", ButtonKind::Primary)) { CloseNpcWindows(); OpenAuction(0); }
+			const std::string settle = m_auction.settleCount > 0 ? Fmt("정산함 (%d)", m_auction.settleCount) : std::string("정산함");
+			if (button(110, settle.c_str())) { CloseNpcWindows(); OpenAuction(3); }
+		}
+		else if (npc->id == GuildRule::kHallNpcId)
 		{
 			if (m_guild.id == 0)
 			{

@@ -169,12 +169,14 @@ void Game::ResetWorld()
 	m_dashWaitSeq = 0;
 	m_actionLockUntil = 0.0;
 	m_charOpen = false;
-	// Phase 5 결사(로그인하면 GUILD_INF로 다시 온다). 순번은 새 세션마다 1부터(서버의 User도 새로)
+	// Phase 5 결사 · 경매장(로그인하면 GUILD_INF · AUCTION_NFY로 다시 온다). 순번은 새 세션마다 1부터(서버의 User도 새로)
 	m_guild = GuildView{};
 	m_guildOpen = false;
 	m_guildNames.clear();
 	m_guildNameAsked.clear();
 	m_guildTags.clear();
+	m_auction = AuctionView{};
+	m_auctionOpen = false;
 	// 퀘스트(로그인하면 QUEST_LIST_INF로 다시 온다)
 	m_quests.clear();
 	m_questDone = {};
@@ -1867,6 +1869,6 @@ void Game::RunScript(float dt)
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_endingAt = m_now; m_endingStage = 0; m_scriptStep = 1; }
 	}
-	else if (!RunScriptUi(dt) && !RunScriptPhase5(dt))   // Phase 3 시험(창 · 채팅 · HUD) · Phase 5(결사 — game/GameScriptP5.cpp)
+	else if (!RunScriptUi(dt) && !RunScriptPhase5(dt))   // Phase 3 시험(창 · 채팅 · HUD) · Phase 5(결사 · 경매장 — game/GameScriptP5.cpp)
 		RunScriptWorld(dt);      // Phase 4 시험(투어 · 지형) — game/GameScriptWorld.cpp
 }

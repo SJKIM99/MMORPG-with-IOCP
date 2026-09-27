@@ -1,8 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 5 시험 시나리오(--script) — 결사. 판정 줄은 [g3] (tools/sandbox/phase5_check.py가 읽는다)
+// Phase 5 시험 시나리오(--script) — 결사 · 경매장. 판정 줄은 [g3] · [auc] (tools/sandbox/phase5_check.py가 읽는다)
 //
 //  guild3:a|b|c  세 클라: a가 회관지기 즈데노에게서 결사를 세우고 b · c를 초대한다. c는 한 번 거절했다가 다시 받는다.
 //                a가 결사 채팅을 하고 b를 정예로 올린다. 이름은 --name(lv20_ga · lv20_gb · lv20_gc — 끝 글자만 다르다).
+//  auction:sell  (lv20_ak… 시험 꾸러미) 로렌초에게 가서 철검 +2 · 은 목걸이 · 약초 물약 10개를 올리고, 팔리면 정산함을 모두 받는다.
+//  auction:buy   로렌초에게 가서 무기 분류를 찾아 철검을 사고, 정산함에서 받는다.
+//  auction:race  두 클라가 같은 목록을 같은 순간(HARVEN_RACE_AT 유닉스 ms)에 산다 — 한 명만 산다.
+//  auction:dup   같은 순번의 구매 요청을 두 번 보낸다 — 두 번째는 Duplicate.
+//  auction:sellone · auction:buyone  장애 시험용(하나만 올린다 · 하나만 산다 — 서버를 죽이는 쪽은 스크립트 밖)
 // ─────────────────────────────────────────────────────────────────────────────
 #include "game/Game.h"
 #include "ui/Wm.h"
@@ -27,7 +32,8 @@ bool Game::RunScriptPhase5(float dt)
 	(void)dt;
 	const std::string& s = m_opts.script;
 	const bool guild = s.rfind("guild3:", 0) == 0;
-	if (!guild)
+	const bool auction = s.rfind("auction:", 0) == 0;
+	if (!guild && !auction)
 		return false;
 	auto elapsed = [this] { return m_scriptT - m_scriptMark; };
 	auto next = [this](int step) { m_scriptStep = step; m_scriptMark = m_scriptT; std::printf("[p5] step %d t=%.1f\n", step, m_scriptT); };
@@ -35,6 +41,7 @@ bool Game::RunScriptPhase5(float dt)
 	if (!m_hasSelf || m_scene != Scene::Game)
 		return true;
 
+	if (guild)
 	{
 		const char role = s.back();
 		std::string base = m_playerName;
@@ -214,5 +221,221 @@ bool Game::RunScriptPhase5(float dt)
 		return true;
 	}
 
+	// ── 경매장 ──
+	const std::string mode = s.substr(8);
+	auto reqRegister = [&](int slot, int count, uint32_t price, int duration)
+	{
+		const InvSlot& sl = m_inv.slots[static_cast<size_t>(slot)];
+		m_auction.regSlot = slot;
+		m_auction.regCount = count;
+		m_auction.regPrice.text = std::to_string(price);
+		m_auction.regDuration = duration;
+		AUCTION_REQ_PACKET q{};
+		q.op = static_cast<uint8_t>(AuctionOp::Register);
+		q.slot = static_cast<uint16_t>(slot);
+		q.count = static_cast<uint16_t>(count);
+		q.price = price;
+		q.duration = static_cast<uint8_t>(duration);
+		q.itemId = sl.itemId;
+		SendAuctionReq(q);
+	};
+	auto findRow = [&](uint16_t itemId) -> const AuctionRow*
+	{
+		for (const auto& r : m_auction.rows) if (r.itemId == itemId && (r.flags & 3) == 0) return &r;
+		return nullptr;
+	};
+	const bool acked = m_auction.pendingSeq == 0;
+
+	if (mode == "sell" || mode == "sellone")
+	{
+		switch (m_scriptStep)
+		{
+		case 0:
+			if (m_scriptT > 2.f) { SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, AuctionRule::kAuctioneerNpcId }); next(1); }
+			break;
+		case 1:
+			if ((m_dialogNpc == AuctionRule::kAuctioneerNpcId && elapsed() > 1.2f) || elapsed() > 40.f)
+			{
+				CloseNpcWindows();
+				OpenAuction(1);
+				std::printf("[auc] seller adena0=%u\n", m_inv.adena);
+				next(2);
+			}
+			break;
+		case 2:
+			if (elapsed() > 1.5f)
+			{
+				// 철검 +2(희귀) — 시세를 먼저 묻는 모습(힌트 줄)
+				m_auction.regSlot = 0;
+				m_auction.regCount = 1;
+				m_auction.hintItem = m_inv.slots[0].itemId;
+				AUCTION_REQ_PACKET q{};
+				q.op = static_cast<uint8_t>(AuctionOp::PriceHint);
+				q.itemId = m_inv.slots[0].itemId;
+				SendAuctionReq(q);
+				m_auction.regPrice.text = "12000";
+				next(3);
+			}
+			break;
+		case 3:
+			if (elapsed() > 2.f) { reqRegister(0, 1, 12000, 1); next(4); }
+			break;
+		case 4:
+			if (acked && elapsed() > 1.f)
+			{
+				if (mode == "sellone") { std::printf("[auc] sellone registered result=%d adena=%u\n", m_auction.lastResult, m_inv.adena); next(20); break; }
+				reqRegister(2, 1, 30000, 2);
+				next(5);
+			}
+			break;
+		case 5:
+			if (acked && elapsed() > 1.f) { reqRegister(4, 10, 600, 0); next(6); }
+			break;
+		case 6:
+			if (acked && elapsed() > 1.f) { OpenAuction(2); std::printf("[auc] seller listed adena=%u\n", m_inv.adena); next(7); }
+			break;
+		case 7:
+			// 팔릴 때까지(구매자 스크립트) — 알림이 오면 정산함으로. 빠른 시간(시험 배율)이면 물약(12시간)이 만료돼 돌아올 때까지
+			if (m_auction.settleCount >= (std::getenv("HARVEN_AUCTION_HOUR_SEC") ? 2 : 1) && elapsed() > 2.f)
+			{
+				std::printf("[auc] seller sold settle=%u\n", m_auction.settleCount);
+				OpenAuction(3);
+				next(8);
+			}
+			else if (elapsed() > 120.f) { std::printf("[auc] FAIL seller no sale\n"); next(99); }
+			break;
+		case 8:
+			if (elapsed() > 2.f && !m_auction.settles.empty())
+			{
+				m_auction.claimAll = true;
+				AUCTION_REQ_PACKET q{};
+				q.op = static_cast<uint8_t>(AuctionOp::Claim);
+				q.id = m_auction.settles.front().id;
+				SendAuctionReq(q);
+				next(9);
+			}
+			break;
+		case 9:
+			if (m_auction.settleCount == 0 && !m_auction.claimAll && elapsed() > 1.f)
+			{
+				std::printf("[auc] seller done adena=%u\n", m_inv.adena);
+				next(10);
+			}
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
+
+	if (mode == "buy" || mode == "buyone" || mode == "dup" || mode == "race")
+	{
+		switch (m_scriptStep)
+		{
+		case 0:
+			if (m_scriptT > 2.f) { SetGoal(Goal{ GoalKind::Talk, ObjID{}, 0, 0, AuctionRule::kAuctioneerNpcId }); next(1); }
+			break;
+		case 1:
+			if ((m_dialogNpc == AuctionRule::kAuctioneerNpcId && elapsed() > 1.2f) || elapsed() > 40.f)
+			{
+				CloseNpcWindows();
+				m_auction.cat = static_cast<uint8_t>(AuctionRule::Cat::Weapon);
+				m_auction.sub = 0;
+				OpenAuction(0);
+				std::printf("[auc] buyer adena0=%u\n", m_inv.adena);
+				m_p5.seqA = m_inv.adena;
+				next(2);
+			}
+			break;
+		case 2:
+		{
+			// 찾을 때까지 2초마다 다시 찾는다(판매자가 올리는 중일 수 있다)
+			const uint16_t want = 3;   // 철검(시험 꾸러미 0번 칸)
+			if (const AuctionRow* r = findRow(want); r && elapsed() > 1.f)
+			{
+				m_p5.target = r->id;
+				m_auction.confirmId = r->id;       // 확인 창을 띄워 보여 준다
+				m_auction.confirmRow = *r;
+				std::printf("[auc] found listing=%u price=%u\n", r->id, r->price);
+				next(3);
+			}
+			else if (elapsed() > 2.f && m_scriptT - m_p5.at > 2.f) { m_p5.at = m_scriptT; AuctionSearch(0); }
+			if (elapsed() > 120.f) { std::printf("[auc] FAIL buyer nothing found\n"); next(99); }
+			break;
+		}
+		case 3:
+		{
+			const uint32_t price = m_auction.confirmRow.price;
+			if (mode == "race")
+			{
+				// 같은 순간: HARVEN_RACE_AT(유닉스 ms)
+				const char* at = std::getenv("HARVEN_RACE_AT");
+				const long long t = at ? std::atoll(at) : 0;
+				if (t == 0 || UnixMs() >= t)
+				{
+					AUCTION_REQ_PACKET q{};
+					q.op = static_cast<uint8_t>(AuctionOp::Buy);
+					q.id = m_p5.target;
+					q.price = price;
+					SendAuctionReq(q);
+					m_auction.confirmId = 0;
+					std::printf("[auc] race sent at=%lld listing=%u\n", UnixMs(), m_p5.target);
+					next(4);
+				}
+			}
+			else if (elapsed() > 2.f)
+			{
+				AUCTION_REQ_PACKET q{};
+				q.op = static_cast<uint8_t>(AuctionOp::Buy);
+				q.id = m_p5.target;
+				q.price = price;
+				q.seq = ++m_auction.seq;
+				m_net.SendAuction(q);
+				m_auction.pendingSeq = q.seq;
+				m_auction.pendingAt = m_now;
+				std::printf("[auction] req op=2 seq=%u id=%u price=%u\n", q.seq, q.id, q.price);
+				if (mode == "dup") { m_net.SendAuction(q); std::printf("[auc] dup-sent seq=%u\n", q.seq); }
+				m_auction.confirmId = 0;
+				next(4);
+			}
+			break;
+		}
+		case 4:
+			if (acked && elapsed() > 1.5f)
+			{
+				std::printf("[auc] buy result=%d adena=%u (before %u)\n", m_auction.lastResult, m_inv.adena, m_p5.seqA);
+				if (mode == "buyone") { next(20); break; }
+				if (m_auction.lastResult == static_cast<int>(AuctionResult::Ok)) { OpenAuction(3); next(5); }
+				else { std::printf("[auc] %s done lost adena=%u before=%u unchanged=%d\n", mode.c_str(), m_inv.adena, m_p5.seqA, m_inv.adena == m_p5.seqA ? 1 : 0); next(20); }
+			}
+			else if (elapsed() > 30.f) { std::printf("[auc] FAIL buy no ack\n"); next(99); }
+			break;
+		case 5:
+			if (elapsed() > 2.f && !m_auction.settles.empty())
+			{
+				AUCTION_REQ_PACKET q{};
+				q.op = static_cast<uint8_t>(AuctionOp::Claim);
+				q.id = m_auction.settles.front().id;
+				SendAuctionReq(q);
+				next(6);
+			}
+			else if (elapsed() > 15.f) { std::printf("[auc] FAIL no settlement\n"); next(99); }
+			break;
+		case 6:
+			if (acked && elapsed() > 1.5f)
+			{
+				const uint16_t want = 3;
+				int have = 0;
+				for (const auto& sl : m_inv.slots) if (sl.itemId == want) have += sl.count;
+				std::printf("[auc] %s done won item=%u have=%d adena=%u settle=%u\n", mode.c_str(), want, have, m_inv.adena, m_auction.settleCount);
+				m_invOpen = true;
+				next(7);
+			}
+			break;
+		default:
+			break;
+		}
+		return true;
+	}
 	return true;
 }

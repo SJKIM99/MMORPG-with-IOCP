@@ -120,7 +120,7 @@ private:
 	};
 	struct Discard { bool open = false; int slot = -1; int count = 1; };
 	// 아이템 툴팁 모드(무엇을 덧붙일지: 비교 · 착용 안내 · 판매가)
-	enum class TipMode { Inventory, Equipped, Shop, Sell };
+	enum class TipMode { Inventory, Equipped, Shop, Sell, Auction };   // Auction: 비교는 보이고 쓰는 법 · 상점 매입가는 뺀다(Phase 5)
 
 
 	// ── 프레임 ──
@@ -356,7 +356,7 @@ private:
 	[[nodiscard]] std::vector<std::string> WhisperCandidates(const std::string& partial) const;   // Tab 이름 완성 후보
 	bool CompleteWhisperName();                         // Tab 한 번(채우기 · 다음 후보)
 	[[nodiscard]] std::string ChatDisplayText(const std::string& text) const;   // 아이템 고리 → [이름] (말풍선)
-	// ── Phase 5 결사(game/GameGuild.cpp) — 판정 · 상태는 서버(GuildService) ──
+	// ── Phase 5 결사 · 경매장(game/GameGuild.cpp · GameAuction.cpp) — 판정 · 상태는 서버(GuildService · AuctionService) ──
 	void HandleGuildAck(const GUILD_ACK_PACKET& p);
 	void HandleGuildInf(const char* data, uint16_t size);
 	void HandleGuildNfy(const GUILD_NFY_PACKET& p);
@@ -369,7 +369,15 @@ private:
 	void DrawGuildTag(const Entity& e, Vector2 head, float& y, float nameW);   // 이름표: 이름 왼쪽 문장 + 위 줄 결사 이름
 	void DrawGuildCelebration();                        // 세우기 · 들어옴: 화면 위에서 깃발이 펼쳐지고 문장 · 이름
 	[[nodiscard]] std::string GuildNameOf(uint32_t guildId) const;
-	[[nodiscard]] bool RunScriptPhase5(float dt);      // 시험 시나리오(guild3:<a|b|c>)
+	void HandleAuctionAck(const AUCTION_ACK_PACKET& p);
+	void HandleAuctionList(const AUCTION_LIST_INF_PACKET& p);
+	void HandleAuctionNfy(const AUCTION_NFY_PACKET& p);
+	void SendAuctionReq(AUCTION_REQ_PACKET p);          // op · 필드를 채워 넘기면 seq를 붙여 보낸다
+	void OpenAuction(int tab = 0);
+	void DrawAuctionWindow();
+	void DrawAuctionBuyConfirm();
+	void AuctionSearch(uint16_t page = 0);
+	[[nodiscard]] bool RunScriptPhase5(float dt);      // 시험 시나리오(guild3:<a|b|c> · auction:<sell|buy|race|dup> · claim)
 
 	// ── 입력 ──
 	void HandleWorldInput();
@@ -836,6 +844,47 @@ private:
 	std::unordered_map<uint32_t, std::pair<std::string, uint8_t>> m_guildNames;   // 머리 위 표시: 결사 번호 → 이름 · 문장
 	std::unordered_map<ObjID, std::pair<uint32_t, uint8_t>> m_guildTags;          // 사람 → 결사 번호 · 문장(시야 입장 뒤 GUILD_NFY Tag)
 	std::unordered_map<uint32_t, double> m_guildNameAsked;                        // 이름을 물어본 결사(한 번만 — 10초 뒤 다시)
+	// ── Phase 5 경매장(game/GameAuction.cpp) ──
+	struct AuctionView
+	{
+		int         tab = 0;                    // 0 검색 · 1 판매 등록 · 2 내 경매 · 3 정산함
+		uint8_t     cat = 0, sub = 0, minRarity = 0, minEnchant = 0, sort = 0;
+		uint8_t     levelBand = 0;              // 착용 레벨 거르기(0 전체 · 1~10 · 11~20 · 21~30 · 31~40 · 41+)
+		uint8_t     optionIdx = 0, option = 0;  // 옵션 포함 거르기(목록 칸 · ItemOption 값)
+		ui::TextField query;
+		uint16_t    page = 0, pages = 1;
+		uint32_t    total = 0;
+		std::vector<AuctionRow> rows;
+		bool        searched = false;
+		double      rowsAt = -10.0;             // 결과가 바뀐 순간(줄이 차례로 떠오른다)
+		// 판매 등록
+		int         regSlot = -1;
+		int         regCount = 1;
+		ui::TextField regPrice;
+		int         regDuration = 1;            // 0 12시간 · 1 24시간 · 2 48시간
+		uint16_t    hintItem = 0;
+		uint32_t    hintLowest = 0, hintLast = 0, hintAvg = 0;
+		uint16_t    hintCount = 0;
+		bool        hintKnown = false;
+		// 내 경매 · 정산함
+		std::vector<AuctionRow> mine, settles;
+		uint16_t    minePage = 0, minePages = 1, settlePage = 0, settlePages = 1;
+		uint32_t    mineTotal = 0, settleTotal = 0;
+		uint16_t    settleCount = 0;            // 받지 않은 정산함 줄(메뉴 막대 점)
+		bool        claimAll = false;           // "모두 받기" — 한 줄씩 이어서
+		// 구매 확인
+		uint32_t    confirmId = 0;
+		AuctionRow  confirmRow{};
+		uint32_t    seq = 0;
+		uint32_t    pendingSeq = 0;
+		double      pendingAt = -10.0;
+		double      soldFlashAt = -10.0;        // 내 물건이 팔린 순간(정산함 탭 반짝)
+		uint32_t    lastBoughtId = 0;           // 방금 산 줄(도장 연출)
+		double      lastBoughtAt = -10.0;
+		int         lastResult = -1;            // 마지막 결과(시험 로그)
+	};
+	AuctionView      m_auction;
+	bool             m_auctionOpen = false;
 	struct P5Script { int step = 0; double at = 0.0; uint32_t target = 0; uint32_t seqA = 0; int results = 0; };   // 시험 시나리오 상태(결사 · 경매)
 	P5Script         m_p5;
 

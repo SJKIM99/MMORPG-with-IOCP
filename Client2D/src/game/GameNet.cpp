@@ -291,6 +291,15 @@ void Game::OnPacket(const char* data, uint16_t size)
 			if (Entity* me = Self())
 				fx::Fx().CoinBurst(TileToIso(me->pos), std::clamp(p.delta / 60, 4, 16));
 		}
+		else if (reason == AdenaReason::AuctionClaim && p.delta > 0)
+		{
+			// Phase 5 정산함 대금: 머리 위로 동전이 튀고 금빛 숫자(소리는 AUCTION_ACK 쪽 CoinPour)
+			if (Entity* me = Self())
+			{
+				fx::Fx().FloatText(TileToIso(me->pos), actors::PlayerHeight() + 10.f, "+" + texts::Number(p.delta) + " 그로시", ui::theme::kGold, 20.f);
+				fx::Fx().CoinBurst(TileToIso(me->pos), std::clamp(p.delta / 400, 5, 18));
+			}
+		}
 		else if (reason == AdenaReason::Refund && p.delta > 0)
 			AddChat("거래가 이루어지지 않아 " + texts::Number(p.delta) + " 그로시를 돌려받았습니다.", Rgb(0xC8B070));
 		break;
@@ -527,7 +536,7 @@ void Game::OnPacket(const char* data, uint16_t size)
 		HandleChat(p.senderId, FixedStr(p.senderName, NAME_SIZE), FixedStr(p.mess, CHAT_SIZE), p.channel);
 		break;
 	}
-	// ── Phase 5 결사 ──
+	// ── Phase 5 결사 · 경매장 ──
 	case PacketType::GUILD_ACK:
 	{
 		GUILD_ACK_PACKET p{};
@@ -541,6 +550,24 @@ void Game::OnPacket(const char* data, uint16_t size)
 	{
 		GUILD_NFY_PACKET p{};
 		if (As(data, size, p)) HandleGuildNfy(p);
+		break;
+	}
+	case PacketType::AUCTION_ACK:
+	{
+		AUCTION_ACK_PACKET p{};
+		if (As(data, size, p)) HandleAuctionAck(p);
+		break;
+	}
+	case PacketType::AUCTION_LIST_INF:
+	{
+		AUCTION_LIST_INF_PACKET p{};
+		if (As(data, size, p)) HandleAuctionList(p);
+		break;
+	}
+	case PacketType::AUCTION_NFY:
+	{
+		AUCTION_NFY_PACKET p{};
+		if (As(data, size, p)) HandleAuctionNfy(p);
 		break;
 	}
 	default:
