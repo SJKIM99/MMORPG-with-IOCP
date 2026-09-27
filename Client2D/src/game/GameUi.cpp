@@ -469,8 +469,11 @@ void Game::DrawHud()
 	if (const Entity* ct = Find(m_target); ct && ct->kind != EntityKind::Item && !ct->removing)
 	{
 		const Rectangle tr = wm::HudRect("hud.target", Rectangle{ std::round(W * 0.5f - 180.f), 12.f, 360.f, 78.f });
-		const float k = tr.height / 78.f;
-		y = std::max(y, tr.y + (ct->IsBoss() ? 78.f : 56.f) * k + 24.f);
+		if (tr.y < H * 0.4f)   // 화면 배치로 대상 판을 아래쪽에 옮겼으면 따라가지 않는다(전투 판과 겹친다)
+		{
+			const float k = tr.height / 78.f;
+			y = std::max(y, tr.y + (ct->IsBoss() ? 78.f : 56.f) * k + 24.f);
+		}
 	}
 	for (const auto& c : m_center)
 	{
