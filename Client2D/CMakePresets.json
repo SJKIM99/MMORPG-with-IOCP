@@ -11,6 +11,7 @@
         "CMAKE_CXX_COMPILER": "cl.exe"
       },
       "architecture": { "value": "x64", "strategy": "external" },
+      "environment": { "VSLANG": "1033" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
     },
     {
