@@ -1007,10 +1007,27 @@ void Game::DrawYardMeter()
 	for (size_t i = 0; i < m.bySkill.size(); ++i)
 		if (m.bySkill[i] > 0) rows[static_cast<size_t>(n++)] = { m.bySkill[i], static_cast<uint16_t>(i) };
 	std::sort(rows.begin(), rows.begin() + n, [](const auto& a, const auto& b) { return a.first > b.first; });
-	const int shown = std::min(n, 6);
+	int shown = std::min(n, 6);
 	const float w = 236.f, rowH = 22.f;
-	const float h = 104.f + shown * rowH + 10.f;
-	const Rectangle r{ 12.f, std::round(std::clamp(m_uiH * 0.24f, 176.f, 240.f)), w, h };
+	float h = 104.f + shown * rowH + 10.f;
+	Rectangle r{ 12.f, std::round(std::clamp(m_uiH * 0.24f, 176.f, 240.f)), w, h };
+	// 채팅창과 겹치면(1280×720 — 채팅이 전투 판 위 왼쪽으로 올라온다) 채팅창 위로 올리고, 자리가 모자라면 기술별 몫 줄을 줄인다.
+	// 화면 배치로 옮긴 판은 그대로(Phase 6 — 예전에는 채팅 탭 줄이 판 가운데를 가로질렀다)
+	{
+		const Rectangle nat{ r.x, r.y, w, 250.f };
+		const Rectangle moved = wm::HudRect("hud.yard", nat);
+		const bool userMoved = std::fabs(moved.x - nat.x) > 0.5f || std::fabs(moved.y - nat.y) > 0.5f;
+		const Rectangle chat = wm::LastRect("chat");
+		if (!userMoved && chat.width > 0.f && CheckCollisionRecs(r, chat))
+		{
+			const float topMin = 100.f;   // 왼쪽 위 "나" 판 아래
+			const int fit = static_cast<int>(std::floor((chat.y - 8.f - topMin - 114.f) / rowH));
+			shown = std::clamp(fit, std::min(n, 1), shown);
+			h = 104.f + shown * rowH + 10.f;
+			r.height = h;
+			r.y = std::round(std::max(topMin, chat.y - 8.f - h));
+		}
+	}
 	wm::HudScope hs("hud.yard", "훈련 계측", Rectangle{ r.x, r.y, w, 250.f });
 	ui::Plate(r, util::WithA(ui::theme::kInk, 0.82f * fade), util::WithA(ui::theme::kLine, fade), 4.f, 1.f);
 	ui::TextStyle ts; ts.size = ui::type::kHeading; ts.face = ui::Face::Strong; ts.color = util::WithA(ui::theme::kTitle, fade);

@@ -17,7 +17,7 @@ CASES = [
     ('teleport', 26, 1), ('boss', 46, 0), ('skill', 40, 1), ('combat', 40, 2), ('loot', 46, 0), ('gear', 10, 0),
     ('gearsort', 10, 0), ('lootshow', 9, 0), ('smith', 14, 0), ('charwin', 6, 0), ('stand', 6, 1), ('plaza', 9, 2),
     ('talk', 16, 0), ('priest', 16, 1), ('pet', 16, 2), ('soup', 16, 0), ('npc', 14, 0), ('teleportwin', 16, 0),
-    ('quest', 60, 1), ('questlog', 24, 0), ('questdone', 10, 0), ('discover', 10, 0), ('ending', 12, 0), ('chapter1', 7, 0),
+    ('quest', 60, 1), ('questlog', 24, 0), ('questdone', 10, 0), ('discover', 10, 0), ('ending', 12, 0), ('chapter1', 1.3, 0),   # 장 카드는 실제 시계로 5.2초 — 느린 샌드박스(프레임 dt 상한 0.05)에서는 달린 시간 약 1.1~1.5에만 보인다
     ('wasd', 10, 0), ('watch', 6, 0), ('runline', 9, 0), ('runcircle', 14, 0), ('behind', 16, 0), ('chat', 6, 0),
     ('aimcombat', 40, 2), ('bigmap', 5, 0), ('keysui', 4, 0), ('keysconflict', 5, 0), ('menu', 4, 0), ('skillwin', 4, 0),
     ('castpreview', 4, 1), ('skills', 45, 0),
@@ -35,6 +35,8 @@ CASES = [
     ('terraincheck', 90, 0),
     # Phase 4 자기 검토: 남문 도착 연출([arrive] done) · 비둘기 떼 날려 보내고 다시 내려앉기([birds] done PASS)
     ('arrive', 45, 0), ('birds', 60, 0),
+    # Phase 6 자기 검토: 눈밭 보스전 — 대상 보스 머리 위 글자 한 층 · 밝은 바닥 섞기(흰 장면)
+    ('boss3', 30, 0, 'lv50_rg_boss3'),
 ]
 
 
