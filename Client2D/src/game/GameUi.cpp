@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "Data/GuildAuction.h"
 #include "ui/Wm.h"
 #include "game/Texts.h"
 #include "game/KeyBinds.h"
@@ -1038,6 +1039,19 @@ void Game::DrawNpcDialog()
 		break;
 	}
 	default:
+		// Phase 5: 회관지기 즈데노
+		if (npc->id == GuildRule::kHallNpcId)
+		{
+			if (m_guild.id == 0)
+			{
+				if (button(120, "결사 세우기", ButtonKind::Primary)) OpenGuildCreate(false);
+			}
+			else if (m_guild.myRank == static_cast<uint8_t>(GuildRule::Rank::Leader))
+			{
+				if (button(120, "문장 바꾸기", ButtonKind::Primary)) OpenGuildCreate(true);
+			}
+			if (m_guild.id != 0 && button(96, "결사 창")) OpenGuildWindow();
+		}
 		break;
 	}
 	if (button(80, "닫기"))

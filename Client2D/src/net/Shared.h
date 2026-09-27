@@ -28,6 +28,7 @@ using USHORT = unsigned short;
 #include "Data/ItemRules.h"           // 희귀도·옵션·세트(아이템 성장)
 #include "Data/SkillData.h"           // Phase 2-B 기술 구조 V3(칸 · 유형 · 타격 시각표)
 #include "Data/SkillGrowth.h"         // Phase 2-D 기술 성장(레벨 · 점수 · 갈래)
+#include "Data/GuildAuction.h"        // Phase 5 결사 · 경매장 규칙(직위 · 권한 · 문장 · 수수료 · 분류)
 #include "Zone/ZoneLayout.h"          // Zone(=지역) 좌표 계산
 
 namespace net

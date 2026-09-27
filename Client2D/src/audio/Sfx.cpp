@@ -1087,6 +1087,44 @@ namespace sfx
 				Tone(b, 0.11f, 0.08f, Osc::Sine, ExpSweep(1150, 700), 0.3f, 0.002f, 30.f);
 				Load(Id::FishSplash, b, 0.32f);
 			}
+			{
+				// 경매 망치: 단단한 나무를 두 번 — 짧은 딱(높은 띠 잡음) + 속 빈 울림(낮은 사인 두 개), 두 번째가 조금 세다
+				Buf b(0.42f);
+				for (int k = 0; k < 2; ++k)
+				{
+					const float t = k * 0.16f, amp = k == 0 ? 0.75f : 1.f;
+					Noise(b, t, 0.03f, Const(2600), amp, 0.f, 120.f, 900.f);
+					Tone(b, t, 0.12f, Osc::Sine, ExpSweep(420, 300), 0.8f * amp, 0.001f, 30.f);
+					Tone(b, t, 0.1f, Osc::Tri, Const(760), 0.25f * amp, 0.001f, 40.f);
+				}
+				Load(Id::Gavel, b, 0.5f);
+			}
+			{
+				// 결사 인장: 무거운 쿵(낮게 떨어지는 사인) + 밀랍 · 종이 스침 + 끝에 맑은 작은 종 두 음
+				Buf b(1.1f);
+				Tone(b, 0, 0.3f, Osc::Sine, ExpSweep(160, 55), 1.f, 0.002f, 11.f);
+				Noise(b, 0, 0.012f, Const(5000), 0.8f, 0.f, 200.f, 600.f);
+				Noise(b, 0.02f, 0.18f, Sweep(2200, 700), 0.3f, 0.01f, 16.f, 400.f);
+				Tone(b, 0.28f, 0.7f, Osc::Sine, Const(988), 0.32f, 0.004f, 4.5f);
+				Tone(b, 0.28f, 0.7f, Osc::Sine, Const(1976), 0.08f, 0.004f, 6.f);
+				Tone(b, 0.42f, 0.6f, Osc::Sine, Const(1319), 0.28f, 0.004f, 4.5f);
+				Load(Id::Seal, b, 0.45f);
+			}
+			{
+				// 동전이 쏟아진다: 높은 쨍 여러 개가 어긋나게(음높이 · 간격 흩뜨림) + 바닥 쏴
+				Buf b(0.8f);
+				float t = 0.f;
+				for (int i = 0; i < 11; ++i)
+				{
+					const float f = 2400.f + 380.f * static_cast<float>((i * 7) % 5);
+					const float amp = 0.5f - 0.03f * static_cast<float>(i);
+					Tone(b, t, 0.09f, Osc::Sine, Const(f), amp, 0.001f, 38.f);
+					Tone(b, t, 0.07f, Osc::Sine, Const(f * 1.51f), amp * 0.35f, 0.001f, 45.f);
+					t += 0.035f + 0.012f * static_cast<float>((i * 3) % 4);
+				}
+				Noise(b, 0, 0.5f, Sweep(6000, 3000), 0.12f, 0.02f, 7.f, 2000.f);
+				Load(Id::CoinPour, b, 0.4f);
+			}
 		}
 	}
 

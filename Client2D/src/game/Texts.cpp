@@ -159,7 +159,7 @@ namespace texts
 		case SystemMessageCode::ChatNoTarget:
 			return "상대가 지금 접속해 있지 않습니다.";
 		case SystemMessageCode::ChatNoGuild:
-			return "결사에 들어 있지 않습니다. (결사는 아직 문을 열지 않았습니다)";
+			return "결사에 들어 있지 않습니다. (결사 회관의 회관지기 즈데노에게서 세울 수 있습니다)";
 		}
 		return "알 수 없는 알림";
 	}

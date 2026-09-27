@@ -57,6 +57,10 @@ namespace sfx
 		// Phase 4 자기 검토: 마을의 작은 생명(render/Critters)
 		Flutter,      // 비둘기 떼가 한꺼번에 날아오르는 푸드덕(날개 치는 소리 열두어 번)
 		FishSplash,   // 물고기가 튀어 올랐다 떨어지는 퐁당(작게)
+		// Phase 5: 결사 · 경매장
+		Gavel,        // 경매 망치: 나무 두 번 탁탁(낙찰)
+		Seal,         // 결사 인장: 묵직한 쿵 + 종이 스침 + 작은 종(세움 · 들어옴)
+		CoinPour,     // 동전이 쏟아지는 짤랑짤랑(정산 받기 · 팔림)
 		Count
 	};
 

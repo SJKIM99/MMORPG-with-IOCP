@@ -356,6 +356,20 @@ private:
 	[[nodiscard]] std::vector<std::string> WhisperCandidates(const std::string& partial) const;   // Tab 이름 완성 후보
 	bool CompleteWhisperName();                         // Tab 한 번(채우기 · 다음 후보)
 	[[nodiscard]] std::string ChatDisplayText(const std::string& text) const;   // 아이템 고리 → [이름] (말풍선)
+	// ── Phase 5 결사(game/GameGuild.cpp) — 판정 · 상태는 서버(GuildService) ──
+	void HandleGuildAck(const GUILD_ACK_PACKET& p);
+	void HandleGuildInf(const char* data, uint16_t size);
+	void HandleGuildNfy(const GUILD_NFY_PACKET& p);
+	void SendGuildReq(GuildOp op, uint8_t arg8 = 0, uint32_t arg32 = 0, const std::string& target = std::string(), const std::string& text = std::string());
+	void OpenGuildWindow();
+	void OpenGuildCreate(bool emblemOnly);
+	void DrawGuildWindow();
+	void DrawGuildCreate();
+	void DrawGuildInvite();                             // 받은 초대(화면 위 가운데 카드 · 30초)
+	void DrawGuildTag(const Entity& e, Vector2 head, float& y, float nameW);   // 이름표: 이름 왼쪽 문장 + 위 줄 결사 이름
+	void DrawGuildCelebration();                        // 세우기 · 들어옴: 화면 위에서 깃발이 펼쳐지고 문장 · 이름
+	[[nodiscard]] std::string GuildNameOf(uint32_t guildId) const;
+	[[nodiscard]] bool RunScriptPhase5(float dt);      // 시험 시나리오(guild3:<a|b|c>)
 
 	// ── 입력 ──
 	void HandleWorldInput();
@@ -782,6 +796,48 @@ private:
 	double           m_dialogAutoAt = 0.0;
 	int              m_endingStage = 0;
 	float            m_questLogScroll = 0.f;
+
+	// ── Phase 5 결사(game/GameGuild.cpp) ──
+	struct GuildView
+	{
+		uint32_t    id = 0;                     // 0 = 결사 없음
+		uint8_t     emblem = 0, myRank = 3, members = 0, online = 0;
+		std::string name, notice, leader;
+		bool        known = false;              // GUILD_INF Info를 받았다
+		std::vector<GuildMemberRow> rows;       // 구성원 한 페이지
+		int         page = 0, pages = 1;
+		int         tab = 0;                    // 0 정보 · 1 구성원 · 2 관리(정예 이상)
+		int         memberSort = 0;             // 0 접속·직위 · 1 레벨 · 2 이름 · 3 최근 접속(서버가 정렬)
+		// 세우기 · 들어옴 축하(깃발이 펼쳐진다)
+		double      celebrateAt = -10.0;
+		bool        celebrateFounded = false;
+		ui::TextField inviteField, noticeField;
+		bool        editNotice = false;
+		int         rowMenu = -1;               // 구성원 줄 메뉴(그 줄)
+		double      armAt = -10.0;              // 탈퇴 · 해산 · 넘기기 확인(두 번 누르기)
+		int         armKind = 0;                // 1 탈퇴 · 2 해산 · 3 넘기기 · 4 추방
+		std::string armTarget;
+		double      joinedAt = -10.0;           // 들어온 · 세운 순간(창 문장 빛)
+		// 받은 초대
+		uint32_t    inviteGuild = 0;
+		uint8_t     inviteEmblem = 0;
+		std::string inviteFrom, inviteName;
+		double      inviteAt = -10.0;
+		// 세우기 · 문장 바꾸기 창
+		bool        createOpen = false, emblemOnly = false;
+		ui::TextField createName;
+		int         shape = 0, color = 0;
+		uint32_t    seq = 0;
+		uint32_t    pendingSeq = 0;             // 결과를 기다리는 변경 요청(단추를 잠근다)
+		double      pendingAt = -10.0;
+	};
+	GuildView        m_guild;
+	bool             m_guildOpen = false;
+	std::unordered_map<uint32_t, std::pair<std::string, uint8_t>> m_guildNames;   // 머리 위 표시: 결사 번호 → 이름 · 문장
+	std::unordered_map<ObjID, std::pair<uint32_t, uint8_t>> m_guildTags;          // 사람 → 결사 번호 · 문장(시야 입장 뒤 GUILD_NFY Tag)
+	std::unordered_map<uint32_t, double> m_guildNameAsked;                        // 이름을 물어본 결사(한 번만 — 10초 뒤 다시)
+	struct P5Script { int step = 0; double at = 0.0; uint32_t target = 0; uint32_t seqA = 0; int results = 0; };   // 시험 시나리오 상태(결사 · 경매)
+	P5Script         m_p5;
 
 	// F3 디버그 정보
 	bool             m_debugOverlay = false;

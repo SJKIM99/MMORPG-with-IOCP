@@ -16,6 +16,7 @@
 //                                     화면 녹화(ffmpeg가 있으면 capture.mp4, 없으면 프레임) — tools/record
 //     --f3                            처음부터 개발 정보(F3) 표시
 //     --sandbox-clock /dev/shm/harven_clock   샌드박스 공유 시계(서버 · 봇과 한 시계, tools/sandbox)
+//     --sandbox-clock-follow /dev/shm/harven_clock   공유 시계를 따라가기만(여러 클라 녹화에서 녹화하지 않는 쪽 — Phase 5)
 //     --class 0|1|2                   새 캐릭터 직업(0 서약기사 · 1 각인술사 · 2 밤사냥꾼)
 //     --script hunt|town|inventory|map|help|enchant|chat|combat|charwin
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,6 +372,7 @@ int main(int argc, char** argv)
 	bool noMsaa = false;
 	bool kitBuildings = false;
 	std::string sandboxClock;
+	bool sandboxFollow = false;   // Phase 5: 여러 클라 녹화 — 시계를 따라가기만(녹화하는 클라가 올린다)
 	for (int i = 1; i < argc; ++i)
 	{
 		const std::string a = argv[i];
@@ -408,6 +410,7 @@ int main(int argc, char** argv)
 		else if (a == "--record-frames") recOpts.frames = true;
 		else if (a == "--fixed-step") recOpts.fixedStep = true;
 		else if (a == "--sandbox-clock") sandboxClock = next("/dev/shm/harven_clock");
+		else if (a == "--sandbox-clock-follow") { sandboxClock = next("/dev/shm/harven_clock"); sandboxFollow = true; }
 		else if (a == "--frame-jitter")
 		{
 			float j = 0.f, h = 0.f;
@@ -482,7 +485,9 @@ int main(int argc, char** argv)
 	SetExitKey(KEY_NULL);
 	SetTargetFPS(144);
 	perf::InstallGlHooks();
-	if (!sandboxClock.empty() && clk::AttachShared(sandboxClock.c_str(), recOpts.fps))
+	if (!sandboxClock.empty() && sandboxFollow)
+		(void)clk::FollowShared(sandboxClock.c_str());   // 시간은 공유 시계 그대로(프레임 길이는 제각각)
+	else if (!sandboxClock.empty() && clk::AttachShared(sandboxClock.c_str(), recOpts.fps))
 		recOpts.fixedStep = true;   // 공유 시계 = 한 프레임에 정확히 1/fps초
 	rec::Configure(recOpts);
 	rlDisableBackfaceCulling();

@@ -534,8 +534,8 @@ void Game::DrawMenuBar()
 		{ MenuIcon::Skill, "기술", kb::Act::SkillWindow, m_skillPoints > 0, "쓸 기술 점수가 있다" },
 		{ MenuIcon::Quest, "퀘스트 일지", kb::Act::QuestLog, questReady, "보고할 퀘스트가 있다" },
 		{ MenuIcon::Map, "월드 지도", kb::Act::WorldMap, false, "" },
-		{ MenuIcon::Guild, "결사", kb::Act::Guild, false, "" },
-		{ MenuIcon::Auction, "경매장", kb::Act::Auction, false, "" },   // 정산함 점은 Phase 5
+		{ MenuIcon::Guild, "결사", kb::Act::Guild, m_guild.inviteGuild != 0, "결사 초대를 받았다" },
+		{ MenuIcon::Auction, "경매장", kb::Act::Auction, false, "" },   // 정산함 점은 5-C
 		{ MenuIcon::Settings, "설정", kb::Act::Count, false, "" },
 	};
 	const float S = 34.f, gap = 4.f, pad = 7.f;
@@ -557,6 +557,7 @@ void Game::DrawMenuBar()
 		case MenuIcon::Skill: open = m_skillWinOpen; break;
 		case MenuIcon::Quest: open = m_questLogOpen; break;
 		case MenuIcon::Map: open = m_mapOpen; break;
+		case MenuIcon::Guild: open = m_guildOpen; break;
 		case MenuIcon::Settings: open = m_menuOpen; break;
 		default: break;
 		}
@@ -582,7 +583,8 @@ void Game::DrawMenuBar()
 		{
 			std::vector<ui::TooltipLine> tip{ { std::string(it.name) + (key.empty() ? "" : "  [" + key + "]"), ui::theme::kTextHi, 14.f, ui::Face::Strong } };
 			if (it.dot) tip.push_back({ it.dotText, ui::theme::kDawnHi, 12.5f });
-			if (it.icon == MenuIcon::Guild || it.icon == MenuIcon::Auction) tip.push_back({ "아직 문을 열지 않았다.", ui::theme::kTextDim, 12.5f });
+			if (it.icon == MenuIcon::Auction) tip.push_back({ "아직 문을 열지 않았다.", ui::theme::kTextDim, 12.5f });
+			if (it.icon == MenuIcon::Guild && m_guild.id != 0) tip.push_back({ "「" + m_guild.name + "」 · 접속 " + std::to_string(m_guild.online) + "명", ui::theme::kChatGuild, 12.5f });
 			ui::Tooltip(std::move(tip));
 		}
 		if (ui::Clicked(b))
@@ -596,7 +598,7 @@ void Game::DrawMenuBar()
 			case MenuIcon::Skill: toggle(m_skillWinOpen); break;
 			case MenuIcon::Quest: toggle(m_questLogOpen); m_abandonArm = 0; break;
 			case MenuIcon::Map: toggle(m_mapOpen); break;
-			case MenuIcon::Guild: AddCenter("결사는 아직 문을 열지 않았습니다.", ui::theme::kTextDim); break;
+			case MenuIcon::Guild: if (m_guildOpen) toggle(m_guildOpen); else OpenGuildWindow(); break;
 			case MenuIcon::Auction: AddCenter("경매장은 아직 문을 열지 않았습니다.", ui::theme::kTextDim); break;
 			case MenuIcon::Settings: m_menuOpen = true; sfx::Play(sfx::Id::Open, 0.5f); break;
 			}

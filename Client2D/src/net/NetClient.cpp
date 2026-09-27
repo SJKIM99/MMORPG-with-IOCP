@@ -389,6 +389,12 @@ namespace net
 		Queue(p, PacketType::CS_CHAT_EX);
 	}
 
+	void NetClient::SendGuild(const GUILD_REQ_PACKET& body)
+	{
+		GUILD_REQ_PACKET p = body;
+		Queue(p, PacketType::GUILD_REQ);
+	}
+
 	void NetClient::SendChat(const std::string& utf8)
 	{
 		CS_CHAT_PACKET p{};

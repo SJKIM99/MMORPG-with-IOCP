@@ -262,7 +262,11 @@ void Game::HandleHotkeys()
 	if (kb::Pressed(kb::Act::WorldMap)) toggle(m_mapOpen);
 	if (kb::Pressed(kb::Act::BigMap)) toggle(m_bigMapOpen);
 	if (kb::Pressed(kb::Act::Help)) toggle(m_helpOpen);
-	if (kb::Pressed(kb::Act::Guild)) AddCenter("결사는 아직 문을 열지 않았습니다.", ui::theme::kTextDim);
+	if (kb::Pressed(kb::Act::Guild))
+	{
+		if (m_guildOpen) { m_guildOpen = false; sfx::Play(sfx::Id::Close, 0.5f); }
+		else OpenGuildWindow();
+	}
 	if (kb::Pressed(kb::Act::Auction)) AddCenter("경매장은 아직 문을 열지 않았습니다.", ui::theme::kTextDim);
 	if (kb::Pressed(kb::Act::Interact)) Interact();
 	if (kb::Pressed(kb::Act::ZoomIn)) m_cam.AdjustZoom(0.15f);

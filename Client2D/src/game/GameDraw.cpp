@@ -163,6 +163,7 @@ void Game::DrawGame()
 	}
 	DrawWindows();   // 창들(채팅 포함) — 겹침 순서대로
 	DrawQuestScreenFx();
+	DrawGuildCelebration();   // Phase 5: 결사를 세운 · 들어온 순간
 	// 모달: 버리기 확인 · 죽음 · 시스템 메뉴 · 조작 설정(Esc) — 떠 있으면 마우스를 혼자 갖는다
 	wm::ModalBegin();
 	if (m_enchant.stage >= 2) DrawEnchant();   // 강화 연출(굴림 → 결과)
@@ -924,6 +925,7 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 			st.face = e.IsBoss() ? ui::Face::Display : ui::Face::Strong;
 			if (id == m_selfId) st.color = util::Mix(st.color, ui::theme::kDawnHi, 0.25f);
 			ui::Fonts().DrawCentered(label, Vector2{ head.x, y - st.size * 0.5f - 2.f }, st);
+			const float labelW = e.kind == EntityKind::Player ? ui::Fonts().Measure(label, st.size, 0.f, st.face).x : 0.f;
 			if (e.IsBoss())
 			{
 				// 보스 표식: 이름 양옆 작은 마름모(적대의 불씨색)
@@ -932,6 +934,8 @@ void Game::DrawWorldOverlay(const Camera2D& cam)
 				DrawPoly(Vector2{ head.x + m.x * 0.5f + 11.f, y - st.size * 0.5f - 2.f }, 4, 4.5f, 45.f, ui::theme::kEmber);
 			}
 			y -= st.size + 4.f;
+			if (e.kind == EntityKind::Player)
+				DrawGuildTag(e, head, y, labelW);   // Phase 5: 이름 왼쪽 문장 · 위 줄 결사 이름
 		}
 		// G로 주울 물건
 		if (id == interactItem && !m_dead)

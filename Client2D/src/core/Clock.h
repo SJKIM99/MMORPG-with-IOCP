@@ -11,6 +11,8 @@
 namespace clk
 {
 	bool AttachShared(const char* path, int fps);   // 실패하면 false(보통 시계 그대로)
+	// Phase 5 여러 클라 녹화: 시계를 올리지 않고 따라가기만 한다(녹화하는 클라 하나가 올린다 — 셋이 함께 올리면 시계가 뒤로 간다)
+	bool FollowShared(const char* path);
 	// 시험: 고정 시간 모드의 한 프레임 길이를 흔든다 — 실제 PC의 들쭉날쭉한 프레임 흉내.
 	//   jitter = ±비율(0.3 → 1/fps의 70~130%), hitchPercent = 프레임 100개 중 몇 개를 3배 길게
 	void SetFrameJitter(float jitter, float hitchPercent);

@@ -1,4 +1,5 @@
 #include "game/Game.h"
+#include "Data/GuildAuction.h"
 #include "game/Texts.h"
 #include "game/KeyBinds.h"
 #include "ui/Wm.h"
@@ -436,7 +437,12 @@ void Game::SubmitChat()
 		SendChatLine(p.target, p.body);
 		break;
 	case chat::Parsed::Kind::Invite:
-		AddChatMsg(chat::Ch::System, "", 0, "결사는 아직 문을 열지 않았습니다. (초대는 결사가 열리면)", ui::theme::kChatSystem);
+		if (p.arg.empty())
+			AddChatMsg(chat::Ch::System, "", 0, "쓰는 법: /초대 이름", ui::theme::kChatSystem);
+		else if (m_guild.id == 0)
+			AddChatMsg(chat::Ch::System, "", 0, "결사에 들어 있지 않습니다. 결사 회관의 회관지기 즈데노에게서 세울 수 있습니다.", ui::theme::kChatSystem);
+		else
+			SendGuildReq(GuildOp::Invite, 0, 0, p.arg);   // 결과는 GUILD_ACK(보냄 · 없음 · 이미 결사 …)
 		break;
 	case chat::Parsed::Kind::Unknown:
 		if (p.arg == "/r" || p.arg == "/답" || p.arg == "/ㄹ")
@@ -866,9 +872,16 @@ void Game::DrawChatMenu()
 			OpenChatInput();
 			return;
 		}
-		if (item("결사 초대", false)) {}
-		if (ui::Hovered(Rectangle{ r.x + 6.f, y - rowH, r.width - 12.f, rowH }))
-			ui::Tooltip({ { "결사 초대", ui::theme::kTextHi, 13.f, ui::Face::Strong }, { "결사가 열리면 쓸 수 있다.", ui::theme::kTextDim, 12.5f } });
+		const bool canInvite = !self && m_guild.id != 0 && GuildRule::CanInvite(static_cast<GuildRule::Rank>(std::min<uint8_t>(m_guild.myRank, 3)));
+		if (item("결사 초대", canInvite))
+		{
+			SendGuildReq(GuildOp::Invite, 0, 0, name);
+			closeMenu();
+			return;
+		}
+		if (!canInvite && !self && ui::Hovered(Rectangle{ r.x + 6.f, y - rowH, r.width - 12.f, rowH }))
+			ui::Tooltip({ { "결사 초대", ui::theme::kTextHi, 13.f, ui::Face::Strong },
+				{ m_guild.id == 0 ? "결사에 들어 있지 않다." : "정예 이상만 초대할 수 있다.", ui::theme::kTextDim, 12.5f } });
 		if (item(blocked ? "차단 풀기" : "차단", !self))
 		{
 			if (blocked)

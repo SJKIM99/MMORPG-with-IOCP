@@ -81,6 +81,8 @@ namespace net
 		void SendChat(const std::string& utf8);
 		// Phase 3-B 채널 채팅(CS_CHAT_EX): channel = ChatChannel(Normal · World · Trade · Guild · WhisperOut)
 		void SendChatEx(uint8_t channel, const std::string& target, const std::string& utf8);
+		// Phase 5 결사: 요청 하나 = 묶음 패킷 하나(op로 가른다). seq · 필드는 부르는 쪽(Game)이 채운다
+		void SendGuild(const GUILD_REQ_PACKET& body);
 
 	private:
 		template<typename Packet>

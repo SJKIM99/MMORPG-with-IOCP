@@ -291,6 +291,8 @@ void Game::OnPacket(const char* data, uint16_t size)
 			if (Entity* me = Self())
 				fx::Fx().CoinBurst(TileToIso(me->pos), std::clamp(p.delta / 60, 4, 16));
 		}
+		else if (reason == AdenaReason::Refund && p.delta > 0)
+			AddChat("거래가 이루어지지 않아 " + texts::Number(p.delta) + " 그로시를 돌려받았습니다.", Rgb(0xC8B070));
 		break;
 	}
 	case PacketType::ENCHANT_RESULT_ACK:
@@ -525,6 +527,22 @@ void Game::OnPacket(const char* data, uint16_t size)
 		HandleChat(p.senderId, FixedStr(p.senderName, NAME_SIZE), FixedStr(p.mess, CHAT_SIZE), p.channel);
 		break;
 	}
+	// ── Phase 5 결사 ──
+	case PacketType::GUILD_ACK:
+	{
+		GUILD_ACK_PACKET p{};
+		if (As(data, size, p)) HandleGuildAck(p);
+		break;
+	}
+	case PacketType::GUILD_INF:
+		HandleGuildInf(data, size);   // kind마다 모양이 다르다(정보 · 구성원 · 이름)
+		break;
+	case PacketType::GUILD_NFY:
+	{
+		GUILD_NFY_PACKET p{};
+		if (As(data, size, p)) HandleGuildNfy(p);
+		break;
+	}
 	default:
 		break;
 	}
@@ -601,6 +619,7 @@ void Game::HandleSubjectAdd(const SUBJECT_ADD_NFY_PACKET& p)
 {
 	if (p.id == m_selfId)
 		return;
+	m_guildTags.erase(p.id);   // Phase 5: 결사가 있으면 서버가 바로 뒤에 GUILD_NFY Tag를 보낸다(그 사이 나갔을 수 있다)
 	const bool existed = m_ents.count(p.id) != 0;
 	Entity& e = m_ents[p.id];
 	e.id = p.id;
@@ -773,6 +792,7 @@ void Game::HandleServerConfig(const SERVER_CONFIG_INF_PACKET& p)
 
 void Game::HandleSubjectRemove(const SUBJECT_REMOVE_NFY_PACKET& p)
 {
+	if (p.id != m_selfId) m_guildTags.erase(p.id);
 	Entity* e = Find(p.id);
 	if (!e || p.id == m_selfId) return;
 	if (e->kind == EntityKind::Item)
