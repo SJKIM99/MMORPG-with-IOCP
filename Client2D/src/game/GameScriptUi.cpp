@@ -464,8 +464,10 @@ bool Game::RunScriptUi(float dt)
 	if (s == "hotfeel")
 	{
 		// 기술 칸 손맛(3-C): 훈련장에서 Q를 쓰고 → 재사용 대기 중에 두 번 더 누른다(칸은 누를 때마다 눌림 + 붉은 반짝, 글 안내는 1초에 한 번)
-		// → 마나 0에서 W(자원 부족 반짝). 사람과 같은 함수(CastHot)로 누른다
-		static double sayAt = 0.0;
+		// → 마나 0에서 W(자원 부족 반짝). 사람과 같은 함수(CastHot)로 누른다.
+		// 누름 사이 기다림은 시계(m_now)로 잰다 — 재사용 대기 · 글 안내 1초가 시계 기준이다. 시나리오 시간(프레임마다 최대 0.05초)으로
+		// 재면 느린 프레임(넓어진 마을 · 소프트웨어 렌더링 0.3초)에서 0.9초가 5초를 넘어 재사용 대기(6초)가 먼저 풀린다
+		static double sayAt = 0.0, markAt = 0.0;
 		auto dummy = [this]() -> Entity*
 		{
 			Entity* best = nullptr;
@@ -485,39 +487,44 @@ bool Game::RunScriptUi(float dt)
 		switch (m_scriptStep)
 		{
 		case 0:
-			if (m_scriptT > 1.2f) { SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[1].x, WorldData::kDummySpots[1].y - 2 }); next(1); }
+			// 허수아비 바로 앞(방패 강타 사거리 1 — 두 칸 앞이면 첫 누름이 "다가가서 쓰기"가 되어 재사용 대기가 늦게 시작한다)
+			if (m_scriptT > 1.2f) { SetGoal(Goal{ GoalKind::Move, ObjID{}, WorldData::kDummySpots[1].x, WorldData::kDummySpots[1].y - 1 }); next(1); }
 			break;
 		case 1:
-			if (m_goal.kind == GoalKind::None || elapsed() > 12.f)
+			// 넓어진 데니차(Phase 4)에서는 첫 접속 자리에서 훈련장까지 20초 가까이 걷는다 — 12초에 끊으면 안전지대 한가운데서 누르게 된다
+			if (m_goal.kind == GoalKind::None || elapsed() > 30.f)
 			{
 				if (Entity* d = dummy()) { m_target = d->id; SetScriptAim(d->tx, d->ty, d->id); }
 				CastHot(1);
 				std::printf("[hotfeel] cast q=%u ready_in=%.2f\n", static_cast<unsigned>(q->id), m_skillReady[kq] - m_now);
+				markAt = m_now;
 				next(2);
 			}
 			break;
 		case 2:
-			if (elapsed() > 0.6f)
+			if (m_now - markAt > 0.6)
 			{
 				const double before = m_cdSayAt;
 				CastHot(1);
 				check(m_skillReady[kq] - m_now > 0.45 && m_now - m_cdDeniedAt[kq] < 0.001 && m_now - m_hotPressAt[1] < 0.001, "재사용 대기 중 누름 → 칸이 눌리고 붉게 반짝");
 				check(m_cdSayAt > before, "첫 누름은 글 안내(재사용 대기 중 n초)");
 				sayAt = m_cdSayAt;
+				markAt = m_now;
 				next(3);
 			}
 			break;
 		case 3:
-			if (elapsed() > 0.3f)
+			if (m_now - markAt > 0.3)
 			{
 				CastHot(1);
 				check(m_now - m_cdDeniedAt[kq] < 0.001 && m_now - m_hotPressAt[1] < 0.001, "0.3초 뒤 다시 누름 → 다시 눌림 · 붉은 반짝");
 				check(m_cdSayAt == sayAt, "글 안내는 1초에 한 번(0.3초 뒤에는 건너뜀)");
+				markAt = m_now;
 				next(4);
 			}
 			break;
 		case 4:
-			if (elapsed() > 1.2f)
+			if (m_now - markAt > 1.2)
 			{
 				if (m_now >= m_skillReady[kw])
 				{

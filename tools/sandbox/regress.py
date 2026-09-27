@@ -30,7 +30,7 @@ CASES = [
     # Phase 3 자기 검토: 채팅창 설정이 재접속 뒤에도 그대로(같은 이름 두 번) · 귓속말 이름 완성 · 조용하면 흐려지기
     ('chatcfg', 8, 0, 'rg_chatcfg'), ('chatcfg2', 30, 0, 'rg_chatcfg'),
     # 기술 칸 손맛: 재사용 대기 중 누름(눌림 · 붉은 반짝 · 안내 1초에 한 번) · 자원 부족(레벨 30 — 모든 칸이 열린 캐릭터)
-    ('hotfeel', 20, 0, 'lv30_rg_hotfeel'),
+    ('hotfeel', 45, 0, 'lv30_rg_hotfeel'),   # Phase 4 뒤: 첫 접속 자리 → 훈련장 걷기가 길어져 20 → 45초
     # Phase 4-A 높낮이: 경계 칸 전수 검사(서버와 같은 TownRules::Check) · 보이지 않는 벽 · 계단 우회 탐침 — [terraincheck] done PASS
     ('terraincheck', 90, 0),
     # Phase 4 자기 검토: 남문 도착 연출([arrive] done) · 비둘기 떼 날려 보내고 다시 내려앉기([birds] done PASS)

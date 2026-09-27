@@ -945,6 +945,28 @@ bool Game::StepToward(int gx, int gy, int stopWithin)
 				m_repathAt = 0.0;   // 경로에서 벗어났다 — 다음 걸음에서 지금 칸부터 다시 찾는다
 		}
 	}
+	else if (Cheb(m_predX, m_predY, wx, wy) > 1)
+	{
+		// 곧은 선(경로 없이 목적지로)도 같은 검사: 걸음은 화면 위치에서 그은 선을 따르는데, 곧게 갈 수 있는지는 칸 중심에서
+		// 그은 선으로 확인했다(LineClear). 둘이 갈라져 새 칸에서는 곧게 갈 수 없으면 → 거기서는 A* 길(첫 걸음 = 되돌아가기)
+		// → 되돌아온 칸에서는 다시 곧은 선 … 두 칸을 오가며 멈춘다(Phase 4 회귀: 훈련장 서쪽 낮은 담 앞에서 hotfeel · training이
+		// 훈련장에 들어가지 못했다). 그럴 때는 LineClear가 확인한 칸 중심의 선을 그대로 쓴다.
+		int nx = m_predX, ny = m_predY;
+		MoveRule::Apply(nx, ny, dir);
+		if (!LineClear(nx, ny, wx, wy, stopWithin))
+		{
+			const Vector2 o{ static_cast<float>(m_predX), static_cast<float>(m_predY) };
+			const Vector2 d{ static_cast<float>(wx - m_predX), static_cast<float>(wy - m_predY) };
+			const Vector2 u = util::Mul(d, 1.f / util::Len(d));
+			if (const int d2 = PlanDir(m_predX, m_predY, o, u); d2 >= 0)
+			{
+				dir = d2;
+				m_lineO = o;
+				m_lineU = u;
+				m_lineValid = true;
+			}
+		}
+	}
 	if (static const bool trace = std::getenv("HARVEN_STEP_TRACE") != nullptr; trace)
 	{
 		const Vector2 P = m_mover.Visual();
