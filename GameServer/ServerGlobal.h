@@ -29,3 +29,5 @@ extern std::shared_ptr<class DBConnectionPool> GDBConnectionPool;
 // 부하 테스트 조건을 재현할 때는 GameServer.exe --view-range 5.
 // 섹터(10칸) 3×3 이웃 탐색 안에 들어가야 하므로 SECTOR_RANGE를 넘지 않게 제한한다.
 extern int GViewRange;
+// 받는 포트(기본 PORT_NUM). 한 컴퓨터에서 시험 서버를 하나 더 띄울 때만 GameServer.exe --port N — 클라는 --port N
+extern int GServerPort;

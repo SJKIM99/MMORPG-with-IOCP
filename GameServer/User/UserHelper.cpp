@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "Content/ChatHelper.h"
+#include "Content/GuildService.h"
+#include "Content/AuctionService.h"
 #include "Combat/CombatHelper.h"
 #include "Data/MoveRule.h"
 #include "UserHelper.h"
@@ -240,6 +242,8 @@ namespace UserHelper
 			{
 				SendSUBJECT_INFO_EX_NFY(sender, target);
 				SendPLAYER_LOOK_NFY(sender, static_pointer_cast<User>(target));
+				if (sender->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eUser)
+					GuildHelper::SendTag(static_pointer_cast<User>(sender), static_pointer_cast<User>(target));   // Phase 5 머리 위 결사
 			}
 			else if (category == EnumCategory::eItem)
 			{
@@ -461,7 +465,11 @@ namespace UserHelper
 		session->PostSend(packet);
 
 		if (session->IsExtended() && target->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eUser)
+		{
 			SendSUBJECT_INFO_EX_NFY(sender, target);
+			if (sender->GetObjID().GetCategory<EnumCategory>() == EnumCategory::eUser)
+				GuildHelper::SendTag(static_pointer_cast<User>(sender), static_pointer_cast<User>(target));   // Phase 5
+		}
 	}
 
 	void SendSUBJECT_ATTACK_NFY(Subject::SharedPtr viewer, const ObjID& victimId, const ObjID& attackerId, int32_t victimHp)
@@ -996,7 +1004,10 @@ namespace UserHelper
 
 		// 주변 확장 세션에는 레벨/HP가 바뀐 모습을 다시 알린다(레벨업 때만).
 		if (gained > 0)
+		{
 			BroadcastInfoEx(player);
+			GuildHelper::OnLevelUp(player);   // Phase 5: 결사 구성원 목록의 레벨
+		}
 	}
 
 	void AttackMonster(ObjID& monsterId, ObjID& playerId, int damage, uint8_t damageFlags,
@@ -1334,6 +1345,8 @@ namespace UserHelper
 			QuestHelper::SendList(player);
 			SkillGrow::SendTree(player);
 			ChatHelper::OnEnterWorld(player);   // Phase 3-B: 이름 색인(귓속말) · 최근 대화
+			GuildHelper::OnEnterWorld(player);  // Phase 5: 결사 정보 · 접속 알림 · 머리 위 표시
+			AuctionHelper::OnEnterWorld(player); // Phase 5: 정산함 수(메뉴 막대 점)
 		}
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);
 		SectorHelper::NotifyPlayerEnteredWorld(objId, false);
@@ -1395,6 +1408,8 @@ namespace UserHelper
 			QuestHelper::SendList(player);
 			SkillGrow::SendTree(player);
 			ChatHelper::OnEnterWorld(player);   // Phase 3-B: 이름 색인(귓속말) · 최근 대화
+			GuildHelper::OnEnterWorld(player);  // Phase 5: 결사 정보 · 접속 알림 · 머리 위 표시
+			AuctionHelper::OnEnterWorld(player); // Phase 5: 정산함 수(메뉴 막대 점)
 		}
 
 		GTimerThread->ScheduleAfter(objId, 5s, TIMER_EVENT_TYPE::EV_HEAL);

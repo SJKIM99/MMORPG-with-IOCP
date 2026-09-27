@@ -273,6 +273,15 @@ enum class PacketType : uint16_t
 	SKILL_GROW_ACK,           // S→C 요청 결과(요청마다 하나) + 바뀐 기술 하나
 	// ── Phase 3-B: 채널 채팅 — 확장 세션 전용. 받는 쪽은 기존 SC_CHAT_EX(채널 값만 끝에 추가) ──
 	CS_CHAT_EX,               // C→S 채널 · 받는 사람(귓속말) · 글 — 일반(지역) · 전체 · 거래 · 결사 · 귓속말
+	// ── Phase 5: 결사 · 경매장 — 확장 세션 전용 묶음 패킷(요청 + op). 구조는 ProtocolV2.h 끝 ──
+	GUILD_REQ,                // C→S 결사 요청(정보 · 구성원 · 세우기 · 초대 · 답 · 탈퇴 · 추방 · 직위 · 넘기기 · 공지 · 해산 · 이름 · 문장)
+	GUILD_ACK,                // S→C 요청 결과(요청마다 하나)
+	GUILD_INF,                // S→C 내 결사 정보 · 구성원 페이지 · 결사 이름(머리 위 표시 캐시)
+	GUILD_NFY,                // S→C 사건(초대 받음 · 들어옴 · 나감 · 추방 · 직위 · 접속 · 해산 · 세워짐 · 머리 위 표시)
+	AUCTION_REQ,              // C→S 경매 요청(검색 · 등록 · 구매 · 취소 · 내 경매 · 정산함 · 받기 · 시세)
+	AUCTION_ACK,              // S→C 요청 결과(요청마다 하나)
+	AUCTION_LIST_INF,         // S→C 검색 결과 · 내 경매 · 정산함 한 페이지(6줄)
+	AUCTION_NFY,              // S→C 팔림 · 만료 · 정산함 수 · 시세 힌트
 };
 
 #pragma pack (push, 1)
@@ -803,7 +812,9 @@ struct ITEM_SLOT_EX_INF_PACKET
 	ITEM_SLOT_EX_DATA slot;
 };
 
-enum class AdenaReason : uint8_t { Pickup, ShopBuy, ShopSell, Teleport, Init, Service, Quest };
+enum class AdenaReason : uint8_t { Pickup, ShopBuy, ShopSell, Teleport, Init, Service, Quest,
+	// Phase 5(뒤에만 붙인다): 결사 세우기 · 경매 보증금 · 경매 구매 · 정산함 받기 · 되돌림(거래가 성립하지 않았다)
+	GuildCreate, AuctionDeposit, AuctionBuy, AuctionClaim, Refund };
 
 struct ADENA_INF_PACKET
 {

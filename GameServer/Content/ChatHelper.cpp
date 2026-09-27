@@ -7,6 +7,7 @@
 #include "Sector.h"
 #include "SubjectHelper.h"
 #include "UserHelper.h"
+#include "Content/GuildService.h"
 
 #include <deque>
 
@@ -174,9 +175,9 @@ namespace ChatHelper
 			Reject(sender, SystemMessageCode::ChatTooFast, channel, static_cast<int32_t>(sender->m_lastTradeChatTime + kTradeCooldownMs - now));
 			return;
 		}
-		if (ch == ChatChannel::Guild)
+		if (ch == ChatChannel::Guild && sender->m_guildId.load(std::memory_order_relaxed) == 0)
 		{
-			Reject(sender, SystemMessageCode::ChatNoGuild);   // Phase 5에서 결사원에게
+			Reject(sender, SystemMessageCode::ChatNoGuild);   // 결사가 없다
 			return;
 		}
 		shared_ptr<GameSession> target;
@@ -241,6 +242,12 @@ namespace ChatHelper
 			for (const auto& s : GSessionManager->SnapshotSessions())
 				if (Deliverable(s)) s->PostSend(pk);
 			Remember(ch, LCurrentZoneId, sender, body);
+			break;
+		}
+		case ChatChannel::Guild:
+		{
+			// Phase 5: 결사원(접속 중)에게 — 구성원 목록의 주인인 GuildService가 보낸다(보낸 사람 포함)
+			GuildHelper::RelayChat(sender, body);
 			break;
 		}
 		case ChatChannel::WhisperOut:

@@ -14,6 +14,7 @@
 #include "Zone/ZoneManager.h"
 #include "Data/LevelTable.h"
 #include "Data/ItemRules.h"
+#include "Data/GuildAuction.h"
 
 void Inventory::Attach(const std::shared_ptr<User>& owner) noexcept
 {
@@ -939,4 +940,159 @@ Item::SharedPtr Inventory::TryTakeRandomItem(uint32_t roll) noexcept
 	const uint16_t count = _slots[slotIndex]->GetCount();
 	// TryExtractItem이 장착 해제/공격력 재계산/DB 저장/알림을 전부 처리한다.
 	return TryExtractItem(slotIndex, count);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5 결사 · 경매장 — 메모리만 바꾼다(프로시저 하나가 그로시 · 슬롯을 함께 커밋한다). docs/adr/0001
+// ─────────────────────────────────────────────────────────────────────────────
+bool Inventory::ReserveAdena(uint32_t amount, AdenaReason reason) noexcept
+{
+	AssertOwnedByCurrentZone();
+	if (_adena < amount)
+		return false;
+	if (amount == 0)
+		return true;
+	_adena -= amount;
+	auto owner = _owner.lock();
+	if (owner->IsExtended())
+		UserHelper::SendADENA_INF(owner, -static_cast<int32_t>(amount), reason);
+	return true;
+}
+
+void Inventory::ReturnAdena(uint32_t amount, AdenaReason reason) noexcept
+{
+	AssertOwnedByCurrentZone();
+	if (amount == 0)
+		return;
+	_adena += amount;
+	auto owner = _owner.lock();
+	// 트랜잭션이 실패했다 — 그 사이 다른 절대값 저장이 예약분이 빠진 값을 넣었을 수 있으니 지금 값을 저장한다
+	GDBThread->RequestSaveAdena(owner->GetPlayerId(), _adena);
+	if (owner->IsExtended())
+		UserHelper::SendADENA_INF(owner, static_cast<int32_t>(amount), reason);
+}
+
+void Inventory::CreditAdenaNoSave(uint32_t amount, AdenaReason reason) noexcept
+{
+	AssertOwnedByCurrentZone();
+	if (amount == 0)
+		return;
+	_adena += amount;
+	auto owner = _owner.lock();
+	if (owner->IsExtended())
+		UserHelper::SendADENA_INF(owner, static_cast<int32_t>(amount), reason);
+}
+
+Inventory::TakeResult Inventory::TakeForListing(uint16_t slotIndex, uint16_t count, TakenItem& out, DB_ITEM_SLOT_SAVE& remain) noexcept
+{
+	AssertOwnedByCurrentZone();
+	if (!IsValidSlotIndex(slotIndex))
+		return TakeResult::NoItem;
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+		return TakeResult::NoItem;
+	const ItemTableRow* row = ItemTable::Find(it->second->GetItemTableId());
+	if (row == nullptr || !AuctionRule::Listable(*row))
+		return TakeResult::NotListable;
+	const auto equipment = std::dynamic_pointer_cast<EquipmentItem>(it->second);
+	if (equipment != nullptr && equipment->IsEquipped())
+		return TakeResult::Equipped;
+	if (count == 0 || count > it->second->GetCount())
+		return TakeResult::BadCount;
+
+	out.itemId = it->second->GetItemTableId();
+	out.count = count;
+	out.enchant = equipment != nullptr ? equipment->GetEnchant() : 0;
+	out.extra = equipment != nullptr ? equipment->GetExtra() : 0;
+	it->second->RemoveCount(count);
+	if (it->second->GetCount() == 0)
+		_slots.erase(it);
+	remain = DescribeSlot(slotIndex);
+	NotifySlotChanged(slotIndex);
+	return TakeResult::Ok;
+}
+
+void Inventory::RestoreTaken(uint16_t slotIndex, const TakenItem& item) noexcept
+{
+	AssertOwnedByCurrentZone();
+	const ItemTableRow* row = ItemTable::Find(item.itemId);
+	if (row == nullptr)
+		return;
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end())
+	{
+		// 원래 칸이 비어 있으면 그대로 되돌린다
+		Item::SharedPtr newItem = MakeNewItem(item.itemId, item.count);
+		if (newItem == nullptr) return;
+		newItem->SetOwnerID(_owner.lock()->GetObjID());
+		if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(newItem))
+		{
+			equipment->SetEnchant(std::min<uint8_t>(item.enchant, EnchantRule::kMaxLevel));
+			equipment->SetExtra(item.extra);
+		}
+		_slots.emplace(slotIndex, std::move(newItem));
+		SaveSlotToDB(slotIndex);
+		return;
+	}
+	if (it->second->GetItemTableId() == item.itemId && row->maxStack > 1 && it->second->GetCount() + item.count <= row->maxStack)
+	{
+		it->second->AddCount(item.count);
+		SaveSlotToDB(slotIndex);
+		return;
+	}
+	// 그 사이 칸이 다른 것으로 찼다 — 빈 곳 어디든(자리가 없으면 잃는다: 등록 트랜잭션 실패 + 가득 찬 가방이 겹칠 때만)
+	(void)TryAddItem(item.itemId, item.count, nullptr, item.enchant, item.extra);
+}
+
+uint16_t Inventory::FindSlotForIncoming(uint16_t itemId, uint16_t count) const noexcept
+{
+	const ItemTableRow* row = ItemTable::Find(itemId);
+	if (row == nullptr || row->type == ItemType::eCurrency)
+		return MAX_INVENTORY_SLOTS;
+	return FindSingleSlotFor(*row, count);
+}
+
+bool Inventory::PlaceIncoming(uint16_t slotIndex, const TakenItem& item, DB_ITEM_SLOT_SAVE& out) noexcept
+{
+	AssertOwnedByCurrentZone();
+	if (!IsValidSlotIndex(slotIndex))
+		return false;
+	const ItemTableRow* row = ItemTable::Find(item.itemId);
+	if (row == nullptr)
+		return false;
+	const auto it = _slots.find(slotIndex);
+	if (it != _slots.end())
+	{
+		if (it->second->GetItemTableId() != item.itemId || row->maxStack <= 1 || it->second->GetCount() + item.count > row->maxStack)
+			return false;
+		it->second->AddCount(item.count);
+	}
+	else
+	{
+		Item::SharedPtr newItem = MakeNewItem(item.itemId, item.count);
+		if (newItem == nullptr) return false;
+		newItem->SetOwnerID(_owner.lock()->GetObjID());
+		if (auto equipment = std::dynamic_pointer_cast<EquipmentItem>(newItem))
+		{
+			equipment->SetEnchant(std::min<uint8_t>(item.enchant, EnchantRule::kMaxLevel));
+			equipment->SetExtra(item.extra);
+		}
+		_slots.emplace(slotIndex, std::move(newItem));
+	}
+	out = DescribeSlot(slotIndex);
+	NotifySlotChanged(slotIndex);
+	return true;
+}
+
+void Inventory::UndoIncoming(uint16_t slotIndex, const TakenItem& item) noexcept
+{
+	AssertOwnedByCurrentZone();
+	const auto it = _slots.find(slotIndex);
+	if (it == _slots.end() || it->second->GetItemTableId() != item.itemId)
+		return;
+	const uint16_t n = std::min<uint16_t>(item.count, it->second->GetCount());
+	it->second->RemoveCount(n);
+	if (it->second->GetCount() == 0)
+		_slots.erase(it);
+	SaveSlotToDB(slotIndex);
 }

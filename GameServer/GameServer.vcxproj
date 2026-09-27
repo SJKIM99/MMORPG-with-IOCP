@@ -209,6 +209,8 @@
     <ClCompile Include="Zone\ZoneManager.cpp" />
     <ClCompile Include="Content\ContentHelper.cpp" />
     <ClCompile Include="Content\ChatHelper.cpp" />
+    <ClCompile Include="Content\GuildService.cpp" />
+    <ClCompile Include="Content\AuctionService.cpp" />
     <ClCompile Include="Combat\CombatHelper.cpp" />
     <ClCompile Include="Combat\SkillHelper.cpp" />
     <ClCompile Include="Combat\SkillEx.cpp" />
@@ -265,6 +267,9 @@
     <ClInclude Include="Zone\ZoneTypes.h" />
     <ClInclude Include="Content\ContentHelper.h" />
     <ClInclude Include="Content\ChatHelper.h" />
+    <ClInclude Include="Content\GuildService.h" />
+    <ClInclude Include="Content\AuctionService.h" />
+    <ClInclude Include="Content\ServiceCommon.h" />
     <ClInclude Include="Combat\CombatHelper.h" />
     <ClInclude Include="Combat\SkillHelper.h" />
     <ClInclude Include="Combat\SkillEx.h" />
@@ -281,6 +286,7 @@
     <ClInclude Include="Data\CombatData.h" />
     <ClInclude Include="Data\NpcTalk.h" />
     <ClInclude Include="Data\ItemRules.h" />
+    <ClInclude Include="Data\GuildAuction.h" />
     <ClInclude Include="Data\MonsterTable.h" />
     <ClInclude Include="Data\WorldData.h" />
     <ClInclude Include="Data\TownMap.h" />

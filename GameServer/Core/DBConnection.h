@@ -59,6 +59,29 @@ public:
 	// DB에 한쪽만 반영된 불변조건 위반 상태가 남을 수 있다.
 	bool			SaveTwoInventorySlots(int playerId, const DB_ITEM_SLOT_SAVE& a, const DB_ITEM_SLOT_SAVE& b);
 
+	// ── Phase 5 결사 · 경매장(docs/adr/0001-guild-auction-services.md) ──
+	// 프로시저 하나 = 트랜잭션 하나. bool = 커밋했는가(상태 검사에 걸리면 false — 아무것도 바뀌지 않는다).
+	// 결사 이름 · 공지는 UTF-8로 받아 UTF-16(NVARCHAR)으로 넘긴다. 시각은 유닉스 초(BIGINT).
+	bool			LoadGuilds(vector<DB_GUILD_ROW>& out);
+	bool			LoadGuildMembers(vector<DB_GUILD_MEMBER_ROW>& out);
+	bool			GuildCreate(int playerId, uint32_t adenaAfter, int guildId, const string& name, const string& nameKey, uint8_t emblem);
+	bool			GuildMemberSet(int guildId, int playerId, uint8_t rank);        // 들어옴 · 직위(행이 있으면 바꾼다)
+	bool			GuildMemberRemove(int guildId, int playerId);                   // 나감 · 추방
+	bool			GuildTransfer(int guildId, int fromId, int toId);               // 결사장 넘기기(두 행 + 결사 행)
+	bool			GuildSetInfo(int guildId, uint8_t emblem, const string& notice); // 문장 · 공지
+	bool			GuildDisband(int guildId);
+	bool			GuildMemberSeen(int playerId, int64_t unixSec);                  // 마지막 접속(나갈 때)
+	bool			LoadAuctionListings(vector<DB_LISTING_ROW>& out);               // 판매 중(status 0)
+	bool			LoadAuctionSettlements(vector<DB_SETTLEMENT_ROW>& out);         // 받지 않은 행
+	bool			LoadAuctionPrices(vector<DB_PRICE_ROW>& out, int64_t sinceUnix);
+	bool			AuctionMaxIds(int64_t& maxListing, int64_t& maxSettlement, int& maxGuild);
+	bool			AuctionRegister(int sellerId, uint32_t adenaAfter, const DB_ITEM_SLOT_SAVE& slot, const DB_LISTING_ROW& listing);
+	bool			AuctionBuy(int buyerId, uint32_t adenaAfter, int64_t listingId, uint32_t price, int64_t buyerSettleId, int64_t sellerSettleId, uint32_t sellerGets, int64_t nowUnix);
+	bool			AuctionClose(int64_t listingId, uint8_t status, int64_t settleId, int64_t nowUnix);   // 2 취소 · 3 만료 → 판매자 정산함(물건)
+	bool			SettlementClaim(int playerId, int64_t settlementId, uint32_t adenaAfter, const DB_ITEM_SLOT_SAVE& slot, int64_t nowUnix);
+	// 장애 시험: 그로시 총량 · 물건 수(소지품 · 판매 중 목록 · 받지 않은 정산함) — 서버를 켤 때 한 줄
+	bool			AuditTotals(uint64_t& walletAdena, uint64_t& settleAdena, uint64_t& invUnits, uint64_t& listingUnits, uint64_t& settleUnits, uint64_t& feesAndDeposits);
+
 private:
 	SQLHENV			_enviroment = SQL_NULL_HANDLE;
 	SQLHDBC			_connection = SQL_NULL_HANDLE;

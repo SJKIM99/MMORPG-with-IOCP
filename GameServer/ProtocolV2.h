@@ -559,6 +559,225 @@ static_assert(sizeof(QUEST_LIST_INF_PACKET) <= 255, "클라 수신 한 패킷(25
 static_assert(sizeof(PLAYER_LOOK_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 static_assert(sizeof(NPC_LIST_NFY_PACKET) <= 255, "클라 수신 한 패킷(255) 안에 들어가야 한다");
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5: 결사 · 경매장(docs/adr/0001-guild-auction-services.md) — 확장 세션 전용 묶음 패킷.
+// 요청은 op 하나로 가르고, 필드는 op마다 쓰는 것만 채운다(나머지 0). 모든 요청에 seq(멱등 — 같은 순번은 한 번만).
+// 규칙 · 한도는 Data/GuildAuction.h. 서버는 받은 Zone(소유 스레드)에서 검사한 뒤 서비스(GuildService · AuctionService) 큐로 넘긴다.
+// ─────────────────────────────────────────────────────────────────────────────
+enum class GuildOp : uint8_t
+{
+	Info,          // 내 결사 정보(GUILD_INF Info)
+	Members,       // 구성원 페이지 arg8 = 페이지, arg32 = 정렬(0 접속·직위 · 1 레벨 · 2 이름 · 3 최근 접속)
+	Create,        // 세우기 text = 이름, arg8 = 문장 — 결사 회관지기 곁에서
+	Invite,        // 초대 target = 이름
+	InviteReply,   // 초대에 답 arg8 = 1 수락 / 0 거절, arg32 = 결사 번호
+	Leave,         // 탈퇴(결사장은 넘긴 뒤에)
+	Kick,          // 추방 target
+	SetRank,       // 직위 target, arg8 = GuildRule::Rank
+	Transfer,      // 결사장 넘기기 target
+	Notice,        // 공지 text
+	Disband,       // 해산(결사장 혼자 남았을 때)
+	Name,          // 결사 이름 묻기 arg32 = 결사 번호(머리 위 표시 캐시)
+	Emblem,        // 문장 바꾸기 arg8 — 결사 회관지기 곁에서
+};
+enum class GuildResult : uint8_t
+{
+	Ok, NotInGuild, AlreadyInGuild, NoPermission, NameTaken, NameInvalid, NoAdena, LevelTooLow, Full,
+	TargetNotFound, TargetInGuild, InviteExpired, NotAtNpc, Busy, Invalid, Duplicate, LeaderMustTransfer, NotEmpty,
+};
+struct GUILD_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        op;                      // GuildOp
+	uint32_t       seq;
+	uint8_t        arg8;
+	uint32_t       arg32;
+	char           target[NAME_SIZE];       // 대상 사람 이름(ASCII)
+	char           text[92];                // 결사 이름(UTF-8, 한글 8자) · 공지(한글 30자) — 널 종료
+};
+struct GUILD_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        op;                      // GuildOp
+	uint8_t        result;                  // GuildResult
+	uint32_t       seq;
+	uint32_t       param;                   // 세우기: 결사 번호 · 그로시 부족: 필요한 값
+};
+
+enum class GuildInfKind : uint8_t { Info, Members, Name };
+struct GUILD_INFO_INF_PACKET                // GUILD_INF, kind = Info — 결사가 없으면 guildId 0
+{
+	unsigned short size;
+	char           type;
+	uint8_t        kind;
+	uint32_t       guildId;
+	uint8_t        emblem;
+	uint8_t        myRank;                  // GuildRule::Rank
+	uint8_t        members;
+	uint8_t        online;
+	char           name[25];
+	char           notice[92];
+	char           leader[NAME_SIZE];
+};
+struct GuildMemberRow
+{
+	char     name[NAME_SIZE];
+	uint8_t  rank;
+	uint8_t  level;
+	uint8_t  classId;
+	uint8_t  online;
+	uint32_t lastSeenMin;                   // 마지막 접속(서버 시작 기준이 아니라 유닉스 분 — 접속 중이면 0)
+};
+struct GUILD_MEMBERS_INF_PACKET             // GUILD_INF, kind = Members — 8명씩
+{
+	unsigned short size;
+	char           type;
+	uint8_t        kind;
+	uint8_t        page;
+	uint8_t        pages;
+	uint8_t        count;
+	GuildMemberRow rows[8];
+};
+struct GUILD_NAME_INF_PACKET                // GUILD_INF, kind = Name — 머리 위 표시 캐시
+{
+	unsigned short size;
+	char           type;
+	uint8_t        kind;
+	uint32_t       guildId;
+	uint8_t        emblem;
+	char           name[25];
+};
+
+enum class GuildEvent : uint8_t
+{
+	InviteFrom,    // who = 초대한 사람, name = 결사 이름, guildId · emblem
+	Joined, Left, Kicked,                   // who(, by)
+	RankChanged,   // who · rank · by
+	LeaderChanged, // who = 새 결사장
+	Online, Offline,
+	Disbanded,     // name
+	Created,       // 월드 공지: name · who(결사장) · emblem — 모두에게
+	Tag,           // 머리 위 표시: obj · guildId · emblem(0 번호 = 결사 없음) — 주변 확장 세션에
+	NoticeChanged, // by
+	InviteDeclined, // who = 거절한 사람(초대한 사람에게)
+	EmblemChanged,
+};
+struct GUILD_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        event;                   // GuildEvent
+	uint8_t        emblem;
+	uint8_t        rank;
+	uint32_t       guildId;
+	ObjID          obj;
+	char           who[NAME_SIZE];
+	char           by[NAME_SIZE];
+	char           name[25];
+};
+
+enum class AuctionOp : uint8_t
+{
+	Search,        // cat · sub · minRarity · minEnchant · minLevel · maxLevel · option · sort · page · query
+	Register,      // slot · count · price · duration(0~2) — 경매인 곁에서
+	Buy,           // listingId · price(보이던 값 — 그 사이 바뀌면 거절)
+	Cancel,        // listingId
+	Mine,          // 내 경매 page
+	Settlements,   // 정산함 page
+	Claim,         // settlementId(0 = 맨 앞 하나) — "모두 받기"는 하나씩 이어서
+	PriceHint,     // itemId · minRarity — 현재 최저가 · 최근 거래가
+};
+enum class AuctionResult : uint8_t
+{
+	Ok, NotFound, Sold, NoAdena, TooMany, BadPrice, BadItem, Equipped, InventoryFull, NotYours, NotAtNpc, Busy, Invalid, Duplicate,
+};
+struct AUCTION_REQ_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        op;                      // AuctionOp
+	uint32_t       seq;
+	// 검색
+	uint8_t        cat, sub, minRarity, minEnchant, minLevel, maxLevel, option, sort;
+	uint16_t       page;
+	char           query[26];
+	// 등록 · 구매 · 취소 · 받기 · 시세
+	uint16_t       slot;
+	uint16_t       count;
+	uint32_t       price;
+	uint8_t        duration;
+	uint32_t       id;                      // listingId · settlementId
+	uint16_t       itemId;
+};
+struct AUCTION_ACK_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        op;                      // AuctionOp
+	uint8_t        result;                  // AuctionResult
+	uint32_t       seq;
+	uint32_t       id;                      // 목록 · 정산함 번호
+	uint32_t       adena;                   // 요청 뒤 내 그로시(바뀌었으면)
+	int32_t        delta;
+	uint16_t       itemId;
+	uint16_t       count;
+};
+enum class AuctionListKind : uint8_t { Search, Mine, Settlements };
+struct AuctionRow
+{
+	uint32_t id;                            // 목록 번호 · 정산함 번호
+	uint16_t itemId;                        // 정산함 대금이면 0
+	uint16_t count;
+	uint8_t  enchant;
+	uint64_t extra;                         // ItemInstance(희귀도 · 옵션)
+	uint32_t price;                         // 값 · 정산함 대금
+	uint16_t minutesLeft;                   // 남은 시간(분) · 정산함: 사유(AuctionSettleReason)
+	uint8_t  flags;                         // 1 = 내 목록 · 2 = 거래 중
+};
+enum class AuctionSettleReason : uint8_t { Sold, Bought, Cancelled, Expired };
+struct AUCTION_LIST_INF_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        kind;                    // AuctionListKind
+	uint16_t       page;
+	uint16_t       pages;
+	uint32_t       total;
+	uint8_t        count;
+	AuctionRow     rows[6];
+};
+enum class AuctionEvent : uint8_t { Sold, Expired, SettleCount, PriceHint, Listed };
+struct AUCTION_NFY_PACKET
+{
+	unsigned short size;
+	char           type;
+	uint8_t        event;                   // AuctionEvent
+	uint32_t       id;
+	uint16_t       itemId;
+	uint32_t       price;                   // 팔린 값 · 정산 받을 대금
+	uint16_t       settleCount;             // 받지 않은 정산함 행 수
+	uint32_t       lowest;                  // 시세: 지금 최저가(없으면 0)
+	uint32_t       lastSold;                // 시세: 마지막 거래가
+	uint32_t       avgSold;                 // 시세: 최근 평균
+	uint16_t       soldCount;               // 시세: 최근 거래 수
+};
+
+static_assert(sizeof(GUILD_REQ_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(GUILD_ACK_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(GUILD_INFO_INF_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(GUILD_MEMBERS_INF_PACKET) <= 255, "모든 패킷 255바이트 이하 — 구성원 8명씩");
+static_assert(sizeof(GUILD_NAME_INF_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(GUILD_NFY_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(AUCTION_REQ_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(AUCTION_ACK_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(AUCTION_LIST_INF_PACKET) <= 255, "모든 패킷 255바이트 이하 — 6줄씩");
+static_assert(sizeof(AUCTION_NFY_PACKET) <= 255, "모든 패킷 255바이트 이하");
+static_assert(sizeof(AuctionRow) == 24, "경매 한 줄 24바이트(6줄 = 144B)");
+static_assert(static_cast<int>(PacketType::AUCTION_NFY) == 96, "Phase 5 뒤 PacketType은 97개(0~96) — 127까지 30개 남음");
+static_assert(static_cast<int>(PacketType::AUCTION_NFY) < 127, "패킷 헤더 type은 char — 127 안에서");
+
 #pragma pack (pop)
 
 // ── Client → Server 최대 크기(수신 버퍼) ─────────────────────────────────────
@@ -576,5 +795,7 @@ namespace ClientPacketSizeDetailV2
 	constexpr size_t v10 = ProtocolConstMaxSize(v09, sizeof(SKILL_EX_REQ_PACKET));
 	constexpr size_t v11 = ProtocolConstMaxSize(v10, sizeof(SKILL_GROW_REQ_PACKET));
 	constexpr size_t v12 = ProtocolConstMaxSize(v11, sizeof(CS_CHAT_EX_PACKET));
+	constexpr size_t v13 = ProtocolConstMaxSize(v12, sizeof(GUILD_REQ_PACKET));
+	constexpr size_t v14 = ProtocolConstMaxSize(v13, sizeof(AUCTION_REQ_PACKET));
 }
-constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v12;
+constexpr size_t MAX_CLIENT_PACKET_SIZE = ClientPacketSizeDetailV2::v14;

@@ -171,6 +171,22 @@ public:
 	// slotIndex의 현재 상태를 확장 슬롯 포맷으로 채운다(빈 슬롯이면 itemId=0).
 	void FillSlotEx(uint16_t slotIndex, ITEM_SLOT_EX_DATA& out) const noexcept;
 
+	// ── Phase 5 결사 · 경매장(docs/adr/0001) — 메모리만 바꾸고 DB는 호출자가 한 트랜잭션으로 ──
+	// 아래 함수들은 따로 DB에 저장하지 않는다: 세우기 · 등록 · 구매 · 받기의 프로시저가 그로시(절대값)와 슬롯을 함께 커밋한다.
+	// 그 트랜잭션이 실패하면 Return*/Undo*가 메모리를 되돌리고 그때는 저장한다(그 사이 다른 절대값 저장이 예약분을 담았을 수 있다).
+	[[nodiscard]] bool ReserveAdena(uint32_t amount, AdenaReason reason) noexcept;        // 모자라면 false
+	void ReturnAdena(uint32_t amount, AdenaReason reason) noexcept;                      // 되돌리고 저장
+	void CreditAdenaNoSave(uint32_t amount, AdenaReason reason) noexcept;                // 정산 받기(프로시저가 저장)
+	struct TakenItem { uint16_t itemId = 0; uint16_t count = 0; uint8_t enchant = 0; uint64_t extra = 0; };
+	enum class TakeResult : uint8_t { Ok, NoItem, Equipped, BadCount, NotListable };
+	// 경매 등록: 슬롯에서 count만큼 뺀다(착용 중 · 그로시 · 없는 칸은 안 된다). remain = 뺀 뒤 그 슬롯(DB 저장 단위)
+	[[nodiscard]] TakeResult TakeForListing(uint16_t slotIndex, uint16_t count, TakenItem& out, DB_ITEM_SLOT_SAVE& remain) noexcept;
+	void RestoreTaken(uint16_t slotIndex, const TakenItem& item) noexcept;                // 등록 트랜잭션 실패 — 되돌리고 저장
+	// 정산 받기: 물건 하나가 한 칸에 통째로 들어갈 자리(없으면 MAX_INVENTORY_SLOTS)
+	[[nodiscard]] uint16_t FindSlotForIncoming(uint16_t itemId, uint16_t count) const noexcept;
+	[[nodiscard]] bool PlaceIncoming(uint16_t slotIndex, const TakenItem& item, DB_ITEM_SLOT_SAVE& out) noexcept;
+	void UndoIncoming(uint16_t slotIndex, const TakenItem& item) noexcept;               // 받기 트랜잭션 실패 — 빼고 저장
+
 private:
 	// 슬롯 인덱스는 전부 클라이언트 패킷에서 그대로 넘어온 값이므로 절대 신뢰하지
 	// 않는다. 검증을 Route.cpp가 아니라 여기 두는 이유: Route에 두면 핸들러마다

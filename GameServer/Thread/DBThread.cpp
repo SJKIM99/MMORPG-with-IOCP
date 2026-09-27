@@ -181,12 +181,37 @@ void DBThread::RequestResetSkills(int playerId)
 	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
 }
 
+void DBThread::RequestTx(int playerId, const char* what, std::function<bool(DBConnection&)> work, std::function<void(bool)> done)
+{
+	auto event        = std::make_shared<DB_TX_EVENT>();
+	event->wakeupTime = Now();
+	event->what       = what;
+	event->work       = std::move(work);
+	event->done       = std::move(done);
+	ScheduleOnShard(std::move(event), ShardForPlayerId(playerId));
+}
+
+void DBThread::RequestTxKeyed(int64_t key, const char* what, std::function<bool(DBConnection&)> work, std::function<void(bool)> done)
+{
+	auto event        = std::make_shared<DB_TX_EVENT>();
+	event->wakeupTime = Now();
+	event->what       = what;
+	event->work       = std::move(work);
+	event->done       = std::move(done);
+	ScheduleOnShard(std::move(event), static_cast<int>(static_cast<uint64_t>(key) % kShardCount));
+}
+
 void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 {
 	ScopedDBConnection scopedConnection(GDBConnectionPool);
 	const auto& connection = scopedConnection.Get();
 	if (connection == nullptr)
+	{
+		// 결과를 기다리는 트랜잭션(Phase 5)은 실패로 알린다 — 서비스가 잠근 목록을 풀고 Zone이 예약을 되돌린다
+		if (const auto e = std::dynamic_pointer_cast<DB_TX_EVENT>(event); e && e->done)
+			e->done(false);
 		return;
+	}
 
 	if (const auto e = std::dynamic_pointer_cast<DB_LOGIN_EVENT>(event))
 	{
@@ -285,6 +310,15 @@ void DBThread::ProcessEvent(const shared_ptr<DB_EVENT_BASE>& event)
 	else if (const auto e = std::dynamic_pointer_cast<DB_SKILL_RESET_EVENT>(event))
 	{
 		connection->ResetPlayerSkills(e->playerId);
+	}
+	else if (const auto e = std::dynamic_pointer_cast<DB_TX_EVENT>(event))
+	{
+		// Phase 5: 프로시저 하나 = 트랜잭션 하나. 결과는 콜백으로(받는 쪽 큐에 넣기만 한다)
+		const bool ok = e->work ? e->work(*connection) : false;
+		if (!ok)
+			std::cout << "[DB] tx " << e->what << " failed\n" << std::flush;
+		if (e->done)
+			e->done(ok);
 	}
 }
 

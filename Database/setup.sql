@@ -847,7 +847,509 @@ END
 GO
 
 -- ============================================================
--- 5. ODBC System DSN 설정 안내 (64비트 빌드 기준)
+-- 5. Phase 5 결사(길드) — docs/adr/0001-guild-auction-services.md
+--    결사 번호는 서버(GuildService)가 정한다(켤 때 MAX + 1). 이름 겹침은 서비스 메모리가 먼저 판정하고
+--    UQ_Guilds_NameKey(소문자 이름)가 뒷문이다. 한 사람은 한 결사(GuildMembers PK = playerId).
+--    기존 표 · 데이터는 건드리지 않는다(IF NOT EXISTS).
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'Guilds')
+BEGIN
+    CREATE TABLE Guilds (
+        guildId   INT           NOT NULL CONSTRAINT PK_Guilds PRIMARY KEY,
+        name      NVARCHAR(16)  NOT NULL,
+        nameKey   NVARCHAR(16)  NOT NULL CONSTRAINT UQ_Guilds_NameKey UNIQUE,
+        emblem    TINYINT       NOT NULL CONSTRAINT DF_Guilds_emblem DEFAULT 0,
+        notice    NVARCHAR(40)  NOT NULL CONSTRAINT DF_Guilds_notice DEFAULT N'',
+        leaderId  INT           NOT NULL,
+        createdAt BIGINT        NOT NULL CONSTRAINT DF_Guilds_createdAt DEFAULT 0
+    );
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'GuildMembers')
+BEGIN
+    CREATE TABLE GuildMembers (
+        playerId  INT     NOT NULL CONSTRAINT PK_GuildMembers PRIMARY KEY,
+        guildId   INT     NOT NULL,
+        rank      TINYINT NOT NULL CONSTRAINT CK_GuildMembers_rank CHECK (rank BETWEEN 0 AND 3),
+        lastSeen  BIGINT  NOT NULL CONSTRAINT DF_GuildMembers_lastSeen DEFAULT 0,   -- 유닉스 초(나갈 때)
+        CONSTRAINT FK_GuildMembers_Guilds  FOREIGN KEY (guildId)  REFERENCES Guilds(guildId) ON DELETE CASCADE,
+        CONSTRAINT FK_GuildMembers_Players FOREIGN KEY (playerId) REFERENCES Players(playerId)
+    );
+    CREATE INDEX IX_GuildMembers_Guild ON GuildMembers(guildId);
+END
+GO
+
+-- ============================================================
+-- 6. Phase 5 경매장 · 정산함
+--    목록 · 정산함 번호는 서버(AuctionService)가 정한다. 시각은 유닉스 초(BIGINT).
+--    status: 0 판매 중 · 1 팔림 · 2 취소 · 3 만료. 정산함 kind: 1 그로시 · 2 물건, reason: 0 팔림 · 1 삼 · 2 취소 · 3 만료.
+--    돈 · 물건이 움직이는 프로시저는 모두 한 트랜잭션(XACT_ABORT)이고 상태를 다시 확인한 뒤 결과 한 줄(ok BIT)을 돌려준다.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'AuctionListings')
+BEGIN
+    CREATE TABLE AuctionListings (
+        listingId BIGINT   NOT NULL CONSTRAINT PK_AuctionListings PRIMARY KEY,
+        sellerId  INT      NOT NULL,
+        itemId    SMALLINT NOT NULL,
+        count     SMALLINT NOT NULL,
+        enchant   TINYINT  NOT NULL CONSTRAINT DF_AuctionListings_enchant DEFAULT 0,
+        extra     BIGINT   NOT NULL CONSTRAINT DF_AuctionListings_extra DEFAULT 0,
+        price     INT      NOT NULL,
+        deposit   INT      NOT NULL,
+        createdAt BIGINT   NOT NULL,
+        expiresAt BIGINT   NOT NULL,
+        status    TINYINT  NOT NULL CONSTRAINT DF_AuctionListings_status DEFAULT 0,
+        buyerId   INT      NULL,
+        closedAt  BIGINT   NULL,
+        CONSTRAINT FK_AuctionListings_Players FOREIGN KEY (sellerId) REFERENCES Players(playerId)
+    );
+    CREATE INDEX IX_AuctionListings_Status ON AuctionListings(status, expiresAt);
+    CREATE INDEX IX_AuctionListings_Seller ON AuctionListings(sellerId, status);
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'AuctionSettlements')
+BEGIN
+    CREATE TABLE AuctionSettlements (
+        settlementId BIGINT   NOT NULL CONSTRAINT PK_AuctionSettlements PRIMARY KEY,
+        playerId     INT      NOT NULL,
+        kind         TINYINT  NOT NULL,
+        adena        INT      NOT NULL CONSTRAINT DF_AuctionSettlements_adena DEFAULT 0,
+        itemId       SMALLINT NOT NULL CONSTRAINT DF_AuctionSettlements_itemId DEFAULT 0,
+        count        SMALLINT NOT NULL CONSTRAINT DF_AuctionSettlements_count DEFAULT 0,
+        enchant      TINYINT  NOT NULL CONSTRAINT DF_AuctionSettlements_enchant DEFAULT 0,
+        extra        BIGINT   NOT NULL CONSTRAINT DF_AuctionSettlements_extra DEFAULT 0,
+        listingId    BIGINT   NOT NULL,
+        reason       TINYINT  NOT NULL,
+        createdAt    BIGINT   NOT NULL,
+        claimedAt    BIGINT   NULL,
+        CONSTRAINT FK_AuctionSettlements_Players FOREIGN KEY (playerId) REFERENCES Players(playerId)
+    );
+    CREATE INDEX IX_AuctionSettlements_Player ON AuctionSettlements(playerId, claimedAt);
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'AuctionPriceHistory')
+BEGIN
+    CREATE TABLE AuctionPriceHistory (
+        id      BIGINT   IDENTITY(1,1) NOT NULL CONSTRAINT PK_AuctionPriceHistory PRIMARY KEY,
+        itemId  SMALLINT NOT NULL,
+        price   INT      NOT NULL,     -- 한 개 값
+        soldAt  BIGINT   NOT NULL
+    );
+    CREATE INDEX IX_AuctionPriceHistory_Item ON AuctionPriceHistory(itemId, soldAt);
+END
+GO
+
+-- ── 결사 프로시저 ──
+IF OBJECT_ID(N'LoadGuilds', N'P') IS NOT NULL DROP PROCEDURE LoadGuilds;
+GO
+CREATE PROCEDURE LoadGuilds
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT guildId, name, emblem, notice, leaderId FROM Guilds;
+END
+GO
+
+IF OBJECT_ID(N'LoadGuildMembers', N'P') IS NOT NULL DROP PROCEDURE LoadGuildMembers;
+GO
+CREATE PROCEDURE LoadGuildMembers
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT m.guildId, m.playerId, m.rank, p.name, p.level, m.lastSeen
+    FROM GuildMembers m JOIN Players p ON p.playerId = m.playerId;
+END
+GO
+
+IF OBJECT_ID(N'GuildCreate', N'P') IS NOT NULL DROP PROCEDURE GuildCreate;
+GO
+-- 세우기: 그로시(절대값) + 결사 행 + 결사장 행 = 한 트랜잭션. 이름이 겹치거나 이미 결사에 있으면 0
+CREATE PROCEDURE GuildCreate
+    @playerId INT,
+    @adena    INT,
+    @guildId  INT,
+    @name     NVARCHAR(16),
+    @nameKey  NVARCHAR(16),
+    @emblem   TINYINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DECLARE @ok BIT = 0;
+    BEGIN TRAN;
+    IF NOT EXISTS (SELECT 1 FROM Guilds WITH (UPDLOCK, HOLDLOCK) WHERE nameKey = @nameKey OR guildId = @guildId)
+       AND NOT EXISTS (SELECT 1 FROM GuildMembers WITH (UPDLOCK, HOLDLOCK) WHERE playerId = @playerId)
+    BEGIN
+        UPDATE Players SET adena = @adena WHERE playerId = @playerId;
+        INSERT INTO Guilds (guildId, name, nameKey, emblem, leaderId, createdAt)
+        VALUES (@guildId, @name, @nameKey, @emblem, @playerId, DATEDIFF_BIG(SECOND, '1970-01-01', SYSUTCDATETIME()));
+        INSERT INTO GuildMembers (playerId, guildId, rank) VALUES (@playerId, @guildId, 0);
+        SET @ok = 1;
+    END
+    COMMIT TRAN;
+    SELECT @ok AS ok;
+END
+GO
+
+IF OBJECT_ID(N'GuildMemberSet', N'P') IS NOT NULL DROP PROCEDURE GuildMemberSet;
+GO
+-- 들어옴(행 없음 → 넣기) · 직위(있으면 바꾸기). 다른 결사에 있으면 0
+CREATE PROCEDURE GuildMemberSet
+    @guildId  INT,
+    @playerId INT,
+    @rank     TINYINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DECLARE @ok BIT = 0;
+    BEGIN TRAN;
+    IF EXISTS (SELECT 1 FROM Guilds WHERE guildId = @guildId)
+    BEGIN
+        IF EXISTS (SELECT 1 FROM GuildMembers WITH (UPDLOCK, HOLDLOCK) WHERE playerId = @playerId AND guildId = @guildId)
+        BEGIN
+            UPDATE GuildMembers SET rank = @rank WHERE playerId = @playerId;
+            SET @ok = 1;
+        END
+        ELSE IF NOT EXISTS (SELECT 1 FROM GuildMembers WHERE playerId = @playerId)
+        BEGIN
+            INSERT INTO GuildMembers (playerId, guildId, rank) VALUES (@playerId, @guildId, @rank);
+            SET @ok = 1;
+        END
+    END
+    COMMIT TRAN;
+    SELECT @ok AS ok;
+END
+GO
+
+IF OBJECT_ID(N'GuildMemberRemove', N'P') IS NOT NULL DROP PROCEDURE GuildMemberRemove;
+GO
+CREATE PROCEDURE GuildMemberRemove
+    @guildId  INT,
+    @playerId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE FROM GuildMembers WHERE playerId = @playerId AND guildId = @guildId;
+    SELECT CAST(CASE WHEN @@ROWCOUNT > 0 THEN 1 ELSE 0 END AS BIT) AS ok;
+END
+GO
+
+IF OBJECT_ID(N'GuildTransfer', N'P') IS NOT NULL DROP PROCEDURE GuildTransfer;
+GO
+-- 결사장 넘기기: 두 사람의 직위 + 결사 행의 결사장 = 한 트랜잭션(전 결사장은 부관)
+CREATE PROCEDURE GuildTransfer
+    @guildId INT,
+    @fromId  INT,
+    @toId    INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DECLARE @ok BIT = 0;
+    BEGIN TRAN;
+    IF (SELECT COUNT(*) FROM GuildMembers WITH (UPDLOCK, HOLDLOCK) WHERE guildId = @guildId AND playerId IN (@fromId, @toId)) = 2
+    BEGIN
+        UPDATE GuildMembers SET rank = 1 WHERE playerId = @fromId;
+        UPDATE GuildMembers SET rank = 0 WHERE playerId = @toId;
+        UPDATE Guilds SET leaderId = @toId WHERE guildId = @guildId;
+        SET @ok = 1;
+    END
+    COMMIT TRAN;
+    SELECT @ok AS ok;
+END
+GO
+
+IF OBJECT_ID(N'GuildSetInfo', N'P') IS NOT NULL DROP PROCEDURE GuildSetInfo;
+GO
+CREATE PROCEDURE GuildSetInfo
+    @guildId INT,
+    @emblem  TINYINT,
+    @notice  NVARCHAR(40)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE Guilds SET emblem = @emblem, notice = @notice WHERE guildId = @guildId;
+    SELECT CAST(CASE WHEN @@ROWCOUNT > 0 THEN 1 ELSE 0 END AS BIT) AS ok;
+END
+GO
+
+IF OBJECT_ID(N'GuildDisband', N'P') IS NOT NULL DROP PROCEDURE GuildDisband;
+GO
+-- 해산: 결사원 행은 FK ON DELETE CASCADE로 함께 지워진다
+CREATE PROCEDURE GuildDisband
+    @guildId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE FROM Guilds WHERE guildId = @guildId;
+    SELECT CAST(CASE WHEN @@ROWCOUNT > 0 THEN 1 ELSE 0 END AS BIT) AS ok;
+END
+GO
+
+IF OBJECT_ID(N'GuildMemberSeen', N'P') IS NOT NULL DROP PROCEDURE GuildMemberSeen;
+GO
+CREATE PROCEDURE GuildMemberSeen
+    @playerId INT,
+    @seen     BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE GuildMembers SET lastSeen = @seen WHERE playerId = @playerId;
+END
+GO
+
+-- ── 경매 프로시저 ──
+IF OBJECT_ID(N'LoadAuctionListings', N'P') IS NOT NULL DROP PROCEDURE LoadAuctionListings;
+GO
+CREATE PROCEDURE LoadAuctionListings
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT listingId, sellerId, itemId, count, enchant, extra, price, deposit, createdAt, expiresAt
+    FROM AuctionListings WHERE status = 0;
+END
+GO
+
+IF OBJECT_ID(N'LoadAuctionSettlements', N'P') IS NOT NULL DROP PROCEDURE LoadAuctionSettlements;
+GO
+CREATE PROCEDURE LoadAuctionSettlements
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT settlementId, playerId, kind, adena, itemId, count, enchant, extra, listingId, reason, createdAt
+    FROM AuctionSettlements WHERE claimedAt IS NULL;
+END
+GO
+
+IF OBJECT_ID(N'LoadAuctionPrices', N'P') IS NOT NULL DROP PROCEDURE LoadAuctionPrices;
+GO
+CREATE PROCEDURE LoadAuctionPrices
+    @since BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT itemId, price, soldAt FROM AuctionPriceHistory WHERE soldAt >= @since ORDER BY soldAt;
+END
+GO
+
+IF OBJECT_ID(N'AuctionMaxIds', N'P') IS NOT NULL DROP PROCEDURE AuctionMaxIds;
+GO
+CREATE PROCEDURE AuctionMaxIds
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT ISNULL((SELECT MAX(listingId) FROM AuctionListings), 0) AS maxListing,
+           ISNULL((SELECT MAX(settlementId) FROM AuctionSettlements), 0) AS maxSettlement,
+           ISNULL((SELECT MAX(guildId) FROM Guilds), 0) AS maxGuild;
+END
+GO
+
+IF OBJECT_ID(N'AuctionRegister', N'P') IS NOT NULL DROP PROCEDURE AuctionRegister;
+GO
+-- 등록: 판매자 그로시(보증금 뺀 절대값) + 소지품 슬롯(남은 수량 또는 삭제) + 목록 행 = 한 트랜잭션
+CREATE PROCEDURE AuctionRegister
+    @sellerId  INT,
+    @adena     INT,
+    @slotIndex SMALLINT,
+    @hasItem   BIT,
+    @slotItem  SMALLINT,
+    @slotCount SMALLINT,
+    @equipped  BIT,
+    @enchant   TINYINT,
+    @extra     BIGINT,
+    @listingId BIGINT,
+    @itemId    SMALLINT,
+    @count     SMALLINT,
+    @lEnchant  TINYINT,
+    @lExtra    BIGINT,
+    @price     INT,
+    @deposit   INT,
+    @createdAt BIGINT,
+    @expiresAt BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DECLARE @ok BIT = 0;
+    BEGIN TRAN;
+    IF NOT EXISTS (SELECT 1 FROM AuctionListings WITH (UPDLOCK, HOLDLOCK) WHERE listingId = @listingId)
+    BEGIN
+        UPDATE Players SET adena = @adena WHERE playerId = @sellerId;
+        IF @hasItem = 1
+        BEGIN
+            UPDATE Inventory SET itemId = @slotItem, count = @slotCount, equipped = @equipped, enchant = @enchant, extra = @extra
+            WHERE playerId = @sellerId AND slotIndex = @slotIndex;
+        END
+        ELSE
+            DELETE FROM Inventory WHERE playerId = @sellerId AND slotIndex = @slotIndex;
+        INSERT INTO AuctionListings (listingId, sellerId, itemId, count, enchant, extra, price, deposit, createdAt, expiresAt, status)
+        VALUES (@listingId, @sellerId, @itemId, @count, @lEnchant, @lExtra, @price, @deposit, @createdAt, @expiresAt, 0);
+        SET @ok = 1;
+    END
+    COMMIT TRAN;
+    SELECT @ok AS ok;
+END
+GO
+
+IF OBJECT_ID(N'AuctionBuy', N'P') IS NOT NULL DROP PROCEDURE AuctionBuy;
+GO
+-- 구매: 목록이 판매 중(값도 같음)일 때만 — 목록 팔림 · 구매자 그로시(절대값) · 구매자 물건 정산 행 · 판매자 대금 정산 행(수수료 뺀 값) · 시세 한 줄
+-- = 구매자 샤드 한 트랜잭션. 목록 행 경합은 UPDATE ... WHERE status = 0 의 영향 행 수로 판정한다.
+CREATE PROCEDURE AuctionBuy
+    @buyerId      INT,
+    @adena        INT,
+    @listingId    BIGINT,
+    @price        INT,
+    @buyerSettle  BIGINT,
+    @sellerSettle BIGINT,
+    @sellerGets   INT,
+    @now          BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DECLARE @ok BIT = 0;
+    DECLARE @seller INT, @itemId SMALLINT, @count SMALLINT, @enchant TINYINT, @extra BIGINT;
+    BEGIN TRAN;
+    UPDATE AuctionListings SET status = 1, buyerId = @buyerId, closedAt = @now
+    WHERE listingId = @listingId AND status = 0 AND price = @price;
+    IF @@ROWCOUNT = 1
+    BEGIN
+        SELECT @seller = sellerId, @itemId = itemId, @count = count, @enchant = enchant, @extra = extra
+        FROM AuctionListings WHERE listingId = @listingId;
+        UPDATE Players SET adena = @adena WHERE playerId = @buyerId;
+        INSERT INTO AuctionSettlements (settlementId, playerId, kind, adena, itemId, count, enchant, extra, listingId, reason, createdAt)
+        VALUES (@buyerSettle, @buyerId, 2, 0, @itemId, @count, @enchant, @extra, @listingId, 1, @now);
+        INSERT INTO AuctionSettlements (settlementId, playerId, kind, adena, itemId, count, enchant, extra, listingId, reason, createdAt)
+        VALUES (@sellerSettle, @seller, 1, @sellerGets, 0, 0, 0, 0, @listingId, 0, @now);
+        INSERT INTO AuctionPriceHistory (itemId, price, soldAt) VALUES (@itemId, @price / CASE WHEN @count > 0 THEN @count ELSE 1 END, @now);
+        SET @ok = 1;
+    END
+    COMMIT TRAN;
+    SELECT @ok AS ok;
+END
+GO
+
+IF OBJECT_ID(N'AuctionClose', N'P') IS NOT NULL DROP PROCEDURE AuctionClose;
+GO
+-- 취소(2) · 만료(3): 판매 중일 때만 — 목록 상태 + 판매자 물건 정산 행 = 한 트랜잭션
+CREATE PROCEDURE AuctionClose
+    @listingId BIGINT,
+    @status    TINYINT,
+    @settleId  BIGINT,
+    @now       BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DECLARE @ok BIT = 0;
+    BEGIN TRAN;
+    IF @status IN (2, 3)
+    BEGIN
+        UPDATE AuctionListings SET status = @status, closedAt = @now WHERE listingId = @listingId AND status = 0;
+        IF @@ROWCOUNT = 1
+        BEGIN
+            INSERT INTO AuctionSettlements (settlementId, playerId, kind, adena, itemId, count, enchant, extra, listingId, reason, createdAt)
+            SELECT @settleId, sellerId, 2, 0, itemId, count, enchant, extra, listingId, @status, @now
+            FROM AuctionListings WHERE listingId = @listingId;
+            SET @ok = 1;
+        END
+    END
+    COMMIT TRAN;
+    SELECT @ok AS ok;
+END
+GO
+
+IF OBJECT_ID(N'SettlementClaim', N'P') IS NOT NULL DROP PROCEDURE SettlementClaim;
+GO
+-- 정산함 한 행 받기: 받지 않은 내 행일 때만 — 받음 표시 + 그로시(절대값) + (물건이면) 슬롯 = 한 트랜잭션
+CREATE PROCEDURE SettlementClaim
+    @playerId     INT,
+    @settlementId BIGINT,
+    @adena        INT,
+    @slotIndex    SMALLINT,
+    @hasItem      BIT,
+    @slotItem     SMALLINT,
+    @slotCount    SMALLINT,
+    @equipped     BIT,
+    @enchant      TINYINT,
+    @extra        BIGINT,
+    @now          BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DECLARE @ok BIT = 0, @kind TINYINT;
+    BEGIN TRAN;
+    UPDATE AuctionSettlements SET claimedAt = @now
+    WHERE settlementId = @settlementId AND playerId = @playerId AND claimedAt IS NULL;
+    IF @@ROWCOUNT = 1
+    BEGIN
+        SELECT @kind = kind FROM AuctionSettlements WHERE settlementId = @settlementId;
+        UPDATE Players SET adena = @adena WHERE playerId = @playerId;
+        IF @kind = 2 AND @hasItem = 1
+        BEGIN
+            UPDATE Inventory SET itemId = @slotItem, count = @slotCount, equipped = @equipped, enchant = @enchant, extra = @extra
+            WHERE playerId = @playerId AND slotIndex = @slotIndex;
+            IF @@ROWCOUNT = 0
+                INSERT INTO Inventory (playerId, slotIndex, itemId, count, equipped, enchant, extra)
+                VALUES (@playerId, @slotIndex, @slotItem, @slotCount, @equipped, @enchant, @extra);
+        END
+        SET @ok = 1;
+    END
+    COMMIT TRAN;
+    SELECT @ok AS ok;
+END
+GO
+
+-- 지시서의 이름(AuctionCancel · AuctionExpire)도 둔다 — 둘 다 AuctionClose 하나로(상태 2 취소 · 3 만료, 판매자 물건 정산 행)
+IF OBJECT_ID(N'AuctionCancel', N'P') IS NOT NULL DROP PROCEDURE AuctionCancel;
+GO
+CREATE PROCEDURE AuctionCancel
+    @listingId BIGINT,
+    @settleId  BIGINT,
+    @now       BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    EXEC AuctionClose @listingId, 2, @settleId, @now;
+END
+GO
+
+IF OBJECT_ID(N'AuctionExpire', N'P') IS NOT NULL DROP PROCEDURE AuctionExpire;
+GO
+CREATE PROCEDURE AuctionExpire
+    @listingId BIGINT,
+    @settleId  BIGINT,
+    @now       BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    EXEC AuctionClose @listingId, 3, @settleId, @now;
+END
+GO
+
+IF OBJECT_ID(N'AuctionAudit', N'P') IS NOT NULL DROP PROCEDURE AuctionAudit;
+GO
+-- 장애 시험 총량: 지갑 그로시 · 받지 않은 정산 그로시 · 소지품 수 · 판매 중 목록 수 · 받지 않은 정산 물건 수 · 보증금 + 수수료
+CREATE PROCEDURE AuctionAudit
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        ISNULL((SELECT SUM(CAST(adena AS BIGINT)) FROM Players), 0),
+        ISNULL((SELECT SUM(CAST(adena AS BIGINT)) FROM AuctionSettlements WHERE claimedAt IS NULL AND kind = 1), 0),
+        ISNULL((SELECT SUM(CAST(count AS BIGINT)) FROM Inventory), 0),
+        ISNULL((SELECT SUM(CAST(count AS BIGINT)) FROM AuctionListings WHERE status = 0), 0),
+        ISNULL((SELECT SUM(CAST(count AS BIGINT)) FROM AuctionSettlements WHERE claimedAt IS NULL AND kind = 2), 0),
+        ISNULL((SELECT SUM(CAST(deposit AS BIGINT)) FROM AuctionListings), 0)
+          + ISNULL((SELECT SUM(CAST(CASE WHEN price / 20 < 1 THEN 1 ELSE price / 20 END AS BIGINT)) FROM AuctionListings WHERE status = 1), 0);
+END
+GO
+
+-- ============================================================
+-- 7. ODBC System DSN 설정 안내 (64비트 빌드 기준)
 -- ============================================================
 -- 관리자 권한 PowerShell에서 아래 명령어 실행:
 --

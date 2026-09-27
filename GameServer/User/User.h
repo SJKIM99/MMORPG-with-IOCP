@@ -124,6 +124,16 @@ public:
 	struct QuestCooldown { uint16_t id; uint32_t readyAtUnix; };
 	std::vector<QuestCooldown> m_questCooldowns;            // 반복 퀘스트: 다시 받을 수 있는 시각(벽시계)
 
+	// ── Phase 5 결사 · 경매장(Content/GuildService · AuctionService, docs/adr/0001) ────────
+	// 머리 위 결사 표시: 서비스가 소유 Zone 큐로 넘겨 바꾸고, 시야 경계의 다른 Zone 스레드도 읽으므로 atomic.
+	std::atomic<uint32_t> m_guildId{ 0 };
+	std::atomic<uint8_t>  m_guildEmblem{ 0 };
+	uint8_t      m_guildRank     = 3;      // 소유 Zone만(표시용 사본 — 권한 판정은 GuildService)
+	// 멱등: 마지막으로 받은 변경 요청의 순번(소유 Zone). 재접속하면 User가 새로 만들어져 0부터
+	uint32_t     m_lastGuildSeq  = 0;
+	uint32_t     m_lastAuctionSeq = 0;
+	uint32_t     m_lastAuctionQueryAt = 0; // 검색 · 목록 요청 간격
+
 private:
 	shared_ptr<GameSession> m_session;
 	// Monster는 인벤토리가 없으므로 Subject가 아닌 User에 둔다 (m_session과 같은 이유).

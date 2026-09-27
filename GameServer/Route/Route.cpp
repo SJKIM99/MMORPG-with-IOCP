@@ -20,6 +20,8 @@
 #include "Quest/QuestHelper.h"
 #include "Data/LevelTable.h"
 #include "Collision.h"
+#include "Content/GuildService.h"
+#include "Content/AuctionService.h"
 
 namespace Route
 {
@@ -523,6 +525,26 @@ namespace Route
 			if (client == nullptr) break;
 			auto* p = reinterpret_cast<const CS_CHAT_EX_PACKET*>(packet);
 			ChatHelper::HandleChatEx(client, p->channel, p->targetName, p->mess);
+			break;
+		}
+		case PacketType::GUILD_REQ:
+		{
+			// Phase 5 결사 — 확장 세션만. 검사 · 멱등은 소유 Zone(GuildHelper), 상태는 GuildService
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr) break;
+			GuildHelper::HandleRequest(client, *reinterpret_cast<const GUILD_REQ_PACKET*>(packet));
+			break;
+		}
+		case PacketType::AUCTION_REQ:
+		{
+			// Phase 5 경매장 — 확장 세션만. 검사 · 멱등은 소유 Zone(AuctionHelper), 상태는 AuctionService
+			if (session->m_state != SOCKET_STATE::ST_INGAME || !session->IsExtended())
+				break;
+			auto client = session->GetOwner();
+			if (client == nullptr) break;
+			AuctionHelper::HandleRequest(client, *reinterpret_cast<const AUCTION_REQ_PACKET*>(packet));
 			break;
 		}
 		}

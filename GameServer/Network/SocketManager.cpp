@@ -34,7 +34,7 @@ bool SocketManager::Bind()
 	SOCKADDR_IN _serverAddr;
 	::memset(&_serverAddr, 0, sizeof(_serverAddr));
 	_serverAddr.sin_family = AF_INET;
-	_serverAddr.sin_port = htons(PORT_NUM);
+	_serverAddr.sin_port = htons(static_cast<u_short>(GServerPort));   // 기본 PORT_NUM — 시험용으로 --port N
 	_serverAddr.sin_addr.S_un.S_addr = INADDR_ANY;
 	if (::bind(gListenSocket, reinterpret_cast<sockaddr*>(&_serverAddr), sizeof(_serverAddr)))
 		return false;

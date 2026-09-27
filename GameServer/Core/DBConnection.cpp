@@ -585,3 +585,431 @@ bool DBConnection::ResetPlayerSkills(int playerId)
 	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
 	return Execute(query.c_str());
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5 결사 · 경매장(docs/adr/0001-guild-auction-services.md, Database/setup.sql 5~6장)
+// 프로시저는 결과 한 줄(ok BIT)을 돌려준다 — 상태 검사에 걸리면 0이고 아무것도 바뀌지 않는다(XACT_ABORT + 한 트랜잭션).
+// 결사 이름 · 공지는 한글이라 UTF-8 → UTF-16으로 바꿔 NVARCHAR로 넘기고, 읽을 때 되돌린다.
+// ─────────────────────────────────────────────────────────────────────────────
+namespace
+{
+	std::wstring Utf8ToWide(const string& s)
+	{
+		if (s.empty()) return {};
+		const int n = ::MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
+		std::wstring w(static_cast<size_t>(n > 0 ? n : 0), L'\0');
+		if (n > 0) ::MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
+		return w;
+	}
+	string WideToUtf8(const wchar_t* w, SQLLEN bytes)
+	{
+		if (w == nullptr || bytes <= 0) return {};
+		const int chars = static_cast<int>(bytes / static_cast<SQLLEN>(sizeof(wchar_t)));
+		const int n = ::WideCharToMultiByte(CP_UTF8, 0, w, chars, nullptr, 0, nullptr, nullptr);
+		string s(static_cast<size_t>(n > 0 ? n : 0), '\0');
+		if (n > 0) ::WideCharToMultiByte(CP_UTF8, 0, w, chars, s.data(), n, nullptr, nullptr);
+		return s;
+	}
+}
+
+// 결과 한 줄(ok BIT)을 읽는다 — 프로시저가 SELECT CAST(@ok AS BIT)로 끝난다
+#define PHASE5_FETCH_OK()                                                          \
+	do {                                                                           \
+		SQLCHAR ok_{}; SQLLEN cb_ok_{};                                            \
+		if (!BindCol(1, SQL_C_BIT, sizeof(ok_), &ok_, &cb_ok_)) return false;      \
+		if (!Fetch()) return false;                                                \
+		return ok_ != 0;                                                           \
+	} while (false)
+
+bool DBConnection::LoadGuilds(vector<DB_GUILD_ROW>& out)
+{
+	out.clear();
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC LoadGuilds";
+	SQLINTEGER gid{}, leader{};
+	SQLCHAR emblem{};
+	wchar_t name[32]{}, notice[48]{};
+	SQLLEN cb_gid{}, cb_name{}, cb_emblem{}, cb_notice{}, cb_leader{};
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_LONG, sizeof(gid), &gid, &cb_gid)) return false;
+	if (!BindCol(2, SQL_C_WCHAR, sizeof(name), name, &cb_name)) return false;
+	if (!BindCol(3, SQL_C_UTINYINT, sizeof(emblem), &emblem, &cb_emblem)) return false;
+	if (!BindCol(4, SQL_C_WCHAR, sizeof(notice), notice, &cb_notice)) return false;
+	if (!BindCol(5, SQL_C_LONG, sizeof(leader), &leader, &cb_leader)) return false;
+	while (Fetch())
+	{
+		DB_GUILD_ROW r;
+		r.guildId = static_cast<int>(gid);
+		r.name = WideToUtf8(name, cb_name);
+		r.emblem = static_cast<uint8_t>(emblem);
+		r.notice = cb_notice == SQL_NULL_DATA ? string() : WideToUtf8(notice, cb_notice);
+		r.leaderId = static_cast<int>(leader);
+		out.push_back(std::move(r));
+	}
+	return true;
+}
+
+bool DBConnection::LoadGuildMembers(vector<DB_GUILD_MEMBER_ROW>& out)
+{
+	out.clear();
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC LoadGuildMembers";
+	SQLINTEGER gid{}, pid{};
+	SQLCHAR rank{}, level{};
+	char name[NAME_SIZE + 1]{};
+	SQLBIGINT seen{};
+	SQLLEN cb_gid{}, cb_pid{}, cb_rank{}, cb_name{}, cb_level{}, cb_seen{};
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_LONG, sizeof(gid), &gid, &cb_gid)) return false;
+	if (!BindCol(2, SQL_C_LONG, sizeof(pid), &pid, &cb_pid)) return false;
+	if (!BindCol(3, SQL_C_UTINYINT, sizeof(rank), &rank, &cb_rank)) return false;
+	if (!BindCol(4, SQL_C_CHAR, sizeof(name), name, &cb_name)) return false;
+	if (!BindCol(5, SQL_C_UTINYINT, sizeof(level), &level, &cb_level)) return false;
+	if (!BindCol(6, SQL_C_SBIGINT, sizeof(seen), &seen, &cb_seen)) return false;
+	while (Fetch())
+	{
+		DB_GUILD_MEMBER_ROW r;
+		r.guildId = static_cast<int>(gid);
+		r.playerId = static_cast<int>(pid);
+		r.rank = static_cast<uint8_t>(rank);
+		r.name = name;
+		r.level = static_cast<uint8_t>(level);
+		r.lastSeenMin = (cb_seen == SQL_NULL_DATA || seen <= 0) ? 0u : static_cast<uint32_t>(seen / 60);
+		out.push_back(std::move(r));
+	}
+	return true;
+}
+
+bool DBConnection::GuildCreate(int playerId, uint32_t adenaAfter, int guildId, const string& name, const string& nameKey, uint8_t emblem)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC GuildCreate ?, ?, ?, ?, ?, ?";
+	SQLINTEGER pid = playerId, gid = guildId;
+	SQLINTEGER adena = static_cast<SQLINTEGER>(adenaAfter);
+	SQLCHAR em = emblem;
+	const std::wstring wname = Utf8ToWide(name), wkey = Utf8ToWide(nameKey);
+	SQLLEN cb_name = static_cast<SQLLEN>(wname.size() * sizeof(wchar_t)), cb_key = static_cast<SQLLEN>(wkey.size() * sizeof(wchar_t));
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&adena, nullptr)) return false;
+	if (!BindParam(3, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&gid, nullptr)) return false;
+	if (!BindParam(4, SQL_C_WCHAR, SQL_WVARCHAR, 16, (SQLPOINTER)wname.c_str(), &cb_name)) return false;
+	if (!BindParam(5, SQL_C_WCHAR, SQL_WVARCHAR, 16, (SQLPOINTER)wkey.c_str(), &cb_key)) return false;
+	if (!BindParam(6, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&em, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::GuildMemberSet(int guildId, int playerId, uint8_t rank)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC GuildMemberSet ?, ?, ?";
+	SQLINTEGER gid = guildId, pid = playerId;
+	SQLCHAR rk = rank;
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&gid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(3, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&rk, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::GuildMemberRemove(int guildId, int playerId)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC GuildMemberRemove ?, ?";
+	SQLINTEGER gid = guildId, pid = playerId;
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&gid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::GuildTransfer(int guildId, int fromId, int toId)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC GuildTransfer ?, ?, ?";
+	SQLINTEGER gid = guildId, a = fromId, b = toId;
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&gid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&a, nullptr)) return false;
+	if (!BindParam(3, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&b, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::GuildSetInfo(int guildId, uint8_t emblem, const string& notice)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC GuildSetInfo ?, ?, ?";
+	SQLINTEGER gid = guildId;
+	SQLCHAR em = emblem;
+	const std::wstring wnotice = Utf8ToWide(notice);
+	SQLLEN cb_notice = static_cast<SQLLEN>(wnotice.size() * sizeof(wchar_t));
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&gid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&em, nullptr)) return false;
+	if (!BindParam(3, SQL_C_WCHAR, SQL_WVARCHAR, 40, (SQLPOINTER)wnotice.c_str(), &cb_notice)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::GuildDisband(int guildId)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC GuildDisband ?";
+	SQLINTEGER gid = guildId;
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&gid, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::GuildMemberSeen(int playerId, int64_t unixSec)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC GuildMemberSeen ?, ?";
+	SQLINTEGER pid = playerId;
+	SQLBIGINT t = static_cast<SQLBIGINT>(unixSec);
+	if (!BindParam(1, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&t, nullptr)) return false;
+	return Execute(query.c_str());
+}
+
+namespace
+{
+	// 목록 · 정산함 행을 읽는 공통 열 묶음
+	struct ItemCols
+	{
+		SQLSMALLINT itemId{}, count{};
+		SQLCHAR     enchant{};
+		SQLBIGINT   extra{};
+		SQLLEN cb_item{}, cb_count{}, cb_enchant{}, cb_extra{};
+	};
+}
+
+bool DBConnection::LoadAuctionListings(vector<DB_LISTING_ROW>& out)
+{
+	out.clear();
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC LoadAuctionListings";
+	SQLBIGINT lid{}, created{}, expires{};
+	SQLINTEGER seller{}, price{}, deposit{};
+	ItemCols ic;
+	SQLLEN cb_lid{}, cb_seller{}, cb_price{}, cb_dep{}, cb_created{}, cb_expires{};
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_SBIGINT, sizeof(lid), &lid, &cb_lid)) return false;
+	if (!BindCol(2, SQL_C_LONG, sizeof(seller), &seller, &cb_seller)) return false;
+	if (!BindCol(3, SQL_C_SHORT, sizeof(ic.itemId), &ic.itemId, &ic.cb_item)) return false;
+	if (!BindCol(4, SQL_C_SHORT, sizeof(ic.count), &ic.count, &ic.cb_count)) return false;
+	if (!BindCol(5, SQL_C_UTINYINT, sizeof(ic.enchant), &ic.enchant, &ic.cb_enchant)) return false;
+	if (!BindCol(6, SQL_C_SBIGINT, sizeof(ic.extra), &ic.extra, &ic.cb_extra)) return false;
+	if (!BindCol(7, SQL_C_LONG, sizeof(price), &price, &cb_price)) return false;
+	if (!BindCol(8, SQL_C_LONG, sizeof(deposit), &deposit, &cb_dep)) return false;
+	if (!BindCol(9, SQL_C_SBIGINT, sizeof(created), &created, &cb_created)) return false;
+	if (!BindCol(10, SQL_C_SBIGINT, sizeof(expires), &expires, &cb_expires)) return false;
+	while (Fetch())
+	{
+		DB_LISTING_ROW r;
+		r.listingId = static_cast<int64_t>(lid);
+		r.sellerId = static_cast<int>(seller);
+		r.itemId = static_cast<uint16_t>(ic.itemId);
+		r.count = static_cast<uint16_t>(ic.count);
+		r.enchant = static_cast<uint8_t>(ic.enchant);
+		r.extra = ic.extra < 0 ? 0 : static_cast<uint64_t>(ic.extra);
+		r.price = static_cast<uint32_t>(price);
+		r.deposit = static_cast<uint32_t>(deposit);
+		r.createdAt = static_cast<int64_t>(created);
+		r.expiresAt = static_cast<int64_t>(expires);
+		r.status = 0;
+		out.push_back(r);
+	}
+	return true;
+}
+
+bool DBConnection::LoadAuctionSettlements(vector<DB_SETTLEMENT_ROW>& out)
+{
+	out.clear();
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC LoadAuctionSettlements";
+	SQLBIGINT sid{}, lid{}, created{};
+	SQLINTEGER pid{}, adena{};
+	SQLCHAR kind{}, reason{};
+	ItemCols ic;
+	SQLLEN cb_sid{}, cb_pid{}, cb_kind{}, cb_adena{}, cb_lid{}, cb_reason{}, cb_created{};
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_SBIGINT, sizeof(sid), &sid, &cb_sid)) return false;
+	if (!BindCol(2, SQL_C_LONG, sizeof(pid), &pid, &cb_pid)) return false;
+	if (!BindCol(3, SQL_C_UTINYINT, sizeof(kind), &kind, &cb_kind)) return false;
+	if (!BindCol(4, SQL_C_LONG, sizeof(adena), &adena, &cb_adena)) return false;
+	if (!BindCol(5, SQL_C_SHORT, sizeof(ic.itemId), &ic.itemId, &ic.cb_item)) return false;
+	if (!BindCol(6, SQL_C_SHORT, sizeof(ic.count), &ic.count, &ic.cb_count)) return false;
+	if (!BindCol(7, SQL_C_UTINYINT, sizeof(ic.enchant), &ic.enchant, &ic.cb_enchant)) return false;
+	if (!BindCol(8, SQL_C_SBIGINT, sizeof(ic.extra), &ic.extra, &ic.cb_extra)) return false;
+	if (!BindCol(9, SQL_C_SBIGINT, sizeof(lid), &lid, &cb_lid)) return false;
+	if (!BindCol(10, SQL_C_UTINYINT, sizeof(reason), &reason, &cb_reason)) return false;
+	if (!BindCol(11, SQL_C_SBIGINT, sizeof(created), &created, &cb_created)) return false;
+	while (Fetch())
+	{
+		DB_SETTLEMENT_ROW r;
+		r.settlementId = static_cast<int64_t>(sid);
+		r.playerId = static_cast<int>(pid);
+		r.kind = static_cast<uint8_t>(kind);
+		r.adena = static_cast<uint32_t>(adena);
+		r.itemId = static_cast<uint16_t>(ic.itemId);
+		r.count = static_cast<uint16_t>(ic.count);
+		r.enchant = static_cast<uint8_t>(ic.enchant);
+		r.extra = ic.extra < 0 ? 0 : static_cast<uint64_t>(ic.extra);
+		r.listingId = static_cast<int64_t>(lid);
+		r.reason = static_cast<uint8_t>(reason);
+		r.createdAt = static_cast<int64_t>(created);
+		out.push_back(r);
+	}
+	return true;
+}
+
+bool DBConnection::LoadAuctionPrices(vector<DB_PRICE_ROW>& out, int64_t sinceUnix)
+{
+	out.clear();
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC LoadAuctionPrices ?";
+	SQLBIGINT since = static_cast<SQLBIGINT>(sinceUnix), soldAt{};
+	SQLSMALLINT itemId{};
+	SQLINTEGER price{};
+	SQLLEN cb_item{}, cb_price{}, cb_sold{};
+	if (!BindParam(1, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&since, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_SHORT, sizeof(itemId), &itemId, &cb_item)) return false;
+	if (!BindCol(2, SQL_C_LONG, sizeof(price), &price, &cb_price)) return false;
+	if (!BindCol(3, SQL_C_SBIGINT, sizeof(soldAt), &soldAt, &cb_sold)) return false;
+	while (Fetch())
+		out.push_back(DB_PRICE_ROW{ static_cast<uint16_t>(itemId), static_cast<uint32_t>(price), static_cast<int64_t>(soldAt) });
+	return true;
+}
+
+bool DBConnection::AuctionMaxIds(int64_t& maxListing, int64_t& maxSettlement, int& maxGuild)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC AuctionMaxIds";
+	SQLBIGINT ml{}, ms{};
+	SQLINTEGER mg{};
+	SQLLEN cb1{}, cb2{}, cb3{};
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_SBIGINT, sizeof(ml), &ml, &cb1)) return false;
+	if (!BindCol(2, SQL_C_SBIGINT, sizeof(ms), &ms, &cb2)) return false;
+	if (!BindCol(3, SQL_C_LONG, sizeof(mg), &mg, &cb3)) return false;
+	if (!Fetch()) return false;
+	maxListing = static_cast<int64_t>(ml);
+	maxSettlement = static_cast<int64_t>(ms);
+	maxGuild = static_cast<int>(mg);
+	return true;
+}
+
+bool DBConnection::AuctionRegister(int sellerId, uint32_t adenaAfter, const DB_ITEM_SLOT_SAVE& slot, const DB_LISTING_ROW& l)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC AuctionRegister ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+	SQLINTEGER  pid = sellerId, adena = static_cast<SQLINTEGER>(adenaAfter);
+	SQLSMALLINT sIdx = static_cast<SQLSMALLINT>(slot.slotIndex), sItem = static_cast<SQLSMALLINT>(slot.itemId), sCnt = static_cast<SQLSMALLINT>(slot.count);
+	SQLCHAR     sHas = slot.hasItem ? 1 : 0, sEq = slot.equipped ? 1 : 0, sEnc = slot.enchant;
+	SQLBIGINT   sExt = static_cast<SQLBIGINT>(slot.extra & 0x3FFFFFFFFFFFFFFFull);
+	SQLBIGINT   lid = static_cast<SQLBIGINT>(l.listingId), created = static_cast<SQLBIGINT>(l.createdAt), expires = static_cast<SQLBIGINT>(l.expiresAt);
+	SQLSMALLINT lItem = static_cast<SQLSMALLINT>(l.itemId), lCnt = static_cast<SQLSMALLINT>(l.count);
+	SQLCHAR     lEnc = l.enchant;
+	SQLBIGINT   lExt = static_cast<SQLBIGINT>(l.extra & 0x3FFFFFFFFFFFFFFFull);
+	SQLINTEGER  price = static_cast<SQLINTEGER>(l.price), deposit = static_cast<SQLINTEGER>(l.deposit);
+	int i = 1;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&adena, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&sIdx, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_BIT, SQL_BIT, 0, (SQLPOINTER)&sHas, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&sItem, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&sCnt, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_BIT, SQL_BIT, 0, (SQLPOINTER)&sEq, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&sEnc, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&sExt, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&lid, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&lItem, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&lCnt, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&lEnc, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&lExt, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&price, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&deposit, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&created, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&expires, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::AuctionBuy(int buyerId, uint32_t adenaAfter, int64_t listingId, uint32_t price, int64_t buyerSettleId, int64_t sellerSettleId, uint32_t sellerGets, int64_t nowUnix)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC AuctionBuy ?, ?, ?, ?, ?, ?, ?, ?";
+	SQLINTEGER pid = buyerId, adena = static_cast<SQLINTEGER>(adenaAfter), pr = static_cast<SQLINTEGER>(price), gets = static_cast<SQLINTEGER>(sellerGets);
+	SQLBIGINT lid = static_cast<SQLBIGINT>(listingId), bs = static_cast<SQLBIGINT>(buyerSettleId), ss = static_cast<SQLBIGINT>(sellerSettleId), now = static_cast<SQLBIGINT>(nowUnix);
+	int i = 1;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&adena, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&lid, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pr, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&bs, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&ss, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&gets, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&now, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::AuctionClose(int64_t listingId, uint8_t status, int64_t settleId, int64_t nowUnix)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC AuctionClose ?, ?, ?, ?";
+	SQLBIGINT lid = static_cast<SQLBIGINT>(listingId), sid = static_cast<SQLBIGINT>(settleId), now = static_cast<SQLBIGINT>(nowUnix);
+	SQLCHAR st = status;
+	if (!BindParam(1, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&lid, nullptr)) return false;
+	if (!BindParam(2, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&st, nullptr)) return false;
+	if (!BindParam(3, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&sid, nullptr)) return false;
+	if (!BindParam(4, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&now, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::SettlementClaim(int playerId, int64_t settlementId, uint32_t adenaAfter, const DB_ITEM_SLOT_SAVE& slot, int64_t nowUnix)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC SettlementClaim ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
+	SQLINTEGER  pid = playerId, adena = static_cast<SQLINTEGER>(adenaAfter);
+	SQLBIGINT   sid = static_cast<SQLBIGINT>(settlementId), now = static_cast<SQLBIGINT>(nowUnix);
+	SQLSMALLINT sIdx = static_cast<SQLSMALLINT>(slot.slotIndex), sItem = static_cast<SQLSMALLINT>(slot.itemId), sCnt = static_cast<SQLSMALLINT>(slot.count);
+	SQLCHAR     sHas = slot.hasItem ? 1 : 0, sEq = slot.equipped ? 1 : 0, sEnc = slot.enchant;
+	SQLBIGINT   sExt = static_cast<SQLBIGINT>(slot.extra & 0x3FFFFFFFFFFFFFFFull);
+	int i = 1;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&pid, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&sid, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_LONG, SQL_INTEGER, 0, (SQLPOINTER)&adena, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&sIdx, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_BIT, SQL_BIT, 0, (SQLPOINTER)&sHas, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&sItem, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SHORT, SQL_SMALLINT, 0, (SQLPOINTER)&sCnt, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_BIT, SQL_BIT, 0, (SQLPOINTER)&sEq, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_UTINYINT, SQL_TINYINT, 0, (SQLPOINTER)&sEnc, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&sExt, nullptr)) return false;
+	if (!BindParam(i++, SQL_C_SBIGINT, SQL_BIGINT, 0, (SQLPOINTER)&now, nullptr)) return false;
+	if (!Execute(query.c_str())) return false;
+	PHASE5_FETCH_OK();
+}
+
+bool DBConnection::AuditTotals(uint64_t& walletAdena, uint64_t& settleAdena, uint64_t& invUnits, uint64_t& listingUnits, uint64_t& settleUnits, uint64_t& feesAndDeposits)
+{
+	StatementCleanup cleanup(*this);
+	wstring query = L"EXEC AuctionAudit";
+	SQLBIGINT a{}, b{}, c{}, d{}, e{}, f{};
+	SQLLEN cb[6]{};
+	if (!Execute(query.c_str())) return false;
+	if (!BindCol(1, SQL_C_SBIGINT, sizeof(a), &a, &cb[0])) return false;
+	if (!BindCol(2, SQL_C_SBIGINT, sizeof(b), &b, &cb[1])) return false;
+	if (!BindCol(3, SQL_C_SBIGINT, sizeof(c), &c, &cb[2])) return false;
+	if (!BindCol(4, SQL_C_SBIGINT, sizeof(d), &d, &cb[3])) return false;
+	if (!BindCol(5, SQL_C_SBIGINT, sizeof(e), &e, &cb[4])) return false;
+	if (!BindCol(6, SQL_C_SBIGINT, sizeof(f), &f, &cb[5])) return false;
+	if (!Fetch()) return false;
+	walletAdena = static_cast<uint64_t>(a); settleAdena = static_cast<uint64_t>(b); invUnits = static_cast<uint64_t>(c);
+	listingUnits = static_cast<uint64_t>(d); settleUnits = static_cast<uint64_t>(e); feesAndDeposits = static_cast<uint64_t>(f);
+	return true;
+}
+#undef PHASE5_FETCH_OK

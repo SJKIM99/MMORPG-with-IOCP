@@ -1,4 +1,6 @@
 #include "pch.h"
+#include "Content/GuildService.h"
+#include "Content/AuctionService.h"
 #include "WorkerThread.h"
 #include "SocketManager.h"
 #include "User.h"
@@ -160,6 +162,8 @@ void WorkerThread::Disconnect(ObjID clientId)
 
 	GSector->RemoveObject(clientId, user->RefSectorX(), user->RefSectorY());
 	(void)UserHelper::SaveUserInfo(clientId);
+	GuildHelper::OnLeaveWorld(user);     // Phase 5: 결사원 접속 표시 · 마지막 접속 · 받은 초대 지우기
+	AuctionHelper::OnLeaveWorld(user);   // Phase 5: 알림 대상에서 뺀다
 
 	if (auto session = user->GetGameSession())
 	{

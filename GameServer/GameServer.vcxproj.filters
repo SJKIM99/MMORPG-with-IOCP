@@ -326,6 +326,12 @@
     <ClCompile Include="Content\ChatHelper.cpp">
       <Filter>Content</Filter>
     </ClCompile>
+    <ClCompile Include="Content\GuildService.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+    <ClCompile Include="Content\AuctionService.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
     <ClCompile Include="Combat\CombatHelper.cpp">
       <Filter>Combat</Filter>
     </ClCompile>
@@ -352,6 +358,15 @@
     <ClInclude Include="Content\ChatHelper.h">
       <Filter>Content</Filter>
     </ClInclude>
+    <ClInclude Include="Content\GuildService.h">
+      <Filter>Content</Filter>
+    </ClInclude>
+    <ClInclude Include="Content\AuctionService.h">
+      <Filter>Content</Filter>
+    </ClInclude>
+    <ClInclude Include="Content\ServiceCommon.h">
+      <Filter>Content</Filter>
+    </ClInclude>
     <ClInclude Include="Data\LevelTable.h">
       <Filter>Data</Filter>
     </ClInclude>
@@ -374,6 +389,9 @@
       <Filter>Data</Filter>
     </ClInclude>
     <ClInclude Include="Data\ItemRules.h">
+      <Filter>Data</Filter>
+    </ClInclude>
+    <ClInclude Include="Data\GuildAuction.h">
       <Filter>Data</Filter>
     </ClInclude>
     <ClInclude Include="Combat\CombatHelper.h">

@@ -62,6 +62,11 @@ public:
 	void RequestSaveSkill(int playerId, const DB_SKILL_INFO& skill);
 	void RequestResetSkills(int playerId);
 
+	// Phase 5 결사 · 경매장: 결과가 필요한 트랜잭션 하나(DB_TX_EVENT). playerId 샤드 — 그 사람의 그로시 · 슬롯 저장과 한 줄로.
+	// done(ok)은 DB 스레드에서 불린다(받는 쪽 큐에 작업만 넣을 것). 결사 행처럼 사람이 아닌 것은 RequestTxKeyed(번호 샤드).
+	void RequestTx(int playerId, const char* what, std::function<bool(DBConnection&)> work, std::function<void(bool)> done);
+	void RequestTxKeyed(int64_t key, const char* what, std::function<bool(DBConnection&)> work, std::function<void(bool)> done);
+
 	[[nodiscard]] static Clock::time_point Now() noexcept { return Clock::now(); }
 
 private:

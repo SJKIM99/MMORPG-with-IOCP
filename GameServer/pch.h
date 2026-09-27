@@ -120,6 +120,60 @@ struct DB_ITEM_SLOT_SAVE
 	uint64_t extra     = 0;   // V2 희귀도·옵션(ItemInstance)
 };
 
+// ── Phase 5 결사 · 경매장 DB 행(docs/adr/0001-guild-auction-services.md) ─────────────
+// DBConnection의 새 프로시저가 쓰므로 그 선언보다 먼저. 번호(결사 · 목록 · 정산함)는 서비스가 정한다.
+struct DB_GUILD_ROW
+{
+	int      guildId  = 0;
+	string   name;                 // UTF-8
+	uint8_t  emblem   = 0;
+	string   notice;               // UTF-8
+	int      leaderId = 0;
+};
+struct DB_GUILD_MEMBER_ROW
+{
+	int      guildId  = 0;
+	int      playerId = 0;
+	uint8_t  rank     = 3;         // GuildRule::Rank
+	string   name;                 // Players.name(불러올 때 함께)
+	uint8_t  level    = 1;
+	uint32_t lastSeenMin = 0;      // 마지막 저장 시각(유닉스 분) — 없으면 0
+};
+struct DB_LISTING_ROW
+{
+	int64_t  listingId = 0;
+	int      sellerId  = 0;
+	uint16_t itemId    = 0;
+	uint16_t count     = 0;
+	uint8_t  enchant   = 0;
+	uint64_t extra     = 0;
+	uint32_t price     = 0;
+	uint32_t deposit   = 0;
+	int64_t  createdAt = 0;        // 유닉스 초
+	int64_t  expiresAt = 0;
+	uint8_t  status    = 0;        // 0 판매 중 · 1 팔림 · 2 취소 · 3 만료
+};
+struct DB_SETTLEMENT_ROW
+{
+	int64_t  settlementId = 0;
+	int      playerId  = 0;
+	uint8_t  kind      = 0;        // 1 그로시 · 2 물건
+	uint32_t adena     = 0;
+	uint16_t itemId    = 0;
+	uint16_t count     = 0;
+	uint8_t  enchant   = 0;
+	uint64_t extra     = 0;
+	int64_t  listingId = 0;
+	uint8_t  reason    = 0;        // AuctionSettleReason
+	int64_t  createdAt = 0;
+};
+struct DB_PRICE_ROW
+{
+	uint16_t itemId = 0;
+	uint32_t price  = 0;           // 한 개 값(수량으로 나눈 값)
+	int64_t  soldAt = 0;
+};
+
 // ── Core headers still in use ─────────────────────────────────────────────────
 #include "Core\ThreadManager.h"
 #include "Core\DBConnectionPool.h"
@@ -239,6 +293,17 @@ struct DB_SKILL_SAVE_EVENT : DB_EVENT_BASE
 struct DB_SKILL_RESET_EVENT : DB_EVENT_BASE
 {
 	int playerId = 0;
+};
+
+// Phase 5: 결과가 필요한 트랜잭션(경매 등록 · 구매 · 취소 · 만료 · 정산 받기, 결사 세우기 · 변경).
+// work는 DB 스레드에서 커넥션으로 프로시저 하나(= 트랜잭션 하나)를 부르고 성공 여부를 돌려준다.
+// done은 그 결과로 DB 스레드에서 불린다 — 결과를 쓰는 쪽(서비스 · Zone)의 큐에 작업을 넣기만 한다(여기서 상태를 만지지 않는다).
+// 샤드는 돈 · 물건 주인의 playerId(DBThread::RequestTx) — 그 사람의 다른 그로시 · 슬롯 저장과 넣은 순서대로 커밋된다.
+struct DB_TX_EVENT : DB_EVENT_BASE
+{
+	const char*                         what = "";
+	std::function<bool(DBConnection&)>  work;
+	std::function<void(bool)>           done;
 };
 
 // ── Timer event types ────────────────────────────────────────────────────────
