@@ -74,11 +74,26 @@ bool Game::Init(const Options& opts)
 		icons::Draw(p.itemId, Rectangle{ at.x - 22, at.y - 22, 44, 44 }, Color{ 255, 255, 255, 220 });
 	});
 
+	if (!opts.perfCsv.empty())
+	{
+		m_perfCsv = std::fopen(opts.perfCsv.c_str(), "w");
+		if (m_perfCsv) std::fprintf(m_perfCsv, "t,frame_ms,work_ms,draws,particles,players,monsters,npcs,phase\n");
+	}
 	if (!opts.autoName.empty())
 	{
-		m_fName.text = opts.autoName;
 		m_fPass.text = "1234";
-		BeginConnect();
+		if (opts.script == "fullplay")
+		{
+			// 전체 플레이 녹화: 로그인 화면에서 이름을 한 자씩 치고 접속한다(TickLoginDemo)
+			m_loginDemo.on = true;
+			m_loginDemo.name = opts.autoName;
+			m_fName.text.clear();
+		}
+		else
+		{
+			m_fName.text = opts.autoName;
+			BeginConnect();
+		}
 	}
 	return true;
 }
@@ -94,6 +109,7 @@ void Game::Shutdown()
 		std::fflush(stdout);
 	}
 	if (m_traceFile) { std::fclose(m_traceFile); m_traceFile = nullptr; }
+	if (m_perfCsv) { std::fclose(m_perfCsv); m_perfCsv = nullptr; }
 	SaveControls();
 	if (wm::Dirty()) SaveUiLayout();
 	m_net.Disconnect();
@@ -272,8 +288,8 @@ void Game::Frame()
 	perf::MarkWorkEnd();
 	perf::NoteParticles(static_cast<int>(fx::Particles().Count()));
 
-	// 녹화(--record): 게임 화면에 들어오면 시작 기준점을 잡고, 다 뜨면 끝낸다
-	if (rec::Enabled() && m_scene == Scene::Game)
+	// 녹화(--record): 게임 화면에 들어오면 시작 기준점을 잡고, 다 뜨면 끝낸다(전체 플레이는 로그인 화면부터)
+	if (rec::Enabled() && (m_scene == Scene::Game || m_loginDemo.on))
 	{
 		rec::Arm(m_now);
 		rec::Capture(m_now);
@@ -299,11 +315,13 @@ void Game::Frame()
 	}
 	EndDrawing();
 	perf::EndFrame(GetFrameTime());
+	if (m_perfCsv) WritePerfRow();
 }
 
 void Game::UpdateLogin(float dt)
 {
 	m_time += dt;
+	TickLoginDemo(dt);
 	// 로그인 배경: 마을 위를 천천히 도는 카메라
 	const float a = m_time * 0.05f;
 	const Vector2 c{ TownMap::kTownCenter.x + std::cos(a) * 14.f, TownMap::kTownCenter.y + std::sin(a) * 12.f };
@@ -476,7 +494,8 @@ void Game::UpdateGame(float dt)
 	HandleWorldInput();
 	TickGoal();
 	TickMovement();
-	RunScript(dt);
+	if (m_opts.script == "fullplay") RunFullPlay(dt);   // Phase 6 전체 플레이(장면마다 이미 있는 시나리오를 빌려 쓴다)
+	else RunScript(dt);
 	TickCombat(dt);
 	TickSkills(dt);
 	TickSkillStage(dt);   // 기술 창 시연(창이 보여 줄 때만)
@@ -1682,13 +1701,16 @@ void Game::RunScript(float dt)
 				std::printf("[bench] %s frames=%d work avg=%.1fms max=%.1fms | draw avg=%d max=%d | particles max=%d | over33(work)=%d\n", names[k], b.frames,
 					b.workSum / b.frames, b.workMax, b.drawSum / b.frames, b.drawMax, b.partMax, b.over33);
 			}
+			perf::PrintMem("awaken3");
 			std::fflush(stdout);
 			m_scriptStep = 4;
+			m_perfPhase = 4;
 		}
 		// 매 프레임 모으기(직전 프레임의 CPU 시간 · 드로우콜)
 		if (m_scriptStep == 2 || m_scriptStep == 3)
 		{
 			const int k = m_scriptStep == 2 ? 0 : (m_scriptT < 4.f ? 1 : 2);
+			m_perfPhase = k + 1;   // --perf-csv 구간: 1 전 · 2 각성 · 3 뒤
 			Bench::Part& b = m_bench.part[k];
 			const float w = perf::WorkMs(0);
 			const int dc = perf::DrawCallsLast();
@@ -1870,6 +1892,6 @@ void Game::RunScript(float dt)
 	{
 		if (m_scriptStep == 0 && m_scriptT > 1.0f) { m_endingAt = m_now; m_endingStage = 0; m_scriptStep = 1; }
 	}
-	else if (!RunScriptUi(dt) && !RunScriptPhase5(dt))   // Phase 3 시험(창 · 채팅 · HUD) · Phase 5(결사 · 경매장 — game/GameScriptP5.cpp)
+	else if (!RunScriptUi(dt) && !RunScriptPhase5(dt) && !RunScriptPhase6(dt))   // Phase 3 시험(창 · 채팅 · HUD) · Phase 5(결사 · 경매장) · Phase 6(도우미 · 붐비는 마을)
 		RunScriptWorld(dt);      // Phase 4 시험(투어 · 지형) — game/GameScriptWorld.cpp
 }

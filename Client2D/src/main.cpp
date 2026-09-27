@@ -400,6 +400,7 @@ int main(int argc, char** argv)
 		else if (a == "--photosafe") opts.photoSafe = 1;
 		else if (a == "--otherfx") opts.otherFx = std::clamp(std::atoi(next("50").c_str()), 0, 100);
 		else if (a == "--f3") opts.debugOverlay = true;
+		else if (a == "--perf-csv") opts.perfCsv = next("perf.csv");   // Phase 6: 프레임마다 성능 한 줄(tools/perf)
 		else if (a == "--no-msaa") noMsaa = true;
 		else if (a == "--kit-buildings") kitBuildings = true;   // 그린 건물을 끄고 모두 키트로(Phase 4-C 비교)
 		else if (a == "--record") recOpts.dir = next("record");

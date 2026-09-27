@@ -464,6 +464,30 @@ bool DBConnection::IsUserRegistered(const string& name)
 				Journal(db, r);
 			}
 		}
+		// Phase 6 전체 플레이 녹화: 이름에 "_fp"가 있으면 경매에 올릴 은 목걸이(영웅) · 귀환 두루마리 · 물약을 쥐여 준다
+		if (name.find("_fp") != string::npos)
+		{
+			ItemInstance neck;
+			neck.rarity = Rarity::Heroic;
+			neck.opts[0] = OptionRoll{ ItemOption::CritChance, 12 };
+			neck.opts[1] = OptionRoll{ ItemOption::Luk, 4 };
+			const struct { uint16_t slot, item, count; uint8_t enchant; uint64_t extra; } kit[] = {
+				{ 0, 44, 1, 0, neck.Pack() },   // 은 목걸이(영웅) — 경매장에 올린다
+				{ 1, 10, 3, 0, 0 },             // 귀환 두루마리 3
+				{ 2, 1, 30, 0, 0 },             // 약초 물약 30(물약 칸 F1)
+				{ 3, 8, 10, 0, 0 },             // 진한 약초 물약 10(전투 칸 1)
+			};
+			for (const auto& k : kit)
+			{
+				DB_ITEM_SLOT_SAVE s;
+				s.slotIndex = k.slot; s.hasItem = true; s.itemId = k.item; s.count = k.count; s.enchant = k.enchant; s.extra = k.extra;
+				ApplySlot(db, row.playerId, s);
+				Rec r("S");
+				r << row.playerId;
+				RecSlot(r, s);
+				Journal(db, r);
+			}
+		}
 		return true;
 	}
 	return false;

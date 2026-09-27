@@ -1,6 +1,9 @@
 #include "core/Perf.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <array>
 #include <chrono>
 #include <vector>
@@ -148,5 +151,27 @@ namespace perf
 		std::fprintf(out, "[%s] frames=%d frame avg=%.2fms p95=%.2fms p99=%.2fms max=%.2fms over33=%d | cpu avg=%.2fms p95=%.2fms max=%.2fms | drawcalls avg=%d max=%d | particles max=%d\n",
 			tag, s.frames, s.avgMs, s.p95Ms, s.p99Ms, s.maxMs, s.over33, s.avgWorkMs, s.p95WorkMs, s.maxWorkMs, s.avgDrawCalls, s.maxDrawCalls, s.maxParticles);
 		std::fflush(out);
+	}
+
+	void PrintMem(const char* tag)
+	{
+#if defined(__linux__)
+		std::FILE* f = std::fopen("/proc/self/status", "r");
+		long rss = -1, hwm = -1;
+		if (f)
+		{
+			char line[256];
+			while (std::fgets(line, sizeof(line), f))
+			{
+				if (std::strncmp(line, "VmRSS:", 6) == 0) rss = std::atol(line + 6);
+				else if (std::strncmp(line, "VmHWM:", 6) == 0) hwm = std::atol(line + 6);
+			}
+			std::fclose(f);
+		}
+		std::printf("[mem] %s rss=%.1fMB peak=%.1fMB\n", tag, rss / 1024.0, hwm / 1024.0);
+#else
+		std::printf("[mem] %s rss=? peak=?\n", tag);
+#endif
+		std::fflush(stdout);
 	}
 }

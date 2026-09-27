@@ -297,6 +297,12 @@ void Game::AddChatMsg(chat::Ch ch, const std::string& sender, uint64_t senderKey
 		if (i != m_chatTab && !history) { ++t.unread; t.lastAt = m_now; }
 		if (i == m_chatTab && t.scroll > 0.5f) ++t.newBelow;
 	}
+	// Phase 6 전체 플레이: 도우미는 전체 채팅의 "결사"를, 본인은 귓속말을 기다린다
+	if (!history && m_opts.script.rfind("fullplay", 0) == 0 && sender != m_playerName)
+	{
+		if (ch == chat::Ch::World && text.find("결사") != std::string::npos) { m_fp.heard = true; m_fp.heardFrom = sender; m_fp.heardAt = m_scriptT; }
+		if (ch == chat::Ch::WhisperIn) { m_fp.whispered = true; m_fp.heardFrom = sender; }
+	}
 	// 시험(--script chat3:*): 받은 줄을 찍는다(tools/sandbox/chat3.sh가 모아 판정)
 	if (m_opts.script.rfind("chat3", 0) == 0)
 		std::printf("[%s] t=%.2f ch=%s%s from=%s text=%s\n", history ? "chat-hist" : "chat", m_scriptT, chat::ChName(ch), ch == chat::Ch::WhisperOut ? "(보냄)" : "", sender.c_str(), text.c_str());

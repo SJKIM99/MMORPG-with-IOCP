@@ -173,6 +173,7 @@ void Game::DrawGame()
 	if (m_keysOpen) DrawKeySettings();
 	wm::ModalEnd();
 	ui::UnbindXform();
+	DrawSceneCaption();   // Phase 6 전체 플레이 녹화의 장면 이름(화면 좌표)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

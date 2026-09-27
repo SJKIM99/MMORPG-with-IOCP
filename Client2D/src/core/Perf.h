@@ -40,4 +40,6 @@ namespace perf
 	void NoteParticles(int n);
 	[[nodiscard]] Summary Summarize();
 	void Print(std::FILE* out, const char* tag);
+	// 메모리(리눅스 /proc/self/status의 VmRSS · VmHWM — Windows에서는 "?")를 [mem] 한 줄로
+	void PrintMem(const char* tag);
 }

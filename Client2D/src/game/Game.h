@@ -57,6 +57,7 @@ public:
 		int         quality = -1;
 		int         photoSafe = -1;
 		int         otherFx = -1;
+		std::string perfCsv;            // 테스트: 프레임마다 성능 한 줄(Phase 6 — tools/perf/plot_frames.py)
 	};
 
 	bool Init(const Options& opts);
@@ -380,6 +381,14 @@ private:
 	void DrawAuctionBuyConfirm();
 	void AuctionSearch(uint16_t page = 0);
 	[[nodiscard]] bool RunScriptPhase5(float dt);      // 시험 시나리오(guild3:<a|b|c> · auction:<sell|buy|race|dup> · claim)
+	// Phase 6(game/GameScriptP6.cpp): 전체 플레이 녹화(fullplay) · 도우미(fullplay:helper) · 붐비는 마을 성능(crowd)
+	[[nodiscard]] bool RunScriptPhase6(float dt);
+	void RunFullPlay(float dt);
+	void RunSubScript(const char* name, float dt);      // 이미 있는 시나리오 하나를 이번 프레임만(fullplay의 장면)
+	bool TypeChatLine(const std::string& line, float dt, float perChar = 0.07f);   // 채팅칸에 한 자씩 · 다 보내면 true
+	void TickLoginDemo(float dt);                       // fullplay: 로그인 화면에서 이름을 치고 접속
+	void DrawSceneCaption();                            // fullplay: 장면 자막(화면 위 가운데)
+	void WritePerfRow();                                // --perf-csv: 프레임마다 한 줄
 
 	// ── 입력 ──
 	void HandleWorldInput();
@@ -896,6 +905,31 @@ private:
 	bool             m_auctionOpen = false;
 	struct P5Script { int step = 0; double at = 0.0; uint32_t target = 0; uint32_t seqA = 0; int results = 0; };   // 시험 시나리오 상태(결사 · 경매)
 	P5Script         m_p5;
+	// Phase 6: 전체 플레이 녹화 · 성능 시나리오 상태
+	struct FullPlay
+	{
+		int         seg = 0, step = 0;          // 장면(0 접속 · 1 투어 · 2 훈련장 · 3 들녘 · 4 보스 · 5 채팅 · 6 결사 · 7 경매 · 8 끝) · 그 안의 단계
+		float       segT = 0.f, stepT = 0.f;    // 장면 · 단계 시작 뒤(스크립트 시간)
+		std::string title, sub;                 // 장면 자막
+		double      captionAt = -10.0;
+		bool        heard = false;              // 도우미: 전체 채팅에 "결사"가 나왔다
+		bool        whispered = false;          // 본인: 귓속말을 받았다
+		std::string heardFrom;                  // 그 말을 한 사람
+		float       heardAt = 0.f;
+		bool        bossSeen = false, bossDown = false;
+		std::string typing;                     // 채팅칸에 치는 중인 줄
+		size_t      typedAt = 0;
+		float       typeT = 0.f;
+		int         slot = -1;                  // 경매에 올린 칸
+		float       pollT = 0.f;                // 결사 정보 다시 묻기(초)
+	};
+	FullPlay         m_fp;
+	struct LoginDemo { bool on = false, sent = false; float t = 0.f; size_t typed = 0; std::string name; };
+	LoginDemo        m_loginDemo;
+	std::FILE*       m_perfCsv = nullptr;           // --perf-csv
+	int              m_perfPhase = 0;               // CSV의 구간 열(시나리오가 정한다: 0 준비 · 1 재는 중 …)
+	struct CrowdBench { std::vector<float> work, frame, draws; int maxPlayers = 0, maxOnScreen = 0; long long sumPlayersIn = 0, sumNpcsIn = 0; };
+	CrowdBench       m_crowd;
 
 	// F3 디버그 정보
 	bool             m_debugOverlay = false;
