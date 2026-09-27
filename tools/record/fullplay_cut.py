@@ -7,7 +7,7 @@
 # 로그의 [fp] seg/mark 줄(rec=녹화 초)로 장면을 나눈다. 싸우고 · 말하고 · 사고파는 장면은 그대로,
 # 걸어가는 구간(투어 뒤 훈련장까지 · 남문 밖까지 · 길잡이까지 · 회관 · 경매장까지 · 도우미가 사러 오는 동안)은 ×4로 감고
 # 오른쪽 위에 "빨리 감기 ×4"를 띄운다. 잘라 낸 곳은 없다 — 처음부터 끝까지 한 세션이다.
-# --preview: 앞의 장면들에서 몇 초씩 떼어 만든 짧은 WebP(README 첫 화면용).
+# --preview: 장면 일곱에서 3초씩 떼어 만든 짧은 WebP(README 첫 화면용). README 영상은 --width 854 --fps 15 --crf 31(약 11MB).
 # ─────────────────────────────────────────────────────────────────────────────
 import os
 import re
@@ -117,7 +117,7 @@ def main():
     for s, e, sp in parts:
         print('   %7.2f ~ %7.2f  ×%d' % (s, e, sp))
     if preview:
-        # 첫 화면용: 장면마다 몇 초(투어 · 훈련장 · 사냥 · 보스 · 결사 · 경매) — 640px 12fps WebP
+        # 첫 화면용: 장면마다 몇 초(투어 · 훈련장 · 사냥 · 보스 · 결사 · 경매) — 560px 10fps WebP(약 2.7MB)
         picks = []
         for key, off, dur in (('tour', 1.0, 3.0), ('training', 6.0, 3.5), ('hunt-arrive', 3.0, 3.0), ('boss-arrive', 8.0, 4.0),
                               ('boss-down', -1.5, 3.0), ('guild-created', -0.5, 3.0), ('auction-sold', -1.0, 3.0)):
@@ -132,8 +132,8 @@ def main():
             plist.append("file '%s'" % os.path.abspath(part))
         pl = os.path.join(work, 'wlist.txt')
         open(pl, 'w').write('\n'.join(plist) + '\n')
-        subprocess.run(['ffmpeg', '-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', pl, '-c:v', 'libwebp_anim', '-loop', '0',
-                        '-quality', '55', '-compression_level', '4', '-an', preview], check=True)
+        subprocess.run(['ffmpeg', '-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', pl, '-vf', 'scale=560:-2:flags=lanczos,fps=10',
+                        '-c:v', 'libwebp_anim', '-loop', '0', '-quality', '40', '-compression_level', '6', '-an', preview], check=True)
         print('→', preview, '%.1fKB' % (os.path.getsize(preview) / 1024))
     return 0
 

@@ -148,6 +148,25 @@
 - **깃발 뜰 순위**(`GuildOp::Top`, 자기 검토): 서비스 메모리만 읽는다(DB 없음). 사람마다 2초에 한 번(소유 Zone이 거른다) — 클라는 결사 회관 30칸 안에 있을 때 20초마다 · 결사 사건 뒤에 묻는다.
 - **봇 · 레거시 세션**: 이 코드 경로를 지나지 않는다(확장 세션만 보내는 패킷). 시야 입장 때 결사가 있는 사람에 한해 `GUILD_NFY Tag` 하나가 확장 세션 뷰어에게만 더 간다.
 
+### Phase 6 — 통합 QA · 폴리싱(`docs/upgrade/PHASE_6.md`) · 서버 · 패킷 · DB 변경 없음
+
+- `PacketType` **97개(0~96)** 그대로 — 127까지 30개 남음. 서버 로직은 바꾸지 않았다. 공유 데이터 표의 **글자 · 색 값만**:
+  아이템 이름 넷(각인사의 로브 → **각인사의 법복** · 철 건틀릿 → **철 장갑** · 서약의 건틀릿 → **서약의 장갑** · 이레린 로브 → **이레린 법복** — WORLD.md 3.5 "영어 음차를 쓰지 않는다"),
+  몬스터 둘의 그리기 색(떠도는 망령 · 그늘거미 — 보라 금지) · 옵션 메아리의 색 · `static_assert` 문구 하나. 아이템은 번호(id)로 저장 · 전송하므로 DB · 패킷 값은 그대로다.
+- 샌드박스 인메모리 DB: 이름에 `_fp`가 있으면 전체 플레이 녹화 꾸러미(은 목걸이(영웅) · 귀환 두루마리 3 · 약초 물약 30 · 진한 약초 물약 10). 실제 서버(MSSQL)에는 없는 규칙.
+- 시험 봇(`tools/sandbox/bot/HarvenBot.cpp`): `--crowd N` — 한 프로세스에서 확장 세션 N개를 세 겹 원으로 걷게 한다(붐비는 마을 성능 시험, 이름 뒤 두 자리 번호).
+
+**확장 패킷 번호 한눈에**(헤더 `type` 1바이트 — 모두 끝에만 추가했다):
+
+| 번호 | 묶음 | 패킷 |
+|---|---|---|
+| 0 ~ 34 | 레거시(STRESS_TEST 봇 · 옛 클라가 쓰는 것 — 한 바이트도 바꾸지 않음) | 로그인 · 이동 · 공격 · 아이템 · 주변 알림 · `CS_CHAT`(33) · `SC_CHAT`(34) |
+| 35 ~ 52 | 확장 1(리니지풍 컨텐츠) | `USER_LOGIN_EX_REQ`(35) … 상점 · 옛길 · 강화 · 그로시 · 피해 · 효과 · 공지 · `SC_CHAT_EX`(52) |
+| 53 ~ 79 | V2(이동 순번 · 전투 V2 · 살아 있는 마을 · 아이템 성장 · 퀘스트) | `USER_MOVE_EX_REQ`(53) · `SKILL_CAST_REQ`(56) · `MONSTER_TELEGRAPH_NFY`(63) · `NPC_LIST_NFY`(64) ~ `NPC_SERVICE_ACK`(70) · `ITEM_DETAIL_INF`(71) ~ `ITEM_SORT_REQ`(73) · `QUEST_LIST_INF`(74) ~ `QUEST_RESULT_ACK`(79) |
+| 80 ~ 87 | Phase 2 기술 구조 V3 · 기술 성장 | `SKILL_EX_REQ`(80) · `SKILL_EX_NFY` · `SUBJECT_FORCED_MOVE_NFY` · `COMBAT_GAUGE_INF` · `MONSTER_GAUGE_NFY` · `SKILL_TREE_INF` · `SKILL_GROW_REQ` · `SKILL_GROW_ACK`(87) |
+| 88 | Phase 3 채팅 채널 | `CS_CHAT_EX` |
+| 89 ~ 96 | Phase 5 결사 · 경매장(묶음 + `op`) | `GUILD_REQ` · `GUILD_ACK` · `GUILD_INF` · `GUILD_NFY` · `AUCTION_REQ` · `AUCTION_ACK` · `AUCTION_LIST_INF` · `AUCTION_NFY` |
+
 ## DB 마이그레이션
 
 `Database/setup.sql`을 다시 실행하면 됩니다(`IF NOT EXISTS` — 기존 데이터 보존).
