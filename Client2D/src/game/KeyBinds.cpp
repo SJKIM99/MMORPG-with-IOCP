@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 
 namespace kb
 {
